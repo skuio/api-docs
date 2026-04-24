@@ -21,9 +21,6 @@ const TAG_TO_AREA: Record<string, string> = {
   "Purchase Receipts":      "Purchasing",
   "Purchase Order Shipments": "Purchasing",
   "Inbound Shipments":      "Purchasing",
-  "Allocations":            "Orders",
-  "Bulk Operations":        "Orders",
-  "Notes":                  "Orders",
 
   // ── Inventory ─────────────────────────────────────────────────────────
   "Products":               "Products",
@@ -62,6 +59,11 @@ const TAG_TO_AREA: Record<string, string> = {
   "Vendor Credits":         "_flat_Core API",
   "Lifecycle":              "_flat_Core API",
   "Landed Cost Breakdown":  "_flat_Core API",
+  "Product Import":         "_flat_Core API",
+  "Allocations":            "_flat_Core API",
+  "Bulk Operations":        "_flat_Core API",
+  "Notes":                  "_flat_Core API",
+  "Invoice & Accounting":   "_flat_Core API",
 
   // ── Integrations ──────────────────────────────────────────────────────
   "Stores":                       "Sales Channels",
