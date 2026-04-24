@@ -41,7 +41,6 @@ const TAG_TO_AREA: Record<string, string> = {
   "Financials":             "Accounting",
   "Bills":                  "Accounting",
   "Configuration":          "Accounting",
-  "Invoice & Accounting":   "Accounting",
 
   // ── Contacts ──────────────────────────────────────────────────────────
   "Customers":              "Contacts",
