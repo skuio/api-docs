@@ -20,6 +20,7 @@ export default function TenantConfigurator(): React.ReactElement {
     if (!value) return;
     localStorage.setItem(STORAGE_KEY, value);
     setTenant(value);
+    window.dispatchEvent(new CustomEvent("skuio-tenant-changed", { detail: { tenant: value } }));
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
