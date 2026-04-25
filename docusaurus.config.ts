@@ -31,6 +31,8 @@ const config: Config = {
         docs: {
           sidebarPath: "./sidebars.ts",
           docItemComponent: "@theme/ApiItem",
+          sidebarCollapsible: true,
+          autoCollapseSidebarCategories: true,
         },
         blog: false,
         theme: {
@@ -84,7 +86,22 @@ const config: Config = {
     ],
   ],
 
-  themes: ["docusaurus-theme-openapi-docs"],
+  themes: [
+    "docusaurus-theme-openapi-docs",
+    [
+      "@easyops-cn/docusaurus-search-local",
+      {
+        hashed: true,
+        indexDocs: true,
+        indexBlog: false,
+        indexPages: false,
+        docsRouteBasePath: "/docs",
+        searchBarPosition: "right",
+        highlightSearchTermsOnTargetPage: true,
+        explicitSearchResultPath: true,
+      },
+    ],
+  ],
 
   themeConfig: {
     navbar: {
