@@ -103,11 +103,6 @@ const config: Config = {
   ],
 
   themeConfig: {
-    docs: {
-      sidebar: {
-        autoCollapseSidebarCategories: true,
-      },
-    },
     navbar: {
       title: "SKU.io Developer Docs",
       logo: {

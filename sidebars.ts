@@ -161,7 +161,7 @@ function buildSidebar(items: unknown[]): RawItem[] {
         type: "category" as const,
         label: groupName,
         collapsible: true,
-        collapsed: false,
+        collapsed: true,
         items: areaItems,
       };
     });
