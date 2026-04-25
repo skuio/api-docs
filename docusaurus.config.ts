@@ -32,7 +32,6 @@ const config: Config = {
           sidebarPath: "./sidebars.ts",
           docItemComponent: "@theme/ApiItem",
           sidebarCollapsible: true,
-          autoCollapseSidebarCategories: true,
         },
         blog: false,
         theme: {
@@ -104,6 +103,11 @@ const config: Config = {
   ],
 
   themeConfig: {
+    docs: {
+      sidebar: {
+        autoCollapseSidebarCategories: true,
+      },
+    },
     navbar: {
       title: "SKU.io Developer Docs",
       logo: {
