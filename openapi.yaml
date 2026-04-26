@@ -101,6 +101,8 @@ tags:
 - name: Purchase Order Shipments
 - name: Inbound Shipments
 - name: Report Templates
+- name: Sales Order OCR
+- name: Customer SKU Mappings
 - name: Product Import
 - name: Vendor Credits
 - name: Lifecycle
@@ -75512,6 +75514,63 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/inbound-shipments/{inbound_shipment}/receipts:
+    post:
+      tags:
+      - Inbound Shipments
+      summary: Create Receipt (Native IS Path)
+      description: "Creates a native InboundShipmentReceipt with lines and posts FIFO/inventory\
+        \ directly via the new IS-first path (Phase 1 of the InboundShipment / PurchaseOrderShipment\
+        \ unification — see SKU-8029). Coexists with the legacy `/receive` endpoint,\
+        \ which delegates through the PO shipment receipt path.\n\nAuthentication:\
+        \ Requires Bearer token.\n\nFields:\n- received_at (required, datetime): Date/time\
+        \ of receipt\n- warehouse_id (required, exists:warehouses): Receiving warehouse\
+        \ for this receipt\n- notes (optional, string): Free-text notes attached to\
+        \ the receipt\n- receipt_lines (required, min 1):\n  - inbound_shipment_line_id\
+        \ (required, exists:inbound_shipment_lines): Must belong to this inbound shipment\n\
+        \  - quantity (required, numeric, min 0.0001)\n\nSide effects:\n- Creates\
+        \ an `inbound_shipment_receipts` row + per-line `inbound_shipment_receipt_lines`\
+        \ rows\n- Creates a FIFO layer + InventoryMovement per line (TYPE_PURCHASE_RECEIPT)\
+        \ at the receipt's warehouse\n- Increments `received_quantity` on each InboundShipmentLine\
+        \ and the matching PurchaseOrderLine\n- Transitions the InboundShipment to\
+        \ `partially_received` or `received` (sets `fully_received_at` when all lines\
+        \ are fully received)"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                received_at: '2026-04-26T09:00:00'
+                warehouse_id: 1
+                notes: Partial receipt — pallet 1 of 3
+                receipt_lines:
+                - inbound_shipment_line_id: 101
+                  quantity: 50
+                - inbound_shipment_line_id: 102
+                  quantity: 25
+      parameters:
+      - name: inbound_shipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The inbound_shipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/inbound-shipments/{inbound_shipment}/cancel:
     post:
       tags:
@@ -76203,6 +76262,277 @@ paths:
         schema:
           type: string
         example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/upload:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Upload Customer PO PDF
+      description: Upload a customer PO PDF to start the OCR extraction process. Returns
+        an extraction record with the parsed line items, customer info, and dates.
+        The extraction must be reviewed before a sales order can be created from it.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}:
+    get:
+      tags:
+      - Sales Order OCR
+      summary: Get OCR Extraction
+      description: Retrieve a single OCR extraction record by ID. Returns the extracted
+        fields (customer PO number, order date, deliver-by date, line items with quantities
+        and prices) and the current review status.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Sales Order OCR
+      summary: Delete OCR Extraction
+      description: Delete an OCR extraction record and its associated uploaded PDF.
+        Use this to discard an extraction that will not be converted to a sales order.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}/create-order:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Create Sales Order from Extraction
+      description: 'Create a sales order from a reviewed OCR extraction. The request
+        body contains the confirmed/edited field values from the review UI.
+
+
+        When save_sku_mappings is true, any resolved customer SKU-to-product mappings
+        from the extraction lines are persisted to the customer''s SKU mapping table
+        for future use.
+
+
+        Returns the newly created sales order resource.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                customer_id: 1
+                customer_po_number: PO-12345
+                order_date: '2024-01-15'
+                deliver_by_date: '2024-02-15'
+                sales_channel_id: 1
+                currency_id: 1
+                memo_for_customer: null
+                save_sku_mappings: true
+                lines:
+                - product_id: 1
+                  quantity: 10
+                  amount: 25
+                  description: Widget
+                  warehouse_id: null
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/customers/{customer_id}/sku-mappings:
+    get:
+      tags:
+      - Customer SKU Mappings
+      summary: List SKU Mappings
+      description: Return a paginated list of SKU mappings for the specified customer.
+        Each mapping links a customer-facing SKU code to an internal product.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: customer_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+      - Customer SKU Mappings
+      summary: Create / Upsert SKU Mapping
+      description: Create a new SKU mapping or update an existing one (upsert) for
+        the given customer. If a mapping for customer_sku already exists, it is updated
+        with the new product_id.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                customer_sku: CUST-SKU-001
+                product_id: 1
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: customer_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/customers/{customer_id}/sku-mappings/{mapping_id}:
+    delete:
+      tags:
+      - Customer SKU Mappings
+      summary: Delete SKU Mapping
+      description: Delete a specific SKU mapping by ID for the given customer.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: customer_id
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: mapping_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/customers/{customer_id}/sku-mappings/import:
+    post:
+      tags:
+      - Customer SKU Mappings
+      summary: Import SKU Mappings from CSV
+      description: Bulk-import SKU mappings for a customer from a CSV file. The CSV
+        must have a header row with columns customer_sku and product_id. Existing
+        mappings for the same customer_sku are updated (upsert behaviour).
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: customer_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/customers/{customer_id}/sku-mappings/export:
+    get:
+      tags:
+      - Customer SKU Mappings
+      summary: Export SKU Mappings as CSV
+      description: Export all SKU mappings for a customer as a CSV file download.
+        The response is a CSV with columns customer_sku and product_id. Use this as
+        a template for the import endpoint.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: text/csv
+      - name: customer_id
+        in: path
+        schema:
+          type: string
+        required: true
       responses:
         '200':
           description: Successful response
@@ -76998,6 +77328,8 @@ x-tagGroups:
   - Purchase Receipts
   - Purchase Order Shipments
   - Inbound Shipments
+  - Sales Order OCR
+  - Customer SKU Mappings
   - Product Import
   - Vendor Credits
   - Lifecycle
