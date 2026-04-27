@@ -100,8 +100,10 @@ tags:
 - name: Purchase Receipts
 - name: Purchase Order Shipments
 - name: Inbound Shipments
-- name: Report Templates
 - name: Sales Order OCR
+- name: Purchase Invoice OCR
+- name: Document Inbox
+- name: Report Templates
 - name: Customer SKU Mappings
 - name: Product Import
 - name: Vendor Credits
@@ -76124,6 +76126,481 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/sales-orders/ocr/upload:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Upload Customer PO PDF
+      description: Upload a customer PO PDF to start the OCR extraction process. Returns
+        an extraction record with the parsed line items, customer info, and dates.
+        The extraction must be reviewed before a sales order can be created from it.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}:
+    get:
+      tags:
+      - Sales Order OCR
+      summary: Get OCR Extraction
+      description: Retrieve a single OCR extraction record by ID. Returns the extracted
+        fields (customer PO number, order date, deliver-by date, line items with quantities
+        and prices) and the current review status.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Sales Order OCR
+      summary: Delete OCR Extraction
+      description: Delete an OCR extraction record and its associated uploaded PDF.
+        Use this to discard an extraction that will not be converted to a sales order.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}/pdf:
+    get:
+      tags:
+      - Sales Order OCR
+      summary: Stream Extraction PDF
+      description: 'Stream the original uploaded PDF back to the client through the
+        backend (avoids CORS issues when fetching from S3 directly). Returns Content-Type:
+        application/pdf with inline disposition. 404 if the underlying S3 object is
+        missing.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/pdf
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}/create-order:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Create Sales Order from Extraction
+      description: 'Create a sales order from a reviewed OCR extraction. The request
+        body contains the confirmed/edited field values from the review UI.
+
+
+        When save_sku_mappings is true, any resolved customer SKU-to-product mappings
+        from the extraction lines are persisted to the customer''s SKU mapping table
+        for future use.
+
+
+        Returns the newly created sales order resource.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                customer_id: 1
+                customer_po_number: PO-12345
+                order_date: '2024-01-15'
+                deliver_by_date: '2024-02-15'
+                sales_channel_id: 1
+                currency_id: 1
+                memo_for_customer: null
+                save_sku_mappings: true
+                lines:
+                - product_id: 1
+                  quantity: 10
+                  amount: 25
+                  description: Widget
+                  warehouse_id: null
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}/reclassify-as-supplier-invoice:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Reclassify as Supplier Invoice
+      description: 'Reclassify a Customer PO OCR extraction as a Supplier Invoice.
+        Used when an inbound email was routed to orders@ but the attached PDF is actually
+        a supplier invoice.
+
+
+        Copies the file_path, header_data, lines_data, and source email metadata into
+        a new PurchaseInvoiceOcrExtraction (status: pending_review). Marks the original
+        SalesOrderOcrExtraction as ''rejected'' with an error_message that references
+        the new extraction ID, preserving an audit trail.
+
+
+        Response:
+
+        ```json
+
+        { "data": { "purchase_invoice_extraction_id": 42 } }
+
+        ```
+
+
+        The frontend should redirect to /purchases/invoices/ocr/{id} for the user
+        to continue review.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/ocr/upload:
+    post:
+      tags:
+      - Purchase Invoice OCR
+      summary: Upload Supplier Invoice PDF
+      description: "Upload a supplier invoice PDF to start the OCR extraction. Requires\
+        \ Invoice OCR to be enabled in Settings → Invoice OCR (returns 422 if not\
+        \ enabled).\n\nResponse 201:\n```json\n{\n  \"data\": {\n    \"extraction_id\"\
+        : 7,\n    \"tracked_job_log_id\": 1234,\n    \"status\": \"processing\"\n\
+        \  },\n  \"message\": \"OCR processing started\"\n}\n```\n\nPoll GET /purchase-invoices/ocr/{id}\
+        \ until status is 'pending_review' (or 'failed' / 'duplicate_detected')."
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/ocr/{purchase_extraction_id}:
+    get:
+      tags:
+      - Purchase Invoice OCR
+      summary: Get Extraction
+      description: "Retrieve a purchase invoice OCR extraction record. Returns the\
+        \ extracted header data merged with matched supplier info, line items, error_message\
+        \ (if failed/duplicate), and inbound-email source metadata.\n\nExample 200\
+        \ response:\n```json\n{\n  \"data\": {\n    \"id\": 7,\n    \"status\": \"\
+        pending_review\",\n    \"file_url\": \"https://sku2.test/api/purchase-invoices/ocr/7/pdf\"\
+        ,\n    \"page_count\": 2,\n    \"header\": {\n      \"supplier_invoice_number\"\
+        : \"INV-9988\",\n      \"invoice_date\": \"2026-04-20\",\n      \"due_date\"\
+        : \"2026-05-20\",\n      \"subtotal\": 1250.00,\n      \"tax_amount\": 125.00,\n\
+        \      \"total_amount\": 1375.00,\n      \"matched_supplier_id\": 12,\n  \
+        \    \"matched_supplier_name\": \"Acme Supplies\"\n    },\n    \"lines\":\
+        \ [\n      { \"raw_sku\": \"WID-001\", \"quantity\": 50, \"unit_price\": 25.00,\
+        \ \"line_total\": 1250.00 }\n    ],\n    \"unmatched_line_count\": 0,\n  \
+        \  \"azure_cost_usd\": 0.0125,\n    \"error_message\": null,\n    \"source\"\
+        : \"email\",\n    \"source_email_from\": \"billing@acme.com\",\n    \"source_email_subject\"\
+        : \"Invoice INV-9988\",\n    \"supplier\": { \"id\": 12, \"name\": \"Acme\
+        \ Supplies\" },\n    \"created_at\": \"2026-04-25T10:30:00.000000Z\"\n  }\n\
+        }\n```"
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Purchase Invoice OCR
+      summary: Delete Extraction
+      description: Delete a purchase invoice OCR extraction record and its associated
+        PDF. Confirmed extractions cannot be deleted (returns 422).
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/ocr/{purchase_extraction_id}/pdf:
+    get:
+      tags:
+      - Purchase Invoice OCR
+      summary: Stream Extraction PDF
+      description: 'Stream the original supplier invoice PDF through the backend (avoids
+        CORS when fetching from S3). Returns Content-Type: application/pdf, inline
+        disposition. 404 if the underlying S3 object is missing.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/pdf
+      - name: purchase_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/ocr/{purchase_extraction_id}/create-invoice:
+    post:
+      tags:
+      - Purchase Invoice OCR
+      summary: Create Purchase Invoice from Extraction (NOT IMPLEMENTED)
+      description: '**Currently returns 501 Not Implemented** — the supplier-invoice
+        creation pipeline is still in development.
+
+
+        When implemented, this will accept the reviewed/edited extraction data (header
+        + lines) and create a PurchaseInvoice record, marking the extraction as ''confirmed''.
+
+
+        Returns 422 if the extraction is not in ''pending_review'' status.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/document-inbox:
+    get:
+      tags:
+      - Document Inbox
+      summary: List Inbox Documents
+      description: "Return a unified, paginated, descending-by-created_at list combining\
+        \ customer PO and supplier invoice OCR extractions. Each item is normalized\
+        \ to the same shape so the frontend can render a single mixed-type table.\n\
+        \nExample item:\n```json\n{\n  \"id\": 42,\n  \"type\": \"customer_po\",\n\
+        \  \"status\": \"pending_review\",\n  \"source\": \"email\",\n  \"source_email_from\"\
+        : \"orders@acme.com\",\n  \"source_email_subject\": \"PO-9988\",\n  \"customer_name\"\
+        : \"Acme Co.\",\n  \"supplier_name\": null,\n  \"confirmed_record\": null,\n\
+        \  \"error_message\": null,\n  \"created_at\": \"2026-04-25T10:30:00.000000Z\"\
+        \n}\n```\n\nWhen status is 'confirmed', `confirmed_record` is populated with\
+        \ `{ id, type, number }` of the created sales order or purchase invoice."
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: type
+        in: query
+        schema:
+          type: string
+        description: 'Filter by document type. Allowed: ''all'' (default), ''customer_po'',
+          ''supplier_invoice''.'
+        example: all
+      - name: status
+        in: query
+        schema:
+          type: string
+        description: 'Filter by extraction status. Common values: processing, pending_review,
+          confirmed, failed, rejected, duplicate_detected.'
+        example: pending_review
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: LIKE-match against source_email_from, source_email_subject, and
+          customer/supplier name.
+        example: acme
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 20)'
+        example: '20'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/document-inbox/pending-count:
+    get:
+      tags:
+      - Document Inbox
+      summary: Get Pending Count (Badge)
+      description: 'Lightweight count of all extractions currently in ''pending_review''
+        status (sales + purchase). Polled by the navigation drawer every 60 seconds
+        to render the inbox badge.
+
+
+        Response:
+
+        ```json
+
+        { "data": { "pending_review": 7 } }
+
+        ```'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/document-inbox/customer_po/{extraction_id}/retry:
+    post:
+      tags:
+      - Document Inbox
+      summary: Retry Failed Extraction
+      description: 'Re-dispatch OCR processing for a failed extraction. Path param
+        `type` must be one of `customer_po` or `supplier_invoice` (regex-constrained);
+        `id` is the matching extraction ID.
+
+
+        Validations (return 422):
+
+        - Extraction status must be ''failed''
+
+        - Original file must still be present (file_path != null)
+
+        - type must be customer_po or supplier_invoice
+
+
+        On success: resets the extraction status to ''processing'', clears error_message,
+        dispatches the appropriate OCR job (ProcessCustomerPOOcrJob or ProcessSupplierInvoiceEmailOcrJob),
+        and returns:
+
+        ```json
+
+        { "message": "Retry queued." }
+
+        ```'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/report-templates:
     get:
       tags:
@@ -76262,129 +76739,6 @@ paths:
         schema:
           type: string
         example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/sales-orders/ocr/upload:
-    post:
-      tags:
-      - Sales Order OCR
-      summary: Upload Customer PO PDF
-      description: Upload a customer PO PDF to start the OCR extraction process. Returns
-        an extraction record with the parsed line items, customer info, and dates.
-        The extraction must be reviewed before a sales order can be created from it.
-      requestBody:
-        content: {}
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/sales-orders/ocr/{extraction_id}:
-    get:
-      tags:
-      - Sales Order OCR
-      summary: Get OCR Extraction
-      description: Retrieve a single OCR extraction record by ID. Returns the extracted
-        fields (customer PO number, order date, deliver-by date, line items with quantities
-        and prices) and the current review status.
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: extraction_id
-        in: path
-        schema:
-          type: string
-        required: true
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-    delete:
-      tags:
-      - Sales Order OCR
-      summary: Delete OCR Extraction
-      description: Delete an OCR extraction record and its associated uploaded PDF.
-        Use this to discard an extraction that will not be converted to a sales order.
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: extraction_id
-        in: path
-        schema:
-          type: string
-        required: true
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/sales-orders/ocr/{extraction_id}/create-order:
-    post:
-      tags:
-      - Sales Order OCR
-      summary: Create Sales Order from Extraction
-      description: 'Create a sales order from a reviewed OCR extraction. The request
-        body contains the confirmed/edited field values from the review UI.
-
-
-        When save_sku_mappings is true, any resolved customer SKU-to-product mappings
-        from the extraction lines are persisted to the customer''s SKU mapping table
-        for future use.
-
-
-        Returns the newly created sales order resource.'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              example:
-                customer_id: 1
-                customer_po_number: PO-12345
-                order_date: '2024-01-15'
-                deliver_by_date: '2024-02-15'
-                sales_channel_id: 1
-                currency_id: 1
-                memo_for_customer: null
-                save_sku_mappings: true
-                lines:
-                - product_id: 1
-                  quantity: 10
-                  amount: 25
-                  description: Widget
-                  warehouse_id: null
-      parameters:
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: extraction_id
-        in: path
-        schema:
-          type: string
-        required: true
       responses:
         '200':
           description: Successful response
@@ -77329,6 +77683,8 @@ x-tagGroups:
   - Purchase Order Shipments
   - Inbound Shipments
   - Sales Order OCR
+  - Purchase Invoice OCR
+  - Document Inbox
   - Customer SKU Mappings
   - Product Import
   - Vendor Credits
