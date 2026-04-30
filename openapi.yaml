@@ -68596,8 +68596,18 @@ paths:
       tags:
       - Suppliers
       summary: Update Supplier
-      description: 'Update an existing supplier. All fields are optional. purchase_order_format
-        is only allowed on PUT.
+      description: 'Update an existing supplier. All fields are optional.
+
+
+        - `purchase_order_format` — only allowed on PUT.
+
+        - `purchase_order_csv_columns` — optional array of column keys controlling
+        which columns appear in this supplier''s outgoing PO email CSV attachment.
+        Each entry must be one of the keys returned by `GET /api/purchase-orders/csv-columns`.
+        Set to `null` (or omit) to fall back to the tenant default. Set to an empty
+        array to fall back to the tenant default. Order of the array determines column
+        order in the CSV. Use the `POST /api/suppliers/:supplier/csv-sample` endpoint
+        to preview the layout.
 
 
         Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.'
@@ -68619,6 +68629,13 @@ paths:
                 auto_fulfill_dropship: true
                 auto_generate_backorder_po: true
                 purchase_order_format: null
+                purchase_order_csv_columns:
+                - sku
+                - barcode
+                - name
+                - qty_ordered
+                - unit_cost
+                - extended_cost
                 address:
                   address1: 100 Supplier Lane Updated
                   city: Sydney
@@ -68724,6 +68741,70 @@ paths:
           type: string
         description: The supplier identifier
       - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/suppliers/{supplier}/csv-sample:
+    post:
+      tags:
+      - Suppliers
+      summary: Download PO CSV Sample
+      description: 'Generate and download a 3-row sample CSV showing exactly which
+        columns will be included in this supplier''s outgoing PO email attachment.
+
+
+        Used by the per-supplier CSV column picker so users can preview the layout
+        before saving.
+
+
+        Request body (all optional):
+
+        - `columns` (array of strings) — Unsaved column selection to preview. If omitted,
+        the saved supplier preference is used; if that is also empty, the tenant default
+        falls through, then the system default (every registered column).
+
+
+        Valid column keys (current registry): `purchase_order`, `sku`, `barcode`,
+        `supplier_sku`, `name`, `qty_ordered`, `unit_cost`, `extended_cost`. Unknown
+        keys are silently dropped.
+
+
+        The response is a CSV file download (`Content-Type: text/csv`), not JSON.
+
+
+        Authentication: Requires Bearer token. Scope: `suppliers:rw`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                columns:
+                - sku
+                - barcode
+                - name
+                - qty_ordered
+                - unit_cost
+                - extended_cost
+      parameters:
+      - name: supplier
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The supplier identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: text/csv
+      - name: Content-Type
         in: header
         schema:
           type: string
@@ -71363,6 +71444,42 @@ paths:
         schema:
           type: string
         description: Filters carry over from list endpoint
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-orders/csv-columns:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get CSV Column Registry
+      description: 'Returns the master registry of supported PO email CSV columns
+        and the tenant-wide default selection. Used by the per-supplier CSV column
+        picker, the supplier preferences panel, and the PO settings page.
+
+
+        The registry is **append-only and position-stable** — column ordering and
+        keys are part of a public contract that supplier intake pipelines rely on.
+        Removing or renaming a key is a breaking change.
+
+
+        Response fields:
+
+        - `data.columns[]` — array of `{ key, label }` in canonical order
+
+        - `data.tenant_default` — array of column keys representing the tenant-wide
+        default, or `null` if no override is set (means: use system default = every
+        column)
+
+
+        Authentication: Requires Bearer token. Scope: `purchase-orders:rw`.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
       responses:
         '200':
           description: Successful response
