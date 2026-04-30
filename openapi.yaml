@@ -75376,23 +75376,43 @@ paths:
       tags:
       - Purchase Invoice OCR
       summary: Get Extraction
-      description: "Retrieve a purchase invoice OCR extraction record. Returns the\
-        \ extracted header data merged with matched supplier info, line items, error_message\
-        \ (if failed/duplicate), and inbound-email source metadata.\n\nExample 200\
-        \ response:\n```json\n{\n  \"data\": {\n    \"id\": 7,\n    \"status\": \"\
-        pending_review\",\n    \"file_url\": \"https://sku2.test/api/purchase-invoices/ocr/7/pdf\"\
+      description: "Retrieve a purchase invoice OCR extraction record. Returns extracted\
+        \ header data merged with matched supplier and PO info, line items with per-line\
+        \ product matches (5-tier match: supplier_sku → SKU → barcode → MPN → fuzzy\
+        \ name), candidate purchase orders for the supplier (with attach-to-existing-invoice\
+        \ metadata), error_message (if failed/duplicate), and inbound-email source\
+        \ metadata.\n\nExample 200 response:\n```json\n{\n  \"data\": {\n    \"id\"\
+        : 7,\n    \"status\": \"pending_review\",\n    \"file_url\": \"https://sku2.test/api/purchase-invoices/ocr/7/pdf\"\
         ,\n    \"page_count\": 2,\n    \"header\": {\n      \"supplier_invoice_number\"\
         : \"INV-9988\",\n      \"invoice_date\": \"2026-04-20\",\n      \"due_date\"\
         : \"2026-05-20\",\n      \"subtotal\": 1250.00,\n      \"tax_amount\": 125.00,\n\
-        \      \"total_amount\": 1375.00,\n      \"matched_supplier_id\": 12,\n  \
-        \    \"matched_supplier_name\": \"Acme Supplies\"\n    },\n    \"lines\":\
-        \ [\n      { \"raw_sku\": \"WID-001\", \"quantity\": 50, \"unit_price\": 25.00,\
-        \ \"line_total\": 1250.00 }\n    ],\n    \"unmatched_line_count\": 0,\n  \
-        \  \"azure_cost_usd\": 0.0125,\n    \"error_message\": null,\n    \"source\"\
-        : \"email\",\n    \"source_email_from\": \"billing@acme.com\",\n    \"source_email_subject\"\
-        : \"Invoice INV-9988\",\n    \"supplier\": { \"id\": 12, \"name\": \"Acme\
-        \ Supplies\" },\n    \"created_at\": \"2026-04-25T10:30:00.000000Z\"\n  }\n\
-        }\n```"
+        \      \"total_amount\": 1375.00,\n      \"po_number\": \"PO-12345\",\n  \
+        \    \"matched_supplier_id\": 12,\n      \"matched_supplier_name\": \"Acme\
+        \ Supplies\",\n      \"matched_purchase_order_id\": 88,\n      \"matched_purchase_order_number\"\
+        : \"PO-12345\"\n    },\n    \"is_matched_supplier\": true,\n    \"extracted_supplier_name\"\
+        : \"Acme Supplies, Inc.\",\n    \"lines\": [\n      {\n        \"raw_sku\"\
+        : \"WID-001\",\n        \"description\": \"Widget Type 1\",\n        \"quantity\"\
+        : 50,\n        \"unit_price\": 25.00,\n        \"line_total\": 1250.00,\n\
+        \        \"matched_product_id\": 4321,\n        \"matched_product_sku\": \"\
+        WID-001\",\n        \"matched_product_name\": \"Widget Type 1 — Blue\"\n \
+        \     }\n    ],\n    \"unmatched_line_count\": 0,\n    \"azure_cost_usd\"\
+        : 0.0125,\n    \"error_message\": null,\n    \"source\": \"email\",\n    \"\
+        source_email_from\": \"billing@acme.com\",\n    \"source_email_subject\":\
+        \ \"Invoice INV-9988\",\n    \"supplier\": { \"id\": 12, \"name\": \"Acme\
+        \ Supplies\" },\n    \"purchase_order\": {\n      \"id\": 88,\n      \"purchase_order_number\"\
+        : \"PO-12345\",\n      \"purchase_order_date\": \"2026-04-15\"\n    },\n \
+        \   \"candidate_purchase_orders\": [\n      {\n        \"id\": 88,\n     \
+        \   \"purchase_order_number\": \"PO-12345\",\n        \"purchase_order_date\"\
+        : \"2026-04-15\",\n        \"order_status\": \"closed\",\n        \"existing_invoice_id\"\
+        : 211,\n        \"existing_invoice_number\": \"INV-9988\",\n        \"existing_invoice_has_document\"\
+        : false,\n        \"can_attach_document\": true\n      }\n    ],\n    \"created_at\"\
+        : \"2026-04-25T10:30:00.000000Z\"\n  }\n}\n```\n\n**Candidate purchase orders\
+        \ behavior:** The backend includes both open POs for the matched supplier\
+        \ AND a fallback lookup by PO number across all statuses (open/closed). When\
+        \ a candidate PO has `can_attach_document: true`, the frontend should offer\
+        \ the user the option to attach the OCR'd PDF to the existing invoice via\
+        \ POST `/api/purchase-invoices/ocr/{extraction}/attach-to-invoice` instead\
+        \ of creating a new invoice."
       parameters:
       - name: Accept
         in: header
@@ -75475,6 +75495,63 @@ paths:
             schema:
               type: object
               example: {}
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/ocr/{purchase_extraction_id}/attach-to-invoice:
+    post:
+      tags:
+      - Purchase Invoice OCR
+      summary: Attach OCR Document to Existing Invoice
+      description: "Attach the OCR'd PDF to an existing PurchaseInvoice that does\
+        \ not yet have a document. Used when the OCR extraction's PO number matches\
+        \ a PO that has already been invoiced — instead of creating a new invoice,\
+        \ the user can retroactively attach the extracted PDF to the prior invoice\
+        \ as the supporting document.\n\nUploads the original PDF (still in S3 from\
+        \ the upload step) as a PurchaseInvoiceAttachment, marks the extraction as\
+        \ 'confirmed', and links the extraction to the target invoice.\n\n**Request\
+        \ body fields:**\n| Field | Type | Required | Notes |\n|-------|------|----------|-------|\n\
+        | purchase_invoice_id | integer | yes | Must exist in `purchase_invoices`.\
+        \ The invoice's supplier_id must match the extraction's matched supplier and\
+        \ the invoice must not already have an attachment. |\n\n**Allowed only when:**\n\
+        - Extraction status is `pending_review`\n- Target invoice's supplier matches\
+        \ the extraction's matched supplier\n- Target invoice has no existing attachments\
+        \ (i.e. `can_attach_document: true` from the candidate_purchase_orders block)\n\
+        \nResponse 201:\n```json\n{\n  \"data\": {\n    \"purchase_invoice_id\": 211,\n\
+        \    \"extraction_id\": 7,\n    \"attachment_id\": 559\n  },\n  \"message\"\
+        : \"OCR document attached to existing invoice.\"\n}\n```\n\nResponse 422 —\
+        \ wrong extraction status:\n```json\n{ \"message\": \"Only extractions with\
+        \ status \\\"pending_review\\\" can be attached.\" }\n```\n\nResponse 422\
+        \ — supplier mismatch:\n```json\n{ \"message\": \"The selected invoice's supplier\
+        \ does not match the extraction's matched supplier.\" }\n```\n\nResponse 422\
+        \ — invoice already has a document:\n```json\n{ \"message\": \"The selected\
+        \ invoice already has an attached document.\" }\n```\n\nResponse 404 — invoice\
+        \ not found (route model + findOrFail failure)."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                purchase_invoice_id: 211
       parameters:
       - name: Content-Type
         in: header
