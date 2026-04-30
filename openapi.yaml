@@ -20412,16 +20412,13 @@ paths:
   /api/inventory-forecasting/configurations:
     get:
       tags:
-      - Inventory Intelligence
-      summary: List Configurations
-      description: 'List all forecast configurations (non-paginated). Includes schedule
-        counts.
+      - Inventory
+      summary: List Forecast Configurations
+      description: 'Lists all forecast configurations (no pagination). Each item includes
+        a `schedules_count` field for the number of automation schedules referencing
+        it.
 
-
-        Authentication: Requires Bearer token.
-
-
-        Returns all configurations matching filters as a collection.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
@@ -20431,26 +20428,25 @@ paths:
       - name: supplier_id
         in: query
         schema:
-          type: integer
-        description: Optional. Filter by supplier ID.
-        example: '1'
+          type: string
+        description: Filter by a single supplier ID. Returns only configurations whose
+          supplier_ids array contains this ID.
       - name: forecast_type
         in: query
         schema:
           type: string
-        description: 'Optional. Filter by forecast type: sales_history, target_stock_level,
+        description: 'Filter by forecast type. One of: sales_history, target_quantity,
           fill_backorders.'
-        example: sales_history
       - name: search
         in: query
         schema:
           type: string
-        description: Optional. Search by name.
+        description: Partial match against name and description.
       - name: created_by
         in: query
         schema:
           type: string
-        description: Optional. Filter by creator user ID.
+        description: Filter by the user ID that created the configuration.
       responses:
         '200':
           description: Successful response
@@ -20458,37 +20454,77 @@ paths:
             application/json: {}
     post:
       tags:
-      - Inventory Intelligence
-      summary: Create Configuration
-      description: 'Create a new saved forecast configuration.
+      - Inventory
+      summary: Create Forecast Configuration
+      description: 'Creates a new forecast configuration.
 
 
-        Authentication: Requires Bearer token.
+        **Required fields:**
+
+        - `name` (string, max 255, unique among non-deleted configurations)
+
+        - `supplier_ids` (array of integers, min 1, must exist in suppliers table)
+
+        - `forecast_type` (enum: `sales_history`, `target_quantity`, `fill_backorders`)
+
+        - `target_stock_days` (integer 1-365) — required for all forecast types EXCEPT
+        `fill_backorders`
 
 
-        name must be unique.
+        **Optional fields:**
+
+        - `description` (string, max 1000)
+
+        - `target_quantity` (integer, min 0) — used by `target_quantity` forecast
+        type
+
+        - `sales_history_days` (integer 1-365) — used by `sales_history` forecast
+        type
+
+        - `sales_start_date` / `sales_end_date` (Y-m-d) — alternative date range for
+        sales history
+
+        - `use_leadtime` (boolean)
+
+        - `use_moq` (boolean)
+
+        - `enforce_minimum_order_value` (boolean) — enforces supplier minimum order
+        value when generating POs
+
+        - `enforce_minimum_order_quantity` (boolean) — enforces supplier minimum order
+        quantity when generating POs
+
+        - `rounding_method` (enum: `round_half_up`, `round_up`, `round_down`, `no_rounding`)
+
+        - `destination_warehouse_id` (integer, must exist in warehouses table)
+
+        - `pricing_tier_id` (integer, must exist in supplier_pricing_tiers table)
+
+        - `product_filters` (array) — filter criteria applied to candidate products
+
+        - `sales_filters` (array) — filter criteria applied to sales history
+
+        - `demand_modifiers` (array) — adjustments to projected demand
 
 
-        forecast_type values: sales_history, target_stock_level, fill_backorders.
+        **Note:** When `forecast_type` is `fill_backorders`, the controller strips
+        boolean product filters (`has_moq`, `has_leadtime`, `supplier_in_stock`, `has_sales_history`)
+        and forces `target_stock_days` and `sales_history_days` to null.
 
 
-        target_stock_days is required unless forecast_type is fill_backorders.
-
-
-        Rounding methods: round_half_up, round_up, round_down, truncate.
-
-
-        Returns 201 on success.'
+        Authentication: Requires Bearer token.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                name: Monthly Reorder - Supplier B
-                description: Monthly replenishment run for Supplier B
+                name: Weekly Sales History — Main Warehouse
+                description: Standard 90-day sales history forecast for our primary
+                  warehouse.
                 supplier_ids:
-                - 2
+                - 5
+                - 12
                 forecast_type: sales_history
                 target_quantity: null
                 sales_history_days: 90
@@ -20497,13 +20533,14 @@ paths:
                 target_stock_days: 30
                 use_leadtime: true
                 use_moq: true
+                enforce_minimum_order_value: false
+                enforce_minimum_order_quantity: false
                 rounding_method: round_half_up
+                destination_warehouse_id: 1
                 pricing_tier_id: null
                 product_filters: []
                 sales_filters: []
                 demand_modifiers: []
-                enforce_minimum_order_value: false
-                enforce_minimum_order_quantity: false
       parameters:
       - name: Accept
         in: header
@@ -20523,47 +20560,50 @@ paths:
   /api/inventory-forecasting/configurations/paginated:
     get:
       tags:
-      - Inventory Intelligence
-      summary: List Configurations (Paginated)
-      description: 'Get paginated forecast configurations.
+      - Inventory
+      summary: List Forecast Configurations (Paginated)
+      description: 'Returns paginated forecast configurations.
 
-
-        Authentication: Requires Bearer token.
-
-
-        Same filters as the non-paginated index endpoint.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
         schema:
           type: string
         example: application/json
-      - name: supplier_id
+      - name: page
         in: query
         schema:
-          type: string
-        description: Optional. Filter by supplier ID.
-      - name: forecast_type
-        in: query
-        schema:
-          type: string
-        description: Optional. Filter by forecast type.
-      - name: search
-        in: query
-        schema:
-          type: string
-        description: Optional. Search by name.
-      - name: created_by
-        in: query
-        schema:
-          type: string
-        description: Optional. Filter by creator user ID.
+          type: integer
+        description: Page number. Defaults to 1.
+        example: '1'
       - name: per_page
         in: query
         schema:
           type: integer
-        description: Optional. Items per page (default 10).
+        description: Items per page. Defaults to 10.
         example: '10'
+      - name: supplier_id
+        in: query
+        schema:
+          type: string
+        description: Filter by a single supplier ID.
+      - name: forecast_type
+        in: query
+        schema:
+          type: string
+        description: 'Filter by forecast type. One of: sales_history, target_quantity,
+          fill_backorders.'
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Partial match against name and description.
+      - name: created_by
+        in: query
+        schema:
+          type: string
+        description: Filter by the user ID that created the configuration.
       responses:
         '200':
           description: Successful response
@@ -20572,16 +20612,13 @@ paths:
   /api/inventory-forecasting/configurations/{configuration}:
     get:
       tags:
-      - Inventory Intelligence
-      summary: Get Configuration
-      description: 'Get a single forecast configuration with full details.
+      - Inventory
+      summary: Get Forecast Configuration
+      description: 'Returns a single forecast configuration with `created_by`, `updated_by`,
+        and `pricing_tier` relationships eager-loaded, plus the `schedules_count`
+        of automation schedules referencing it.
 
-
-        Authentication: Requires Bearer token.
-
-
-        Loads createdByUser, updatedByUser, pricingTier relationships. Also loads
-        schedule count.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: configuration
         in: path
@@ -20601,10 +20638,19 @@ paths:
             application/json: {}
     put:
       tags:
-      - Inventory Intelligence
-      summary: Update Configuration
-      description: 'Update a forecast configuration. Merges with existing data so
-        only changed fields need to be sent.
+      - Inventory
+      summary: Update Forecast Configuration
+      description: 'Updates an existing forecast configuration. All fields use `sometimes`
+        validation — only send the fields you want to change.
+
+
+        The controller merges the incoming payload over the existing configuration
+        data via `ForecastConfigurationData::fromModel($configuration)`, so omitted
+        fields retain their current values.
+
+
+        Accepts the same fields as Create. The `name` uniqueness rule excludes the
+        current record (so unchanged names pass validation).
 
 
         Authentication: Requires Bearer token.'
@@ -20614,11 +20660,11 @@ paths:
             schema:
               type: object
               example:
-                name: Monthly Reorder - Supplier B (Updated)
+                name: Weekly Sales History — Main Warehouse (v2)
+                description: Updated to enforce supplier minimums.
                 target_stock_days: 45
-                sales_history_days: 120
-                enforce_minimum_order_value: false
-                enforce_minimum_order_quantity: false
+                enforce_minimum_order_value: true
+                enforce_minimum_order_quantity: true
       parameters:
       - name: configuration
         in: path
@@ -20643,16 +20689,16 @@ paths:
             application/json: {}
     delete:
       tags:
-      - Inventory Intelligence
-      summary: Delete Configuration
-      description: 'Delete a forecast configuration.
+      - Inventory
+      summary: Delete Forecast Configuration
+      description: 'Soft-deletes a forecast configuration.
 
 
-        Authentication: Requires Bearer token.
+        If the configuration is in use by any automation schedule, returns 422 unless
+        `force=true` is passed.
 
 
-        Returns 204 on success. Returns 422 if the configuration is in use by schedules
-        and force is not set.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: configuration
         in: path
@@ -20669,7 +20715,9 @@ paths:
         in: query
         schema:
           type: boolean
-        description: Optional. If true, force delete even if in use by schedules.
+        description: When `true`, deletes the configuration even if it is referenced
+          by automation schedules. When `false` (default), the request fails with
+          422 if any schedule references it.
         example: 'false'
       responses:
         '200':
@@ -20679,23 +20727,25 @@ paths:
   /api/inventory-forecasting/configurations/{configuration}/duplicate:
     post:
       tags:
-      - Inventory Intelligence
-      summary: Duplicate Configuration
-      description: 'Duplicate an existing forecast configuration. If name is not provided,
-        a default copy name is generated.
+      - Inventory
+      summary: Duplicate Forecast Configuration
+      description: 'Creates a copy of an existing forecast configuration.
 
 
-        Authentication: Requires Bearer token.
+        **Optional body field:**
+
+        - `name` (string, max 255) — name for the new copy. If omitted, defaults to
+        `"<Original Name> (Copy)"`.
 
 
-        Returns 201 with the new configuration.'
+        Authentication: Requires Bearer token.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                name: Copy of Weekly Replenishment - Supplier A
+                name: Weekly Sales History — Copy
       parameters:
       - name: configuration
         in: path
@@ -20721,9 +20771,13 @@ paths:
   /api/inventory-forecasting/configurations/{configuration}/usage:
     get:
       tags:
-      - Inventory Intelligence
-      summary: Check Configuration Usage
-      description: 'Check if a configuration is currently in use by any schedules.
+      - Inventory
+      summary: Check Forecast Configuration Usage
+      description: 'Returns whether the configuration is referenced by any automation
+        schedules and the count.
+
+
+        Use this before showing a delete confirmation in the UI.
 
 
         Authentication: Requires Bearer token.'
