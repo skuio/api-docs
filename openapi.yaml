@@ -75530,7 +75530,28 @@ paths:
         with quantities/prices/match status, and the current review status.
 
 
-        Statuses: processing, pending_review, confirmed, failed, rejected, duplicate_detected'
+        Statuses: processing, pending_review, confirmed, failed, rejected, duplicate_detected
+
+
+        Source-related fields:
+
+        - `source` — `manual`, `email`, or `email_body` (new). `email_body` indicates
+        the extraction came from email body text rather than a PDF attachment, processed
+        via Azure OpenAI gpt-4o-mini.
+
+        - `source_email_from`, `source_email_subject` — set when `source` is `email`
+        or `email_body`.
+
+        - `source_body_text`, `source_body_html` — set when `source` is `email_body`.
+        The frontend renders these in a body preview pane instead of the PDF viewer.
+
+        - `clone_of_sales_order_id` — set when this extraction was cloned from a prior
+        sales order (via the LLM `clone_last_order` flag, or manually via the Clone
+        Lines from Sales Order endpoint).
+
+        - `clone_of_sales_order` — eager-loaded summary `{ id, number, order_date,
+        customer_po_number }` of the source order when `clone_of_sales_order_id` is
+        set.'
       parameters:
       - name: Accept
         in: header
@@ -75631,6 +75652,84 @@ paths:
                   amount: 25
                   description: Widget
                   warehouse_id: null
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/sales-orders/ocr/{extraction_id}/clone-from:
+    post:
+      tags:
+      - Sales Order OCR
+      summary: Clone Lines from Sales Order
+      description: 'Clone confirmed lines from a prior sales order into this extraction''s
+        lines_data.
+
+
+        Used when the extraction''s customer history (or LLM analysis on email-body
+        extractions) suggests this PO is a repeat order — the reviewer can pull lines
+        from a previous confirmed sales order in one click instead of editing line
+        by line.
+
+
+        Request body:
+
+        - `sales_order_id` (required, integer) — the source sales order to clone from.
+        Must belong to the same customer as the extraction (when extraction has a
+        customer_id set).
+
+
+        Behavior:
+
+        - Replaces (or merges with) `lines_data` on the extraction with one entry
+        per source order line.
+
+        - Each cloned line records the matched product (sku, name, average cost) and
+        a unit price computed as `amount / quantity`.
+
+        - Lines whose product is archived or missing are still copied but flagged
+        `match_status: unmatched` so the reviewer must reassign.
+
+        - Sets `clone_of_sales_order_id` on the extraction so the UI can show the
+        "cloned from" banner.
+
+
+        Returns the updated SalesOrderOcrExtraction resource (with `cloneOfSalesOrder`
+        eager-loaded).
+
+
+        Errors:
+
+        - 422 — Confirmed extractions cannot be modified.
+
+        - 422 — Source order belongs to a different customer than the extraction.
+
+        - 404 — Source sales order not found.
+
+        - 422 — Validation: `sales_order_id` is required and must exist in `sales_orders`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sales_order_id: 12345
       parameters:
       - name: Content-Type
         in: header
