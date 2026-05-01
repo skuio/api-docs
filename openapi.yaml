@@ -72479,6 +72479,154 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/purchase-invoices/{purchaseInvoice}/lines/{purchaseInvoiceLine}/sync-po-price:
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Sync PO Price From Invoice Line
+      description: 'Push the unit_price from a single invoice line up to the linked
+        PO line''s amount, then re-evaluate the invoice''s approval status.
+
+
+        Use this from the 3-Way Match view when a price variance is confirmed legitimate
+        (e.g. supplier raised the price). The PO line is updated, an activity log
+        entry is recorded on the PO line, and the invoice is re-evaluated — typically
+        returning it to auto_approved once the price matches. Works on both open and
+        closed POs.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body fields:
+
+        - notes (string, optional, max 1000): free-text justification stored on the
+        activity log entry.
+
+
+        Result statuses:
+
+        - updated: PO line amount changed; old_amount and new_amount are returned.
+
+        - unchanged: PO line amount already matched invoice line unit price; no write
+        occurred.
+
+        - skipped: nothing was done. The reason field explains why. Possible reasons:
+        ''invoice line not linked to a PO line'', ''invoice line has no unit price''.
+
+
+        Returns 404 if the invoice line does not belong to the purchase invoice.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                notes: Confirmed price increase with supplier
+      parameters:
+      - name: purchaseInvoice
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchaseInvoice identifier
+      - name: purchaseInvoiceLine
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchaseInvoiceLine identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/{purchaseInvoice}/sync-po-prices:
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Sync PO Prices Bulk
+      description: 'Sync PO line prices from many invoice lines on a single invoice
+        in one request, then re-evaluate the invoice''s approval status once at the
+        end.
+
+
+        Use this from the 3-Way Match view when several lines have confirmed price
+        variances. Each invoice line is processed individually using the same logic
+        as POST /api/purchase-invoices/:purchaseInvoice/lines/:purchaseInvoiceLine/sync-po-price,
+        and the final results are returned keyed by purchase_invoice_line_id. Works
+        on both open and closed POs.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body fields:
+
+        - purchase_invoice_line_ids (integer[], required, min 1): IDs of invoice lines
+        to sync. Each must belong to this purchase invoice (validated via Rule::exists
+        with where purchase_invoice_id).
+
+        - notes (string, optional, max 1000): free-text justification stored on each
+        activity log entry.
+
+
+        Per-line result statuses (same as single endpoint):
+
+        - updated: PO line amount changed; old_amount and new_amount are returned.
+
+        - unchanged: PO line amount already matched invoice line unit price.
+
+        - skipped: nothing was done; reason is one of ''invoice line not found on
+        this invoice'', ''invoice line not linked to a PO line'', ''invoice line has
+        no unit price''.
+
+
+        The top-level message summarises counts (e.g. ''Synced 2 line(s); 1 unchanged;
+        0 skipped.'').'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                purchase_invoice_line_ids:
+                - 501
+                - 502
+                - 503
+                notes: Bulk reconcile after supplier price update
+      parameters:
+      - name: purchaseInvoice
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchaseInvoice identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/purchase-invoices/variance-report:
     get:
       tags:
@@ -72556,9 +72704,7 @@ paths:
 
         - financial_lines[]: non-product invoice lines (freight, fees, etc.).
 
-        - has_receipts: true if any line has a non-zero received_quantity.
-
-        - tolerance_percent: configured price-variance tolerance from PurchaseOrderSettings.'
+        - has_receipts: true if any line has a non-zero received_quantity.'
       parameters:
       - name: purchaseInvoice
         in: path
