@@ -75928,22 +75928,65 @@ paths:
     post:
       tags:
       - Purchase Invoice OCR
-      summary: Create Purchase Invoice from Extraction (NOT IMPLEMENTED)
-      description: '**Currently returns 501 Not Implemented** — the supplier-invoice
-        creation pipeline is still in development.
-
-
-        When implemented, this will accept the reviewed/edited extraction data (header
-        + lines) and create a PurchaseInvoice record, marking the extraction as ''confirmed''.
-
-
-        Returns 422 if the extraction is not in ''pending_review'' status.'
+      summary: Create Purchase Invoice from Extraction
+      description: "Accept the reviewed/edited extraction data (header + lines + cost\
+        \ lines) and create a PurchaseInvoice record, marking the extraction as 'confirmed'.\
+        \ The extraction must be in 'pending_review' status.\n\nThe payload supports\
+        \ two kinds of line items:\n- **`lines`** — product line items, attached to\
+        \ PurchaseOrderLines on the target PO. Each may set `purchase_order_line_id`\
+        \ to bind to a specific PO line, or `ignored: true` to skip persisting (kept\
+        \ for audit but not invoiced).\n- **`cost_lines`** — non-product COST-classified\
+        \ financial lines (freight, duty, handling). These create FinancialLine records\
+        \ on the PurchaseInvoice keyed by a COST-classification `financial_line_type_id`.\
+        \ `allocate_to_products` is always `true` for OCR-created cost lines.\n\n\
+        At least one of `lines` or `cost_lines` is required (`lines` is `required_without:cost_lines`).\n\
+        \n**Request body fields:**\n| Field | Type | Required | Notes |\n|-------|------|----------|-------|\n\
+        | purchase_order_id | integer | yes | Must exist in `purchase_orders`. |\n\
+        | invoice_number | string | yes | Max 255 chars. |\n| invoice_date | date\
+        \ | yes | |\n| due_date | date | no | |\n| lines | array | required_without:cost_lines\
+        \ | Product lines. |\n| lines[].description | string | no | |\n| lines[].qty\
+        \ | numeric | yes | Min 0. |\n| lines[].unit_price | numeric | yes | Min 0.\
+        \ |\n| lines[].purchase_order_line_id | integer | no | Must exist in `purchase_order_lines`.\
+        \ |\n| lines[].ignored | boolean | no | Skip persisting this line. |\n| cost_lines\
+        \ | array | no | Non-product COST FinancialLines. |\n| cost_lines[].financial_line_type_id\
+        \ | integer | yes (per cost line) | Must exist in `financial_line_types` and\
+        \ be COST classification. |\n| cost_lines[].description | string | no | Max\
+        \ 500 chars. |\n| cost_lines[].quantity | numeric | yes (per cost line) |\
+        \ Min 0. |\n| cost_lines[].amount | numeric | yes (per cost line) | Min 0.\
+        \ Per-line amount (not total). |\n| remember_mappings | boolean | no | When\
+        \ `true`, upserts `(supplier_id, description) → financial_line_type_id` mappings\
+        \ into `supplier_description_mappings` so future OCR imports auto-tag matching\
+        \ descriptions as cost lines (Tier 0 match). |\n\n**Response 201:**\n```json\n\
+        {\n  \"data\": {\n    \"purchase_invoice_id\": 312,\n    \"extraction_id\"\
+        : 7\n  },\n  \"message\": \"Purchase invoice created from OCR extraction.\"\
+        \n}\n```\n\n**Response 422 — wrong status:**\n```json\n{ \"message\": \"Only\
+        \ extractions with status \\\"pending_review\\\" can be used to create an\
+        \ invoice.\" }\n```\n\n**Response 422 — validation failure (no lines or cost\
+        \ lines):**\n```json\n{\n  \"message\": \"The lines field is required when\
+        \ cost lines is not present.\",\n  \"errors\": { \"lines\": [\"The lines field\
+        \ is required when cost lines is not present.\"] }\n}\n```"
       requestBody:
         content:
           application/json:
             schema:
               type: object
-              example: {}
+              example:
+                purchase_order_id: 88
+                invoice_number: INV-9988
+                invoice_date: '2026-04-20'
+                due_date: '2026-05-20'
+                lines:
+                - description: Widget Type 1
+                  qty: 50
+                  unit_price: 25
+                  purchase_order_line_id: 421
+                  ignored: false
+                cost_lines:
+                - financial_line_type_id: 12
+                  description: Freight Shipping
+                  quantity: 1
+                  amount: 25
+                remember_mappings: true
       parameters:
       - name: Content-Type
         in: header
