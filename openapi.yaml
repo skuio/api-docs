@@ -75931,9 +75931,11 @@ paths:
       summary: Create Purchase Invoice from Extraction
       description: "Accept the reviewed/edited extraction data (header + lines + cost\
         \ lines) and create a PurchaseInvoice record, marking the extraction as 'confirmed'.\
-        \ The extraction must be in 'pending_review' status.\n\nThe payload supports\
-        \ two kinds of line items:\n- **`lines`** — product line items, attached to\
-        \ PurchaseOrderLines on the target PO. Each may set `purchase_order_line_id`\
+        \ The extraction must be in `pending_review` or `duplicate_detected` status\
+        \ (a duplicate-detected extraction is allowed because the user may confirm\
+        \ it is not actually a duplicate and proceed to create a new invoice).\n\n\
+        The payload supports two kinds of line items:\n- **`lines`** — product line\
+        \ items, attached to PurchaseOrderLines on the target PO. Each may set `purchase_order_line_id`\
         \ to bind to a specific PO line, or `ignored: true` to skip persisting (kept\
         \ for audit but not invoiced).\n- **`cost_lines`** — non-product COST-classified\
         \ financial lines (freight, duty, handling). These create FinancialLine records\
@@ -75959,12 +75961,12 @@ paths:
         \ descriptions as cost lines (Tier 0 match). |\n\n**Response 201:**\n```json\n\
         {\n  \"data\": {\n    \"purchase_invoice_id\": 312,\n    \"extraction_id\"\
         : 7\n  },\n  \"message\": \"Purchase invoice created from OCR extraction.\"\
-        \n}\n```\n\n**Response 422 — wrong status:**\n```json\n{ \"message\": \"Only\
-        \ extractions with status \\\"pending_review\\\" can be used to create an\
-        \ invoice.\" }\n```\n\n**Response 422 — validation failure (no lines or cost\
-        \ lines):**\n```json\n{\n  \"message\": \"The lines field is required when\
-        \ cost lines is not present.\",\n  \"errors\": { \"lines\": [\"The lines field\
-        \ is required when cost lines is not present.\"] }\n}\n```"
+        \n}\n```\n\n**Response 422 — wrong status (e.g. `confirmed` or `failed`):**\n\
+        ```json\n{ \"message\": \"Only extractions pending review can be used to create\
+        \ an invoice.\" }\n```\n\n**Response 422 — validation failure (no lines or\
+        \ cost lines):**\n```json\n{\n  \"message\": \"The lines field is required\
+        \ when cost lines is not present.\",\n  \"errors\": { \"lines\": [\"The lines\
+        \ field is required when cost lines is not present.\"] }\n}\n```"
       requestBody:
         content:
           application/json:
@@ -76017,26 +76019,29 @@ paths:
         \ not yet have a document. Used when the OCR extraction's PO number matches\
         \ a PO that has already been invoiced — instead of creating a new invoice,\
         \ the user can retroactively attach the extracted PDF to the prior invoice\
-        \ as the supporting document.\n\nUploads the original PDF (still in S3 from\
-        \ the upload step) as a PurchaseInvoiceAttachment, marks the extraction as\
-        \ 'confirmed', and links the extraction to the target invoice.\n\n**Request\
-        \ body fields:**\n| Field | Type | Required | Notes |\n|-------|------|----------|-------|\n\
-        | purchase_invoice_id | integer | yes | Must exist in `purchase_invoices`.\
-        \ The invoice's supplier_id must match the extraction's matched supplier and\
-        \ the invoice must not already have an attachment. |\n\n**Allowed only when:**\n\
-        - Extraction status is `pending_review`\n- Target invoice's supplier matches\
+        \ as the supporting document.\n\nThis is the primary resolution path for `duplicate_detected`\
+        \ extractions: the OCR detected the same supplier + invoice number combination\
+        \ already exists, and the user wants to attach the new PDF to that prior invoice.\n\
+        \nUploads the original PDF (still in S3 from the upload step) as a PurchaseInvoiceAttachment,\
+        \ marks the extraction as 'confirmed', and links the extraction to the target\
+        \ invoice.\n\n**Request body fields:**\n| Field | Type | Required | Notes\
+        \ |\n|-------|------|----------|-------|\n| purchase_invoice_id | integer\
+        \ | yes | Must exist in `purchase_invoices`. The invoice's supplier_id must\
+        \ match the extraction's matched supplier and the invoice must not already\
+        \ have an attachment. |\n\n**Allowed only when:**\n- Extraction status is\
+        \ `pending_review` or `duplicate_detected`\n- Target invoice's supplier matches\
         \ the extraction's matched supplier\n- Target invoice has no existing attachments\
         \ (i.e. `can_attach_document: true` from the candidate_purchase_orders block)\n\
         \nResponse 201:\n```json\n{\n  \"data\": {\n    \"purchase_invoice_id\": 211,\n\
         \    \"extraction_id\": 7,\n    \"attachment_id\": 559\n  },\n  \"message\"\
         : \"OCR document attached to existing invoice.\"\n}\n```\n\nResponse 422 —\
-        \ wrong extraction status:\n```json\n{ \"message\": \"Only extractions with\
-        \ status \\\"pending_review\\\" can be attached.\" }\n```\n\nResponse 422\
-        \ — supplier mismatch:\n```json\n{ \"message\": \"The selected invoice's supplier\
-        \ does not match the extraction's matched supplier.\" }\n```\n\nResponse 422\
-        \ — invoice already has a document:\n```json\n{ \"message\": \"The selected\
-        \ invoice already has an attached document.\" }\n```\n\nResponse 404 — invoice\
-        \ not found (route model + findOrFail failure)."
+        \ wrong extraction status (e.g. `confirmed` or `failed`):\n```json\n{ \"message\"\
+        : \"Only extractions pending review can be attached.\" }\n```\n\nResponse\
+        \ 422 — supplier mismatch:\n```json\n{ \"message\": \"The selected invoice's\
+        \ supplier does not match the extraction's matched supplier.\" }\n```\n\n\
+        Response 422 — invoice already has a document:\n```json\n{ \"message\": \"\
+        The selected invoice already has an attached document.\" }\n```\n\nResponse\
+        \ 404 — invoice not found (route model + findOrFail failure)."
       requestBody:
         content:
           application/json:
