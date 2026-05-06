@@ -99,6 +99,7 @@ tags:
 - name: Sales Order OCR
 - name: Purchase Invoice OCR
 - name: Document Inbox
+- name: Merged Shipments
 - name: Report Templates
 - name: Product Import
 - name: Vendor Credits
@@ -11139,7 +11140,20 @@ paths:
       tags:
       - Misc
       summary: Update Setting
-      description: 'Updates a single setting by slug.
+      description: 'Updates a single setting by slug. Body shape varies per slug —
+        for simple settings the body is `{"value": ...}`; for grouped settings (e.g.
+        `purchase-order`, `forecasting`) the body is a flat object of allowed keys.
+
+
+        **Slug `purchase-order`** accepts:
+
+        - `cc_outgoing_email` (string|null, max 500) — comma-separated CC list applied
+        to outgoing PO emails.
+
+        - `csv_excel_safe_escaping` (boolean) — When true (default), CSV PO attachments
+        wrap numeric-text columns (barcode, SKU, supplier SKU, PO #) in `="..."` so
+        Excel preserves them as text on open. Disable only if a downstream importer
+        cannot strip the formula prefix.
 
 
         Authentication: Requires Bearer token.'
@@ -67686,8 +67700,15 @@ paths:
       tags:
       - Suppliers
       summary: Download PO CSV Sample
-      description: 'Generate and download a 3-row sample CSV showing exactly which
-        columns will be included in this supplier''s outgoing PO email attachment.
+      description: '**Legacy proxy.** Generate and download a 3-row sample CSV showing
+        exactly which columns will be included in this supplier''s outgoing PO email
+        attachment.
+
+
+        This endpoint is kept for backward compatibility — new clients should call
+        `POST /api/suppliers/:supplier/po-sample` instead, which supports both CSV
+        and XLSX (`format=xlsx`). Internally this route forwards to `po-sample` with
+        `format=csv` forced.
 
 
         Used by the per-supplier CSV column picker so users can preview the layout
@@ -67704,6 +67725,12 @@ paths:
         Valid column keys (current registry): `purchase_order`, `sku`, `barcode`,
         `supplier_sku`, `name`, `qty_ordered`, `unit_cost`, `extended_cost`. Unknown
         keys are silently dropped.
+
+
+        When the tenant flag `purchase_orders.csv_excel_safe_escaping` is true (default),
+        values in numeric-text columns (`barcode`, `sku`, `supplier_sku`, `purchase_order`)
+        are wrapped in `="..."` so Excel preserves them as text on open. Disable that
+        flag from settings if a downstream importer cannot strip the formula prefix.
 
 
         The response is a CSV file download (`Content-Type: text/csv`), not JSON.
@@ -67735,6 +67762,91 @@ paths:
         schema:
           type: string
         example: text/csv
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/suppliers/{supplier}/po-sample:
+    post:
+      tags:
+      - Suppliers
+      summary: Download PO Sample (CSV/XLSX)
+      description: 'Generate and download a 3-row sample of the file the supplier
+        will receive when this PO is submitted. Supports both CSV and XLSX (controlled
+        by `format`). Backs the per-supplier PO file attachment column picker so users
+        can preview the layout before saving.
+
+
+        Request body (all optional):
+
+        - `format` (string, `csv` | `xlsx`) — Output format. Defaults to `csv`. Use
+        `xlsx` to preview the spreadsheet with text-typed cells (no scientific-notation
+        corruption of long barcodes/SKUs).
+
+        - `columns` (array of strings) — Unsaved column selection to preview. If omitted,
+        the saved supplier preference is used; if that is also empty, the tenant default
+        falls through, then the system default (every registered column).
+
+
+        Valid column keys (current registry): `purchase_order`, `sku`, `barcode`,
+        `supplier_sku`, `name`, `qty_ordered`, `unit_cost`, `extended_cost`. Unknown
+        keys are silently dropped.
+
+
+        **CSV behavior:** When `purchase_orders.csv_excel_safe_escaping` is true (default),
+        numeric-text columns (`barcode`, `sku`, `supplier_sku`, `purchase_order`)
+        are wrapped in `="..."` so Excel keeps them as text on open. Set the tenant
+        flag to false from Settings → Purchase Orders if a downstream importer cannot
+        strip the formula prefix.
+
+
+        **XLSX behavior:** Numeric-text columns are written with `t="inlineStr"` cells
+        (force text), quantities as integers, costs with the `#,##0.00` price format.
+        No `="..."` wrapping is applied — the cell type makes it unnecessary.
+
+
+        The response is a binary file download — `text/csv` for CSV, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+        for XLSX. Not JSON.
+
+
+        Validation:
+
+        - `format` must be one of `csv`, `xlsx` (any other value returns 422).
+
+
+        Authentication: Requires Bearer token. Scope: `suppliers:rw`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                format: xlsx
+                columns:
+                - sku
+                - barcode
+                - name
+                - qty_ordered
+                - unit_cost
+                - extended_cost
+      parameters:
+      - name: supplier
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The supplier identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: '*/*'
       - name: Content-Type
         in: header
         schema:
@@ -76782,6 +76894,270 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/v2/merged-shipments:
+    get:
+      tags:
+      - Merged Shipments
+      summary: List Merged Shipments
+      description: 'Returns a paginated list of merged shipments (sales-order merge
+        groups).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query Parameters:
+
+        - page (integer): Page number (default 1)
+
+        - per_page (integer): Items per page (default 10)
+
+        - sort (string): One of id, merged_shipment_number, status, created_at, shipped_at.
+        Prefix with - for descending. Default -id.
+
+        - filter[id]: Exact match
+
+        - filter[status]: Exact match on status enum (awaiting_pack, awaiting_label,
+        awaiting_ship, shipped, cancelled, unmerged)
+
+        - filter[warehouse_id]: Exact match
+
+        - filter[merged_shipment_number]: Partial match
+
+        - filter[open_only]: Boolean — restricts to in-progress merge groups (excludes
+        cancelled/unmerged/shipped)'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix - for descending. Allowed: id, merged_shipment_number,
+          status, created_at, shipped_at. Default: -id'
+        example: -id
+      - name: filter[id]
+        in: query
+        schema:
+          type: integer
+        description: Exact match on merge group ID
+        example: '12'
+      - name: filter[status]
+        in: query
+        schema:
+          type: string
+        description: 'Exact match on status. Allowed values: awaiting_pack, awaiting_label,
+          awaiting_ship, shipped, cancelled, unmerged'
+        example: awaiting_pack
+      - name: filter[warehouse_id]
+        in: query
+        schema:
+          type: integer
+        description: Exact match on warehouse ID
+        example: '1'
+      - name: filter[merged_shipment_number]
+        in: query
+        schema:
+          type: string
+        description: Partial (LIKE) match on the merged shipment number
+        example: MS-0000
+      - name: filter[open_only]
+        in: query
+        schema:
+          type: boolean
+        description: If true (1, yes, true), restricts to open merge groups (status
+          in awaiting_pack, awaiting_label, awaiting_ship). Cancelled and unmerged
+          groups are excluded.
+        example: 'true'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+      - Merged Shipments
+      summary: Create Merged Shipment
+      description: 'Merges two or more sales orders into a single physical shipment
+        (merge group). Each underlying sales order remains intact; one fulfillment
+        per SO is created and linked to the new merge group. The lowest-ID order is
+        the primary.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request Body:
+
+        - sales_order_ids (required, integer[]): Two or more sales order IDs to merge
+
+        - notes (optional, string, max 2000): Free-form notes attached to the merge
+        group
+
+        - acknowledge_warnings (optional, boolean): If true, allows merging despite
+        warnings (e.g. ship-by date variance). Blockers always prevent merging.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sales_order_ids:
+                - 5501
+                - 5502
+                notes: Merged at customer's request
+                acknowledge_warnings: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/eligibility:
+    post:
+      tags:
+      - Merged Shipments
+      summary: Check Merge Eligibility
+      description: 'Evaluates whether a set of sales orders can be merged into a single
+        physical shipment. Returns blockers (hard failures) and warnings (acknowledgeable
+        issues). Does not perform the merge.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request Body:
+
+        - sales_order_ids (required, integer[]): Two or more sales order IDs to evaluate
+
+        - proposed_warehouse_id (optional, integer): Override the inferred fulfilling
+        warehouse'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sales_order_ids:
+                - 5501
+                - 5502
+                proposed_warehouse_id: 1
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/{mergedShipment}:
+    get:
+      tags:
+      - Merged Shipments
+      summary: Show Merged Shipment
+      description: 'Returns a single merged shipment with primary sales order, warehouse,
+        creator, shipping method, and per-SO fulfillments eager-loaded.
+
+
+        Path Parameters:
+
+        - mergedShipment (integer): ID of the merge group'
+      parameters:
+      - name: mergedShipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The mergedShipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/{mergedShipment}/unmerge:
+    post:
+      tags:
+      - Merged Shipments
+      summary: Unmerge Merged Shipment
+      description: 'Reverses a merge group, restoring each sales order to its pre-merge
+        state. Only allowed before a label is purchased / the shipment is shipped.
+
+
+        Path Parameters:
+
+        - mergedShipment (integer): ID of the merge group
+
+
+        Request Body:
+
+        - reason (optional, string, max 1000): Audit-trail reason for the unmerge'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                reason: Customer requested separate shipments
+      parameters:
+      - name: mergedShipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The mergedShipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/report-templates:
     get:
       tags:
@@ -77714,6 +78090,7 @@ x-tagGroups:
   - Sales Order OCR
   - Purchase Invoice OCR
   - Document Inbox
+  - Merged Shipments
   - Product Import
   - Vendor Credits
   - Lifecycle
