@@ -87,6 +87,7 @@ tags:
 - name: Sales Orders
 - name: Sales Order Lines
 - name: Fulfillments
+- name: Merged Shipments
 - name: Sales Credits
 - name: Returns & RMAs
 - name: Discount Codes
@@ -99,7 +100,6 @@ tags:
 - name: Sales Order OCR
 - name: Purchase Invoice OCR
 - name: Document Inbox
-- name: Merged Shipments
 - name: Report Templates
 - name: Product Import
 - name: Vendor Credits
@@ -64790,6 +64790,346 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/v2/merged-shipments:
+    get:
+      tags:
+      - Merged Shipments
+      summary: List Merged Shipments
+      description: 'Returns a paginated list of merged shipments (sales-order merge
+        groups).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query Parameters:
+
+        - page (integer): Page number (default 1)
+
+        - per_page (integer): Items per page (default 10)
+
+        - sort (string): One of id, merged_shipment_number, status, created_at, shipped_at.
+        Prefix with - for descending. Default -id.
+
+        - filter[id]: Exact match
+
+        - filter[status]: Exact match on status enum (awaiting_pack, awaiting_label,
+        awaiting_ship, shipped, cancelled, unmerged)
+
+        - filter[warehouse_id]: Exact match
+
+        - filter[merged_shipment_number]: Partial match
+
+        - filter[open_only]: Boolean — restricts to in-progress merge groups (excludes
+        cancelled/unmerged/shipped)'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix - for descending. Allowed: id, merged_shipment_number,
+          status, created_at, shipped_at. Default: -id'
+        example: -id
+      - name: filter[id]
+        in: query
+        schema:
+          type: integer
+        description: Exact match on merge group ID
+        example: '12'
+      - name: filter[status]
+        in: query
+        schema:
+          type: string
+        description: 'Exact match on status. Allowed values: awaiting_pack, awaiting_label,
+          awaiting_ship, shipped, cancelled, unmerged'
+        example: awaiting_pack
+      - name: filter[warehouse_id]
+        in: query
+        schema:
+          type: integer
+        description: Exact match on warehouse ID
+        example: '1'
+      - name: filter[merged_shipment_number]
+        in: query
+        schema:
+          type: string
+        description: Partial (LIKE) match on the merged shipment number
+        example: MS-0000
+      - name: filter[open_only]
+        in: query
+        schema:
+          type: boolean
+        description: If true (1, yes, true), restricts to open merge groups (status
+          in awaiting_pack, awaiting_label, awaiting_ship). Cancelled and unmerged
+          groups are excluded.
+        example: 'true'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+      - Merged Shipments
+      summary: Create Merged Shipment
+      description: 'Merges two or more sales orders into a single physical shipment
+        (merge group). Each underlying sales order remains intact; one fulfillment
+        per SO is created and linked to the new merge group. The lowest-ID order is
+        the primary.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request Body:
+
+        - sales_order_ids (required, integer[]): Two or more sales order IDs to merge
+
+        - notes (optional, string, max 2000): Free-form notes attached to the merge
+        group
+
+        - acknowledge_warnings (optional, boolean): If true, allows merging despite
+        warnings (e.g. ship-by date variance). Blockers always prevent merging.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sales_order_ids:
+                - 5501
+                - 5502
+                notes: Merged at customer's request
+                acknowledge_warnings: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/eligibility:
+    post:
+      tags:
+      - Merged Shipments
+      summary: Check Merge Eligibility
+      description: 'Evaluates whether a set of sales orders can be merged into a single
+        physical shipment. Returns blockers (hard failures) and warnings (acknowledgeable
+        issues). Does not perform the merge.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request Body:
+
+        - sales_order_ids (required, integer[]): Two or more sales order IDs to evaluate
+
+        - proposed_warehouse_id (optional, integer): Override the inferred fulfilling
+        warehouse'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sales_order_ids:
+                - 5501
+                - 5502
+                proposed_warehouse_id: 1
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/{mergedShipment}:
+    get:
+      tags:
+      - Merged Shipments
+      summary: Show Merged Shipment
+      description: 'Returns a single merged shipment with primary sales order, warehouse,
+        creator, shipping method, and per-SO fulfillments eager-loaded.
+
+
+        Path Parameters:
+
+        - mergedShipment (integer): ID of the merge group'
+      parameters:
+      - name: mergedShipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The mergedShipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/merged-shipments/{mergedShipment}/unmerge:
+    post:
+      tags:
+      - Merged Shipments
+      summary: Unmerge Merged Shipment
+      description: 'Reverses a merge group, restoring each sales order to its pre-merge
+        state. Only allowed before a label is purchased / the shipment is shipped.
+
+
+        Path Parameters:
+
+        - mergedShipment (integer): ID of the merge group
+
+
+        Request Body:
+
+        - reason (optional, string, max 1000): Audit-trail reason for the unmerge'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                reason: Customer requested separate shipments
+      parameters:
+      - name: mergedShipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The mergedShipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/sales-orders/{salesOrder}/merge-candidates:
+    get:
+      tags:
+      - Merged Shipments
+      summary: List Merge Candidates for Sales Order
+      description: 'Returns a list of open sales orders eligible to be merged into
+        a single shipment with the anchor sales order.
+
+
+        **Eligibility rules** — a candidate is included only if it:
+
+        - Is not the anchor itself.
+
+        - Has order_status of `open` or `reserved`.
+
+        - Ships from the same single warehouse as the anchor (across all of its lines).
+
+        - Has the same shipping address signature (name + company + address1 + address2
+        + city + province + zip + country_code) as the anchor.
+
+        - Is not already a member of any open SalesOrderMergeGroup.
+
+        - Has no in-progress SalesOrderFulfillment (submitted, processing, or shipped).
+
+
+        If the anchor itself has no shipping address, an empty list is returned.
+
+
+        **Response shape** — `data[]` is an array of `MergeCandidateData`:
+
+        - `sales_order_id` (int)
+
+        - `sales_order_number` (string)
+
+        - `order_status` (string — typically `open` or `reserved`)
+
+        - `customer_name` (string | null)
+
+        - `integration_instance_name` (string | null) — name of the sales channel''s
+        integration instance, when applicable
+
+        - `integration_instance_id` (int | null)
+
+        - `line_count` (int)
+
+        - `total_quantity` (int)
+
+        - `integration_matches_anchor` (bool) — `false` when the candidate is from
+        a different sales channel/integration than the anchor; the UI should warn
+        before merging.
+
+
+        **Auth:** Bearer token (scope `rw:orders`).'
+      parameters:
+      - name: salesOrder
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The salesOrder identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: 'Max candidates to return. Clamped to range 1-50. Default: 25.'
+        example: '25'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/sales-credits:
     get:
       tags:
@@ -76923,270 +77263,6 @@ paths:
           description: Successful response
           content:
             application/json: {}
-  /api/v2/merged-shipments:
-    get:
-      tags:
-      - Merged Shipments
-      summary: List Merged Shipments
-      description: 'Returns a paginated list of merged shipments (sales-order merge
-        groups).
-
-
-        Authentication: Requires Bearer token.
-
-
-        Query Parameters:
-
-        - page (integer): Page number (default 1)
-
-        - per_page (integer): Items per page (default 10)
-
-        - sort (string): One of id, merged_shipment_number, status, created_at, shipped_at.
-        Prefix with - for descending. Default -id.
-
-        - filter[id]: Exact match
-
-        - filter[status]: Exact match on status enum (awaiting_pack, awaiting_label,
-        awaiting_ship, shipped, cancelled, unmerged)
-
-        - filter[warehouse_id]: Exact match
-
-        - filter[merged_shipment_number]: Partial match
-
-        - filter[open_only]: Boolean — restricts to in-progress merge groups (excludes
-        cancelled/unmerged/shipped)'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: page
-        in: query
-        schema:
-          type: integer
-        description: 'Page number (default: 1)'
-        example: '1'
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        description: 'Items per page (default: 10)'
-        example: '10'
-      - name: sort
-        in: query
-        schema:
-          type: string
-        description: 'Sort field. Prefix - for descending. Allowed: id, merged_shipment_number,
-          status, created_at, shipped_at. Default: -id'
-        example: -id
-      - name: filter[id]
-        in: query
-        schema:
-          type: integer
-        description: Exact match on merge group ID
-        example: '12'
-      - name: filter[status]
-        in: query
-        schema:
-          type: string
-        description: 'Exact match on status. Allowed values: awaiting_pack, awaiting_label,
-          awaiting_ship, shipped, cancelled, unmerged'
-        example: awaiting_pack
-      - name: filter[warehouse_id]
-        in: query
-        schema:
-          type: integer
-        description: Exact match on warehouse ID
-        example: '1'
-      - name: filter[merged_shipment_number]
-        in: query
-        schema:
-          type: string
-        description: Partial (LIKE) match on the merged shipment number
-        example: MS-0000
-      - name: filter[open_only]
-        in: query
-        schema:
-          type: boolean
-        description: If true (1, yes, true), restricts to open merge groups (status
-          in awaiting_pack, awaiting_label, awaiting_ship). Cancelled and unmerged
-          groups are excluded.
-        example: 'true'
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-    post:
-      tags:
-      - Merged Shipments
-      summary: Create Merged Shipment
-      description: 'Merges two or more sales orders into a single physical shipment
-        (merge group). Each underlying sales order remains intact; one fulfillment
-        per SO is created and linked to the new merge group. The lowest-ID order is
-        the primary.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Request Body:
-
-        - sales_order_ids (required, integer[]): Two or more sales order IDs to merge
-
-        - notes (optional, string, max 2000): Free-form notes attached to the merge
-        group
-
-        - acknowledge_warnings (optional, boolean): If true, allows merging despite
-        warnings (e.g. ship-by date variance). Blockers always prevent merging.'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              example:
-                sales_order_ids:
-                - 5501
-                - 5502
-                notes: Merged at customer's request
-                acknowledge_warnings: false
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/v2/merged-shipments/eligibility:
-    post:
-      tags:
-      - Merged Shipments
-      summary: Check Merge Eligibility
-      description: 'Evaluates whether a set of sales orders can be merged into a single
-        physical shipment. Returns blockers (hard failures) and warnings (acknowledgeable
-        issues). Does not perform the merge.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Request Body:
-
-        - sales_order_ids (required, integer[]): Two or more sales order IDs to evaluate
-
-        - proposed_warehouse_id (optional, integer): Override the inferred fulfilling
-        warehouse'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              example:
-                sales_order_ids:
-                - 5501
-                - 5502
-                proposed_warehouse_id: 1
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/v2/merged-shipments/{mergedShipment}:
-    get:
-      tags:
-      - Merged Shipments
-      summary: Show Merged Shipment
-      description: 'Returns a single merged shipment with primary sales order, warehouse,
-        creator, shipping method, and per-SO fulfillments eager-loaded.
-
-
-        Path Parameters:
-
-        - mergedShipment (integer): ID of the merge group'
-      parameters:
-      - name: mergedShipment
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The mergedShipment identifier
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/v2/merged-shipments/{mergedShipment}/unmerge:
-    post:
-      tags:
-      - Merged Shipments
-      summary: Unmerge Merged Shipment
-      description: 'Reverses a merge group, restoring each sales order to its pre-merge
-        state. Only allowed before a label is purchased / the shipment is shipped.
-
-
-        Path Parameters:
-
-        - mergedShipment (integer): ID of the merge group
-
-
-        Request Body:
-
-        - reason (optional, string, max 1000): Audit-trail reason for the unmerge'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              example:
-                reason: Customer requested separate shipments
-      parameters:
-      - name: mergedShipment
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The mergedShipment identifier
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
   /api/report-templates:
     get:
       tags:
@@ -78107,6 +78183,7 @@ x-tagGroups:
   - Sales Orders
   - Sales Order Lines
   - Fulfillments
+  - Merged Shipments
   - Sales Credits
   - Returns & RMAs
   - Discount Codes
@@ -78119,7 +78196,6 @@ x-tagGroups:
   - Sales Order OCR
   - Purchase Invoice OCR
   - Document Inbox
-  - Merged Shipments
   - Product Import
   - Vendor Credits
   - Lifecycle
