@@ -99,6 +99,7 @@ tags:
 - name: Inbound Shipments
 - name: Sales Order OCR
 - name: Purchase Invoice OCR
+- name: Landed Cost Invoice OCR
 - name: Document Inbox
 - name: Report Templates
 - name: Product Import
@@ -77339,6 +77340,510 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/landed-cost-invoices/ocr:
+    get:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: List Extractions (Inbox)
+      description: List landed cost invoice OCR extractions for the inbox queue. Requires
+        Bearer token. Returns a paginated `LengthAwarePaginator` of `LandedCostInvoiceOcrExtractionResource`
+        items. All filters are optional. Useful for the OCR Inbox page that surfaces
+        freight/customs/brokerage/insurance invoices awaiting review.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: status
+        in: query
+        schema:
+          type: string
+        description: 'Filter by extraction status. One of: processing, pending_review,
+          confirmed, failed, rejected, duplicate_detected.'
+        example: pending_review
+      - name: supplier_id
+        in: query
+        schema:
+          type: integer
+        description: Filter by matched supplier ID.
+        example: '12'
+      - name: source
+        in: query
+        schema:
+          type: string
+        description: 'Filter by ingestion source: ''upload'' or ''email''.'
+        example: email
+      - name: date_from
+        in: query
+        schema:
+          type: string
+        description: Filter extractions created on/after this date (Y-m-d).
+        example: '2026-01-01'
+      - name: date_to
+        in: query
+        schema:
+          type: string
+        description: Filter extractions created on/before this date (Y-m-d).
+        example: '2026-12-31'
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Search across file_name, extracted vendor name, and invoice number.
+        example: DHL
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (default 1).
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 20).
+        example: '20'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/upload:
+    post:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Upload Landed Cost Invoice PDF
+      description: "Upload a landed cost invoice PDF to start OCR extraction. Requires\
+        \ Invoice OCR to be enabled in Settings → Invoice OCR (returns 422 if not\
+        \ enabled).\n\nAsync — returns immediately with a `tracked_job_log_id` for\
+        \ progress tracking via the global job tray. Poll `GET /landed-cost-invoices/ocr/{id}`\
+        \ until status is `pending_review` (or `failed` / `duplicate_detected`).\n\
+        \nResponse 201:\n```json\n{\n  \"data\": {\n    \"extraction_id\": 18,\n \
+        \   \"tracked_job_log_id\": 9221,\n    \"status\": \"processing\"\n  },\n\
+        \  \"message\": \"OCR processing started.\"\n}\n```\n\nResponse 422 (OCR disabled):\n\
+        ```json\n{ \"message\": \"Landed Cost Invoice OCR is not enabled. Please configure\
+        \ it in Settings → Invoice OCR.\" }\n```"
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}:
+    get:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Get Extraction
+      description: "Retrieve a landed cost invoice OCR extraction record. Eager-loads\
+        \ the matched supplier and any extraction→bill pivots created during apply.\
+        \ Returns extracted header data merged with matched supplier info, line items\
+        \ with per-line cost-category matches (6-tier match: mapped → exact_name →\
+        \ name_substring → keyword → fuzzy_name → fuzzy_mapped → unmatched), candidate\
+        \ targets (inbound shipments / POs / warehouse transfers that fit the supplier\
+        \ + ETA window), and inbound-email source metadata.\n\nExample 200 response:\n\
+        ```json\n{\n  \"data\": {\n    \"id\": 18,\n    \"status\": \"pending_review\"\
+        ,\n    \"file_url\": \"https://sku2.test/api/landed-cost-invoices/ocr/18/pdf\"\
+        ,\n    \"file_name\": \"DHL-Invoice-INV-44219.pdf\",\n    \"page_count\":\
+        \ 2,\n    \"header\": {\n      \"vendor_name\": {\"value\": \"DHL Express\"\
+        , \"confidence\": 0.94},\n      \"invoice_number\": {\"value\": \"INV-44219\"\
+        , \"confidence\": 0.91},\n      \"invoice_date\": {\"value\": \"2026-04-12\"\
+        , \"confidence\": 0.88},\n      \"currency_code\": {\"value\": \"USD\", \"\
+        confidence\": 0.97},\n      \"currency_rate\": 1.0,\n      \"total_amount\"\
+        : {\"value\": 1850.75, \"confidence\": 0.93},\n      \"matched_supplier_id\"\
+        : 12,\n      \"matched_supplier_name\": \"DHL Express\"\n    },\n    \"is_matched_supplier\"\
+        : true,\n    \"extracted_supplier_name\": \"DHL Express\",\n    \"lines\"\
+        : [\n      {\n        \"description\": \"Freight Charges\",\n        \"quantity\"\
+        : 1,\n        \"unit_price\": 1500.00,\n        \"line_total\": 1500.00,\n\
+        \        \"matched_cost_category_id\": 4,\n        \"matched_cost_category_name\"\
+        : \"Freight\",\n        \"match_tier\": \"exact_name\",\n        \"ignored\"\
+        : false\n      }\n    ],\n    \"unmatched_line_count\": 0,\n    \"candidate_targets\"\
+        : [\n      {\n        \"target_type\": \"inbound_shipment\",\n        \"target_id\"\
+        : 142,\n        \"reference\": \"IS-00142\",\n        \"eta\": \"2026-04-15\"\
+        ,\n        \"reason\": \"supplier_eta_close\"\n      },\n      {\n       \
+        \ \"target_type\": \"purchase_order\",\n        \"target_id\": 88,\n     \
+        \   \"reference\": \"PO-12345\",\n        \"reason\": \"supplier_match\"\n\
+        \      }\n    ],\n    \"working_state\": null,\n    \"prebind_target_type\"\
+        : null,\n    \"prebind_target_id\": null,\n    \"azure_cost_usd\": 0.0125,\n\
+        \    \"error_message\": null,\n    \"source\": \"email\",\n    \"source_email_from\"\
+        : \"billing@dhl.com\",\n    \"source_email_subject\": \"DHL Invoice INV-44219\"\
+        ,\n    \"tracked_job_log_id\": 9221,\n    \"supplier\": { \"id\": 12, \"name\"\
+        : \"DHL Express\" },\n    \"extraction_bills\": [],\n    \"confirmed_at\"\
+        : null,\n    \"confirmed_by_user_id\": null,\n    \"created_at\": \"2026-05-01T08:14:00.000000Z\"\
+        ,\n    \"updated_at\": \"2026-05-01T08:14:00.000000Z\"\n  }\n}\n```\n\n**Match\
+        \ tiers** (in order of confidence): `mapped` (Tier 0 — saved supplier mapping),\
+        \ `exact_name`, `name_substring`, `keyword`, `fuzzy_name`, `fuzzy_mapped`,\
+        \ `unmatched`.\n\n**Candidate target reasons**: `prebind` (from upload param),\
+        \ `supplier_eta_close` (open inbound shipment for matched supplier with ETA\
+        \ within window), `supplier_match` (any open PO / WT for matched supplier)."
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Delete Extraction
+      description: 'Soft-delete a landed cost invoice OCR extraction record (and its
+        associated S3 PDF). Confirmed extractions cannot be deleted (returns 422).
+
+
+        **Response:** 204 No Content on success.
+
+
+        **Response 422 (already confirmed):**
+
+        ```json
+
+        { "message": "Confirmed extractions cannot be deleted." }
+
+        ```'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/pdf:
+    get:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Stream Extraction PDF
+      description: 'Stream the original landed cost invoice PDF through the backend
+        (avoids CORS when fetching from S3). Returns Content-Type: application/pdf,
+        `Content-Disposition: inline; filename="landed-cost-invoice.pdf"`. Returns
+        404 if the underlying S3 object is missing. Cache-Control: private, max-age=300.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/pdf
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/apply:
+    post:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Apply Extraction (Create Bills)
+      description: "Accept the reviewed/edited extraction and create one or more `Bill`\
+        \ records — one per target entity (inbound shipment, purchase order, or warehouse\
+        \ transfer) — each with its own apportionment of the cost lines. Marks the\
+        \ extraction as `confirmed` and persists `Bill` rows linked via the polymorphic\
+        \ `bills.link_type` / `link_id` columns. Bridges supplier → vendor via `VendorRepository::firstOrCreateByName($supplier->name)`\
+        \ since Bills require `vendor_id`.\n\nThe extraction must be in `pending_review`\
+        \ or `duplicate_detected` status (a duplicate-detected extraction is allowed\
+        \ because the user may confirm it is not actually a duplicate and proceed).\
+        \ Returns 422 otherwise.\n\nWhen multiple targets are supplied, the invoice\
+        \ number is suffixed per target (`{invoice_number}-{type3}-{target_id}`) to\
+        \ avoid `bills.invoice_number` unique constraint violations.\n\n**Request\
+        \ body fields:**\n| Field | Type | Required | Notes |\n|-------|------|----------|-------|\n\
+        | supplier_id | integer | yes | Must exist in suppliers. |\n| invoice_number\
+        \ | string | yes | Max 255 chars. |\n| invoice_date | date | yes | |\n| currency_code\
+        \ | string | yes | ISO 4217 (size:3). |\n| currency_rate | numeric | yes |\
+        \ Min 0. Conversion rate to base currency. |\n| total_amount | numeric | yes\
+        \ | Total invoice amount. |\n| cost_lines | array | yes | At least 1 line.\
+        \ |\n| cost_lines[].description | string | yes | Max 500 chars. |\n| cost_lines[].quantity\
+        \ | numeric | yes | |\n| cost_lines[].unit_price | numeric | yes | |\n| cost_lines[].line_total\
+        \ | numeric | yes | |\n| cost_lines[].cost_category_id | integer | no (nullable)\
+        \ | Must exist in cost_categories. Null = unclassified line. |\n| cost_lines[].ignored\
+        \ | boolean | no | Skip persisting this line (audit-only). |\n| targets |\
+        \ array | yes | At least 1 target. Allocation shares MUST sum to 1.0 ±0.001.\
+        \ |\n| targets[].target_type | string | yes | One of: inbound_shipment, purchase_order,\
+        \ warehouse_transfer. |\n| targets[].target_id | integer | yes | ID of target\
+        \ entity. |\n| targets[].proration_strategy | string | yes | FinancialLineProrationStrategyEnum:\
+        \ revenue_based, cost_based, weight_based, volume_based, quantity_based, specific_line,\
+        \ manual. |\n| targets[].allocation_share | numeric | yes | 0–1. Share of\
+        \ the total this target receives. |\n| remember_mappings | boolean | no |\
+        \ When `true`, upserts `(supplier_id, normalized_description) → cost_category_id`\
+        \ mappings into `supplier_landed_cost_mappings` so future OCR imports auto-tag\
+        \ matching descriptions as cost lines (Tier 0 match). |\n\n**Response 201:**\n\
+        ```json\n{\n  \"data\": {\n    \"id\": 18,\n    \"status\": \"confirmed\"\
+        ,\n    \"extraction_bills\": [\n      {\"id\": 33, \"bill_id\": 491, \"target_type\"\
+        : \"inbound_shipment\", \"target_id\": 142, \"allocation_share\": 0.6},\n\
+        \      {\"id\": 34, \"bill_id\": 492, \"target_type\": \"purchase_order\"\
+        , \"target_id\": 88, \"allocation_share\": 0.4}\n    ],\n    \"confirmed_at\"\
+        : \"2026-05-01T08:30:00.000000Z\",\n    \"confirmed_by_user_id\": 7\n  },\n\
+        \  \"message\": \"Landed cost invoice applied.\"\n}\n```\n\n**Response 422\
+        \ — wrong status:**\n```json\n{ \"message\": \"Only extractions pending review\
+        \ can be applied.\" }\n```\n\n**Response 422 — allocation shares do not sum\
+        \ to 1.0:**\n```json\n{ \"message\": \"Target allocation shares must sum to\
+        \ 1.0.\" }\n```"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                supplier_id: 12
+                invoice_number: INV-44219
+                invoice_date: '2026-04-12'
+                currency_code: USD
+                currency_rate: 1
+                total_amount: 1850.75
+                cost_lines:
+                - description: Freight Charges
+                  quantity: 1
+                  unit_price: 1500
+                  line_total: 1500
+                  cost_category_id: 4
+                  ignored: false
+                - description: Fuel Surcharge
+                  quantity: 1
+                  unit_price: 350.75
+                  line_total: 350.75
+                  cost_category_id: 4
+                  ignored: false
+                targets:
+                - target_type: inbound_shipment
+                  target_id: 142
+                  proration_strategy: cost_based
+                  allocation_share: 0.6
+                - target_type: purchase_order
+                  target_id: 88
+                  proration_strategy: quantity_based
+                  allocation_share: 0.4
+                remember_mappings: true
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/rescan:
+    post:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Re-scan Extraction
+      description: "Re-run Azure Document Intelligence OCR on the original PDF (e.g.,\
+        \ after Azure model improvements, or to retry a failed extraction). Async\
+        \ — returns a `tracked_job_log_id` for progress tracking via the global job\
+        \ tray.\n\nRefuses (422) if the extraction is in `confirmed` status, or if\
+        \ the original `file_path` is missing.\n\n**Response 200:**\n```json\n{\n\
+        \  \"data\": {\n    \"extraction_id\": 18,\n    \"tracked_job_log_id\": 9311,\n\
+        \    \"status\": \"processing\"\n  },\n  \"message\": \"Re-scan started.\"\
+        \n}\n```\n\n**Response 422 (already confirmed):**\n```json\n{ \"message\"\
+        : \"Confirmed extractions cannot be re-scanned.\" }\n```\n\n**Response 422\
+        \ (file missing):**\n```json\n{ \"message\": \"Cannot re-scan — original file\
+        \ is no longer available.\" }\n```"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/draft:
+    patch:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Save Draft (Working State)
+      description: 'Persist in-progress edits to the review form so users can resume
+        later (across browser refresh / device switch). The `working_state` body is
+        an opaque object stored on the extraction — the frontend defines its shape
+        (typically header_overrides, line_overrides, selected_targets, etc.). Returns
+        the updated extraction.
+
+
+        **Request body:**
+
+        | Field | Type | Required | Notes |
+
+        |-------|------|----------|-------|
+
+        | working_state | object | yes | Opaque JSON; shape defined by the frontend
+        review UI. |
+
+
+        Refuses (422) if the extraction is in `confirmed` status.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                working_state:
+                  header_overrides:
+                    invoice_number: INV-44219
+                    invoice_date: '2026-04-12'
+                  line_overrides:
+                  - index: 0
+                    cost_category_id: 4
+                  - index: 1
+                    cost_category_id: 4
+                  selected_targets:
+                  - target_type: inbound_shipment
+                    target_id: 142
+                    allocation_share: 0.6
+                  - target_type: purchase_order
+                    target_id: 88
+                    allocation_share: 0.4
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: landed_cost_extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/cost-category-keyword-aliases:
+    get:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: List Cost Category Keyword Aliases
+      description: "List active cost-category keyword aliases used by the OCR cost-line\
+        \ matcher. Returns an object keyed by `cost_category_id` with arrays of keyword\
+        \ strings. Used by the Settings page that lets users curate which keywords\
+        \ (e.g., \"freight\", \"fuel surcharge\", \"customs\", \"duty\", \"clearance\"\
+        ) map to which CostCategory.\n\nKeywords feed Tier 4 (`keyword`) of the 6-tier\
+        \ match cascade in the OCR manager.\n\n**Response 200:**\n```json\n{\n  \"\
+        data\": {\n    \"4\": [\"freight\", \"shipping\", \"fuel surcharge\", \"airfreight\"\
+        ],\n    \"5\": [\"customs\", \"duty\", \"clearance\", \"import duty\"],\n\
+        \    \"6\": [\"insurance\", \"cargo insurance\"]\n  }\n}\n```"
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    put:
+      tags:
+      - Landed Cost Invoice OCR
+      summary: Replace Cost Category Keyword Aliases
+      description: "Replace the full set of keyword aliases for a single cost category.\
+        \ Idempotent — the repository diffs the supplied list against the existing\
+        \ rows: removes keywords not in the new list, inserts new ones. Default-flagged\
+        \ keywords (seeded by migration) are preserved if they remain in the new list,\
+        \ or removed if dropped. Keywords are normalized to lowercase + trimmed; duplicates\
+        \ are deduped server-side.\n\n**Request body:**\n| Field | Type | Required\
+        \ | Notes |\n|-------|------|----------|-------|\n| cost_category_id | integer\
+        \ | yes | Must exist in cost_categories. |\n| keywords | array | yes (present)\
+        \ | Each keyword: string, min 2 / max 100 chars. May be empty array to clear\
+        \ all keywords. |\n\n**Response 200:**\n```json\n{\n  \"data\": {\n    \"\
+        cost_category_id\": 4,\n    \"keywords\": [\"freight\", \"shipping\", \"fuel\
+        \ surcharge\", \"airfreight\"]\n  },\n  \"message\": \"Keyword aliases updated.\"\
+        \n}\n```\n\n**Response 422 (validation):**\n```json\n{\n  \"message\": \"\
+        The cost category id field is required.\",\n  \"errors\": {\n    \"cost_category_id\"\
+        : [\"The cost category id field is required.\"],\n    \"keywords.0\": [\"\
+        Each keyword must be at least 2 characters.\"]\n  }\n}\n```"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                cost_category_id: 4
+                keywords:
+                - freight
+                - shipping
+                - fuel surcharge
+                - airfreight
+      parameters:
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/document-inbox:
     get:
       tags:
@@ -78496,6 +79001,7 @@ x-tagGroups:
   - Inbound Shipments
   - Sales Order OCR
   - Purchase Invoice OCR
+  - Landed Cost Invoice OCR
   - Document Inbox
   - Product Import
   - Vendor Credits
