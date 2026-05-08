@@ -56984,11 +56984,14 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Status filter (resolved from filter_groups or filter[status]):
+        Status filter (resolved from filter_groups, filter[status], or top-level status
+        param):
 
         - active: Not released and not expired (default)
 
-        - released: Released holds
+        - partially_released: Has released_quantity > 0 but not fully released yet
+
+        - released: Fully released holds
 
         - expired: Expired holds
 
@@ -56997,8 +57000,8 @@ paths:
         - all: All holds regardless of status
 
 
-        Available sorts: id, quantity, created_at, expires_at, released_at (default:
-        -created_at)'
+        Available sorts: id, quantity, released_quantity, created_at, expires_at,
+        released_at (default: -created_at)'
       parameters:
       - name: Accept
         in: header
@@ -57052,8 +57055,15 @@ paths:
         schema:
           type: string
         description: 'Sort field. Prefix with - for descending. Allowed: id, quantity,
-          created_at, expires_at, released_at'
+          released_quantity, created_at, expires_at, released_at'
         example: -created_at
+      - name: status
+        in: query
+        schema:
+          type: string
+        description: 'Status filter (top-level alternative to filter[status]): active,
+          partially_released, released, expired, expiring_soon, all'
+        example: active
       responses:
         '200':
           description: Successful response
@@ -57264,8 +57274,26 @@ paths:
       tags:
       - Inventory
       summary: Release Inventory Hold
-      description: 'Releases a quantity from an inventory hold, returning it to available
-        inventory.
+      description: 'Releases inventory from a hold. Supports both partial and full
+        release.
+
+
+        Partial release (quantity provided AND less than current held quantity):
+
+        - The hold''s `quantity` is reduced by the released amount
+
+        - `released_quantity` accumulates the cumulative total released across all
+        release events
+
+        - `released_at` remains null — the hold is still active
+
+
+        Full release (quantity omitted, null, 0, or equal to current held quantity):
+
+        - `released_at`, `released_by`, and `release_reason` are populated
+
+        - The remaining `quantity` is added to `released_quantity` so it reflects
+        the cumulative total released
 
 
         Authentication: Requires Bearer token.
@@ -57273,7 +57301,9 @@ paths:
 
         Request Body:
 
-        - quantity (required): Quantity to release
+        - quantity (nullable, numeric, min 0.0001, max=current held quantity): Quantity
+        to release. Omit, send null, or send 0 to fully release. Cannot exceed the
+        current held quantity (returns 422)
 
         - release_reason (nullable, string, max 500): Reason for the release'
       requestBody:
@@ -57282,8 +57312,8 @@ paths:
             schema:
               type: object
               example:
-                quantity: 25
-                release_reason: QA inspection passed
+                quantity: 20
+                release_reason: QA inspection passed for partial batch
       parameters:
       - name: reservation
         in: path
