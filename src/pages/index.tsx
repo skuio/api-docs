@@ -38,7 +38,7 @@ const features = [
     title: "Simple Authentication",
     description:
       "Use Personal Access Tokens (PATs) as Bearer tokens. Create scoped tokens in Settings → Developer → Personal Access Tokens.",
-    code: `curl https://app.sku.io/api/v2/sales-orders \\
+    code: `curl https://app.sku.io/api/sales-orders \\
   -H "Authorization: Bearer <your-token>"`,
   },
   {
