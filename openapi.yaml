@@ -62527,6 +62527,156 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}/quantity-preview:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Preview Shipment Line Quantity Change
+      description: 'Preview the inventory implications of changing a warehouse transfer
+        shipment line''s quantity, without persisting any change.
+
+
+        Returns:
+
+        - `current_quantity`, `new_quantity`, `delta`
+
+        - `requires_confirmation` — true whenever delta != 0
+
+        - `can_update` — false when either block applies
+
+        - `blocks.below_received` — true if the requested quantity is below the total
+        already received against this line; adjust receipts first
+
+        - `blocks.above_transfer_line` — true if the requested quantity exceeds the
+        parent warehouse transfer line quantity (the WT line caps the shipment, not
+        source on-hand stock)
+
+        - `implications.shipment_quantity` / `transfer_quantity` / `received_quantity`
+        / `in_transit_quantity` — current vs after-update values. The parent warehouse
+        transfer line quantity is ALWAYS unchanged (BBP invariant: the WT line is
+        the canonical record of original intent).'
+      parameters:
+      - name: shipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The shipment identifier
+      - name: line
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The line identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: quantity
+        in: query
+        schema:
+          type: integer
+        description: Target shipment line quantity (integer, >= 0). Required.
+        example: '12'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}:
+    patch:
+      tags:
+      - Adjustments & Transfers
+      summary: Update Shipment Line Quantity
+      description: 'Update a warehouse transfer shipment line''s quantity in place,
+        scaling its inventory movements at the source (active negative) and destination
+        (in-transit positive) accordingly.
+
+
+        Request body:
+
+        - `quantity` (integer, required, >= 0) — new shipment line quantity. Capped
+        by the parent warehouse transfer line quantity.
+
+        - `confirmed_implications` (boolean, optional) — must be `true` when the change
+        is non-zero; otherwise the endpoint returns 409 with the preview payload so
+        the caller can confirm.
+
+
+        Behavior:
+
+        - Increase: pulls `delta` additional units from source on-hand FIFO and places
+        them in-transit toward the destination.
+
+        - Decrease: returns `abs(delta)` units to source on-hand and removes them
+        from in-transit at the destination.
+
+        - The parent warehouse transfer line quantity is NEVER mutated by this endpoint
+        — it preserves the original transfer intent (BBP invariant).
+
+
+        Errors:
+
+        - `409 Conflict` — non-zero delta without `confirmed_implications: true`;
+        the preview is returned in `data` so callers can render and confirm.
+
+        - `422 Unprocessable Entity` with `data.blocks.below_received: true` — requested
+        quantity is below the total already received against this line; adjust receipts
+        first.
+
+        - `422 Unprocessable Entity` with `data.blocks.above_transfer_line: true`
+        — requested quantity exceeds the parent warehouse transfer line quantity.
+
+        - `422 Unprocessable Entity` from `InsufficientStockException` thrown by the
+        inventory manager if FIFO consumption cannot satisfy the delta at the moment
+        of save (race / concurrency safety net).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                quantity: 12
+                confirmed_implications: true
+      parameters:
+      - name: shipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The shipment identifier
+      - name: line
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The line identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/v2/warehouse-transfers/shipments/{shipment}/activity-log:
     get:
       tags:
@@ -62565,6 +62715,78 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/v2/warehouse-transfers/shipments/{shipment}/inventory-movements:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Get Shipment Inventory Movements
+      description: Returns paginated inventory movements scoped to the given warehouse
+        transfer shipment. Movements are linked to the shipment's `WarehouseTransferShipmentLine`
+        records (negative inventory events — stock leaving the source warehouse).
+        Includes movement type, quantity, FIFO layer link, unit/total cost, and product/warehouse
+        references for each movement. Used by the Movements tab on the shipment detail
+        page.
+      parameters:
+      - name: shipment
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The shipment identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (default 1)
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 25)
+        example: '25'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix with ''-'' for descending. Allowed: id, inventory_movement_date,
+          type, inventory_status, quantity, reference, created_at'
+      - name: filter[type]
+        in: query
+        schema:
+          type: string
+        description: Filter by inventory movement type (exact match)
+      - name: filter[inventory_status]
+        in: query
+        schema:
+          type: string
+        description: Filter by inventory status (exact match)
+      - name: filter[warehouse_id]
+        in: query
+        schema:
+          type: string
+        description: Filter by warehouse ID (exact match)
+      - name: filter[search]
+        in: query
+        schema:
+          type: string
+        description: Advanced search across ID, product SKU, product name, FIFO Layer
+          ID
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/v2/warehouse-transfers/receipts/{receipt}:
     get:
       tags:
@@ -62590,6 +62812,156 @@ paths:
         schema:
           type: string
         example: Bearer {{bearer-token}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}/quantity-preview:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Preview Receipt Line Quantity Change
+      description: 'Preview the implications of changing a warehouse transfer receipt
+        line quantity without persisting any changes.
+
+
+        Returns:
+
+        - `delta` — change vs. current quantity
+
+        - `requires_confirmation` — true if the user must confirm before saving
+
+        - `can_update` — false when blocking conditions exist
+
+        - `blocks.above_shipped` — true if the new quantity exceeds the parent shipment
+        line''s shipped quantity (minus other receipts against the same shipment line)
+
+        - `blocks.above_transfer_line` — true if the new quantity exceeds the parent
+        warehouse transfer line quantity (minus other receipts against the same shipment
+        line)
+
+        - `caps.shipped_quantity` — shipment line shipped quantity
+
+        - `caps.transfer_line_quantity` — warehouse transfer line quantity
+
+        - `caps.other_receipts_total` — total received on the same shipment line via
+        other receipts (excluding the line being edited)
+
+        - `caps.max_quantity` — minimum of `shipped - other_receipts_total` and `transfer_line
+        - other_receipts_total`
+
+        - `implications.shipment_quantity` — shipment line quantity is NOT mutated
+        by a receipt edit
+
+        - `implications.transfer_quantity` — warehouse transfer line quantity is NOT
+        mutated by a receipt edit
+
+        - `implications.in_transit_quantity` — recomputed in-transit at destination
+        after edit
+
+        - `inventory` — FIFO usage / redistribution preview (when decreasing)'
+      parameters:
+      - name: receipt
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The receipt identifier
+      - name: line
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The line identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: quantity
+        in: query
+        schema:
+          type: integer
+        description: Desired receipt line quantity (integer ≥ 0)
+        example: '8'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}:
+    patch:
+      tags:
+      - Adjustments & Transfers
+      summary: Update Receipt Line Quantity
+      description: 'Update a warehouse transfer receipt line''s quantity. The shipment
+        line and warehouse transfer line are NOT mutated by this edit — they remain
+        canonical intent.
+
+
+        Body fields:
+
+        - `quantity` (required, integer ≥ 0) — new receipt line quantity
+
+        - `confirmed_implications` (optional, boolean) — required when the preview
+        reports `requires_confirmation: true`
+
+        - `redistribute_usages` (optional, boolean) — required when reducing quantity
+        causes FIFO usage redistribution
+
+
+        Returns 409 with the preview payload when confirmation is required and not
+        yet provided.
+
+
+        Returns 422 with `blocks.above_shipped: true` when the new quantity exceeds
+        the shipment line shipped quantity (minus other receipts), and `blocks.above_transfer_line:
+        true` when it exceeds the warehouse transfer line quantity. The cap subtracts
+        the totals of OTHER receipt lines on the same shipment line, so concurrent
+        partial receipts each get their fair share.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                quantity: 8
+                confirmed_implications: true
+                redistribute_usages: false
+      parameters:
+      - name: receipt
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The receipt identifier
+      - name: line
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The line identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
       responses:
         '200':
           description: Successful response
@@ -62628,6 +63000,104 @@ paths:
         schema:
           type: string
         description: Search activity log entries
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/warehouse-transfers/receipts/{receipt}/inventory-movements:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Get Receipt Inventory Movements
+      description: Returns paginated inventory movements scoped to the given warehouse
+        transfer receipt. Includes movement type, quantity, FIFO layer link, unit/total
+        cost, and product/warehouse references for each movement. Used by the Movements
+        tab on the receipt detail page.
+      parameters:
+      - name: receipt
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The receipt identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (default 1)
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 25)
+        example: '25'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix with ''-'' for descending. Example: ''id'',
+          ''-created_at'', ''inventory_movement_date'''
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/v2/warehouse-transfers/receipts/{receipt}/fifo-layers:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Get Receipt FIFO Layers
+      description: Returns paginated FIFO layers created by the given warehouse transfer
+        receipt. Each layer includes original/available quantity, average unit cost,
+        total cost, polymorphic source link, and product/warehouse references. Used
+        by the FIFO Layers tab on the receipt detail page.
+      parameters:
+      - name: receipt
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The receipt identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (default 1)
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 25)
+        example: '25'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix with ''-'' for descending. Example: ''id'',
+          ''-created_at'', ''quantity'', ''available_quantity'''
       responses:
         '200':
           description: Successful response
