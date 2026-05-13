@@ -119,6 +119,10 @@ tags:
 - name: Bulk Operations
 - name: Notes
 - name: Invoice & Accounting
+- name: Vendor Deposits
+- name: Payments & Refunds
+- name: Applications
+- name: Attachments
 - name: Returns
 - name: Reports
 - name: Refunds
@@ -4186,7 +4190,36 @@ paths:
 
         - description (optional, string, max:500)
 
-        - is_default (optional, boolean)'
+        - is_default (optional, boolean)
+
+
+        Vendor Deposit Schedule (optional, array):
+
+        - vendor_deposit_schedule.*.label (optional, string)
+
+        - vendor_deposit_schedule.*.amount_mode (optional): percent | fixed
+
+        - vendor_deposit_schedule.*.percentage (numeric, 0-100)
+
+        - vendor_deposit_schedule.*.fixed_amount (optional, numeric)
+
+        - vendor_deposit_schedule.*.settlement_type (optional): vendor_deposit | final_invoice_balance
+
+        - vendor_deposit_schedule.*.trigger_event (required): one of the supported
+        trigger events including logistics_tracking_field
+
+        - vendor_deposit_schedule.*.offset_days (optional, integer, nullable)
+
+        - vendor_deposit_schedule.*.per_shipment (optional, boolean)
+
+        - vendor_deposit_schedule.*.shipment_date_basis (optional): dispatched | planned_etd
+        | actual_dispatched | received_at
+
+        - vendor_deposit_schedule.*.is_ownership_transfer (optional, boolean) — only
+        one line per schedule may be true
+
+        - vendor_deposit_schedule.*.logistics_tracking_field_id (optional, integer,
+        exists:logistics_tracking_fields,id) — REQUIRED when trigger_event is logistics_tracking_field'
       requestBody:
         content:
           application/json:
@@ -4272,7 +4305,9 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        All fields same as Create. Name uniqueness ignores the current record.'
+        All fields same as Create, including the optional vendor_deposit_schedule
+        array (with per-line logistics_tracking_field_id required when trigger_event
+        is logistics_tracking_field). Name uniqueness ignores the current record.'
       requestBody:
         content:
           application/json:
@@ -79813,7 +79848,7 @@ paths:
           description: Successful response
           content:
             application/json: {}
-  /api/purchase-order-shipments/receive:
+  /api/inbound-shipments/receive:
     post:
       tags:
       - Purchase Order Shipments
@@ -79910,7 +79945,7 @@ paths:
           description: Successful response
           content:
             application/json: {}
-  /api/purchase-order-shipments/receipts/{receipt}:
+  /api/inbound-shipments/receipts/{receipt}:
     put:
       tags:
       - Purchase Order Shipments
@@ -80352,7 +80387,12 @@ paths:
         - notes (optional): Freeform notes
 
         - lines (optional): Array of shipment lines — each line requires purchase_order_line_id
-        and expected_quantity'
+        and expected_quantity
+
+
+        **Logistics dates** (optional): `port_eta` and `warehouse_eta` are persisted
+        as `LogisticsTrackingFieldValue` rows (slugs `port-arrived` / `warehouse-arrival`)
+        and surfaced as flat fields on the response for backward compatibility.'
       requestBody:
         content:
           application/json:
@@ -80365,6 +80405,8 @@ paths:
                 tracking_number: null
                 shipping_method_id: 3
                 expected_arrival_date: '2025-05-15'
+                port_eta: '2025-05-08'
+                warehouse_eta: '2025-05-15'
                 notes: Priority shipment
                 lines:
                 - purchase_order_line_id: 55
@@ -80425,7 +80467,13 @@ paths:
         omit id to add new, omit line entirely to delete).
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Logistics dates** (optional): `port_eta` and `warehouse_eta` are routed
+        through `LogisticsTrackingFieldValue` rows. Pass them as part of the standard
+        PATCH/PUT payload — the controller persists them only when the keys are present
+        (use `null` to clear an existing value).'
       requestBody:
         content:
           application/json:
@@ -80436,6 +80484,8 @@ paths:
                 tracking_number: 1Z999AA10123456784
                 shipping_method_id: 2
                 expected_arrival_date: '2025-05-20'
+                port_eta: '2025-05-08'
+                warehouse_eta: '2025-05-20'
                 notes: Updated tracking info
                 lines:
                 - id: 101
@@ -83858,6 +83908,971 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/vendor-deposits:
+    get:
+      tags:
+      - Vendor Deposits
+      summary: List Vendor Deposits
+      description: Paginated list of vendor deposits. Supports Spatie QueryBuilder
+        filters and sorting.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: page
+        in: query
+        schema:
+          type: integer
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        example: '15'
+      - name: filter[search]
+        in: query
+        schema:
+          type: string
+        example: DEP-
+      - name: filter[supplier_id]
+        in: query
+        schema:
+          type: integer
+        example: '1'
+      - name: filter[status]
+        in: query
+        schema:
+          type: string
+        example: open
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Create Vendor Deposit
+      description: Create a new vendor deposit. Validated by CreateVendorDepositRequest.
+        Returns 201 with the created deposit.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                supplier_id: 1
+                purchase_order_id: null
+                currency_id: 1
+                currency_rate: 1
+                currency_id_tenant_snapshot: 1
+                amount: 500
+                amount_in_tenant_currency: 500
+                deposit_date: '2026-04-12'
+                due_date: '2026-05-12'
+                external_reference: WIRE-2026-0001
+                notes: 50% upfront deposit
+                tax_amount: 0
+                tax_amount_in_tenant_currency: 0
+                tax_lines: []
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}:
+    get:
+      tags:
+      - Vendor Deposits
+      summary: Show Vendor Deposit
+      description: Retrieve a single vendor deposit with its relations (supplier,
+        purchase order, payments, applications, refunds).
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    put:
+      tags:
+      - Vendor Deposits
+      summary: Update Vendor Deposit
+      description: Update a vendor deposit. All fields are optional (`sometimes`).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                amount: 600
+                deposit_date: '2026-04-12'
+                due_date: '2026-05-30'
+                external_reference: WIRE-2026-0001-REV
+                notes: Revised deposit amount
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Vendor Deposits
+      summary: Delete Vendor Deposit
+      description: Delete a vendor deposit. Returns 204 No Content.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/submit-for-approval:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Submit For Approval
+      description: Submit a draft deposit for approval.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/approve:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Approve Deposit
+      description: Approve a pending deposit.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/approve-only:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Approve Only
+      description: Approve a deposit without recording a payment. Status becomes APPROVED;
+        amount_paid is unchanged. Use this when payment will be recorded later via
+        /payments.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/reject:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Reject Deposit
+      description: Reject a pending deposit with an optional reason.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                reason: Incorrect supplier
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/cancel:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Cancel Deposit
+      description: Cancel a vendor deposit.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/write-off:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Write Off Deposit
+      description: Write off the remaining balance of a deposit with an optional reason.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                reason: Unrecoverable balance
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/duplicate:
+    post:
+      tags:
+      - Vendor Deposits
+      summary: Duplicate Deposit
+      description: Duplicate an existing deposit. Returns 201 with the new deposit.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/payments:
+    post:
+      tags:
+      - Payments & Refunds
+      summary: Record Payment
+      description: Record a payment against a vendor deposit. Validated by RecordVendorDepositPaymentRequest.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                amount_in_deposit_currency: 250
+                currency_rate: 1
+                payment_date: '2026-04-12'
+                payment_method_id: 1
+                external_reference: WIRE-REF-001
+                bank_account_id: null
+                paid_externally: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/refunds:
+    post:
+      tags:
+      - Payments & Refunds
+      summary: Refund Deposit
+      description: Refund an amount from a vendor deposit. Validated by RefundVendorDepositRequest.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                amount_in_deposit_currency: 100
+                currency_rate: 1
+                refund_date: '2026-04-12'
+                reason: Partial refund — PO cancelled
+                external_reference: RFD-0001
+                notes: Returned via bank transfer
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/applications:
+    post:
+      tags:
+      - Applications
+      summary: Apply To Purchase Invoices
+      description: Apply deposit balance to one or more purchase invoices. Validated
+        by ApplyVendorDepositRequest.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                applications:
+                - purchase_invoice_id: 1
+                  amount_in_deposit_currency: 150
+                - purchase_invoice_id: 2
+                  amount_in_deposit_currency: 75.5
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposit-applications/{applicationId}:
+    delete:
+      tags:
+      - Applications
+      summary: Unapply Application
+      description: Unapply (reverse) a previously applied deposit application. Returns
+        204 No Content.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: applicationId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/attachments:
+    get:
+      tags:
+      - Attachments
+      summary: List Attachments
+      description: List all attachments on a vendor deposit.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+      - Attachments
+      summary: Upload Attachment
+      description: Upload an attachment (multipart/form-data). Max size 10 MB. Optional
+        description (<=500 chars).
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/attachments/{attachmentId}:
+    get:
+      tags:
+      - Attachments
+      summary: Download Attachment
+      description: Download the original attachment file.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/octet-stream
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: attachmentId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+      - Attachments
+      summary: Delete Attachment
+      description: Delete an attachment. Returns 204 No Content.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: attachmentId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/aging-report:
+    get:
+      tags:
+      - Reporting
+      summary: Aging Report
+      description: Aging report bucketed by current / 1-30 / 31-60 / 61-90 / over_90
+        days. Returns totals and deposit details per bucket.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: supplier_id
+        in: query
+        schema:
+          type: integer
+        description: Optional — filter by supplier
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/summary-stats:
+    get:
+      tags:
+      - Reporting
+      summary: Summary Stats
+      description: Aggregate KPI stats across all deposits (totals by status, available
+        balance, etc.).
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/supplier-statement/{supplierId}:
+    get:
+      tags:
+      - Reporting
+      summary: Supplier Statement
+      description: All deposits for a specific supplier with totals (amount, paid,
+        applied, refunded, available).
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: supplierId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/{vendorDepositId}/activity-log:
+    get:
+      tags:
+      - Reporting
+      summary: Activity Log
+      description: Paginated activity log (Spatie Activitylog) for a vendor deposit.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        example: '15'
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/bulk-archive:
+    post:
+      tags:
+      - Bulk Operations
+      summary: Bulk Archive
+      description: Archive multiple deposits by id.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/bulk-unarchive:
+    post:
+      tags:
+      - Bulk Operations
+      summary: Bulk Unarchive
+      description: Unarchive multiple deposits by id.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/vendor-deposits/bulk-delete:
+    post:
+      tags:
+      - Bulk Operations
+      summary: Bulk Delete
+      description: Hard-delete multiple deposits by id. Returns a message with the
+        delete count.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{apiToken}}
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/walmart/dashboard:
     get:
       tags:
@@ -84925,6 +85940,10 @@ x-tagGroups:
   - Bulk Operations
   - Notes
   - Invoice & Accounting
+  - Vendor Deposits
+  - Payments & Refunds
+  - Applications
+  - Attachments
   - Returns
   - Reports
   - Refunds
