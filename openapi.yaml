@@ -81977,7 +81977,14 @@ paths:
         \ a candidate PO has `can_attach_document: true`, the frontend should offer\
         \ the user the option to attach the OCR'd PDF to the existing invoice via\
         \ POST `/api/purchase-invoices/ocr/{extraction}/attach-to-invoice` instead\
-        \ of creating a new invoice."
+        \ of creating a new invoice.\n\n**Existing-invoice fields (`existing_invoice_id`,\
+        \ `existing_invoice_number`, `existing_invoice_has_document`, `can_attach_document`):**\
+        \ These are populated ONLY when the OCR'd `supplier_invoice_number` matches\
+        \ an existing invoice on that PO (case-insensitive, trimmed comparison). For\
+        \ partial-invoice scenarios where a single PO has multiple invoices with different\
+        \ supplier_invoice_numbers, the candidate PO returns `null` for these fields\
+        \ when no invoice matches the OCR'd number — allowing a new invoice to be\
+        \ created instead of triggering a false \"already invoiced\" warning."
       parameters:
       - name: Accept
         in: header
@@ -82063,26 +82070,32 @@ paths:
         | invoice_number | string | yes | Max 255 chars. |\n| invoice_date | date\
         \ | yes | |\n| due_date | date | no | |\n| lines | array | required_without:cost_lines\
         \ | Product lines. |\n| lines[].description | string | no | |\n| lines[].qty\
-        \ | numeric | yes | Min 0. |\n| lines[].unit_price | numeric | yes | Min 0.\
-        \ |\n| lines[].purchase_order_line_id | integer | no | Must exist in `purchase_order_lines`.\
-        \ |\n| lines[].ignored | boolean | no | Skip persisting this line. |\n| cost_lines\
-        \ | array | no | Non-product COST FinancialLines. |\n| cost_lines[].financial_line_type_id\
-        \ | integer | yes (per cost line) | Must exist in `financial_line_types` and\
-        \ be COST classification. |\n| cost_lines[].description | string | no | Max\
-        \ 500 chars. |\n| cost_lines[].quantity | numeric | yes (per cost line) |\
-        \ Min 0. |\n| cost_lines[].amount | numeric | yes (per cost line) | Min 0.\
-        \ Per-line amount (not total). |\n| remember_mappings | boolean | no | When\
-        \ `true`, upserts `(supplier_id, description) → financial_line_type_id` mappings\
-        \ into `supplier_description_mappings` so future OCR imports auto-tag matching\
-        \ descriptions as cost lines (Tier 0 match). |\n\n**Response 201:**\n```json\n\
-        {\n  \"data\": {\n    \"purchase_invoice_id\": 312,\n    \"extraction_id\"\
-        : 7\n  },\n  \"message\": \"Purchase invoice created from OCR extraction.\"\
-        \n}\n```\n\n**Response 422 — wrong status (e.g. `confirmed` or `failed`):**\n\
-        ```json\n{ \"message\": \"Only extractions pending review can be used to create\
-        \ an invoice.\" }\n```\n\n**Response 422 — validation failure (no lines or\
-        \ cost lines):**\n```json\n{\n  \"message\": \"The lines field is required\
-        \ when cost lines is not present.\",\n  \"errors\": { \"lines\": [\"The lines\
-        \ field is required when cost lines is not present.\"] }\n}\n```"
+        \ | numeric | yes | Negative values are accepted (e.g. PO-level discount rows\
+        \ surfaced as standalone negative lines). The manager filters out `ignored:\
+        \ true` and `match_status: discount_confirmation` lines before persisting.\
+        \ |\n| lines[].unit_price | numeric | yes | Negative values are accepted (e.g.\
+        \ PO-level discount rows surfaced as standalone negative lines). The manager\
+        \ filters out `ignored: true` and `match_status: discount_confirmation` lines\
+        \ before persisting. |\n| lines[].purchase_order_line_id | integer | no |\
+        \ Must exist in `purchase_order_lines`. |\n| lines[].ignored | boolean | no\
+        \ | Skip persisting this line. |\n| cost_lines | array | no | Non-product\
+        \ COST FinancialLines. |\n| cost_lines[].financial_line_type_id | integer\
+        \ | yes (per cost line) | Must exist in `financial_line_types` and be COST\
+        \ classification. |\n| cost_lines[].description | string | no | Max 500 chars.\
+        \ |\n| cost_lines[].quantity | numeric | yes (per cost line) | Min 0. |\n\
+        | cost_lines[].amount | numeric | yes (per cost line) | Min 0. Per-line amount\
+        \ (not total). |\n| remember_mappings | boolean | no | When `true`, upserts\
+        \ `(supplier_id, description) → financial_line_type_id` mappings into `supplier_description_mappings`\
+        \ so future OCR imports auto-tag matching descriptions as cost lines (Tier\
+        \ 0 match). |\n\n**Response 201:**\n```json\n{\n  \"data\": {\n    \"purchase_invoice_id\"\
+        : 312,\n    \"extraction_id\": 7\n  },\n  \"message\": \"Purchase invoice\
+        \ created from OCR extraction.\"\n}\n```\n\n**Response 422 — wrong status\
+        \ (e.g. `confirmed` or `failed`):**\n```json\n{ \"message\": \"Only extractions\
+        \ pending review can be used to create an invoice.\" }\n```\n\n**Response\
+        \ 422 — validation failure (no lines or cost lines):**\n```json\n{\n  \"message\"\
+        : \"The lines field is required when cost lines is not present.\",\n  \"errors\"\
+        : { \"lines\": [\"The lines field is required when cost lines is not present.\"\
+        ] }\n}\n```"
       requestBody:
         content:
           application/json:
