@@ -53272,7 +53272,11 @@ paths:
         Dimension units: cm, in, mm, ft
 
 
-        For bundle/kit products, include components[] with id and quantity.
+        For bundle/kit products, `components[]` is **required** and must contain at
+        least one component (each entry has `id` and `quantity`). Saving a bundle
+        or kit with an empty `components` array (or without providing one when creating,
+        or when changing type to bundle/kit) returns a 422 validation error on the
+        `components` field.
 
         For matrix products (parent), include variations[] with sku and attributes.
 
@@ -53452,6 +53456,16 @@ paths:
 
 
         Returns 422 if product type change is invalid.
+
+
+        **Bundle / Kit components:** When the resulting product type is `bundle` or
+        `kit`, `components[]` must be present and non-empty. This applies whether
+        you are (a) changing the type from `standard` → `bundle|kit`, (b) updating
+        an existing bundle/kit that currently has no components, or (c) sending an
+        empty `components: []` payload (which would otherwise wipe components). Returns
+        a 422 validation error on the `components` field in these cases. Updates that
+        don''t touch `components` on a bundle/kit which already has components are
+        unaffected.
 
 
         **Note (pricing tiers):** When sending `suppliers[].pricing[]` entries with
@@ -56362,7 +56376,14 @@ paths:
       description: "Batch convert standard products to bundle/kit types.\n\nAuthentication:\
         \ Requires Bearer token.\n\nFields:\n- products (required, array, min 1):\
         \ Products to convert\n  - id (required, integer): Product ID\n  - type (required,\
-        \ string): Target type — bundle, kit, or standard"
+        \ string): Target type — bundle, kit, or standard\n\n**Skip rules — returned\
+        \ in `data.skipped[]`:**\n- Converting to `bundle` when the source product\
+        \ has prior sale/assembly inventory movements (cannot become a bundle once\
+        \ it has movement history).\n- Converting to `bundle` or `kit` when the source\
+        \ product has zero components (you must add components before promoting it).\n\
+        \nThe response payload includes `data.converted_count` for successful conversions\
+        \ and `data.skipped[]` for entries that were silently skipped, each with `id`,\
+        \ `sku`, and a human-readable `reason`."
       requestBody:
         content:
           application/json:
@@ -56459,9 +56480,11 @@ paths:
       summary: Save Bundle Components
       description: "Save/sync components for a bundle/kit. Replaces all existing components.\n\
         \nAuthentication: Requires Bearer token.\n\nFields:\n- components (required,\
-        \ array): Component list\n  - id (required, integer): Component product ID\n\
-        \  - quantity (required, numeric, min 1): Quantity of this component in the\
-        \ bundle"
+        \ array, **min 1 entry**): Component list. Empty arrays are rejected — a bundle/kit\
+        \ must always have at least one component.\n  - id (required, integer): Component\
+        \ product ID\n  - quantity (required, numeric, min 1): Quantity of this component\
+        \ in the bundle\n\nReturns a 422 validation error if `components` is empty\
+        \ or missing."
       requestBody:
         content:
           application/json:
@@ -56545,7 +56568,13 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Only bundle or kit products can have their type changed via this endpoint.'
+        Only bundle or kit products can have their type changed via this endpoint.
+
+
+        **Component requirement:** Converting to `bundle` or `kit` requires the product
+        to already have at least one component. Returns a 422 with `Cannot convert
+        to a bundle or kit without at least one component. Add components first.`
+        when the source product has zero components.'
       requestBody:
         content:
           application/json:
