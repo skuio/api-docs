@@ -19655,11 +19655,12 @@ paths:
         description: 0 = active variants only (default), 1 = archived only. Omit to
           include both.
         example: '0'
-      - name: filter[mapped]
+      - name: filter[mapped.is]
         in: query
         schema:
           type: string
         description: 1 = only variants linked to a sku.io product. 0 = only unmapped.
+          Operator suffix (`.is`) matches the advanced-filter checkbox convention.
       - name: filter[search]
         in: query
         schema:
@@ -19676,11 +19677,12 @@ paths:
           type: string
         description: Faire taxonomy product_type (e.g. "Bar Tool"). Powered by the
           filter-options endpoint.
-      - name: filter[has_sku]
+      - name: filter[has_sku.is]
         in: query
         schema:
           type: string
-        description: 1 = variants with a Faire SKU. 0 = variants missing a SKU.
+        description: 1 = variants with a Faire SKU. 0 = variants missing a SKU. Operator
+          suffix (`.is`) matches the advanced-filter checkbox convention.
       - name: filter[date_from]
         in: query
         schema:
@@ -20683,45 +20685,60 @@ paths:
     post:
       tags:
       - Webhooks
-      summary: Webhook - Inventory Quantity Updated
-      description: 'Webhook endpoint called by Faire when inventory quantity is updated
-        on the Faire side.
+      summary: Receive Faire Webhook
+      description: 'Single webhook endpoint that receives every Faire event. Faire
+        identifies the event via the `X-Faire-Webhook-Topic` header — the request
+        body shape varies by topic.
 
 
-        **This endpoint does NOT require authentication.**
+        **Authentication:** none — Faire calls this endpoint directly. The `X-Faire-Brand-Token`
+        header identifies the integration instance.
 
 
-        **Required Headers:**
+        **Required headers:**
 
-        - `X-Faire-Webhook-Topic` - Must be `INVENTORY_QUANTITY_UPDATED`
+        - `X-Faire-Webhook-Topic` — one of `ORDER_CREATED`, `ORDER_UPDATED`, `INVENTORY_QUANTITY_UPDATED`
+        (Faire also accepts `X-Faire-Topic`)
 
-        - `X-Faire-Brand-Token` - Brand token for the integration instance
-
-
-        **Response:**
-
-        Always returns `{"ok": true}` on success.
+        - `X-Faire-Brand-Token` — brand token used to look up the integration instance
 
 
-        **Tenant attribution (multi-instance safety):**
+        **Supported topics:**
 
-        `X-Faire-Brand-Token` is REQUIRED to identify which integration instance the
-        event belongs to. When the header is missing OR no FaireIntegrationInstance
-        matches the provided brand token, the endpoint logs a warning and returns
-        200 OK (`{"ok": true}`) WITHOUT storing the event (Faire retries non-2xx responses,
-        so we deliberately ack to drain their queue but do not create a `FaireWebhookEvent`
-        row that would be attributed to the wrong tenant).
+        - `ORDER_CREATED` — new order placed; full order payload (default body shown
+        here)
 
-        '
+        - `ORDER_UPDATED` — order state change, shipments added, etc.
+
+        - `INVENTORY_QUANTITY_UPDATED` — variant-level inventory update from Faire
+
+
+        Use the saved examples below to see each event''s payload shape.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                product_id: p_xyz456abc
-                variant_id: pv_var001
-                quantity: 95
+                id: bo_abc123xyz
+                display_id: FO-0001
+                retailer:
+                  id: b_xyz789
+                  name: The Boutique Shop
+                  state: CA
+                  country_code: US
+                items:
+                - id: bi_item001
+                  product_id: p_xyz456abc
+                  variant_id: pv_var001
+                  sku: CANDLE-SM-RED
+                  quantity: 10
+                  unit_price: 1500
+                subtotal: 15000
+                total: 15000
+                currency_code: USD
+                created_at: '2026-04-20T08:30:00Z'
+                state: NEW
       parameters:
       - name: Content-Type
         in: header
@@ -20732,11 +20749,13 @@ paths:
         in: header
         schema:
           type: string
-        example: INVENTORY_QUANTITY_UPDATED
+        description: Faire webhook topic header
+        example: ORDER_CREATED
       - name: X-Faire-Brand-Token
         in: header
         schema:
           type: string
+        description: Faire brand token to identify the integration instance
         example: your_faire_brand_token
       responses:
         '200':
