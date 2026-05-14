@@ -76876,6 +76876,115 @@ paths:
           description: Successful response
           content:
             application/json: {}
+  /api/purchase-order-lines/{purchase_order_line}/short-close:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Short-Close PO Line
+      description: 'Short-close a PO line at a smaller `closed_quantity` than originally
+        ordered. Records an audit event (PurchaseOrderLineShortCloseEvent) and mutates
+        the line''s `quantity` to the new effective ordered amount. The line''s own
+        `save()` propagates the change into demand-planning coverages.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body fields:
+
+        - `closed_quantity` (required, numeric, min 0): the new effective ordered
+        quantity. Must be less than the original ordered quantity AND greater than
+        or equal to the already-received quantity.
+
+        - `reason` (optional, nullable, max 500): free-text reason for the short-close,
+        recorded on the event.
+
+
+        Validation rules (422):
+
+        - A PO line can only have one active short-close at a time — undo the existing
+        one first.
+
+        - `closed_quantity` must be less than the original ordered quantity.
+
+        - `closed_quantity` cannot be less than the already-received quantity.
+
+
+        Returns the created PurchaseOrderLineShortCloseEvent (eager-loaded with `closedBy`
+        and `followUpPurchaseOrder`).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                closed_quantity: 89
+                reason: Supplier short-shipped; closing line at received qty and creating
+                  a follow-up PO.
+      parameters:
+      - name: purchase_order_line
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchase_order_line identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-order-line-short-close-events/{short_close_event}:
+    delete:
+      tags:
+      - Purchase Orders
+      summary: Undo Short-Close
+      description: 'Reverse a prior short-close event, restoring the PO line''s original
+        ordered quantity.
+
+
+        Authentication: Requires Bearer token.
+
+
+        The event is marked as undone (with `undone_at` / `undone_by`) rather than
+        deleted, preserving the audit trail. The associated PurchaseOrderLine''s `quantity`
+        is restored to its `original_quantity` from the event.
+
+
+        Validation errors (422):
+
+        - The event must currently be active. Re-reversing an already-undone event
+        is rejected.
+
+
+        Returns the updated PurchaseOrderLineShortCloseEvent (now with `is_active:
+        false`, eager-loaded with `closedBy`, `undoneBy`, and `followUpPurchaseOrder`).'
+      parameters:
+      - name: short_close_event
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The short_close_event identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
   /api/purchase-orders/{purchase_order}/receipts:
     get:
       tags:
@@ -78899,6 +79008,134 @@ paths:
           type: string
         description: The purchaseInvoice identifier
       - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/{purchaseInvoice}/variance-resolution-preview:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Variance Resolution Preview
+      description: 'Preview over-billed quantities per PO line so the UI can prefill
+        a ''Resolve with vendor credit'' dialog.
+
+
+        Authentication: Requires Bearer token.
+
+
+        A line is considered over-billed when its effective invoiced quantity (quantity_invoiced
+        minus quantity already credited on this bill via existing vendor credit allocations)
+        exceeds the PO line''s effective received quantity. Receipt sources match
+        `PurchaseOrderLine::getEffectiveReceivedQuantity()` (standard warehouse receipts,
+        FBA/AWD ledgers, accounting for any active short-close event).
+
+
+        The suggested credit quantity is exactly the over-bill delta. The suggested
+        credit amount is `over_billed * unit_price` (invoice unit price, falling back
+        to PO amount).
+
+
+        Response fields:
+
+        - `invoice_id`, `purchase_order_id`, `supplier_id`, `currency_id`, `currency_code`
+
+        - `has_over_bills`: true if any line has over-billed quantity
+
+        - `total_suggested_credit`: sum of `suggested_credit_amount` across over-billed
+        lines
+
+        - `lines[]`: only includes lines with over-billed quantity. Each line has
+        `purchase_invoice_line_id`, `purchase_order_line_id`, `product_id`, `sku`,
+        `product_name`, `quantity_invoiced`, `received_quantity`, `already_credited`,
+        `over_billed_quantity`, `suggested_credit_quantity`, `unit_price`, `suggested_credit_amount`.'
+      parameters:
+      - name: purchaseInvoice
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchaseInvoice identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /api/purchase-invoices/{purchaseInvoice}/resolve-with-credit:
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Resolve with Vendor Credit
+      description: 'Resolve an over-billed purchase invoice by issuing a vendor credit
+        for the over-billed quantities and auto-allocating it against the bill.
+
+
+        Authentication: Requires Bearer token.
+
+
+        The credit is created in `open` status with `restock_inventory=false` (it''s
+        a billing correction, not a physical return). After the credit is allocated,
+        the invoice''s approval status is re-evaluated so the variance flag clears
+        automatically when the credit fully offsets the over-bill.
+
+
+        Request body fields:
+
+        - `lines` (required, min 1): array of `{ purchase_order_line_id, quantity
+        }`. Each `quantity` must be > 0 and ≤ the over-billed quantity for that PO
+        line.
+
+        - `credit_date` (optional, nullable, date): defaults to today.
+
+        - `supplier_reference` (optional, nullable, max 255): defaults to the invoice''s
+        `supplier_invoice_number`.
+
+        - `reason` (optional, nullable, max 2000): copied into the vendor credit''s
+        note.
+
+
+        Validation errors return 422 with a `message` for: invoice not linked to a
+        PO, PO line not on this invoice, PO line not on this invoice''s PO, requested
+        quantity exceeds over-billed delta, or no over-billed quantities provided.
+
+
+        Returns the newly created VendorCredit (eager-loaded with supplier, currency,
+        lines, and allocations).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                lines:
+                - purchase_order_line_id: 101
+                  quantity: 2
+                credit_date: '2026-05-14'
+                supplier_reference: N26A038
+                reason: Short-shipped 2 units against billed quantity.
+      parameters:
+      - name: purchaseInvoice
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The purchaseInvoice identifier
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
         in: header
         schema:
           type: string
