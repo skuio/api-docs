@@ -81637,6 +81637,12 @@ paths:
         - `source_body_text`, `source_body_html` — set when `source` is `email_body`.
         The frontend renders these in a body preview pane instead of the PDF viewer.
 
+        - `sales_order_id` — the linked sales order created from this extraction (set
+        when `status` is `confirmed`). When the linked sales order is later deleted,
+        the FK `nullOnDelete()` clears this field, leaving the extraction in an "orphaned
+        confirmed" state which the rescan/delete/clone-from/reclassify guards treat
+        as unlocked (see those endpoints'' descriptions).
+
         - `clone_of_sales_order_id` — set when this extraction was cloned from a prior
         sales order (via the LLM `clone_last_order` flag, or manually via the Clone
         Lines from Sales Order endpoint).
@@ -81688,9 +81694,14 @@ paths:
       tags:
       - Sales Order OCR
       summary: Delete OCR Extraction
-      description: Delete an OCR extraction record and its associated uploaded PDF.
+      description: 'Delete an OCR extraction record and its associated uploaded PDF.
         Use this to discard an extraction that will not be converted to a sales order.
-        Confirmed extractions cannot be deleted (returns 422).
+
+
+        Returns 422 if the extraction is *locked confirmed* — i.e. `status=''confirmed''`
+        AND `sales_order_id` is non-null. Orphaned confirmed extractions (linked sales
+        order was deleted, `sales_order_id` is null via FK `nullOnDelete()`) are treated
+        as unlocked and *can* be deleted.'
       parameters:
       - name: Accept
         in: header
@@ -81832,7 +81843,11 @@ paths:
 
         Errors:
 
-        - 422 — Confirmed extractions cannot be modified.
+        - 422 — Confirmed extractions cannot be modified (only when the extraction
+        is *locked*: `status=''confirmed''` AND `sales_order_id` is non-null. Orphaned
+        confirmed extractions — where the linked sales order was deleted and the FK
+        `nullOnDelete()` cleared `sales_order_id` — are treated as unlocked and *can*
+        be re-cloned).
 
         - 422 — Source order belongs to a different customer than the extraction.
 
@@ -81883,6 +81898,12 @@ paths:
         the new extraction ID, preserving an audit trail.
 
 
+        Returns 422 if the extraction is *locked confirmed* — i.e. `status=''confirmed''`
+        AND `sales_order_id` is non-null. Orphaned confirmed extractions (linked sales
+        order was deleted, `sales_order_id` is null) are treated as unlocked and *can*
+        be reclassified.
+
+
         Response:
 
         ```json
@@ -81922,8 +81943,11 @@ paths:
         \ the OCR job. Useful when the extraction failed initially (status='failed')\
         \ or when the matching/parsing logic has improved and the user wants to re-derive\
         \ the extracted data from the original PDF or email body.\n\nReturns 422 if:\n\
-        - Extraction status is 'confirmed' (already used to create a sales order —\
-        \ cannot be re-scanned)\n- Both file_path and source_body_text are null (no\
+        - Extraction is *locked confirmed* — i.e. `status='confirmed'` AND `sales_order_id`\
+        \ is non-null (already used to create a sales order that still exists — cannot\
+        \ be re-scanned). Orphaned confirmed extractions (linked sales order deleted,\
+        \ `sales_order_id` null via FK `nullOnDelete()`) are treated as unlocked and\
+        \ *can* be re-scanned.\n- Both file_path and source_body_text are null (no\
         \ source content to re-scan)\n\nResponse 200:\n```json\n{\n  \"data\": {\n\
         \    \"extraction_id\": 7,\n    \"tracked_job_log_id\": 1234,\n    \"status\"\
         : \"processing\"\n  },\n  \"message\": \"Re-scan started\"\n}\n```\n\nThe\
