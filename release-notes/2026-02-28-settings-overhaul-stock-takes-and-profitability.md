@@ -268,19 +268,13 @@ pass.
 
 **✨ What this means for you:**
 
-- A new **Sales channel fulfillment out-of-sync** flag (the renamed,
-  more accurate version of `sales_channel_fulfilled`) marks every
+- A new **Sales channel fulfillment out-of-sync** flag marks every
   sales-order line where Shopify and SKU disagree on fulfillment
   state. Once historical sync succeeds the flag is cleared
-  automatically. There's also a **Sales Order DataTable scope filter**
-  so you can find every order that has out-of-sync lines, an amber
-  warning icon in the order editor, and a new
-  **Recalculate Fulfillment Status** action to force a refresh.
-- An artisan command `shopify:resolve-fulfilled-backorders` detects
-  and resolves backorders that were created in error for orders that
-  were already fulfilled at import time. Supports `--dry-run`,
-  `--force`, and an interactive backfill option; reverses FIFO
-  allocations and re-dispatches the right Shopify sync jobs.
+  automatically. There's also a sales-order scope filter so you can
+  find every order that has out-of-sync lines, an amber warning icon
+  in the order editor, and a new **Recalculate Fulfillment Status**
+  action to force a refresh.
 - The historical Shopify orders import now correctly **skips
   backorder creation** when an order arrives already fulfilled —
   preventing the long-standing issue of phantom backorders on
