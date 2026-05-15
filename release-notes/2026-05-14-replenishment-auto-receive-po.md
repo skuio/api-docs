@@ -2,7 +2,7 @@
 title: "Auto-receive POs from replenishment schedules"
 description: "Enable auto-receive on a forecast schedule and every PO it creates is automatically marked received — porting the legacy supplier-level behavior into the new scheduler."
 authors: [product-team]
-tags: [feature, new, purchasing, inventory]
+tags: [minor-feature, new, purchasing, inventory]
 date: 2026-05-14
 ---
 

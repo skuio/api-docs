@@ -2,7 +2,7 @@
 title: "Pin your default forecast configuration and preview reruns"
 description: "Star a saved demand-planning configuration to load it automatically, and rerun any past forecast in a non-destructive Preview mode."
 authors: [product-team]
-tags: [feature, improved, inventory]
+tags: [minor-feature, improved, inventory]
 date: 2026-05-12
 ---
 

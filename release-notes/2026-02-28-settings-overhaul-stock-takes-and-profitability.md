@@ -2,7 +2,7 @@
 title: Settings overhaul, Stock Take rewrite, Profitability report, and per-store PDF templates
 description: A full settings refactor with server-side datatables and advanced filters, a brand-new Vue 3 Stock Take workflow with reconciliation and barcode scanning, a Profitability report with FIFO drilldown, per-store packing-slip and PDF templates, plus a deep wave of Amazon, Shopify, and Veracore improvements.
 authors: [product-team]
-tags: [improved, inventory, integrations, fulfillment, purchasing, reporting]
+tags: [major-feature, improved, inventory, integrations, fulfillment, purchasing, reporting]
 date: 2026-02-28
 ---
 

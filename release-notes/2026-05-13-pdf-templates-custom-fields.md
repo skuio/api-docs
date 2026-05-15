@@ -2,7 +2,7 @@
 title: "Custom fields now usable in PDF templates"
 description: "Insert any custom field into purchase order, sales order, and other PDF templates from the variable picker — and see them render correctly in preview."
 authors: [product-team]
-tags: [feature, improved, purchasing, orders]
+tags: [minor-feature, improved, purchasing, orders]
 date: 2026-05-13
 ---
 

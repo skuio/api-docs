@@ -61,13 +61,19 @@ module.exports = function releaseNotesTreePlugin(context, options) {
             : `${fy}-${fmo}-${fd}`;
         const [y, mo, d] = date.split("-");
 
-        // tags front matter is a flow-sequence string, e.g. "[feature, new]".
+        // tags front matter is a flow-sequence string, e.g. "[minor-feature, new]".
         const tags = (fm.tags || "")
           .replace(/^\[|\]$/g, "")
           .split(",")
           .map((t) => t.trim().toLowerCase())
           .filter(Boolean);
-        const kind = tags.includes("roundup") ? "roundup" : "feature";
+        // Kind drives the Major / Minor / Fixes toggle. A post with no
+        // explicit kind tag is treated as a minor feature.
+        const kind = tags.includes("roundup")
+          ? "roundup"
+          : tags.includes("major-feature")
+            ? "major-feature"
+            : "minor-feature";
 
         posts.push({
           title: fm.title || slugPart.replace(/-/g, " "),

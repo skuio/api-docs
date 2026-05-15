@@ -2,7 +2,7 @@
 title: COGS rebuild now batched with failed-product visibility, plus a new Purchase Invoices page
 description: A faster batched COGS rebuild with a Failed Products panel in COGS Health, a new Purchase Invoices list under Orders, Shopify tracking that no longer misses already-fulfilled orders, automatic country inference for unknown Amazon fulfillment centers, and a long list of background-job reliability fixes.
 authors: [product-team]
-tags: [improved, inventory, purchasing, orders, integrations]
+tags: [major-feature, improved, inventory, purchasing, orders, integrations]
 date: 2025-12-30
 ---
 

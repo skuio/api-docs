@@ -5,9 +5,9 @@ import { useLocation } from "@docusaurus/router";
 import { usePluginData } from "@docusaurus/useGlobalData";
 import styles from "./styles.module.css";
 
-type Kind = "feature" | "roundup";
+type Kind = "major-feature" | "minor-feature" | "roundup";
 type Post = { title: string; date: string; permalink: string; kind: Kind };
-type View = "all" | "feature" | "roundup";
+type View = "all" | Kind;
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -96,8 +96,11 @@ function viewFromPath(pathname: string): View {
   if (/\/release-notes\/tags\/roundup(\/|$)/.test(pathname)) {
     return "roundup";
   }
-  if (/\/release-notes\/tags\/feature(\/|$)/.test(pathname)) {
-    return "feature";
+  if (/\/release-notes\/tags\/major-feature(\/|$)/.test(pathname)) {
+    return "major-feature";
+  }
+  if (/\/release-notes\/tags\/minor-feature(\/|$)/.test(pathname)) {
+    return "minor-feature";
   }
   return "all";
 }
@@ -106,10 +109,16 @@ function ViewToggle({ view }: { view: View }): ReactNode {
   const segments: { key: View; label: string; title: string; to: string }[] = [
     { key: "all", label: "All", title: "All release notes", to: "/release-notes" },
     {
-      key: "feature",
-      label: "Features",
-      title: "Feature releases",
-      to: "/release-notes/tags/feature",
+      key: "major-feature",
+      label: "Major",
+      title: "Major feature releases",
+      to: "/release-notes/tags/major-feature",
+    },
+    {
+      key: "minor-feature",
+      label: "Minor",
+      title: "Minor feature releases",
+      to: "/release-notes/tags/minor-feature",
     },
     {
       key: "roundup",
@@ -260,6 +269,8 @@ export default function ReleaseNotesTree(): ReactNode {
                               >
                                 <span
                                   className={clsx(styles.kindDot, {
+                                    [styles.kindMajor]:
+                                      post.kind === "major-feature",
                                     [styles.kindRoundup]:
                                       post.kind === "roundup",
                                   })}

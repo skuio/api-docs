@@ -2,7 +2,7 @@
 title: "Datatable exports now show \"filtered of total\" counts"
 description: "Every exportable datatable now tells you how many rows your current filters match versus the total in scope, so you know exactly what your export will contain."
 authors: [product-team]
-tags: [feature, improved, orders, purchasing, inventory, accounting, reporting]
+tags: [minor-feature, improved, orders, purchasing, inventory, accounting, reporting]
 date: 2026-05-13
 ---
 

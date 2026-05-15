@@ -2,7 +2,7 @@
 title: "Pick the currency on vendor credits — with smart defaults and safety locks"
 description: "Vendor credits now default to the linked PO's currency, lock once allocations or payments are recorded, and surface a sensible fallback for unlinked credits."
 authors: [product-team]
-tags: [feature, improved, purchasing]
+tags: [minor-feature, improved, purchasing]
 date: 2026-05-13
 ---
 

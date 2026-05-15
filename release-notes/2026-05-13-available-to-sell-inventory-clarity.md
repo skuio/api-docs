@@ -2,7 +2,7 @@
 title: "Available to Sell — a clearer picture of your real sellable position"
 description: "A new Available to Sell metric (Available minus active backorders) plus consistent On Hand, Total Inventory, and Available terminology across products, reports, and demand planning."
 authors: [product-team]
-tags: [feature, new, inventory, reporting]
+tags: [minor-feature, new, inventory, reporting]
 date: 2026-05-13
 ---
 

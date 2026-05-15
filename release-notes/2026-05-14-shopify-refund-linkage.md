@@ -2,7 +2,7 @@
 title: "Shopify refunds — authoritative linkage, split-tender support, and historical backfill"
 description: "Refund transactions now persist a direct foreign key to the refund they belong to, split-tender refunds pair correctly, and legacy SalesCredits with missing payment rows can be repaired in place."
 authors: [product-team]
-tags: [feature, improved, integrations, accounting]
+tags: [minor-feature, improved, integrations, accounting]
 date: 2026-05-14
 ---
 

@@ -2,7 +2,7 @@
 title: Amazon Inventory & Valuation overhaul, Stock Holds workspace, and Profitability drilldown upgrades
 description: A new Inventory & Valuation section for every Amazon FBA integration, real-time FIFO-based valuation, the foundation for the new allocation system with a dedicated Stock Holds workspace, deeper Profitability drilldowns, and a wave of Shopify, Veracore, Walmart, and PO reliability fixes.
 authors: [product-team]
-tags: [improved, inventory, integrations, reporting, fulfillment, purchasing]
+tags: [major-feature, improved, inventory, integrations, reporting, fulfillment, purchasing]
 date: 2026-03-31
 ---
 

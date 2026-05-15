@@ -2,7 +2,7 @@
 title: "Customer PO OCR now handles forwarded emails — and falls back smarter"
 description: "Forwarded customer POs bind to the real sender, not the forwarder, and order date and unit price now have sensible fallback chains."
 authors: [product-team]
-tags: [feature, improved, orders]
+tags: [minor-feature, improved, orders]
 date: 2026-05-14
 ---
 

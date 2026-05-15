@@ -2,7 +2,7 @@
 title: "Shopify Loop Returns exchanges now reconcile to the source credit"
 description: "Loop Returns EXC orders are explicitly funded by the sales credit they came from — with a Funded by Credit banner, a per-credit Payments breakdown, and clean QBO/Xero sync."
 authors: [product-team]
-tags: [feature, improved, orders, integrations, accounting]
+tags: [minor-feature, improved, orders, integrations, accounting]
 date: 2026-05-13
 ---
 

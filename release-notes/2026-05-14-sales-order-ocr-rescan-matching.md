@@ -2,7 +2,7 @@
 title: "Sales order OCR — rescan, smarter customer and SKU matching"
 description: "Rescan an extraction in place, match customers with name normalization, sweep every product identifier, and auto-reconcile mis-extracted quantities."
 authors: [product-team]
-tags: [feature, improved, orders]
+tags: [minor-feature, improved, orders]
 date: 2026-05-14
 ---
 

@@ -2,7 +2,7 @@
 title: "Accounting tables — redesigned filters, bulk actions, and saved views"
 description: "Transactions, Invoices, Journals, and Payments now share the standard datatable design — tree-aware filters, chip-style bulk actions, saved views favorites, and a host of filter-accuracy fixes."
 authors: [product-team]
-tags: [feature, improved, accounting]
+tags: [minor-feature, improved, accounting]
 date: 2026-05-15
 ---
 
