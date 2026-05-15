@@ -61,9 +61,18 @@ module.exports = function releaseNotesTreePlugin(context, options) {
             : `${fy}-${fmo}-${fd}`;
         const [y, mo, d] = date.split("-");
 
+        // tags front matter is a flow-sequence string, e.g. "[feature, new]".
+        const tags = (fm.tags || "")
+          .replace(/^\[|\]$/g, "")
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean);
+        const kind = tags.includes("roundup") ? "roundup" : "feature";
+
         posts.push({
           title: fm.title || slugPart.replace(/-/g, " "),
           date,
+          kind,
           // Docusaurus blog default permalink: /<base>/YYYY/MM/DD/<slug>
           permalink: `/${routeBasePath}/${y}/${mo}/${d}/${slugPart}`,
         });

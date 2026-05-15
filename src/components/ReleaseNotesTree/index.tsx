@@ -5,7 +5,9 @@ import { useLocation } from "@docusaurus/router";
 import { usePluginData } from "@docusaurus/useGlobalData";
 import styles from "./styles.module.css";
 
-type Post = { title: string; date: string; permalink: string };
+type Kind = "feature" | "roundup";
+type Post = { title: string; date: string; permalink: string; kind: Kind };
+type View = "all" | "feature" | "roundup";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -39,7 +41,7 @@ function buildTree(posts: Post[]): YearNode[] {
   const years = new Map<string, YearNode>();
 
   for (const post of posts) {
-    const [y, m, d] = post.date.split("-");
+    const [y, m] = post.date.split("-");
     const monthKey = `${y}-${m}`;
     const weekKey = mondayOf(post.date);
     const dayKey = post.date;
@@ -88,6 +90,52 @@ function buildTree(posts: Post[]): YearNode[] {
 
 const ACTIVE_RE = /\/release-notes\/(\d{4})\/(\d{2})\/(\d{2})\//;
 
+// Resolve the current filter view from the URL. The Features / Fixes segments
+// link to the blog's tag pages, so the route itself carries the filter state.
+function viewFromPath(pathname: string): View {
+  if (/\/release-notes\/tags\/roundup(\/|$)/.test(pathname)) {
+    return "roundup";
+  }
+  if (/\/release-notes\/tags\/feature(\/|$)/.test(pathname)) {
+    return "feature";
+  }
+  return "all";
+}
+
+function ViewToggle({ view }: { view: View }): ReactNode {
+  const segments: { key: View; label: string; title: string; to: string }[] = [
+    { key: "all", label: "All", title: "All release notes", to: "/release-notes" },
+    {
+      key: "feature",
+      label: "Features",
+      title: "Feature releases",
+      to: "/release-notes/tags/feature",
+    },
+    {
+      key: "roundup",
+      label: "Fixes",
+      title: "Fixes & Improvements",
+      to: "/release-notes/tags/roundup",
+    },
+  ];
+  return (
+    <div className={styles.toggle} role="group" aria-label="Filter release notes">
+      {segments.map((s) => (
+        <Link
+          key={s.key}
+          to={s.to}
+          title={s.title}
+          className={clsx(styles.segment, {
+            [styles.segmentActive]: s.key === view,
+          })}
+        >
+          {s.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function Branch({
   label,
   count,
@@ -128,7 +176,11 @@ export default function ReleaseNotesTree(): ReactNode {
   const data = usePluginData("release-notes-tree") as
     | { posts: Post[] }
     | undefined;
-  const posts = data?.posts ?? [];
+  const allPosts = data?.posts ?? [];
+
+  const view = viewFromPath(pathname);
+  const posts =
+    view === "all" ? allPosts : allPosts.filter((p) => p.kind === view);
   const tree = buildTree(posts);
 
   // Resolve the active post's date so the tree opens straight to it.
@@ -158,8 +210,11 @@ export default function ReleaseNotesTree(): ReactNode {
       <Link to="/release-notes" className={styles.heading}>
         Release Notes
       </Link>
+      <ViewToggle view={view} />
       {posts.length === 0 ? (
-        <p className={styles.empty}>No releases yet.</p>
+        <p className={styles.empty}>
+          {view === "all" ? "No releases yet." : "Nothing here yet."}
+        </p>
       ) : (
         <ul className={styles.tree}>
           {tree.map((year) => (
@@ -203,6 +258,13 @@ export default function ReleaseNotesTree(): ReactNode {
                                     pathname === post.permalink,
                                 })}
                               >
+                                <span
+                                  className={clsx(styles.kindDot, {
+                                    [styles.kindRoundup]:
+                                      post.kind === "roundup",
+                                  })}
+                                  aria-hidden="true"
+                                />
                                 {post.title}
                               </Link>
                             </li>
