@@ -87,11 +87,21 @@ const config: Config = {
         },
       },
     ],
+    // Indexes Release Notes posts by date and exposes the list as plugin
+    // global data, consumed by the BlogSidebar override to render the
+    // Year > Month > Week > Day drill-down tree.
+    [
+      "./plugins/release-notes-tree",
+      {
+        path: "release-notes",
+        routeBasePath: "release-notes",
+      },
+    ],
     // ──────────────────────────────────────────────────────────────────
     // Release Notes — user-facing product updates.
     // Content is published from skuio/sku9 `release-notes/` by the
-    // publish-release-notes workflow. Reverse-chronological, tag-filterable,
-    // with an archive page at /release-notes/archive.
+    // publish-release-notes workflow. One post per feature, dated by its
+    // production-ship day; navigated by the date drill-down tree.
     // ──────────────────────────────────────────────────────────────────
     [
       "@docusaurus/plugin-content-blog",
