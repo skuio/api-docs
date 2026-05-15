@@ -75,7 +75,6 @@ tags:
 - name: Products
 - name: Inventory
 - name: Webhooks
-- name: Shipping Method Mappings
 - name: Getting Started
 - name: Reporting
 - name: Export
@@ -17809,10 +17808,11 @@ paths:
         \ chars)\n- `order_import_start_date` - New import start date (or null to\
         \ remove)\n- `is_automatic_sync_enabled` - Toggle automatic background sync\
         \ (boolean)\n- `auto_create_products` - Auto-create local products from Faire\
-        \ feed (boolean)\n- `override_shipping_method` - When `true`, Faire order\
-        \ updates that change the shipping carrier/type will overwrite the linked\
-        \ sales order's shipping method. When `false`, the original assignment is\
-        \ preserved on update (boolean, defaults to `true`)\n- `inventory.masterOfStock`\
+        \ feed (boolean)\n- `default_shipping_method_id` - ID of the shipping method\
+        \ applied to every sales order imported from Faire. Faire never provides a\
+        \ shipping method on its orders, so this default is used for all imports.\
+        \ Pass `null` to clear the default. The response includes a hydrated `default_shipping_method`\
+        \ object (id, method_name, full_name, carrier_name) when set.\n- `inventory.masterOfStock`\
         \ - `sku.io` or `Neither`\n- `inventory.selectedWarehouses[]` - Array of warehouse\
         \ IDs whose stock contributes to the Faire inventory feed\n- `inventory.inventoryModificationRules`\
         \ - Min/max/buffer rules for the published inventory quantities\n- `financial_line_type_overrides`\
@@ -17848,7 +17848,7 @@ paths:
                 order_import_start_date: '2024-03-01'
                 is_automatic_sync_enabled: true
                 auto_create_products: false
-                override_shipping_method: true
+                default_shipping_method_id: 12
                 inventory:
                   masterOfStock: sku.io
                   selectedWarehouses:
@@ -20757,155 +20757,6 @@ paths:
           type: string
         description: Faire brand token to identify the integration instance
         example: your_faire_brand_token
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/faire/instances/{integrationInstance}/shipping-method-mappings:
-    get:
-      tags:
-      - Shipping Method Mappings
-      summary: List Shipping Method Mappings
-      description: 'List every distinct Faire shipping label observed on the linked
-        sales orders for this instance, joined with any existing mapping for the instance''s
-        sales channel.
-
-
-        **How labels are derived:** The Faire order import sets `requested_shipping_method`
-        on each sales order from `raw_data.shipments[0]` in the format `CARRIER —
-        Shipping Type` (e.g. `UPS — Ship On Your Own`). This endpoint reads distinct
-        values from there.
-
-
-        **Path Parameters:**
-
-        - `integrationInstance` - The Faire integration instance ID
-
-
-        **Response:**
-
-        - `data.mappings[]` - One entry per distinct Faire shipping label, with the
-        SKU.io shipping method it maps to (or `null` if unmapped)
-
-        - `data.available_shipping_methods[]` - All non-archived SKU.io shipping methods,
-        for populating the picker on the settings UI
-
-        - `meta.sales_channel_id` - The sales channel the mappings belong to
-
-        - `meta.total_mappings` / `meta.mapped_count` / `meta.unmapped_count` - Stats
-        for the UI badges'
-      parameters:
-      - name: integrationInstance
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The integrationInstance identifier
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/faire/instances/{integrationInstance}/shipping-method-mappings/bulk-update:
-    post:
-      tags:
-      - Shipping Method Mappings
-      summary: Bulk Update Shipping Method Mappings
-      description: "Create, update, or delete shipping method mappings in bulk for\
-        \ this Faire instance's sales channel.\n\n**Path Parameters:**\n- `integrationInstance`\
-        \ - The Faire integration instance ID\n\n**Request Body:**\n- `mappings[]`\
-        \ - Array of mapping rows (required, min 1)\n  - `id` - Existing mapping ID\
-        \ (nullable; for new rows)\n  - `sales_channel_method` - The Faire shipping\
-        \ label, e.g. `UPS — Ship On Your Own` (required, max 255 chars)\n  - `shipping_method_id`\
-        \ - SKU.io shipping method ID to map to. Pass `null` to delete the existing\
-        \ mapping for that label.\n\n**Behavior per row:**\n- `shipping_method_id`\
-        \ set → `updateOrCreate` on (sales_channel_id, sales_channel_method)\n- `shipping_method_id`\
-        \ null → delete any existing mapping for that label (silent if no row existed)\n\
-        \n**Response:**\nReturns per-row results with `action` of `mapped`, `unmapped`,\
-        \ or `unchanged`, plus a `summary` block with success / failure counts. The\
-        \ top-level `success` flag is `true` only if every row succeeded."
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              example:
-                mappings:
-                - id: 12
-                  sales_channel_method: UPS — Ship On Your Own
-                  shipping_method_id: 4
-                - id: null
-                  sales_channel_method: FEDEX — Faire Shipping Label
-                  shipping_method_id: 5
-                - id: 13
-                  sales_channel_method: USPS — Ship On Your Own
-                  shipping_method_id: null
-      parameters:
-      - name: integrationInstance
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The integrationInstance identifier
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: Successful response
-          content:
-            application/json: {}
-  /api/faire/instances/{integrationInstance}/shipping-method-mappings/{mappingId}:
-    delete:
-      tags:
-      - Shipping Method Mappings
-      summary: Delete Shipping Method Mapping
-      description: 'Delete a single shipping method mapping by ID.
-
-
-        **Path Parameters:**
-
-        - `integrationInstance` - The Faire integration instance ID
-
-        - `mappingId` - The mapping row ID (must belong to this instance''s sales
-        channel)
-
-
-        **Response:**
-
-        Returns `404` if the mapping does not exist or belongs to a different sales
-        channel.'
-      parameters:
-      - name: integrationInstance
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The integrationInstance identifier
-      - name: mappingId
-        in: path
-        required: true
-        schema:
-          type: string
-        description: The mappingId identifier
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
       responses:
         '200':
           description: Successful response
@@ -86398,7 +86249,6 @@ x-tagGroups:
   - Products
   - Inventory
   - Webhooks
-  - Shipping Method Mappings
   - Reporting
   - Export
   - Data Feeds
