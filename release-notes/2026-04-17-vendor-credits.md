@@ -3,7 +3,7 @@ title: "Vendor Credits — close the loop on supplier returns and rebates"
 description: "Track supplier-issued credits as first-class records, apply them to open bills without moving cash, and keep inventory and accounting in sync."
 authors: [product-team]
 tags: [major-feature, new, purchasing, accounting, inventory]
-date: 2026-04-11
+date: 2026-04-17
 ---
 
 When a supplier issues a credit — for returned goods, a pricing correction, a damaged shipment, or a volume rebate — where does it go? Until now, the honest answer was usually a spreadsheet, or a manual journal entry in QuickBooks that SKU never saw. There was no record tying the credit back to the original purchase order, no way to apply it against a future bill, and no clean reversal of inventory cost. **Vendor Credits** changes that: a supplier credit is now a proper document in SKU, with a full lifecycle, that you can apply to bills, reconcile, and sync to your accounting platform.
