@@ -15,4 +15,5 @@ Headline changes this release:
 - **Amazon Inventory & Valuation** — real-time FIFO valuation, FNSKU product workspaces, reconciliation timelines, and bulk discrepancy tools, all under one section per integration.
 - **Stock Holds & Allocations** — new datatable workspaces in the Inventory menu, the foundation for the unified allocation model.
 - **Profitability drilldowns** — COGS links straight to FIFO layer detail, with a richer waterfall chart and cost-breakdown modal.
+- **Redesigned Dashboard** — a rebuilt home dashboard with operational KPIs, a revenue chart, inventory health and needs-attention panels, top products, and a low-stock report.
 - Plus a broad wave of Shopify, Veracore, Walmart, and purchasing reliability fixes.
