@@ -3,7 +3,7 @@ title: "Vendor Deposits — track the money you send suppliers before the bill a
 description: "Record, pay, and apply prepayments to suppliers as a first-class document — so deposits, 30/70 splits, and overseas-manufacturing terms live inside SKU instead of a spreadsheet."
 authors: [product-team]
 tags: [major-feature, new, purchasing, accounting]
-date: 2026-05-16
+date: 2026-04-11
 ---
 
 If you import from overseas, order custom tooling, or pay any supplier a
