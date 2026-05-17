@@ -1,0 +1,1391 @@
+---
+title: API changes — 2026-05-17
+description: This release 385 added, 421 changed, 50 removed API endpoint(s).
+authors: [product-team]
+tags: [added, changed, removed, breaking]
+date: 2026-05-17
+---
+
+This release 385 added, 421 changed, 50 removed API endpoint(s).
+
+:::danger Breaking change
+This release removes endpoints or adds newly-required request fields. Review the **Removed** and **Changed** sections before upgrading your integration.
+:::
+
+<!-- truncate -->
+
+## Added
+
+- `DELETE //{domain}/api/custom-field-values/{custom_field_value}` — Delete Custom Field Value
+- `DELETE //{domain}/api/custom-fields/{custom_field}` — Delete Custom Field
+- `DELETE //{domain}/api/data-feeds` — Bulk Delete Data Feeds
+- `DELETE //{domain}/api/data-feeds/2` — Delete Data Feed
+- `DELETE //{domain}/api/discount-codes/{discount_code}` — Delete Discount Code
+- `DELETE //{domain}/api/inventory-aging/notes/{product}` — Delete Product Note
+- `DELETE //{domain}/api/products` — Bulk Delete Products
+- `DELETE //{domain}/api/products/{id}` — Delete Product
+- `DELETE //{domain}/api/products/{productId}/attributes` — Delete Product Attributes
+- `DELETE //{domain}/api/purchase-orders` — Bulk Delete
+- `DELETE //{domain}/api/purchase-orders/{purchase_order}` — Delete Purchase Order
+- `DELETE //{domain}/api/purchase-orders/{purchase_order}/notes/{noteId}` — Delete Note
+- `DELETE //{domain}/api/return-receipts/lines/{returnReceiptLine}` — Delete Return Receipt Line (standalone)
+- `DELETE //{domain}/api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Remove Line from Return Receipt
+- `DELETE //{domain}/api/return-receipts/{return_receipt}` — Delete Return Receipt
+- `DELETE //{domain}/api/sales-reps/{sales_rep}` — Delete Sales Rep
+- `DELETE //{protocol}{domain}/api/product-brands` — Bulk Delete Product Brands
+- `DELETE //{protocol}{domain}/api/product-brands/1` — Delete Product Brand
+- `DELETE //{protocol}{domain}/api/supplier-pricing-tiers` — Bulk Delete Pricing Tiers
+- `DELETE //{protocol}{domain}/api/supplier-pricing-tiers/2` — Delete Supplier Pricing Tier
+- `DELETE /api/channel-partners/{integrationInstanceId}` — Delete Channel Partner
+- `DELETE /api/channel-partners/{integrationInstanceId}/inbound-events/delete-all` — Delete All Events for Instance
+- `DELETE /api/channel-partners/{integrationInstanceId}/tokens/{tokenId}` — Revoke Token
+- `DELETE /api/customers` — Bulk Delete Customers
+- `DELETE /api/customers/{customer_id}/sku-mappings/{mapping_id}` — Delete SKU Mapping
+- `DELETE /api/customers/{customer}` — Delete Customer
+- `DELETE /api/sub-sales-channels/1` — Delete Sub Sales Channel
+- `DELETE /api/walmart/{integrationInstance}/products/{product}/map` — Unmap Single Product
+- `GET //{domain}/api/cogs-revaluation/bulk-fifo-report` — Get Bulk FIFO COGS Report
+- `GET //{domain}/api/cogs-revaluation/export-fifo-changes/42` — Export FIFO Layer Changes (CSV)
+- `GET //{domain}/api/cogs-revaluation/fifo-report/501` — Get FIFO COGS Report
+- `GET //{domain}/api/cogs-revaluation/product-report/101` — Get Product COGS Report
+- `GET //{domain}/api/cogs-revaluation/recently-rebuilt-products` — Get Recently Rebuilt Products
+- `GET //{domain}/api/cogs-revaluation/tracked-job/42` — Get Tracked Job Status
+- `GET //{domain}/api/cogs-revaluation/unified-tracking/42` — Get Unified Tracking Data
+- `GET //{domain}/api/cogs-revaluation/variation-by-product` — Get Variation by Product Report
+- `GET //{domain}/api/cogs/sku-health` — List SKU COGS Health
+- `GET //{domain}/api/cogs/sku-health/101` — Show SKU COGS Health Detail
+- `GET //{domain}/api/cogs/sku-health/101/consumption-timeline` — Get Consumption Timeline
+- `GET //{domain}/api/cogs/sku-health/101/fifo-layers` — Get FIFO Layers
+- `GET //{domain}/api/cogs/sku-health/101/fifo-layers-timeline` — Get FIFO Layers Timeline
+- `GET //{domain}/api/cogs/sku-health/101/initial-inventory` — Get Initial Inventory
+- `GET //{domain}/api/cogs/sku-health/101/layers/501/consumptions` — Get Layer Consumptions
+- `GET //{domain}/api/cogs/sku-health/101/warehouse-breakdown` — Get Warehouse Breakdown
+- `GET //{domain}/api/cogs/sku-health/summary` — Get SKU COGS Health Summary
+- `GET //{domain}/api/cogs/sku-health/value-sources` — Get All Value Sources
+- `GET //{domain}/api/custom-field-values` — List Custom Field Values
+- `GET //{domain}/api/custom-field-values/{custom_field_value}` — Show Custom Field Value
+- `GET //{domain}/api/custom-fields` — List Custom Fields
+- `GET //{domain}/api/custom-fields/{custom_field}` — Show Custom Field
+- `GET //{domain}/api/data-feeds` — List Data Feeds
+- `GET //{domain}/api/data-feeds/1` — Show Data Feed
+- `GET //{domain}/api/data-feeds/import-config/product_feed` — Get Import Config
+- `GET //{domain}/api/discount-codes` — List Discount Codes
+- `GET //{domain}/api/discount-codes/{discount_code}` — Get Discount Code
+- `GET //{domain}/api/inventory-aging` — Get Inventory Aging Report
+- `GET //{domain}/api/inventory-aging/distribution` — Get Inventory Aging Distribution
+- `GET //{domain}/api/inventory-aging/export` — Export Inventory Aging to CSV
+- `GET //{domain}/api/inventory-aging/metrics` — Get Inventory Aging Metrics
+- `GET //{domain}/api/inventory-aging/sales-channels` — Get Sales Channels for Filter
+- `GET //{domain}/api/products` — List Products
+- `GET //{domain}/api/products/attributes` — Get All Attributes for Products
+- `GET //{domain}/api/products/barcode-lookup` — Barcode Lookup
+- `GET //{domain}/api/products/by-sku` — Get Product by SKU
+- `GET //{domain}/api/products/constants` — Get Product Constants
+- `GET //{domain}/api/products/create` — Get Create Product Form
+- `GET //{domain}/api/products/generate-sku-pattern/{product}` — Generate Blemished SKU Pattern
+- `GET //{domain}/api/products/import/fields` — Get Import Fields
+- `GET //{domain}/api/products/import/template` — Download Import Template
+- `GET //{domain}/api/products/merge/template` — Download Merge Template
+- `GET //{domain}/api/products/merge/{session_id}/preview` — Get Merge Preview
+- `GET //{domain}/api/products/search` — Search Products
+- `GET //{domain}/api/products/{id}` — Get Product
+- `GET //{domain}/api/products/{productId}/attributes` — Get Product Attributes
+- `GET //{domain}/api/products/{productId}/attributes-grouped` — Get Product Attributes Grouped
+- `GET //{domain}/api/products/{productId}/bundles` — Get Product Bundles
+- `GET //{domain}/api/products/{productId}/components` — Get Product Components
+- `GET //{domain}/api/products/{productId}/fifo-layers` — Get Product FIFO Layers
+- `GET //{domain}/api/products/{productId}/inventory` — Get Product Inventory
+- `GET //{domain}/api/products/{productId}/inventory-movements` — Get Product Inventory Movements
+- `GET //{domain}/api/products/{productId}/potential-bundles` — Get Potential Bundles
+- `GET //{domain}/api/products/{productId}/suppliers` — Get Product Suppliers
+- `GET //{domain}/api/products/{product}/edit` — Get Edit Product Form
+- `GET //{domain}/api/products/{product}/get-sales-channel-inventory` — Get Sales Channel Inventory
+- `GET //{domain}/api/products/{product}/images` — List Product Images
+- `GET //{domain}/api/products/{product}/last-purchase-price` — Get Last Purchase Price
+- `GET //{domain}/api/products/{product}/listings` — List Product Listings
+- `GET //{domain}/api/products/{product}/variations` — Get Product Variations
+- `GET //{domain}/api/products/{product}/variations/attributes` — Get Variation Attributes
+- `GET //{domain}/api/products/{warehouseId}/{productId}/inventory-fba` — Get FBA Inventory
+- `GET //{domain}/api/purchase-orders` — List Purchase Orders (DataTable)
+- `GET //{domain}/api/purchase-orders/import-lines/template` — Download Lines Import Template
+- `GET //{domain}/api/purchase-orders/import/template` — Download Import Template
+- `GET //{domain}/api/purchase-orders/list` — List Purchase Orders (Vue3 List)
+- `GET //{domain}/api/purchase-orders/list/export` — Export Purchase Orders
+- `GET //{domain}/api/purchase-orders/{purchaseOrder}/invoices` — List PO Invoices
+- `GET //{domain}/api/purchase-orders/{purchase_order}` — Get Purchase Order
+- `GET //{domain}/api/purchase-orders/{purchase_order}/activity-log` — Activity Log
+- `GET //{domain}/api/purchase-orders/{purchase_order}/bills/{bill}` — Get Bill
+- `GET //{domain}/api/purchase-orders/{purchase_order}/dropship-shipments` — Get Dropship Shipments
+- `GET //{domain}/api/purchase-orders/{purchase_order}/fifo-layers` — FIFO Layers
+- `GET //{domain}/api/purchase-orders/{purchase_order}/inventory-movements` — Inventory Movements
+- `GET //{domain}/api/purchase-orders/{purchase_order}/invoice/preview` — Preview Invoice
+- `GET //{domain}/api/purchase-orders/{purchase_order}/line-items` — Get PO Line Items (Lightweight)
+- `GET //{domain}/api/purchase-orders/{purchase_order}/lines` — Get PO Lines (DataTable)
+- `GET //{domain}/api/purchase-orders/{purchase_order}/lines-for-invoice` — Get PO Lines for Invoice
+- `GET //{domain}/api/purchase-orders/{purchase_order}/notes` — Get Notes
+- `GET //{domain}/api/purchase-orders/{purchase_order}/receipts` — Get PO Receipts
+- `GET //{domain}/api/purchase-orders/{purchase_order}/receipts/{receipt}` — Get Single PO Receipt
+- `GET //{domain}/api/return-receipts` — List Return Receipts
+- `GET //{domain}/api/return-receipts/{return_receipt}` — Get Return Receipt
+- `GET //{domain}/api/sales-reps` — List Sales Reps
+- `GET //{domain}/api/sales-reps/list` — Get Sales Reps for Dropdown
+- `GET //{domain}/api/sales-reps/{salesRep}/activity-log` — Get Sales Rep Activity Log
+- `GET //{domain}/api/sales-reps/{sales_rep}` — Get Sales Rep
+- `GET //{domain}/api/v2/inventory-allocations` — List Allocations
+- `GET //{domain}/api/v2/inventory-allocations/backorders` — List Backorders
+- `GET //{domain}/api/v2/inventory-allocations/backorders/export` — Export Backorders
+- `GET //{domain}/api/v2/inventory-allocations/breakdown` — Get Breakdown
+- `GET //{domain}/api/v2/inventory-allocations/export` — Export Allocations
+- `GET //{domain}/api/v2/inventory-allocations/product/{productId}/analysis` — Product Analysis
+- `GET //{domain}/api/v2/inventory-allocations/product/{productId}/coverage-options` — Coverage Options
+- `GET //{domain}/api/v2/inventory-allocations/search-suppliers` — Search Suppliers
+- `GET //{domain}/api/v2/inventory-allocations/summary` — Get Summary
+- `GET //{domain}/api/v2/inventory-allocations/supplier/{supplierId}/analysis` — Supplier Analysis
+- `GET //{domain}/api/v2/inventory-allocations/suppliers` — List Suppliers
+- `GET //{domain}/api/v2/inventory-allocations/{allocation}` — Get Allocation
+- `GET //{domain}/api/v2/products` — List Products
+- `GET //{domain}/api/v2/products/bulk-edit-fetch` — Fetch Products for Bulk Edit
+- `GET //{domain}/api/v2/products/bulk-edit-metadata` — Get Bulk Edit Metadata
+- `GET //{domain}/api/v2/products/bundle-workshop` — List Bundle Workshop Products
+- `GET //{domain}/api/v2/products/bundle-workshop/auto-detect` — Auto-Detect Bundle Candidates
+- `GET //{domain}/api/v2/products/bundle-workshop/{product}/components` — Get Bundle Components
+- `GET //{domain}/api/v2/products/bundle-workshop/{product}/restricting-movements` — Get Restricting Movements
+- `GET //{domain}/api/v2/products/import-supplier-links/template` — Download Supplier Link Template
+- `GET //{domain}/api/v2/products/import/fields` — Get Import Fields
+- `GET //{domain}/api/v2/products/import/template` — Download Import Template
+- `GET //{domain}/api/v2/products/list/export` — Export Product List
+- `GET //{domain}/api/v2/products/list/export/download` — Download Export File
+- `GET //{domain}/api/v2/products/{product}` — Get Product
+- `GET //{domain}/api/v2/products/{product}/active-reservations` — Get Product Active Reservations
+- `GET //{domain}/api/v2/products/{product}/activity-log` — Get Product Activity Log
+- `GET //{domain}/api/v2/products/{product}/bundle-potential` — Get Bundle Potential
+- `GET //{domain}/api/v2/products/{product}/components` — Get Product Components
+- `GET //{domain}/api/v2/products/{product}/fifo-layers` — Get Product FIFO Layers
+- `GET //{domain}/api/v2/products/{product}/holds` — Get Product Holds
+- `GET //{domain}/api/v2/products/{product}/images` — Get Product Images
+- `GET //{domain}/api/v2/products/{product}/inventory` — Get Product Inventory
+- `GET //{domain}/api/v2/products/{product}/inventory-movements` — Get Product Inventory Movements
+- `GET //{domain}/api/v2/products/{product}/inventory-tally` — Get Product Inventory Tally
+- `GET //{domain}/api/v2/products/{product}/listings` — Get Product Listings
+- `GET //{domain}/api/v2/products/{product}/listings/summary` — Get Product Listings Summary
+- `GET //{domain}/api/v2/products/{product}/notes` — Get Product Notes
+- `GET //{domain}/api/v2/products/{product}/parent-products` — Get Parent Products
+- `GET //{domain}/api/v2/products/{product}/pricing` — Get Product Pricing
+- `GET //{domain}/api/v2/products/{product}/purchase-order-lines` — Get Product Purchase Order Lines
+- `GET //{domain}/api/v2/products/{product}/reservation-integrity` — Get Product Reservation Integrity
+- `GET //{domain}/api/v2/products/{product}/suppliers` — Get Product Suppliers
+- `GET //{domain}/api/v2/products/{product}/variations` — Get Product Variations
+- `GET //{domain}/api/v2/products/{product}/warehouse-transfer-lines` — Get Product Warehouse Transfer Lines
+- `GET //{domain}/api/v2/warehouse-transfers` — List Warehouse Transfers
+- `GET //{domain}/api/v2/warehouse-transfers/filter-options` — Get Filter Options
+- `GET //{domain}/api/v2/warehouse-transfers/receipts/{receipt}` — Get Receipt Detail
+- `GET //{domain}/api/v2/warehouse-transfers/receipts/{receipt}/activity-log` — Get Receipt Activity Log
+- `GET //{domain}/api/v2/warehouse-transfers/receipts/{receipt}/fifo-layers` — Get Receipt FIFO Layers
+- `GET //{domain}/api/v2/warehouse-transfers/receipts/{receipt}/inventory-movements` — Get Receipt Inventory Movements
+- `GET //{domain}/api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}/quantity-preview` — Preview Receipt Line Quantity Change
+- `GET //{domain}/api/v2/warehouse-transfers/shipments/{shipment}` — Get Shipment Detail
+- `GET //{domain}/api/v2/warehouse-transfers/shipments/{shipment}/activity-log` — Get Shipment Activity Log
+- `GET //{domain}/api/v2/warehouse-transfers/shipments/{shipment}/inventory-movements` — Get Shipment Inventory Movements
+- `GET //{domain}/api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}/quantity-preview` — Preview Shipment Line Quantity Change
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}` — Get Warehouse Transfer
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/activity-log` — Get Activity Log
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/allocations` — Get Allocations
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/browse-products` — Browse Products
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/fifo-layers` — Get FIFO Layers
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/inventory-movements` — Get Inventory Movements
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/line-items` — Get Line Items
+- `GET //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/tab-counts` — Get Tab Counts
+- `GET //{domain}/api/warehouses/transfers/import-lines/template` — Download Lines Import Template
+- `GET //{protocol}{domain}/api/inbound-shipments` — List Inbound Shipments
+- `GET //{protocol}{domain}/api/product-brands` — List Product Brands
+- `GET //{protocol}{domain}/api/product-brands/1` — Get Product Brand
+- `GET //{protocol}{domain}/api/product-brands/search` — Search Product Brands
+- `GET //{protocol}{domain}/api/supplier-pricing-tiers` — List Supplier Pricing Tiers
+- `GET //{protocol}{domain}/api/supplier-pricing-tiers/1` — Get Supplier Pricing Tier
+- `GET /api/channel-partners/inbound-events/{eventId}` — Show Inbound Event
+- `GET /api/channel-partners/{integrationInstanceId}` — Show Channel Partner
+- `GET /api/channel-partners/{integrationInstanceId}/dashboard` — Get Dashboard Stats
+- `GET /api/channel-partners/{integrationInstanceId}/inbound-events` — List Inbound Events
+- `GET /api/channel-partners/{integrationInstanceId}/inbound-events/stats` — Get Inbound Events Stats
+- `GET /api/channel-partners/{integrationInstanceId}/orders` — List Orders for Channel Partner
+- `GET /api/channel-partners/{integrationInstanceId}/tokens` — List Tokens
+- `GET /api/customers` — List Customers
+- `GET /api/customers/find-match` — Find Customer Match
+- `GET /api/customers/starshipit/submit-orders` — Submit Orders to Starshipit
+- `GET /api/customers/starshipit/view-order/{sales_order_fulfillment}` — View Starshipit Order
+- `GET /api/customers/{customer_id}/sku-mappings` — List SKU Mappings
+- `GET /api/customers/{customer_id}/sku-mappings/export` — Export SKU Mappings as CSV
+- `GET /api/customers/{customer}` — Get Customer
+- `GET /api/customers/{customer}/addresses` — Get Customer Addresses
+- `GET /api/customers/{customer}/open-sales-credits` — Get Open Sales Credits
+- `GET /api/customers/{customer}/unpaid-orders` — Get Unpaid Orders
+- `GET /api/ebay/{integrationInstance}/products/{product}/raw` — Get Raw Product from eBay
+- `GET /api/reporting/suppliers/leaderboard` — Get Supplier Leaderboard
+- `GET /api/reporting/suppliers/overview` — Get Supplier Overview
+- `GET /api/reporting/suppliers/scorecard-settings` — Get Scorecard Settings
+- `GET /api/reporting/suppliers/{supplier}/analytics` — Get Supplier Analytics
+- `GET /api/reporting/suppliers/{supplier}/po-history` — Get Supplier PO History
+- `GET /api/reporting/suppliers/{supplier}/products` — Get Supplier Product Breakdown
+- `GET /api/reporting/suppliers/{supplier}/products/{product}` — Get Supplier Product Drilldown
+- `GET /api/reporting/suppliers/{supplier}/scorecard` — Get Supplier Scorecard
+- `GET /api/reporting/suppliers/{supplier}/scorecard-summary` — Get Supplier Scorecard Summary
+- `GET /api/sales-orders/import/template` — Download Import Template
+- `GET /api/sales-orders/list` — List Sales Orders (V2 Datatable)
+- `GET /api/sales-orders/list/export` — Export Sales Orders
+- `GET /api/sub-sales-channels` — List Sub Sales Channels (Paginated)
+- `GET /api/sub-sales-channels/1` — Get Sub Sales Channel
+- `GET /api/sub-sales-channels/by-sales-channel/5` — Get Sub Sales Channels by Sales Channel
+- `GET /api/sub-sales-channels/list` — List Sub Sales Channels (Dropdown)
+- `GET /api/sub-sales-channels/lookup/nominal-codes` — Lookup Nominal Codes
+- `GET /api/sub-sales-channels/lookup/sales-channels` — Lookup Sales Channels
+- `GET /api/v2/reporting/release-schedule` — Get Release Schedule
+- `GET /api/walmart/{integrationInstance}/products/{product}/raw` — Get Raw Product from Walmart
+- `GET /api/woo-commerce/{integrationInstance}/products/{product}/raw` — Get Raw Product from WooCommerce
+- `PATCH //{domain}/api/purchase-orders/{purchase_order}/bills/{bill}` — Update Bill
+- `PATCH //{domain}/api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}` — Update Receipt Line Quantity
+- `PATCH //{domain}/api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}` — Update Shipment Line Quantity
+- `POST //{domain}/api/cogs-revaluation/501/revalue` — Revalue FIFO Layer
+- `POST //{domain}/api/cogs-revaluation/bulk-revalue` — Bulk Revalue FIFO Layers
+- `POST //{domain}/api/cogs-revaluation/cancel-tracked-rebuild/42` — Cancel Tracked Rebuild
+- `POST //{domain}/api/cogs-revaluation/rebuild-cogs-bulk` — Rebuild COGS for Multiple Products
+- `POST //{domain}/api/cogs-revaluation/rebuild-cogs-tracked` — Start Tracked COGS Rebuild
+- `POST //{domain}/api/cogs-revaluation/rebuild-cogs/101` — Rebuild COGS for Product
+- `POST //{domain}/api/cogs/sku-health/101/recalculate` — Recalculate SKU COGS
+- `POST //{domain}/api/custom-field-values` — Create Custom Field Value
+- `POST //{domain}/api/custom-fields` — Create Custom Field
+- `POST //{domain}/api/data-feeds` — Create Data Feed
+- `POST //{domain}/api/data-feeds/deletable` — Check Deletable
+- `POST //{domain}/api/discount-codes` — Create Discount Code
+- `POST //{domain}/api/products` — Create Product
+- `POST //{domain}/api/products/blemished` — Create Blemished Product
+- `POST //{domain}/api/products/import` — Execute Import
+- `POST //{domain}/api/products/import/preview` — Preview Import (Legacy CSV)
+- `POST //{domain}/api/products/import/validate` — Validate Import
+- `POST //{domain}/api/products/is-deletable` — Check Product Deletability
+- `POST //{domain}/api/products/merge/create-session` — Create Merge Session (Single Pair)
+- `POST //{domain}/api/products/merge/upload` — Upload Merge CSV
+- `POST //{domain}/api/products/merge/{session_id}/execute` — Execute Merge
+- `POST //{domain}/api/products/{productId}/inventory/refresh` — Refresh Inventory Cache
+- `POST //{domain}/api/products/{product}/bulk-images` — Bulk Update/Create Product Images
+- `POST //{domain}/api/products/{product}/images` — Add Product Image
+- `POST //{domain}/api/purchase-orders` — Create Purchase Order
+- `POST //{domain}/api/purchase-orders/approve` — Bulk Approve
+- `POST //{domain}/api/purchase-orders/build` — Build PO (Forecast)
+- `POST //{domain}/api/purchase-orders/build-export` — Export Builder Results
+- `POST //{domain}/api/purchase-orders/deletable` — Check Deletable
+- `POST //{domain}/api/purchase-orders/import` — Execute Import
+- `POST //{domain}/api/purchase-orders/import-lines` — Import Lines from CSV
+- `POST //{domain}/api/purchase-orders/import/preview` — Preview Import
+- `POST //{domain}/api/purchase-orders/import/validate` — Validate Import
+- `POST //{domain}/api/purchase-orders/submit` — Bulk Submit
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-discount-rate` — Apply Discount Rate to Lines
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-pricing-tier/{supplierPricingTier}` — Apply Pricing Tier to Lines
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-tax-rate/{taxRate}` — Apply Tax Rate to Lines
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/clear-tax-rate` — Clear Tax Rate from Lines
+- `POST //{domain}/api/purchase-orders/{purchase_order}/asn` — Send ASN
+- `POST //{domain}/api/purchase-orders/{purchase_order}/bills` — Create Bill
+- `POST //{domain}/api/purchase-orders/{purchase_order}/cover-backorders` — Cover Backorders
+- `POST //{domain}/api/purchase-orders/{purchase_order}/dropship` — Dropship (Ship Fulfillment)
+- `POST //{domain}/api/purchase-orders/{purchase_order}/duplicate` — Duplicate Purchase Order
+- `POST //{domain}/api/purchase-orders/{purchase_order}/generate-accounting-transaction` — Generate Accounting Transaction
+- `POST //{domain}/api/purchase-orders/{purchase_order}/notes` — Add Note
+- `POST //{domain}/api/purchase-orders/{purchase_order}/receiving-discrepancy` — Create Receiving Discrepancy
+- `POST //{domain}/api/return-receipts` — Create Return Receipt
+- `POST //{domain}/api/return-receipts/{returnReceipt}/lines` — Add Line to Return Receipt
+- `POST //{domain}/api/sales-reps` — Create Sales Rep
+- `POST //{domain}/api/v2/inventory-allocations/check-release-availability` — Check Release Availability
+- `POST //{domain}/api/v2/inventory-allocations/compact-priorities` — Compact Priorities
+- `POST //{domain}/api/v2/inventory-allocations/delete-fulfillments` — Delete Fulfillments
+- `POST //{domain}/api/v2/inventory-allocations/evaluate-releases` — Evaluate Releases
+- `POST //{domain}/api/v2/inventory-allocations/rebalance-coverages` — Rebalance Coverages
+- `POST //{domain}/api/v2/inventory-allocations/release-allocations` — Release Allocations
+- `POST //{domain}/api/v2/inventory-allocations/release-selected` — Release Selected
+- `POST //{domain}/api/v2/inventory-allocations/reset-priorities` — Reset Priorities
+- `POST //{domain}/api/v2/inventory-allocations/submit-fulfillments` — Submit Fulfillments
+- `POST //{domain}/api/v2/inventory-allocations/switch-supplier-options` — Switch Supplier Options
+- `POST //{domain}/api/v2/inventory-allocations/switch-suppliers` — Switch Suppliers
+- `POST //{domain}/api/v2/inventory-allocations/sync-coverages` — Sync Coverages
+- `POST //{domain}/api/v2/inventory-allocations/unreserve` — Unreserve
+- `POST //{domain}/api/v2/inventory-allocations/{allocation}/reassign-coverage` — Reassign Coverage
+- `POST //{domain}/api/v2/inventory-allocations/{allocation}/reorder` — Reorder Allocation
+- `POST //{domain}/api/v2/products/bulk-edit` — Bulk Edit Products (Apply to All)
+- `POST //{domain}/api/v2/products/bulk-edit-individual` — Bulk Edit Products (Individual)
+- `POST //{domain}/api/v2/products/bulk-edit-preview` — Preview Bulk Edit
+- `POST //{domain}/api/v2/products/bundle-workshop/batch-convert` — Batch Convert Products to Bundle/Kit
+- `POST //{domain}/api/v2/products/bundle-workshop/check-restrictions` — Check Bundle Restrictions
+- `POST //{domain}/api/v2/products/bundle-workshop/{product}/components` — Save Bundle Components
+- `POST //{domain}/api/v2/products/import` — Import Products
+- `POST //{domain}/api/v2/products/import-supplier-links` — Import Supplier Links
+- `POST //{domain}/api/v2/products/import-supplier-links/validate` — Validate Supplier Link Import
+- `POST //{domain}/api/v2/products/import/validate` — Validate Product Import
+- `POST //{domain}/api/v2/warehouse-transfers/{warehouseTransfer}/generate-accounting-transactions` — Generate Accounting Transactions
+- `POST //{domain}/api/warehouses/transfers/{transfer}/receiving-discrepancy` — Create Receiving Discrepancy
+- `POST //{protocol}{domain}/api/product-brands` — Create Product Brand
+- `POST //{protocol}{domain}/api/product-brands/deletable` — Check Deletable
+- `POST //{protocol}{domain}/api/product-brands/import` — Import Product Brands
+- `POST //{protocol}{domain}/api/product-brands/import/preview` — Import Product Brands (Preview)
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers` — Create Supplier Pricing Tier
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/archivable` — Check Archivable
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/deletable` — Check Deletable
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/import` — Import Pricing Tiers
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/import/preview` — Import Pricing Tiers (Preview)
+- `POST /api/channel-partners/inbound-events/{eventId}/reprocess` — Reprocess Inbound Event
+- `POST /api/channel-partners/{integrationInstanceId}/tokens` — Generate Token
+- `POST /api/customers` — Create Customer
+- `POST /api/customers/deletable` — Check Deletable
+- `POST /api/customers/import` — Import Customers
+- `POST /api/customers/import/preview` — Preview Import
+- `POST /api/customers/{customer_id}/sku-mappings` — Create / Upsert SKU Mapping
+- `POST /api/customers/{customer_id}/sku-mappings/import` — Import SKU Mappings from CSV
+- `POST /api/customers/{customer}/addresses` — Add Customer Address
+- `POST /api/customers/{customer}/sales-credits/{salesCredit}/allocate` — Allocate Sales Credit to Orders
+- `POST /api/ebay/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `POST /api/reporting/suppliers/rebuild-snapshots` — Rebuild Supplier Metric Snapshots
+- `POST /api/sales-orders/import` — Import Sales Orders
+- `POST /api/sales-orders/import/validate` — Validate Import
+- `POST /api/sub-sales-channels` — Create Sub Sales Channel
+- `POST /api/walmart/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product from Walmart Product
+- `POST /api/walmart/{integrationInstance}/products/{product}/map` — Map Single Product
+- `POST /api/walmart/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `POST /api/woo-commerce/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product from WooCommerce Product
+- `POST /api/woo-commerce/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `PUT //{domain}/api/custom-field-values/{custom_field_value}` — Update Custom Field Value
+- `PUT //{domain}/api/custom-fields/{custom_field}` — Update Custom Field
+- `PUT //{domain}/api/data-feeds/1/archive` — Archive Data Feed
+- `PUT //{domain}/api/data-feeds/1/unarchived` — Unarchive Data Feed
+- `PUT //{domain}/api/data-feeds/2` — Update Data Feed
+- `PUT //{domain}/api/data-feeds/archive` — Bulk Archive Data Feeds
+- `PUT //{domain}/api/data-feeds/unarchive` — Bulk Unarchive Data Feeds
+- `PUT //{domain}/api/discount-codes/{discount_code}` — Update Discount Code
+- `PUT //{domain}/api/inventory-aging/notes/{product}` — Update Product Note
+- `PUT //{domain}/api/products/archive` — Bulk Archive Products
+- `PUT //{domain}/api/products/unarchive` — Bulk Unarchive Products
+- `PUT //{domain}/api/products/{id}` — Update Product
+- `PUT //{domain}/api/products/{id}/archive` — Archive Product
+- `PUT //{domain}/api/products/{id}/unarchived` — Unarchive Product
+- `PUT //{domain}/api/products/{productId}/assign-attribute-groups` — Assign Attribute Groups
+- `PUT //{domain}/api/products/{productId}/attributes` — Update Product Attributes
+- `PUT //{domain}/api/products/{productId}/set-default-supplier/{supplierId}` — Set Default Supplier
+- `PUT //{domain}/api/purchase-orders/archive` — Bulk Archive
+- `PUT //{domain}/api/purchase-orders/unarchive` — Bulk Unarchive
+- `PUT //{domain}/api/purchase-orders/{purchase_order}` — Update Purchase Order
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/close` — Close Purchase Order
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/mark-as-shipped` — Mark as Shipped (FBA/AWD)
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/notes/{noteId}/toggle-pin` — Toggle Note Pin
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/reopen` — Reopen Purchase Order
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/submit` — Submit PO to Supplier
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/update-shipment` — Update Shipment Details (FBA)
+- `PUT //{domain}/api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Update Return Receipt Line
+- `PUT //{domain}/api/sales-reps/{sales_rep}` — Update Sales Rep
+- `PUT //{domain}/api/v2/products/bundle-workshop/{product}/type` — Update Bundle Type
+- `PUT //{domain}/api/v2/products/{product}/pricing` — Upsert Product Pricing
+- `PUT //{protocol}{domain}/api/product-brands/1` — Update Product Brand
+- `PUT //{protocol}{domain}/api/product-brands/1/archive` — Archive Product Brand
+- `PUT //{protocol}{domain}/api/product-brands/1/unarchived` — Unarchive Product Brand
+- `PUT //{protocol}{domain}/api/product-brands/archive` — Bulk Archive Product Brands
+- `PUT //{protocol}{domain}/api/product-brands/unarchive` — Bulk Unarchive Product Brands
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2` — Update Supplier Pricing Tier
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/archive` — Archive Pricing Tier
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/default` — Set as Default
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/unarchived` — Unarchive Pricing Tier
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/archive` — Bulk Archive Pricing Tiers
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/unarchive` — Bulk Unarchive Pricing Tiers
+- `PUT /api/channel-partners/{integrationInstanceId}` — Update Channel Partner
+- `PUT /api/customers/archive` — Bulk Archive Customers
+- `PUT /api/customers/starshipit/update-order/{sales_order_fulfillment}` — Update Starshipit Order from Fulfillment
+- `PUT /api/customers/unarchive` — Bulk Unarchive Customers
+- `PUT /api/customers/{customer}` — Update Customer
+- `PUT /api/customers/{customer}/archive` — Archive Customer
+- `PUT /api/customers/{customer}/set-default-billing-address/{address_id}` — Set Default Billing Address
+- `PUT /api/customers/{customer}/set-default-shipping-address/{address_id}` — Set Default Shipping Address
+- `PUT /api/customers/{customer}/unarchived` — Unarchive Customer
+- `PUT /api/reporting/suppliers/scorecard-settings` — Update Scorecard Settings
+- `PUT /api/sub-sales-channels/1` — Update Sub Sales Channel
+
+## Changed
+
+- `DELETE /api/assemblies/{assembly}` — Delete Assembly
+  - new response code(s): 400
+- `DELETE /api/attribute-groups/1` — Delete Attribute Group
+  - new response code(s): 400
+- `DELETE /api/attributes/1` — Delete Attribute
+  - new response code(s): 400
+- `DELETE /api/auth/token` — Delete All Access Tokens
+  - new response code(s): 501
+- `DELETE /api/big-commerce/{integrationInstance}` — Delete Integration Instance
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/categories/{category}` — Delete Category
+  - new response code(s): 400
+- `DELETE /api/channel-partners/1` — Delete Channel Partner
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/data-feeds/2` — Delete Data Feed
+  - new response code(s): 400
+- `DELETE /api/faire/instances/{integrationInstance}/orders/{order}/sku-order` — Delete SKU Order from Faire Order **(breaking)**
+  - removed parameter(s): archive_faire_order
+  - new response code(s): 404
+- `DELETE /api/financial-line-types/{financial_line_type}` — Delete Financial Line Type
+  - new response code(s): 204, 400
+  - removed response code(s): 200
+- `DELETE /api/inbound-shipments/receipts/{receipt}` — Delete Receipt
+  - new response code(s): 400
+- `DELETE /api/inbound-shipments/{inbound_shipment}` — Delete Inbound Shipment
+  - new response code(s): 422
+- `DELETE /api/incoterms/{incoterm}` — Delete Incoterm
+  - new response code(s): 400
+- `DELETE /api/integration-instances/{integration_instance}/listings/{id}` — Delete Single Listing
+  - new response code(s): 400
+- `DELETE /api/inventory-adjustments/{inventory_adjustment}` — Delete Inventory Adjustment
+  - new response code(s): 400
+- `DELETE /api/inventory-aging/notes/{product}` — Delete Product Note
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/inventory-forecasting/configurations/default` — Clear My Default Configuration
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/inventory-forecasting/configurations/{configuration}` — Delete Forecast Configuration **(breaking)**
+  - removed parameter(s): force
+  - new response code(s): 204, 422
+  - removed response code(s): 200
+- `DELETE /api/inventory-forecasting/schedules/{schedule}` — Delete Schedule
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/nominal-codes/{nominal_code}` — Delete Nominal Code
+  - new response code(s): 400
+- `DELETE /api/payment-terms/3` — Delete Payment Term
+  - new response code(s): 400
+- `DELETE /api/payment-types/{payment_type}` — Delete Payment Type
+  - new response code(s): 400
+- `DELETE /api/product-brands/1` — Delete Product Brand
+  - new response code(s): 400
+- `DELETE /api/product-pricing-tiers/{product_pricing_tier}` — Delete Pricing Tier
+  - new response code(s): 400
+- `DELETE /api/products/{id}` — Delete Product
+  - new response code(s): 400
+- `DELETE /api/purchase-order-line-short-close-events/{short_close_event}` — Undo Short-Close
+  - new response code(s): 422
+- `DELETE /api/purchase-orders/{purchase_order}` — Delete Purchase Order
+  - new response code(s): 400
+- `DELETE /api/reporting/inventory-planning/schedules/{scheduledReport}` — Delete Scheduled Report
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/return-reasons/{return_reason}` — Delete Return Reason
+  - new response code(s): 400
+- `DELETE /api/rmas/{rma}` — Delete RMA
+  - new response code(s): 422
+- `DELETE /api/sales-order-lines` — Delete Sales Order Line
+  - new response code(s): 422
+- `DELETE /api/shopify/{integrationInstance}/orders/{order}/sku-order` — Delete SKU Order (Keep Shopify Order)
+  - new response code(s): 404
+- `DELETE /api/shopify/{integrationInstance}/products/{product}/map` — Unmap Product
+  - new response code(s): 422
+- `DELETE /api/stores/2` — Delete Store
+  - new response code(s): 400
+- `DELETE /api/subscription-offerings/{subscription_offering}` — Delete Subscription Offering
+  - new response code(s): 422
+- `DELETE /api/supplier-pricing-tiers/2` — Delete Supplier Pricing Tier
+  - new response code(s): 400
+- `DELETE /api/tags/5` — Delete Tag
+  - new response code(s): 400
+- `DELETE /api/tracked-job-logs/{tracked_job_log}` — Delete Tracked Job Log
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/v2/inventory/holds/{reservation}` — Delete Inventory Hold
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/walmart/{integrationInstance}` — Delete Integration Instance
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/woo-commerce/{integration_instance}` — Delete Integration Instance
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/woo-commerce/{integration_instance}/orders/{order}` — Delete Order
+  - new response code(s): 204
+  - removed response code(s): 200
+- `DELETE /api/woo-commerce/{integration_instance}/products/{product}` — Delete Product
+  - new response code(s): 204
+  - removed response code(s): 200
+- `GET /api/accounting/transactions/needing-sync` — Get Transactions Needing Sync **(breaking)**
+  - removed parameter(s): link_type, transaction_ids[], type
+- `GET /api/accounting/transactions/needing-sync/count` — Get Transactions Needing Sync Count **(breaking)**
+  - removed parameter(s): link_type, type
+- `GET /api/accounting/v3/transactions` — List Transactions (V3 - Paginated) **(breaking)**
+  - removed parameter(s): filter[has_error], filter[nominal_code], filter[search], filter[status], filter[sync_enabled], filter[transaction_date.from], filter[transaction_date.to], filter[type], sort
+- `GET /api/accounting/v3/transactions/export` — Start Export Job **(breaking)**
+  - removed parameter(s): columns, filter[transaction_date.from], filter[type], ids, sort
+- `GET /api/activity` — List Activity **(breaking)**
+  - removed parameter(s): filter[subject_id], filter[subject_type]
+- `GET /api/amazon/inventory-valuation/cost-source-layer-drilldown` — Cost Source Layer Drilldown **(breaking)**
+  - removed parameter(s): integration_instance_ids
+- `GET /api/amazon/unified/awd/ledgers` — List AWD Ledgers **(breaking)**
+  - removed parameter(s): filter[event_type], filter[has_provisional_cogs], filter[link_status], filter[reconciled], filter[search], integration_instance_ids, sort
+- `GET /api/amazon/unified/transactions/export` — Export Transactions **(breaking)**
+  - removed parameter(s): columns, filter[search], format, ids, scope, sort
+- `GET /api/assemblies/inventory-data` — Get Inventory Data
+  - new response code(s): 422
+- `GET /api/assemblies/{assembly}` — Get Assembly
+  - new response code(s): 404
+- `GET /api/attribute-groups` — List Attribute Groups (DataTable) **(breaking)**
+  - removed parameter(s): archived
+- `GET /api/attribute-groups/1` — Get Attribute Group
+  - new response code(s): 404
+- `GET /api/attributes` — List Attributes (DataTable) **(breaking)**
+  - removed parameter(s): archived
+- `GET /api/attributes/1` — Get Attribute
+  - new response code(s): 404
+- `GET /api/auth/refresh` — Refresh Token
+  - new response code(s): 400
+- `GET /api/big-commerce/{integrationInstance}` — Get Integration Instance
+  - new response code(s): 404
+- `GET /api/big-commerce/{integrationInstance}/orders` — List Orders **(breaking)**
+  - removed parameter(s): table_specifications
+- `GET /api/big-commerce/{integrationInstance}/products` — List Products **(breaking)**
+  - removed parameter(s): table_specifications
+- `GET /api/bills/1` — Get Bill
+  - new response code(s): 404
+- `GET /api/categories` — List Categories (DataTable) **(breaking)**
+  - removed parameter(s): archived, excluded[], filter[name], included[], search, sort, table_specifications
+- `GET /api/categories/for-manage` — List Categories for Manage **(breaking)**
+  - removed parameter(s): parent_id
+- `GET /api/categories/{category}` — Show Category
+  - new response code(s): 404
+- `GET /api/channel/customers/50` — Get Customer
+  - new response code(s): 404
+- `GET /api/channel/orders/500` — Get Order
+  - new response code(s): 403
+- `GET /api/cogs-revaluation/export-fifo-changes/1234` — Export FIFO Layer Changes CSV
+  - new response code(s): 404
+- `GET /api/cogs-revaluation/export-fifo-changes/42` — Export FIFO Layer Changes (CSV)
+  - new response code(s): 404
+- `GET /api/cogs-revaluation/tracked-job/1234` — Get Tracked Job Status
+  - new response code(s): 404
+- `GET /api/cogs-revaluation/tracked-job/42` — Get Tracked Job Status
+  - new response code(s): 404
+- `GET /api/cogs/sku-health/101` — Show SKU COGS Health Detail
+  - new response code(s): 404
+- `GET /api/custom-field-values/{custom_field_value}` — Show Custom Field Value
+  - new response code(s): 404
+- `GET /api/custom-fields` — List Custom Fields **(breaking)**
+  - removed parameter(s): archived, search, sort
+- `GET /api/custom-fields/{custom_field}` — Show Custom Field
+  - new response code(s): 404
+- `GET /api/data-feeds/1` — Show Data Feed
+  - new response code(s): 404
+- `GET /api/data-tables` — Query DataTable Model **(breaking)**
+  - removed parameter(s): filter, saved_view_id
+  - new response code(s): 400
+- `GET /api/data-tables/blueprints` — List Blueprints
+  - new response code(s): 400
+- `GET /api/data-tables/lookup/supplier/{field}` — Supplier Lookup
+  - new response code(s): 400
+- `GET /api/discount-codes` — List Discount Codes **(breaking)**
+  - removed parameter(s): archived, limit, page, search, sort
+- `GET /api/document-inbox` — List Inbox Documents **(breaking)**
+  - removed parameter(s): page, per_page, search, status, type
+- `GET /api/ebay-product-settings` — List Product Settings
+  - new response code(s): 422
+- `GET /api/ebay/integration-instances` — List Integration Instances (DataTable) **(breaking)**
+  - removed parameter(s): archived, search, sort
+- `GET /api/ebay/integration-instances/{integrationInstance}` — Show Integration Instance
+  - new response code(s): 404
+- `GET /api/ebay/legacy-products` — List Legacy Products (DataTable Global) **(breaking)**
+  - removed parameter(s): search
+- `GET /api/ebay/orders` — List Orders (DataTable Global) **(breaking)**
+  - removed parameter(s): search, sort
+- `GET /api/ebay/{integrationInstance}/legacy-products` — List Legacy Products (Integration) **(breaking)**
+  - removed parameter(s): archived, excluded[], included[], search, sort
+- `GET /api/ebay/{integrationInstance}/orders` — List Orders (Integration) **(breaking)**
+  - removed parameter(s): archived, search, sort
+- `GET /api/export/v2/accounting-transactions` — Export Accounting Transactions (CSV) **(breaking)**
+  - removed parameter(s): filter[has_error], filter[nominal_code], filter[search], filter[status], filter[sync_enabled], filter[transaction_date.from], filter[transaction_date.to], filter[type], sort
+- `GET /api/export/v2/profitability-drilldown` — Export Profitability Drilldown **(breaking)**
+  - removed parameter(s): flt_ids[]
+- `GET /api/faire/instances/{integrationInstance}/products` — List Products for Instance (Variants Listing) **(breaking)**
+  - removed parameter(s): page
+- `GET /api/faire/instances/{integrationInstance}/products/bulk-progress/{trackedJobLogId}` — Bulk Operation Progress
+  - new response code(s): 404
+- `GET /api/faire/instances/{integrationInstance}/products/{option}/raw` — Get Raw Data from Faire (Variant)
+  - new response code(s): 404
+- `GET /api/faire/inventory` — List Faire Inventory **(breaking)**
+  - removed parameter(s): filter[instance_id], filter[integration_instance_ids]
+- `GET /api/faire/inventory/summary` — Get Faire Inventory Summary (Legacy) **(breaking)**
+  - removed parameter(s): filter[instance_id], filter[integration_instance_ids]
+- `GET /api/faire/orders` — List Faire Orders **(breaking)**
+  - removed parameter(s): filter[archived], filter[currency_code], filter[has_sku_order], filter[has_unmapped_items], filter[instance_id], filter[integration_instance_ids], filter[ordered_at], filter[retailer_country_code], filter[retailer_name], filter[search], filter[status], filter[tracking_submission_status], page, per_page, sort
+- `GET /api/faire/orders/filter-options` — Get Order Filter Options (Distinct Values) **(breaking)**
+  - removed parameter(s): filter[instance_id], filter[integration_instance_ids]
+- `GET /api/faire/products` — List Faire Products **(breaking)**
+  - removed parameter(s): filter[instance_id], filter[integration_instance_ids]
+- `GET /api/financial-line-types/{financial_line_type}` — Show Financial Line Type
+  - new response code(s): 404
+- `GET /api/financials/top-products` — Top Products
+  - new response code(s): 422
+- `GET /api/inbound-shipment-receipts/{receipt}` — Get Inbound Shipment Receipt
+  - new response code(s): 404
+- `GET /api/inbound-shipment-receipts/{receipt}/activity-log` — Get Activity Log **(breaking)**
+  - removed parameter(s): filter[causer_id], filter[date_from], filter[date_to], filter[event], filter[search]
+- `GET /api/inbound-shipment-receipts/{receipt}/fifo-layers` — Get FIFO Layers **(breaking)**
+  - removed parameter(s): filter[condition], filter[product_id], filter[warehouse_id], sort
+- `GET /api/inbound-shipment-receipts/{receipt}/inventory-movements` — Get Inventory Movements **(breaking)**
+  - removed parameter(s): filter[inventory_status], filter[product_id], filter[type], filter[warehouse_id], sort
+- `GET /api/inbound-shipments/{inbound_shipment}` — Get Inbound Shipment
+  - new response code(s): 404
+- `GET /api/inbound-shipments/{inbound_shipment}/bills/{bill}` — Get Bill
+  - new response code(s): 404
+- `GET /api/incoterms/{incoterm}` — Get Incoterm
+  - new response code(s): 404
+- `GET /api/integration-instances` — List Integration Instances **(breaking)**
+  - removed parameter(s): filter[type]
+- `GET /api/inventory-adjustments` — List Inventory Adjustments **(breaking)**
+  - removed parameter(s): filter[product_id], filter[warehouse_id], included[]
+- `GET /api/inventory-adjustments/{inventoryAdjustment}/activity-log` — Get Activity Log **(breaking)**
+  - removed parameter(s): filter[search], page
+- `GET /api/inventory-adjustments/{inventory_adjustment}` — Get Inventory Adjustment
+  - new response code(s): 404
+- `GET /api/inventory-aging` — Get Inventory Aging Report **(breaking)**
+  - removed parameter(s): age_bracket, brand_id, excluded_sales_channel_ids, has_listings, has_sales, listing_filter, max_margin, min_margin, min_quantity, sales_channel_ids, sales_period, search, supplier_id, view, warehouse_id
+  - new response code(s): 422
+- `GET /api/inventory-aging/distribution` — Get Inventory Aging Distribution **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/inventory-aging/export` — Export Inventory Aging to CSV **(breaking)**
+  - removed parameter(s): age_bracket, view, warehouse_id
+- `GET /api/inventory-aging/metrics` — Get Inventory Aging Metrics **(breaking)**
+  - removed parameter(s): age_bracket, search, warehouse_id
+- `GET /api/inventory-forecasting/configurations` — List Forecast Configurations **(breaking)**
+  - removed parameter(s): created_by, forecast_type, search, supplier_id
+- `GET /api/inventory-forecasting/configurations/paginated` — List Forecast Configurations (Paginated) **(breaking)**
+  - removed parameter(s): created_by, forecast_type, search, supplier_id
+- `GET /api/inventory-forecasting/configurations/{configuration}` — Get Forecast Configuration
+  - new response code(s): 404
+- `GET /api/inventory-forecasting/download/{filename}` — Download Export File
+  - new response code(s): 404
+- `GET /api/inventory-forecasting/job/{jobId}/status` — Get Job Status
+  - new response code(s): 404
+- `GET /api/inventory-forecasting/schedule-runs/{runId}` — Get Run Details
+  - new response code(s): 404
+- `GET /api/landed-cost-invoices/ocr` — List Extractions (Inbox) **(breaking)**
+  - removed parameter(s): date_from, date_to, page, per_page, search, source, status, supplier_id
+- `GET /api/low-stock-items` — Get Low Stock Items **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/nominal-codes` — List Nominal Codes (DataTable) **(breaking)**
+  - removed parameter(s): archived, excluded[], filter[code], filter[name], filter[type], included[], search, sort, table_specifications
+- `GET /api/nominal-codes/{nominal_code}` — Show Nominal Code
+  - new response code(s): 404
+- `GET /api/payment-terms/1` — Show Payment Term
+  - new response code(s): 404
+- `GET /api/payment-types/{payment_type}` — Get Payment Type
+  - new response code(s): 404
+- `GET /api/pdf-templates/1` — Get PDF Template
+  - new response code(s): 404
+- `GET /api/product-brands` — List Product Brands **(breaking)**
+  - removed parameter(s): excluded[], included[], table_specifications
+- `GET /api/product-brands/1` — Get Product Brand
+  - new response code(s): 404
+- `GET /api/product-pricing-tiers` — List Pricing Tiers (DataTable) **(breaking)**
+  - removed parameter(s): archived, excluded[], filter[currency_code], filter[name], included[], search, sort, table_specifications
+- `GET /api/product-pricing-tiers/{product_pricing_tier}` — Show Pricing Tier
+  - new response code(s): 404
+- `GET /api/products/merge/{session_id}/preview` — Get Merge Preview
+  - new response code(s): 404
+- `GET /api/products/{id}` — Get Product
+  - new response code(s): 404
+- `GET /api/purchase-invoices/{purchaseInvoice}/shipment-prefill` — Get Shipment Prefill (From Invoice)
+  - new response code(s): 404
+- `GET /api/purchase-invoices/{purchase_invoice}` — Get Purchase Invoice
+  - new response code(s): 404
+- `GET /api/purchase-order-shipments/{shipment}` — Get Shipment
+  - new response code(s): 404
+- `GET /api/purchase-order-shipments/{shipment}/activity-log` — Get Activity Log **(breaking)**
+  - removed parameter(s): filter[search], page
+- `GET /api/purchase-orders/{purchase_order}` — Get Purchase Order
+  - new response code(s): 404
+- `GET /api/purchase-receipts/{receipt}` — Get Purchase Receipt
+  - new response code(s): 404
+- `GET /api/qbo/accounts` — List Accounts **(breaking)**
+  - removed parameter(s): filter[account_type], filter[active], filter[classification], filter[has_conflict], filter[include_archived], filter[name], filter[search], filter[sync_status], sort
+- `GET /api/qbo/accounts/export` — Export Accounts **(breaking)**
+  - removed parameter(s): active, end_date, start_date
+- `GET /api/qbo/bills` — List Bills **(breaking)**
+  - removed parameter(s): filter[search], filter[sync_status], sort
+- `GET /api/qbo/conflicts/{entityType}` — List Conflicts by Entity Type **(breaking)**
+  - removed parameter(s): include_resolved, status[]
+- `GET /api/qbo/credit-memos` — List Credit Memos **(breaking)**
+  - removed parameter(s): filter[search], sort
+- `GET /api/qbo/customers` — List Customers **(breaking)**
+  - removed parameter(s): filter[company_name], filter[display_name], filter[linked], filter[search], sort
+- `GET /api/qbo/invoices` — List Invoices **(breaking)**
+  - removed parameter(s): filter[customer_name], filter[doc_number], filter[search], filter[status], filter[sync_status], sort
+- `GET /api/qbo/items` — List Items **(breaking)**
+  - removed parameter(s): filter[search], sort
+- `GET /api/qbo/vendors` — List Vendors **(breaking)**
+  - removed parameter(s): filter[search], sort
+- `GET /api/reporting/accounting/income-statement` — Get Accounting Income Statement **(breaking)**
+  - removed parameter(s): filter[end_date], filter[start_date], trailing_days
+- `GET /api/reporting/inventory-planning` — Get Inventory Planning Report **(breaking)**
+  - removed parameter(s): filter[warehouse_id], filter[warehouse_id][is], filter_groups
+- `GET /api/reporting/inventory-planning/export` — Export Inventory Planning Report **(breaking)**
+  - removed parameter(s): columns, filter[warehouse_id]
+- `GET /api/reporting/inventory-planning/summary` — Get Inventory Planning Summary **(breaking)**
+  - removed parameter(s): filter[warehouse_id]
+- `GET /api/reporting/profitability/drilldown` — Get Profitability Drilldown **(breaking)**
+  - removed parameter(s): flt_ids[]
+- `GET /api/reporting/profitability/trend` — Get Profitability Trend **(breaking)**
+  - removed parameter(s): metrics[]
+- `GET /api/reporting/realtime-inventory` — Get Realtime Inventory **(breaking)**
+  - removed parameter(s): filter[search], filter[warehouse_id], search, warehouse_id
+- `GET /api/reporting/realtime-inventory/export` — Export Realtime Inventory **(breaking)**
+  - removed parameter(s): filter[search], filter[warehouse_id]
+- `GET /api/reporting/sales-channel-coverage/export` — Export Sales Channel Coverage (async) **(breaking)**
+  - removed parameter(s): filter[instance_ids], filter[integration_ids], filter[product_types], filter[search]
+- `GET /api/reporting/sales-channel-coverage/paginated` — Get Sales Channel Coverage (Paginated) **(breaking)**
+  - removed parameter(s): filter[instance_ids], filter[integration_ids], filter[product_types], filter[search], in_stock_only, sort
+- `GET /api/return-reasons/{return_reason}` — Get Return Reason
+  - new response code(s): 404
+- `GET /api/return-receipts` — List Return Receipts **(breaking)**
+  - removed parameter(s): blind_only, page, per_page, rma_id, search, warehouse_id
+- `GET /api/return-receipts/{return_receipt}` — Get Return Receipt
+  - new response code(s): 404
+- `GET /api/rmas/{rma}` — Get RMA
+  - new response code(s): 404
+- `GET /api/sales-channel-product-templates` — List Sales Channel Product Templates **(breaking)**
+  - removed parameter(s): filter[sales_channel_id]
+- `GET /api/sales-orders/ocr/{extraction_id}` — Get OCR Extraction
+  - new response code(s): 404
+- `GET /api/shipfusion/integration-instances/{integration_instance}/inventory/discrepancies` — Get Inventory Discrepancies **(breaking)**
+  - removed parameter(s): warehouse
+- `GET /api/shipfusion/integration-instances/{integration_instance}/inventory/product-movements` — Get Product Inventory Movements **(breaking)**
+  - removed parameter(s): limit
+- `GET /api/shipfusion/integration-instances/{integration_instance}/inventory/without-shipfusion-inventory` — Get Products Without Shipfusion Inventory **(breaking)**
+  - removed parameter(s): warehouse
+- `GET /api/shipfusion/integration-instances/{integration_instance}/inventory/without-sku-products` — Get Items Without SKU Products **(breaking)**
+  - removed parameter(s): warehouse
+- `GET /api/shipfusion/integration-instances/{integration_instance}/orders` — List Orders **(breaking)**
+  - removed parameter(s): has_fulfillment, search, status
+- `GET /api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments` — List Warehouse Shipments **(breaking)**
+  - removed parameter(s): search, status
+- `GET /api/shipfusion/integration-instances/{integration_instance}/webhook-events` — List Webhook Events **(breaking)**
+  - removed parameter(s): event_type, page, processed, search
+- `GET /api/stock-takes/{stock_take}` — Show Stock Take
+  - new response code(s): 404
+- `GET /api/store-email-templates` — List Store Email Templates (DataTable) **(breaking)**
+  - removed parameter(s): archived
+- `GET /api/store-email-templates/1` — Get Store Email Template
+  - new response code(s): 404
+- `GET /api/stores/1` — Show Store
+  - new response code(s): 404
+- `GET /api/subscription-editions/1` — Get Subscription Edition
+  - new response code(s): 404
+- `GET /api/supplier-inventories` — List Supplier Inventories (DataTable) **(breaking)**
+  - removed parameter(s): filter[id], filter[product_id], filter[search], filter[sku], filter[warehouse_id], per_page
+- `GET /api/supplier-inventories/1` — Get Supplier Inventory
+  - new response code(s): 404
+- `GET /api/supplier-inventories/1/our-inventory` — List Our Inventory for Supplier **(breaking)**
+  - removed parameter(s): filter[product_id], filter[search], filter[sku], filter[stock_status], filter[warehouse_id], page, per_page, sort
+- `GET /api/supplier-inventories/1/our-inventory/stats` — Get Our Inventory Stats for Supplier **(breaking)**
+  - removed parameter(s): filter[product_id], filter[search], filter[sku], filter[stock_status], filter[warehouse_id]
+- `GET /api/supplier-pricing-tiers` — List Supplier Pricing Tiers **(breaking)**
+  - removed parameter(s): excluded[], included[], table_specifications
+- `GET /api/tags/1` — Show Tag
+  - new response code(s): 404
+- `GET /api/tracked-job-logs` — List Tracked Job Logs **(breaking)**
+  - removed parameter(s): archived, search, sort
+- `GET /api/tracked-job-logs/{tracked_job_log}` — Show Tracked Job Log
+  - new response code(s): 404
+- `GET /api/trackstar/integration-instances/{integration_instance}/bills` — List Bills **(breaking)**
+  - removed parameter(s): filter[charge_type], filter[date_from], filter[date_to], filter[object_id], filter[object_type], filter[search], sort
+- `GET /api/trackstar/integration-instances/{integration_instance}/inventory` — List Inventory **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/trackstar/integration-instances/{integration_instance}/inventory/discrepancies` — Inventory Discrepancies **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/trackstar/integration-instances/{integration_instance}/inventory/without-sku-products` — Items Without SKU Products **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/trackstar/integration-instances/{integration_instance}/inventory/without-trackstar-inventory` — SKU Products Without Trackstar Inventory **(breaking)**
+  - removed parameter(s): warehouse_id
+- `GET /api/trackstar/integration-instances/{integration_instance}/orders` — List Orders **(breaking)**
+  - removed parameter(s): filter[date_from], filter[date_to], filter[has_fulfillment], filter[search], filter[status], sort
+- `GET /api/trackstar/integration-instances/{integration_instance}/orders/by-trackstar-id/{trackstar_id}` — Show Order by Trackstar ID
+  - new response code(s): 404
+- `GET /api/trackstar/integration-instances/{integration_instance}/products` — List Products **(breaking)**
+  - removed parameter(s): active_only, search
+- `GET /api/trackstar/integration-instances/{integration_instance}/shipping-methods` — List Shipping Methods **(breaking)**
+  - removed parameter(s): carrier, carrier_id
+- `GET /api/trackstar/integration-instances/{integration_instance}/webhook-events/{webhook_event}` — Show Webhook Event
+  - new response code(s): 404
+- `GET /api/users/{user}` — Show User
+  - new response code(s): 404
+- `GET /api/v2/customers` — List Customers **(breaking)**
+  - removed parameter(s): search
+- `GET /api/v2/data-imports/{dataImport}/validation-results` — Get Validation Results **(breaking)**
+  - removed parameter(s): filter
+- `GET /api/v2/fifo-layers` — List FIFO Layers **(breaking)**
+  - removed parameter(s): filter[archived], filter[condition], filter[product_id], filter[warehouse_id], filter_groups[children][0][condition][column], filter_groups[children][0][condition][operator], filter_groups[children][0][condition][value], filter_groups[children][0][type], filter_groups[conjunction]
+- `GET /api/v2/financials/daily-summary` — Daily Financial Summary **(breaking)**
+  - removed parameter(s): sales_channel_id
+- `GET /api/v2/inventory-adjustments` — List Inventory Adjustments **(breaking)**
+  - removed parameter(s): filter[product_id], filter[warehouse_id]
+- `GET /api/v2/inventory-movements` — List Inventory Movements **(breaking)**
+  - removed parameter(s): filter[inventory_status], filter[type], filter[warehouse_id]
+- `GET /api/v2/inventory-movements/list/export` — Export Inventory Movements **(breaking)**
+  - removed parameter(s): columns, filter[inventory_status], filter[search], filter[type], filter[warehouse], ids, sort
+- `GET /api/v2/inventory/holds` — List Inventory Holds **(breaking)**
+  - removed parameter(s): filter[has_expiration], filter[product_id], filter[reason], filter[search], filter[warehouse_id], sort, status
+- `GET /api/v2/inventory/holds/export` — Export Inventory Holds **(breaking)**
+  - removed parameter(s): ids
+- `GET /api/v2/merged-shipments` — List Merged Shipments **(breaking)**
+  - removed parameter(s): filter[id], filter[merged_shipment_number], filter[open_only], filter[status], filter[warehouse_id]
+- `GET /api/v2/merged-shipments/{mergedShipment}` — Show Merged Shipment
+  - new response code(s): 404
+- `GET /api/v2/products` — List Products **(breaking)**
+  - removed parameter(s): filter[is_dropshippable], filter_groups
+- `GET /api/v2/products/list/export` — Export Product List **(breaking)**
+  - removed parameter(s): filter[search], ids
+- `GET /api/v2/products/list/export/download` — Download Export File
+  - new response code(s): 404
+- `GET /api/v2/products/{product}` — Get Product
+  - new response code(s): 404
+- `GET /api/v2/products/{product}/inventory-tally` — Get Product Inventory Tally
+  - new response code(s): 422
+- `GET /api/v2/sales-order-fulfillments` — List Fulfillments **(breaking)**
+  - removed parameter(s): filter[archived], filter[archived_at.is_not_empty], filter[backordered], filter[cost.between], filter[created_at.greater_than], filter[customer_address], filter[customer_city], filter[customer_company], filter[customer_country], filter[customer_country_code], filter[customer_email], filter[customer_name], filter[customer_phone], filter[customer_province], filter[customer_province_code], filter[customer_reference], filter[customer_zip], filter[fulfilled_at.between], filter[fulfilled_shipping_method], filter[fulfillment_number], filter[fulfillment_sequence], filter[fulfillment_type], filter[id.greater_than], filter[integration_instance_ids], filter[item_name], filter[item_nominal_code], filter[item_price.between], filter[item_quantity.greater_than], filter[item_sku], filter[packing_slip_printed], filter[packing_slip_printed_at.is_not_empty], filter[requested_shipping_method], filter[sales_channel_type_name], filter[sales_order_shipping_method], filter[sales_order_tags], filter[search], filter[status], filter[store], filter[tracking_number], filter[updated_at.greater_than], filter[warehouse], filter_groups
+- `GET /api/v2/sales-order-fulfillments/export` — Export Fulfillments **(breaking)**
+  - removed parameter(s): columns, ids
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/activity-log` — Get Activity Log **(breaking)**
+  - removed parameter(s): filter[search]
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/inventory-movements` — Get Inventory Movements **(breaking)**
+  - removed parameter(s): filter[inventory_status], filter[search], filter[type], filter[warehouse_id]
+- `GET /api/v2/sales-orders/backorder/next-schedule` — Get Next Backorder Schedule **(breaking)**
+  - removed parameter(s): supplier_id
+- `GET /api/v2/sales-orders/{salesOrder}/activity-log` — Get Activity Log **(breaking)**
+  - removed parameter(s): filter[search]
+- `GET /api/v2/sales-orders/{salesOrder}/allocations` — Get Allocations **(breaking)**
+  - removed parameter(s): filter[search], filter[status], filter[warehouse_id]
+- `GET /api/v2/sales-orders/{salesOrder}/inventory-movements` — Get Inventory Movements **(breaking)**
+  - removed parameter(s): filter[inventory_status], filter[link_type], filter[search], filter[type], filter[warehouse_id]
+- `GET /api/v2/sales-orders/{salesOrder}/merge-candidates` — List Merge Candidates for Sales Order
+  - new response code(s): 404
+- `GET /api/v2/suppliers` — List Suppliers **(breaking)**
+  - removed parameter(s): search
+- `GET /api/vendor-credits` — List Vendor Credits **(breaking)**
+  - removed parameter(s): filter[archived], filter[credit_type], filter[purchase_invoice_id], filter[purchase_order_id], filter[refund_method], filter[search], filter[status], filter[supplier_id], filter[warehouse_id], sort
+- `GET /api/vendor-deposits` — List Vendor Deposits **(breaking)**
+  - removed parameter(s): filter[search], filter[status], filter[supplier_id]
+- `GET /api/walmart/{integrationInstance}` — Get Integration Instance
+  - new response code(s): 404
+- `GET /api/walmart/{integrationInstance}/orders` — List Orders **(breaking)**
+  - removed parameter(s): table_specifications
+- `GET /api/walmart/{integrationInstance}/products` — List Products **(breaking)**
+  - removed parameter(s): table_specifications
+- `GET /api/walmart/{integration_instance}/download-locations` — Download Locations
+  - new response code(s): 422
+- `GET /api/woo-commerce/{integration_instance}/orders` — List Orders **(breaking)**
+  - removed parameter(s): archived, excluded[], included[], limit, page, search, sort
+- `GET /api/woo-commerce/{integration_instance}/orders/export` — Export Orders **(breaking)**
+  - removed parameter(s): search
+- `GET /api/woo-commerce/{integration_instance}/products` — List Products **(breaking)**
+  - removed parameter(s): archived, excluded[], included[], limit, page, search, sort
+- `GET /api/woo-commerce/{integration_instance}/products/export` — Export Products **(breaking)**
+  - removed parameter(s): archived, search
+- `GET /api/xero/v2/accounts` — List Accounts (V2) **(breaking)**
+  - removed parameter(s): filter_groups
+- `GET /faire/callback` — OAuth Callback (Faire → SKU)
+  - new response code(s): 302
+  - removed response code(s): 200
+- `PATCH /api/xero/webhook-settings/{integrationInstanceId}` — Update Webhook Settings
+  - new response code(s): 422
+- `POST /api/amazon` — Create Integration Instance
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/amazon/unified/fifo-layers/cogs/bulk-update` — Bulk Update COGS
+  - new response code(s): 422
+- `POST /api/amazon/{integrationInstance}/finances/nominal-code-mappings` — Create Nominal Code Mapping
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/amazon/{integrationInstance}/finances/settlement-mapping-groups` — Create Mapping Group
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/assemblies` — Create Assembly
+  - new response code(s): 400, 422
+- `POST /api/attribute-groups` — Create Attribute Group
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/attributes` — Create Attribute
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/big-commerce` — Create Integration Instance
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/big-commerce/{integrationInstance}/fulfill` — Fulfill Order
+  - new response code(s): 422
+- `POST /api/big-commerce/{integrationInstance}/orders/refresh-order` — Refresh Single Order
+  - new response code(s): 404
+- `POST /api/categories` — Create Category
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/categories/assign-category-to-product` — Assign Category to Product
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/channel-partners` — Create Channel Partner
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/channel-partners/1/tokens` — Generate API Token
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/channel-partners/inbound-events/100/reprocess` — Reprocess Inbound Event
+  - new response code(s): 422
+- `POST /api/channel/orders` — Create Order
+  - new response code(s): 422
+- `POST /api/cogs-revaluation/101/revalue` — Revalue FIFO Layer
+  - new response code(s): 422
+- `POST /api/cogs-revaluation/501/revalue` — Revalue FIFO Layer
+  - new response code(s): 422
+- `POST /api/cogs-revaluation/bulk-revalue` — Bulk Revalue FIFO Layers
+  - new response code(s): 422
+- `POST /api/cogs-revaluation/cancel-tracked-rebuild/1234` — Cancel Tracked Rebuild
+  - new response code(s): 400
+- `POST /api/cogs-revaluation/cancel-tracked-rebuild/42` — Cancel Tracked Rebuild
+  - new response code(s): 400
+- `POST /api/cogs-revaluation/rebuild-cogs-bulk` — Rebuild COGS for Multiple Products
+  - new response code(s): 422
+- `POST /api/csv-templates` — Create CSV Template
+  - new response code(s): 422
+- `POST /api/custom-field-values` — Create Custom Field Value
+  - new response code(s): 422
+- `POST /api/custom-fields` — Create Custom Field
+  - new response code(s): 422
+- `POST /api/data-feeds` — Create Data Feed
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/data-tables/saved-views/{saved_view}/set-global-default` — Set Global Default
+  - new response code(s): 403
+- `POST /api/discount-codes` — Create Discount Code
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/ebay-product-settings` — Save Product Settings
+  - new response code(s): 422
+- `POST /api/ebay/integration-instances` — Create Integration Instance
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/ebay/{integrationInstance}/legacy-products/create-sku-products` — Create SKU Products from Listings
+  - new response code(s): 400
+- `POST /api/ebay/{integrationInstance}/legacy-products/get-suggested-categories` — Get Suggested Categories
+  - new response code(s): 422
+- `POST /api/ebay/{integrationInstance}/legacy-products/publish` — Publish Listings
+  - new response code(s): 400
+- `POST /api/faire/instances` — Create Faire Instance
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/faire/instances/{integrationInstance}/access-token` — Set Access Token Manually
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/financial-line-overrides/preview-backfill` — Preview Financial Line Backfill
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/orders/bulk-archive` — Bulk Archive Faire Orders
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/orders/bulk-delete-sku-orders` — Bulk Delete SKU Orders
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/orders/refresh-tracked` — Refresh Orders from Faire (Tracked)
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/orders/{order}/update-sku-order` — Update SKU Order from Faire Order
+  - new response code(s): 404
+- `POST /api/faire/instances/{integrationInstance}/products/bulk` — Bulk Operation (Synchronous)
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/products/bulk-tracked` — Bulk Operation (Tracked)
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/products/refresh-tracked` — Refresh Products from Faire (Tracked)
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/products/{option}/create-sku-product` — Create SKU.io Product from Variant
+  - new response code(s): 201, 404, 422
+  - removed response code(s): 200
+- `POST /api/faire/instances/{integrationInstance}/products/{option}/map` — Map Single Variant to SKU.io Product
+  - new response code(s): 422
+- `POST /api/faire/instances/{integrationInstance}/products/{option}/smart-match` — Find Smart-Match Candidates
+  - new response code(s): 404
+- `POST /api/faire/orders/{order}/submit-tracking` — Submit Tracking to Faire (FBM)
+  - new response code(s): 422
+- `POST /api/fifo-layers/archivable` — Check if FIFO Layers are Archivable
+  - new response code(s): 422
+- `POST /api/fifo-layers/recalculate-total-costs` — Recalculate Total Costs
+  - new response code(s): 422
+- `POST /api/financial-alerts/classifications` — Create Classification
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/financial-line-types` — Create Financial Line Type
+  - new response code(s): 422
+- `POST /api/inbound-shipments` — Create Inbound Shipment
+  - new response code(s): 422
+- `POST /api/inbound-shipments/from-invoice/{purchaseInvoice}` — Create Inbound Shipment From Purchase Invoice
+  - new response code(s): 422
+- `POST /api/inbound-shipments/receive` — Receive Shipment
+  - new response code(s): 400
+- `POST /api/inbound-shipments/{inbound_shipment}/cancel` — Cancel Shipment
+  - new response code(s): 422
+- `POST /api/inbound-shipments/{inbound_shipment}/mark-as-shipped` — Mark As Shipped
+  - new response code(s): 422
+- `POST /api/inbound-shipments/{inbound_shipment}/receipts` — Create Receipt (Native IS Path)
+  - new response code(s): 422
+- `POST /api/inbound-shipments/{inbound_shipment}/receive` — Receive Shipment
+  - new response code(s): 422
+- `POST /api/incoterms` — Create Incoterm
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/integration-instances` — Create Integration Instance
+  - new response code(s): 422
+- `POST /api/inventory-adjustments` — Create Inventory Adjustment
+  - new response code(s): 400, 422
+- `POST /api/inventory-forecasting/build` — Build Forecast
+  - new response code(s): 422
+- `POST /api/inventory-forecasting/configurations` — Create Forecast Configuration
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/inventory-forecasting/configurations/{configuration}/duplicate` — Duplicate Forecast Configuration
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/inventory-forecasting/purchase-orders` — Create Purchase Orders from Forecast
+  - new response code(s): 422
+- `POST /api/inventory-forecasting/schedule-runs/manual` — Create Manual Run
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/inventory-forecasting/schedules` — Create Schedule
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/nominal-codes` — Create Nominal Code
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/notes` — Create Note
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/payment-terms` — Create Payment Term
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/payment-types` — Create Payment Type
+  - new response code(s): 422
+- `POST /api/pdf-templates/1/preview` — Preview PDF Template
+  - new response code(s): 422
+- `POST /api/pdf-templates/1/store-override` — Create Store Override
+  - new response code(s): 422
+- `POST /api/product-brands` — Create Product Brand
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/product-pricing-tiers` — Create Pricing Tier
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/products` — Create Product
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/products/import` — Execute Import
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/products/merge/create-session` — Create Merge Session (Single Pair)
+  - new response code(s): 422
+- `POST /api/products/merge/upload` — Upload Merge CSV
+  - new response code(s): 422
+- `POST /api/products/merge/{session_id}/execute` — Execute Merge
+  - new response code(s): 404
+- `POST /api/purchase-invoices` — Create Purchase Invoice
+  - new response code(s): 422
+- `POST /api/purchase-invoices/import` — Execute Import
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/purchase-invoices/{purchaseInvoice}/lines/{purchaseInvoiceLine}/sync-po-price` — Sync PO Price From Invoice Line
+  - new response code(s): 404
+- `POST /api/purchase-invoices/{purchaseInvoice}/resolve-with-credit` — Resolve with Vendor Credit
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/purchase-invoices/{purchaseInvoice}/sync-po-prices` — Sync PO Prices Bulk
+  - new response code(s): 422
+- `POST /api/purchase-order-lines/{purchase_order_line}/short-close` — Short-Close PO Line
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/purchase-order-shipments` — Create Shipment
+  - new response code(s): 422
+- `POST /api/purchase-orders` — Create Purchase Order
+  - new response code(s): 422
+- `POST /api/purchase-orders/approve` — Bulk Approve
+  - new response code(s): 400
+- `POST /api/purchase-orders/build` — Build PO (Forecast)
+  - new response code(s): 400
+- `POST /api/purchase-orders/import` — Execute Import
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/purchase-orders/import-lines` — Import Lines from CSV
+  - new response code(s): 400
+- `POST /api/purchase-orders/{purchase_order}/asn` — Send ASN
+  - new response code(s): 422
+- `POST /api/purchase-orders/{purchase_order}/receiving-discrepancy` — Create Receiving Discrepancy
+  - new response code(s): 400
+- `POST /api/purchase-receipts/{receipt}/generate-accounting-transaction` — Generate Accounting Transaction
+  - new response code(s): 422
+- `POST /api/report-templates` — Create Report Template
+  - new response code(s): 422
+- `POST /api/reporting/inventory-planning/create-po` — Create Draft PO from Planning
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/reporting/inventory-planning/schedules` — Create Scheduled Report
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/return-reasons` — Create Return Reason
+  - new response code(s): 422
+- `POST /api/return-receipts` — Create Return Receipt
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/return-receipts/{returnReceipt}/lines` — Add Line to Return Receipt
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/rmas` — Create RMA
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/rmas/{rma}/lines` — Add Line to RMA
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/rmas/{rma}/receipts` — Create Return Receipt from RMA
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/sales-channel-product-templates` — Create Sales Channel Product Template
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/sales-credits` — Create Sales Credit
+  - new response code(s): 422
+- `POST /api/sales-credits/paid` — Record Payment (Paid)
+  - new response code(s): 422
+- `POST /api/sales-order-lines/import` — Import Lines from CSV
+  - new response code(s): 400
+- `POST /api/sales-order-lines/reservations` — Manage Reservations
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/shipfusion/integration-instances` — Create Integration Instance
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/shipfusion/integration-instances/{integration_instance}/orders/sync` — Sync Orders (Queue Job) **(breaking)**
+  - removed parameter(s): end_date, start_date, status
+- `POST /api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/sync` — Sync Warehouse Shipments (Queue Job) **(breaking)**
+  - removed parameter(s): end_date, start_date
+- `POST /api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/link/{shopifyFulfillment}` — Link Fulfillments
+  - new response code(s): 422
+- `POST /api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/submit` — Submit Single Fulfillment
+  - new response code(s): 422
+- `POST /api/shopify/{integrationInstance}/orders/refresh-tracked` — Refresh Orders (Tracked)
+  - new response code(s): 422
+- `POST /api/shopify/{integrationInstance}/products/refresh-product` — Refresh Single Product from Shopify
+  - new response code(s): 404
+- `POST /api/shopify/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/shopify/{integrationInstance}/products/{product}/map` — Map Product
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/store-email-templates` — Create Store Email Template
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/store-email-templates/send` — Send Email
+  - new response code(s): 400, 422
+- `POST /api/stores` — Create Store
+  - new response code(s): 422
+- `POST /api/subscription-editions` — Create Subscription Edition
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/subscription-editions/1/copy` — Copy Subscription Edition
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/subscription-offerings` — Create Subscription Offering
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/subscription-offerings/{subscription_offering}/editions` — Create Edition for Offering
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/supplier-inventories/5/import` — Execute Import
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/supplier-pricing-tiers` — Create Supplier Pricing Tier
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/supplier-products` — Create Supplier Product
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/suppliers` — Create Supplier
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/suppliers/{supplier}/po-sample` — Download PO Sample (CSV/XLSX)
+  - new response code(s): 422
+  - removed response code(s): 200
+- `POST /api/suppliers/{supplier}/warehouses` — Create Supplier Warehouse
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/table-views` — Create Table View
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/tags` — Create Tag
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/trackstar/integration-instances` — Create Integration Instance
+  - new response code(s): 422
+- `POST /api/trackstar/integration-instances/{integration_instance}/inventory/create-stock-take` — Create Stock Take from Discrepancies
+  - new response code(s): 422
+- `POST /api/trackstar/integration-instances/{integration_instance}/orders/sync` — Sync Orders (Queued) **(breaking)**
+  - removed parameter(s): status
+- `POST /api/trackstar/integration-instances/{integration_instance}/warehouse-mappings` — Create Warehouse Mapping
+  - new response code(s): 422
+- `POST /api/user-api` — Create API Key
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/users` — Register User (Self-registration)
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/users/store-user` — Invite User
+  - new response code(s): 422
+- `POST /api/v2/data-imports` — Upload Data Import
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/v2/inventory/holds` — Create Inventory Hold
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/v2/inventory/holds/bulk` — Bulk Create Inventory Holds
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/v2/inventory/holds/{reservation}/release` — Release Inventory Hold
+  - new response code(s): 422
+- `POST /api/v2/merged-shipments` — Create Merged Shipment
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/v2/merged-shipments/eligibility` — Check Merge Eligibility
+  - new response code(s): 422
+- `POST /api/v2/merged-shipments/{mergedShipment}/unmerge` — Unmerge Merged Shipment
+  - new response code(s): 422
+- `POST /api/v2/products/bulk-edit` — Bulk Edit Products (Apply to All)
+  - new response code(s): 422
+- `POST /api/v2/products/bundle-workshop/{product}/components` — Save Bundle Components
+  - new response code(s): 422
+- `POST /api/v2/products/import-supplier-links` — Import Supplier Links
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/cancel-provider-order` — Cancel Provider Order
+  - new response code(s): 422
+- `POST /api/v2/sales-orders/backorder/create-po` — Create PO from Backorder
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/walmart` — Create Integration Instance
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `POST /api/walmart/{integrationInstance}/fulfill` — Fulfill Order
+  - new response code(s): 422
+- `POST /api/walmart/{integrationInstance}/orders/refresh-order` — Refresh Single Order
+  - new response code(s): 404
+- `POST /api/webhooks` — Create Webhook
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/webhooks/xero/{instanceUuid}` — Receive Xero Webhook
+  - new response code(s): 401
+- `POST /api/woo-commerce` — Create Integration Instance
+  - new response code(s): 201
+  - removed response code(s): 200
+- `POST /api/woo-commerce/{integration_instance}/orders/refresh-order` — Refresh Single Order
+  - new response code(s): 404
+- `POST /api/xero/accounts/create-nominal-codes` — Create Nominal Codes from Accounts
+  - new response code(s): 404
+- `PUT /api/alerts/bulk-read` — Bulk Mark as Read
+  - new response code(s): 422
+- `PUT /api/alerts/mark-all-read` — Mark All as Read
+  - new response code(s): 422
+- `PUT /api/auth/500/read-notification` — Mark Notification as Read
+  - new response code(s): 404
+- `PUT /api/auth/password` — Update Password
+  - new response code(s): 422
+- `PUT /api/auth/profile` — Update Profile
+  - new response code(s): 422
+- `PUT /api/big-commerce/{integration_instance}/store-mapped-warehouse-locations` — Store Mapped Warehouse Locations
+  - new response code(s): 422
+- `PUT /api/data-tables/saved-views/{saved_view}` — Update Saved View
+  - new response code(s): 403
+- `PUT /api/faire/instances/{integrationInstance}` — Update Faire Instance
+  - new response code(s): 422
+- `PUT /api/inbound-shipments/{inbound_shipment}` — Update Inbound Shipment
+  - new response code(s): 422
+- `PUT /api/integration-instances/{integration_instance}/map-listing` — Map Listing to SKU Product
+  - new response code(s): 400
+- `PUT /api/magento/{integration_instance}/download-orders` — Download Orders
+  - new response code(s): 422
+- `PUT /api/pdf-templates/1` — Update PDF Template
+  - new response code(s): 422
+- `PUT /api/product-pricing-tiers/{productPricingTier}/archive` — Archive Pricing Tier
+  - new response code(s): 400
+- `PUT /api/product-pricing-tiers/{productPricingTier}/default` — Set as Default Tier
+  - new response code(s): 400
+- `PUT /api/products/{id}` — Update Product
+  - new response code(s): 422
+- `PUT /api/purchase-orders/{purchase_order}` — Update Purchase Order
+  - new response code(s): 409
+- `PUT /api/purchase-orders/{purchase_order}/mark-as-shipped` — Mark as Shipped (FBA/AWD)
+  - new response code(s): 422
+- `PUT /api/sales-order-lines/{salesOrderLine}/nominal-code` — Update Line Nominal Code
+  - new response code(s): 422
+- `PUT /api/sales-orders/{salesOrder}` — Update Sales Order
+  - new response code(s): 422
+- `PUT /api/supplier-inventories/1` — Update Supplier Inventory
+  - new response code(s): 201, 422
+  - removed response code(s): 200
+- `PUT /api/supplier-pricing-tiers/2/archive` — Archive Pricing Tier
+  - new response code(s): 400
+- `PUT /api/supplier-pricing-tiers/2/default` — Set as Default
+  - new response code(s): 400
+- `PUT /api/trackstar/integration-instances/{integration_instance}/shipping-methods/{trackstar_shipping_method}/mapping` — Update Shipping Method Mapping
+  - new response code(s): 422
+- `PUT /api/v2/products/bundle-workshop/{product}/type` — Update Bundle Type
+  - new response code(s): 422
+- `PUT /api/v2/products/{product}/pricing` — Upsert Product Pricing
+  - new response code(s): 422
+- `PUT /api/walmart/{integration_instance}/store-mapped-warehouse-locations` — Store Mapped Warehouse Locations
+  - new response code(s): 422
+
+## Removed
+
+- `GET /api/v2/inventory-allocations` — List Allocations **(breaking)**
+- `GET /api/v2/inventory-allocations/backorders` — List Backorders **(breaking)**
+- `GET /api/v2/inventory-allocations/backorders/export` — Export Backorders **(breaking)**
+- `GET /api/v2/inventory-allocations/breakdown` — Get Breakdown **(breaking)**
+- `GET /api/v2/inventory-allocations/export` — Export Allocations **(breaking)**
+- `GET /api/v2/inventory-allocations/product/{productId}/analysis` — Product Analysis **(breaking)**
+- `GET /api/v2/inventory-allocations/product/{productId}/coverage-options` — Coverage Options **(breaking)**
+- `GET /api/v2/inventory-allocations/search-suppliers` — Search Suppliers **(breaking)**
+- `GET /api/v2/inventory-allocations/summary` — Get Summary **(breaking)**
+- `GET /api/v2/inventory-allocations/supplier/{supplierId}/analysis` — Supplier Analysis **(breaking)**
+- `GET /api/v2/inventory-allocations/suppliers` — List Suppliers **(breaking)**
+- `GET /api/v2/inventory-allocations/{allocation}` — Get Allocation **(breaking)**
+- `GET /api/v2/warehouse-transfers` — List Warehouse Transfers **(breaking)**
+- `GET /api/v2/warehouse-transfers/filter-options` — Get Filter Options **(breaking)**
+- `GET /api/v2/warehouse-transfers/receipts/{receipt}` — Get Receipt Detail **(breaking)**
+- `GET /api/v2/warehouse-transfers/receipts/{receipt}/activity-log` — Get Receipt Activity Log **(breaking)**
+- `GET /api/v2/warehouse-transfers/receipts/{receipt}/fifo-layers` — Get Receipt FIFO Layers **(breaking)**
+- `GET /api/v2/warehouse-transfers/receipts/{receipt}/inventory-movements` — Get Receipt Inventory Movements **(breaking)**
+- `GET /api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}/quantity-preview` — Preview Receipt Line Quantity Change **(breaking)**
+- `GET /api/v2/warehouse-transfers/shipments/{shipment}` — Get Shipment Detail **(breaking)**
+- `GET /api/v2/warehouse-transfers/shipments/{shipment}/activity-log` — Get Shipment Activity Log **(breaking)**
+- `GET /api/v2/warehouse-transfers/shipments/{shipment}/inventory-movements` — Get Shipment Inventory Movements **(breaking)**
+- `GET /api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}/quantity-preview` — Preview Shipment Line Quantity Change **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}` — Get Warehouse Transfer **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/allocations` — Get Allocations **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/browse-products` — Browse Products **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/fifo-layers` — Get FIFO Layers **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/inventory-movements` — Get Inventory Movements **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/line-items` — Get Line Items **(breaking)**
+- `GET /api/v2/warehouse-transfers/{warehouseTransfer}/tab-counts` — Get Tab Counts **(breaking)**
+- `PATCH /api/v2/warehouse-transfers/receipts/{receipt}/lines/{line}` — Update Receipt Line Quantity **(breaking)**
+- `PATCH /api/v2/warehouse-transfers/shipments/{shipment}/lines/{line}` — Update Shipment Line Quantity **(breaking)**
+- `POST /api/v2/inventory-allocations/check-release-availability` — Check Release Availability **(breaking)**
+- `POST /api/v2/inventory-allocations/compact-priorities` — Compact Priorities **(breaking)**
+- `POST /api/v2/inventory-allocations/delete-fulfillments` — Delete Fulfillments **(breaking)**
+- `POST /api/v2/inventory-allocations/evaluate-releases` — Evaluate Releases **(breaking)**
+- `POST /api/v2/inventory-allocations/rebalance-coverages` — Rebalance Coverages **(breaking)**
+- `POST /api/v2/inventory-allocations/release-allocations` — Release Allocations **(breaking)**
+- `POST /api/v2/inventory-allocations/release-selected` — Release Selected **(breaking)**
+- `POST /api/v2/inventory-allocations/reset-priorities` — Reset Priorities **(breaking)**
+- `POST /api/v2/inventory-allocations/submit-fulfillments` — Submit Fulfillments **(breaking)**
+- `POST /api/v2/inventory-allocations/switch-supplier-options` — Switch Supplier Options **(breaking)**
+- `POST /api/v2/inventory-allocations/switch-suppliers` — Switch Suppliers **(breaking)**
+- `POST /api/v2/inventory-allocations/sync-coverages` — Sync Coverages **(breaking)**
+- `POST /api/v2/inventory-allocations/unreserve` — Unreserve **(breaking)**
+- `POST /api/v2/inventory-allocations/{allocation}/reassign-coverage` — Reassign Coverage **(breaking)**
+- `POST /api/v2/inventory-allocations/{allocation}/reorder` — Reorder Allocation **(breaking)**
+- `POST /api/v2/warehouse-transfers/{warehouseTransfer}/generate-accounting-transactions` — Generate Accounting Transactions **(breaking)**
+- `POST /api/warehouses/transfers/{transfer}/receiving-discrepancy` — Create Receiving Discrepancy **(breaking)**
+
+_Spec version 1.0.0 → 1.0.0._
