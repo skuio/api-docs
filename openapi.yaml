@@ -127275,6 +127275,11 @@ paths:
         confirmed" state which the rescan/delete/clone-from/reclassify guards treat
         as unlocked (see those endpoints'' descriptions).
 
+        - `sales_order` — eager-loaded summary `{ id, number, order_date, customer_po_number
+        }` of the linked sales order, present when `sales_order_id` is set. The OCR
+        review page uses it to render a click-through link to the created sales order''s
+        detail page. Omitted from list responses where the relation is not loaded.
+
         - `clone_of_sales_order_id` — set when this extraction was cloned from a prior
         sales order (via the LLM `clone_last_order` flag, or manually via the Clone
         Lines from Sales Order endpoint).
@@ -127293,7 +127298,7 @@ paths:
         - OpenAI (email body) returns `po_number` and `order_date`.
 
 
-        The API response layers two canonical UI keys on top of these so the frontend
+        The API response layers canonical UI keys on top of these so the frontend
         has stable field names to bind to:
 
         - `customer_po_number` — derived from `po_number` (or already-set canonical
@@ -127302,10 +127307,24 @@ paths:
         - `po_date` — derived from `order_date` → `invoice_date` (or already-set canonical
         value).
 
+        - `deliver_by_date` — the customer-requested delivery date. The PDF flow stores
+        it under `due_date` (Azure `DueDate` / the LLM header extractor maps `deliver_by_date`
+        → `due_date`); the email-body flow emits `deliver_by_date` directly. The response
+        bridges `due_date` → `deliver_by_date` so the UI always has the key.
+
 
         The original extractor keys are preserved alongside the canonical ones, so
-        consumers that read `po_number` / `invoice_date` / `order_date` directly continue
-        to work.'
+        consumers that read `po_number` / `invoice_date` / `order_date` / `due_date`
+        directly continue to work.
+
+
+        **Per-PO ship-to address (added 2026-05-18):**
+
+        The header includes `ship_to_address` — a nullable object `{ name, company,
+        address1, address2, city, province, zip, country_code }` extracted from the
+        customer PO''s "Ship To" / "Deliver To" block. A customer can specify a different
+        shipping destination on each PO, so this is captured per-extraction. It is
+        `null` when the PO states no separate shipping destination.'
       parameters:
       - name: Accept
         in: header
@@ -127337,6 +127356,7 @@ paths:
                       id: 3
                       status: pending_review
                       sales_order_id: null
+                      sales_order: null
                       source: manual
                       source_email_from: null
                       source_email_subject: null
@@ -127348,11 +127368,20 @@ paths:
                       header:
                         invoice_number: null
                         invoice_date: '2026-04-27'
-                        due_date: null
+                        due_date: '2026-05-18'
                         customer_name: Las Cosas Kitchen Shoppe
                         vendor_name: A Bar Above
                         vendor_address: null
                         customer_address: null
+                        ship_to_address:
+                          name: APPLEBEES CORTLANDT MOHEGAN 251
+                          company: DOHERTY APPLE NY STATEWIDE LLC
+                          address1: 3127 EAST MAIN STREET
+                          address2: null
+                          city: MOHEGAN LAKE
+                          province: NY
+                          zip: '10547'
+                          country_code: US
                         total_amount: 595.2
                         subtotal: 595.2
                         tax_amount: null
@@ -127360,6 +127389,7 @@ paths:
                         po_number: BAR42326
                         customer_po_number: BAR42326
                         po_date: '2026-04-27'
+                        deliver_by_date: '2026-05-18'
                         matched_customer_id: 142
                         matched_customer_name: Stephen Young Group - LA
                       lines:
@@ -127391,6 +127421,7 @@ paths:
                       id: 9
                       status: pending_review
                       sales_order_id: null
+                      sales_order: null
                       source: email_body
                       source_email_from: buyer@acme.com
                       source_email_subject: Repeat order — 5 widgets
@@ -127431,6 +127462,69 @@ paths:
                       azure_cost_usd: 0.000175
                       error_message: null
                       created_at: '2026-05-06T15:01:42.000000Z'
+                example-2:
+                  summary: 200 OK — Confirmed extraction (linked sales order)
+                  value:
+                    data:
+                      id: 11
+                      status: confirmed
+                      sales_order_id: 412
+                      sales_order:
+                        id: 412
+                        number: SO-2026-0412
+                        order_date: '2026-05-18'
+                        customer_po_number: 7005832658-30
+                      source: manual
+                      source_email_from: null
+                      source_email_subject: null
+                      source_body_text: null
+                      source_body_html: null
+                      clone_of_sales_order_id: null
+                      file_url: https://sku2.test/api/sales-orders/ocr/11/pdf
+                      page_count: 1
+                      header:
+                        po_number: 7005832658-30
+                        customer_po_number: 7005832658-30
+                        invoice_date: '2026-05-18'
+                        po_date: '2026-05-18'
+                        due_date: '2026-05-18'
+                        deliver_by_date: '2026-05-18'
+                        vendor_name: Edward Don & Company
+                        ship_to_address:
+                          name: APPLEBEES CORTLANDT MOHEGAN 251
+                          company: DOHERTY APPLE NY STATEWIDE LLC
+                          address1: 3127 EAST MAIN STREET
+                          address2: null
+                          city: MOHEGAN LAKE
+                          province: NY
+                          zip: '10547'
+                          country_code: US
+                        total_amount: 6.6
+                        matched_customer_id: 142
+                        matched_customer_name: A Bar Above
+                      lines:
+                      - id: a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d
+                        raw_sku: OB-SHAKER-ACP-18-U
+                        raw_description: CUP SHAKER 18 OZ BOSTON SS ANTIQUE CPR
+                        quantity: 1
+                        unit_price: 6.6
+                        unit_price_source: extracted
+                        line_total: 6.6
+                        confidence: 0.98
+                        match_status: exact
+                        matched_product_id: 4321
+                        matched_product_name: Unweighted 18oz shaker cup - Antique
+                          Copper - Open Box
+                        matched_product_sku: OB-SHAKER-ACP-18-U
+                        catalog_price: 8.31
+                        price_variance_pct: -20.6
+                        customer_sku_mapping_id: null
+                        saved_financial_line_type_id: null
+                        resolved_from_history: false
+                      unmatched_line_count: 0
+                      azure_cost_usd: 0.001
+                      error_message: null
+                      created_at: '2026-05-18T13:40:02.000000Z'
         '404':
           description: Not Found
           headers:
@@ -127515,8 +127609,18 @@ paths:
         for future use.
 
 
-        Returns the newly created sales order resource and marks the extraction status
-        as ''confirmed''.'
+        **ship_to_address (optional, nullable object):** the per-PO shipping destination
+        extracted from the customer PO''s "Ship To" block. A customer can have a different
+        ship-to address on each PO, so this is captured per-extraction rather than
+        read from the customer''s default address. When present and non-empty, it
+        is passed through to SalesOrderManager as the order''s `shipping_address`.
+        Fields: `name`, `company`, `address1`, `address2`, `city`, `province` (all
+        nullable, max 255), `zip` (nullable, max 50), `country_code` (nullable, max
+        10). Omit or send null when the PO states no separate shipping destination.
+
+
+        Returns the newly created sales order id and number, and marks the extraction
+        status as ''confirmed''.'
       requestBody:
         content:
           application/json:
@@ -127530,6 +127634,15 @@ paths:
                 sales_channel_id: 1
                 currency_id: 1
                 memo_for_customer: null
+                ship_to_address:
+                  name: APPLEBEES CORTLANDT MOHEGAN 251
+                  company: DOHERTY APPLE NY STATEWIDE LLC
+                  address1: 3127 EAST MAIN STREET
+                  address2: null
+                  city: MOHEGAN LAKE
+                  province: NY
+                  zip: '10547'
+                  country_code: US
                 save_sku_mappings: true
                 lines:
                 - product_id: 1
@@ -127554,10 +127667,36 @@ paths:
           type: string
         required: true
       responses:
-        '200':
-          description: Successful response
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 4821
+                  sales_order_number: SO-004821
+                message: Sales order created successfully.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Only extractions with status "pending_review" can be used
+                  to create an order.
       operationId: post-api-sales-orders-ocr-extraction-id-create-order
   /api/sales-orders/ocr/{extraction_id}/clone-from:
     post:
