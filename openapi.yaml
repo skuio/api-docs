@@ -65082,6 +65082,34 @@ paths:
       description: 'Reports receipt of an ASN at the 3PL warehouse. Creates purchase
         receipts or return receipts in SKU.
 
+
+        Request fields:
+
+        - type (required): one of `purchase_order`, `rma`, `inbound_shipment`. Determines
+        which entity the `line_id` values reference.
+
+        - reference_number (required): the SKU reference of the PO / RMA / inbound
+        shipment being received.
+
+        - received_at (required): ISO-8601 datetime the goods were received.
+
+        - lines (required, min 1): array of receipt lines.
+
+        - lines[].line_id (required): the purchase order line / RMA line / inbound
+        shipment line ID, depending on `type`.
+
+        - lines[].quantity_received (required): quantity received for that line (>=
+        0).
+
+
+        Warehouse resolution (SKU-8053): a `purchase_order`-type ASN is accepted when
+        the 3PL partner can access EITHER the purchase order''s header destination
+        warehouse OR any of the destination warehouses of the purchase order''s inbound
+        shipments. Received goods land in the inbound shipment''s destination warehouse
+        — which may differ from the PO header — so one PO can be received across multiple
+        3PL warehouses.
+
+
         Authentication: Requires 3PL integration Bearer token (with 3pl:write ability).
 
         Rate limit: 120 requests per 60 seconds.'
@@ -65106,9 +65134,41 @@ paths:
         example: application/json
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Receipt recorded successfully.
+                data:
+                  type: inbound_shipment
+                  reference_number: IS-2024-0042
+                  received_at: '2024-01-20T14:00:00Z'
+                  lines:
+                  - line_id: 150
+                    quantity_received: 98
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The selected reference number is invalid.
+                errors:
+                  reference_number:
+                  - The selected reference number is invalid.
       operationId: post-api-3pl-asns-receipt
   /api/3pl/orders:
     get:
@@ -118961,12 +119021,17 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"data\": [\n    {\n      \"id\": 301,\n      \"received_at\"\
-                : \"2024-02-05T14:00:00Z\",\n      \"purchase_order_shipment_id\"\
-                : 401,\n      \"inbound_shipment_receipt_lines\": [\n        {\n \
-                \         \"id\": 501,\n          \"purchase_order_shipment_line_id\"\
-                : 601,\n          \"quantity\": 100\n        }\n      ]\n    }\n \
-                \ ]\n}"
+              example: "{\n  \"data\": [\n    {\n      \"id\": 301,\n      \"inbound_shipment_id\"\
+                : 401,\n      \"warehouse_id\": 3,\n      \"warehouse\": {\n     \
+                \   \"id\": 3,\n        \"name\": \"East Coast Fulfillment\"\n   \
+                \   },\n      \"received_at\": \"2024-02-05T14:00:00Z\",\n      \"\
+                notes\": \"Pallet 2 of 3 received\",\n      \"received_by\": {\n \
+                \       \"id\": 12,\n        \"name\": \"Dana Receiving\"\n      },\n\
+                \      \"inbound_shipment_receipt_lines\": [\n        {\n        \
+                \  \"id\": 501,\n          \"purchase_order_line_id\": 601,\n    \
+                \      \"quantity\": 100\n        }\n      ],\n      \"purchase_orders\"\
+                : [\n        {\n          \"id\": 88,\n          \"purchase_order_number\"\
+                : \"PO-000088\"\n        }\n      ]\n    }\n  ]\n}"
       operationId: get-api-purchase-orders-purchase-order-receipts
   /api/purchase-orders/{purchase_order}/receipts/{receipt}:
     get:
@@ -119236,12 +119301,17 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"data\": [\n    {\n      \"id\": 301,\n      \"received_at\"\
-                : \"2024-02-05T14:00:00Z\",\n      \"purchase_order_shipment_id\"\
-                : 401,\n      \"inbound_shipment_receipt_lines\": [\n        {\n \
-                \         \"id\": 501,\n          \"purchase_order_shipment_line_id\"\
-                : 601,\n          \"quantity\": 100\n        }\n      ]\n    }\n \
-                \ ]\n}"
+              example: "{\n  \"data\": [\n    {\n      \"id\": 301,\n      \"inbound_shipment_id\"\
+                : 401,\n      \"warehouse_id\": 3,\n      \"warehouse\": {\n     \
+                \   \"id\": 3,\n        \"name\": \"East Coast Fulfillment\"\n   \
+                \   },\n      \"received_at\": \"2024-02-05T14:00:00Z\",\n      \"\
+                notes\": \"Pallet 2 of 3 received\",\n      \"received_by\": {\n \
+                \       \"id\": 12,\n        \"name\": \"Dana Receiving\"\n      },\n\
+                \      \"inbound_shipment_receipt_lines\": [\n        {\n        \
+                \  \"id\": 501,\n          \"purchase_order_line_id\": 601,\n    \
+                \      \"quantity\": 100\n        }\n      ],\n      \"purchase_orders\"\
+                : [\n        {\n          \"id\": 88,\n          \"purchase_order_number\"\
+                : \"PO-000088\"\n        }\n      ]\n    }\n  ]\n}"
       operationId: get-domain-api-purchase-orders-purchase-order-receipts
   //{domain}/api/purchase-orders/{purchase_order}/receipts/{receipt}:
     get:
@@ -122268,6 +122338,7 @@ paths:
                   expected_arrival_date: '2025-06-01'
                   actual_arrival_date: null
                   shipped_at: null
+                  created_from_receipt: false
                   notes: null
                   created_by: 1
                   asn_last_sent_at: null
@@ -124744,6 +124815,16 @@ paths:
         - tracking (optional): Tracking number for auto-created shipment, max 255
         characters
 
+        - inbound_shipment_id (optional, exists:inbound_shipments,id): Route the whole
+        receive against this specific inbound shipment. Restricts delegation to that
+        shipment and over-receives it past its planned capacity if the received quantity
+        exceeds what was expected. Used by the PO-detail receive drawer when the receiver
+        explicitly picks a target shipment
+
+        - force_new_shipment (optional, boolean): If true, skip auto-routing/delegation
+        to existing planned shipments and create a brand-new ad-hoc inbound shipment
+        for this receipt. Mutually exclusive in intent with inbound_shipment_id
+
         - receipt_lines (optional): Array of specific line quantities to receive.
         If omitted, receives all unreceived lines
 
@@ -124781,11 +124862,12 @@ paths:
             schema:
               type: string
               example: '"{\n  \"purchase_order_id\": 200,\n  \"purchase_order_shipment_id\":
-                50,\n  \"received_at\": \"2024-03-15\",\n  \"warehouse_id\": 1,\n  \"receipt_lines\":
-                [\n    {\n      \"purchase_order_shipment_line_id\": 301,\n      \"quantity\":
-                100\n    }\n  ],\n  \"unexpected_items\": [\n    {\n      \"product_id\":
-                43,\n      \"quantity\": 5,\n      \"action\": \"add_to_inventory\",\n      \"amount\":
-                15.00,\n      \"description\": \"Extra items received\"\n    }\n  ]\n}"'
+                50,\n  \"received_at\": \"2024-03-15\",\n  \"warehouse_id\": 1,\n  \"inbound_shipment_id\":
+                42,\n  \"force_new_shipment\": false,\n  \"receipt_lines\": [\n    {\n      \"purchase_order_shipment_line_id\":
+                301,\n      \"quantity\": 100\n    }\n  ],\n  \"unexpected_items\":
+                [\n    {\n      \"product_id\": 43,\n      \"quantity\": 5,\n      \"action\":
+                \"add_to_inventory\",\n      \"amount\": 15.00,\n      \"description\":
+                \"Extra items received\"\n    }\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -125353,16 +125435,17 @@ paths:
                 : \"2025-05-15\",\n      \"port_eta\": \"2025-05-08\",\n      \"warehouse_eta\"\
                 : \"2025-05-15\",\n      \"actual_arrival_date\": null,\n      \"\
                 shipped_at\": \"2025-04-20T14:00:00+00:00\",\n      \"late_shipment\"\
-                : false,\n      \"notes\": \"Priority shipment\",\n      \"created_by\"\
-                : 1,\n      \"asn_last_sent_at\": null,\n      \"total_expected_quantity\"\
-                : 250.0,\n      \"total_received_quantity\": 0.0,\n      \"inbound_shipment_lines_count\"\
-                : 5,\n      \"supplier\": {\"id\": 7, \"name\": \"Acme Supplies\"\
-                },\n      \"destination_warehouse\": {\"id\": 1, \"name\": \"Main\
-                \ Warehouse\"},\n      \"shipping_method\": {\"id\": 3, \"name\":\
-                \ \"Ground\"},\n      \"creator\": {\"id\": 1, \"name\": \"Admin User\"\
-                },\n      \"inbound_shipment_lines\": [],\n      \"created_at\": \"\
-                2025-04-18T10:00:00.000000Z\",\n      \"updated_at\": \"2025-04-20T14:00:00.000000Z\"\
-                \n    }\n  ],\n  \"first_page_url\": \"https://sku2.test/api/inbound-shipments?page=1\"\
+                : false,\n      \"created_from_receipt\": false,\n      \"notes\"\
+                : \"Priority shipment\",\n      \"created_by\": 1,\n      \"asn_last_sent_at\"\
+                : null,\n      \"total_expected_quantity\": 250.0,\n      \"total_received_quantity\"\
+                : 0.0,\n      \"inbound_shipment_lines_count\": 5,\n      \"supplier\"\
+                : {\"id\": 7, \"name\": \"Acme Supplies\"},\n      \"destination_warehouse\"\
+                : {\"id\": 1, \"name\": \"Main Warehouse\"},\n      \"shipping_method\"\
+                : {\"id\": 3, \"name\": \"Ground\"},\n      \"creator\": {\"id\":\
+                \ 1, \"name\": \"Admin User\"},\n      \"inbound_shipment_lines\"\
+                : [],\n      \"created_at\": \"2025-04-18T10:00:00.000000Z\",\n  \
+                \    \"updated_at\": \"2025-04-20T14:00:00.000000Z\"\n    }\n  ],\n\
+                \  \"first_page_url\": \"https://sku2.test/api/inbound-shipments?page=1\"\
                 ,\n  \"from\": 1,\n  \"last_page\": 5,\n  \"last_page_url\": \"https://sku2.test/api/inbound-shipments?page=5\"\
                 ,\n  \"next_page_url\": \"https://sku2.test/api/inbound-shipments?page=2\"\
                 ,\n  \"path\": \"https://sku2.test/api/inbound-shipments\",\n  \"\
@@ -125382,7 +125465,11 @@ paths:
 
         Fields:
 
-        - destination_warehouse_id (required): ID of the destination warehouse
+        - destination_warehouse_id (required): ID of the warehouse where the goods
+        will actually land. This is the authoritative destination and is independent
+        of the linked purchase order''s header destination warehouse — a shipment
+        may deliver a PO''s goods to any warehouse, and one PO may have shipments
+        to multiple warehouses (SKU-8053).
 
         - supplier_id (optional): Supplier ID (auto-detected from PO lines if not
         provided)
@@ -125456,6 +125543,7 @@ paths:
                   actual_arrival_date: null
                   shipped_at: null
                   late_shipment: false
+                  created_from_receipt: false
                   notes: Priority shipment
                   created_by: 1
                   asn_last_sent_at: null
@@ -125523,17 +125611,17 @@ paths:
                 \    \"shipping_method_id\": 3,\n    \"expected_arrival_date\": \"\
                 2025-05-15\",\n    \"port_eta\": \"2025-05-08\",\n    \"warehouse_eta\"\
                 : \"2025-05-15\",\n    \"actual_arrival_date\": null,\n    \"shipped_at\"\
-                : null,\n    \"late_shipment\": false,\n    \"notes\": \"Fragile items\"\
-                ,\n    \"created_by\": 1,\n    \"asn_last_sent_at\": null,\n    \"\
-                total_expected_quantity\": 100.0,\n    \"total_received_quantity\"\
-                : 0.0,\n    \"inbound_shipment_lines_count\": 2,\n    \"supplier\"\
-                : {\"id\": 7, \"name\": \"Acme Supplies\"},\n    \"destination_warehouse\"\
-                : {\"id\": 1, \"name\": \"Main Warehouse\"},\n    \"shipping_method\"\
-                : {\"id\": 3, \"name\": \"Ground\"},\n    \"creator\": {\"id\": 1,\
-                \ \"name\": \"Admin User\"},\n    \"inbound_shipment_lines\": [\n\
-                \      {\n        \"id\": 101,\n        \"inbound_shipment_id\": 42,\n\
-                \        \"purchase_order_line_id\": 55,\n        \"product_id\":\
-                \ 12,\n        \"expected_quantity\": 50.0,\n        \"received_quantity\"\
+                : null,\n    \"late_shipment\": false,\n      \"created_from_receipt\"\
+                : false,\n    \"notes\": \"Fragile items\",\n    \"created_by\": 1,\n\
+                \    \"asn_last_sent_at\": null,\n    \"total_expected_quantity\"\
+                : 100.0,\n    \"total_received_quantity\": 0.0,\n    \"inbound_shipment_lines_count\"\
+                : 2,\n    \"supplier\": {\"id\": 7, \"name\": \"Acme Supplies\"},\n\
+                \    \"destination_warehouse\": {\"id\": 1, \"name\": \"Main Warehouse\"\
+                },\n    \"shipping_method\": {\"id\": 3, \"name\": \"Ground\"},\n\
+                \    \"creator\": {\"id\": 1, \"name\": \"Admin User\"},\n    \"inbound_shipment_lines\"\
+                : [\n      {\n        \"id\": 101,\n        \"inbound_shipment_id\"\
+                : 42,\n        \"purchase_order_line_id\": 55,\n        \"product_id\"\
+                : 12,\n        \"expected_quantity\": 50.0,\n        \"received_quantity\"\
                 : 0.0\n      },\n      {\n        \"id\": 102,\n        \"inbound_shipment_id\"\
                 : 42,\n        \"purchase_order_line_id\": 56,\n        \"product_id\"\
                 : 13,\n        \"expected_quantity\": 50.0,\n        \"received_quantity\"\
@@ -125565,6 +125653,13 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        **destination_warehouse_id** (optional): The shipment''s destination warehouse
+        may be changed only while the shipment has no receipts. Once goods have been
+        received against the shipment it is locked — attempting to change it returns
+        a 422 validation error on `destination_warehouse_id` (the receipts and their
+        FIFO layers / inventory movements already point at it). SKU-8053.
+
+
         **Logistics dates** (optional): `port_eta` and `warehouse_eta` are routed
         through `LogisticsTrackingFieldValue` rows. Pass them as part of the standard
         PATCH/PUT payload — the controller persists them only when the keys are present
@@ -125574,11 +125669,12 @@ paths:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"carrier\": \"UPS\",\n  \"tracking_number\": \"1Z999AA10123456784\",\n  \"shipping_method_id\":
-                2,\n  \"expected_arrival_date\": \"2025-05-20\",\n  \"port_eta\":
-                \"2025-05-08\",\n  \"warehouse_eta\": \"2025-05-20\",\n  \"notes\":
-                \"Updated tracking info\",\n  \"lines\": [\n    {\n      \"id\": 101,\n      \"purchase_order_line_id\":
-                55,\n      \"product_id\": 12,\n      \"expected_quantity\": 60\n    }\n  ]\n}"'
+              example: '"{\n  \"destination_warehouse_id\": 2,\n  \"carrier\": \"UPS\",\n  \"tracking_number\":
+                \"1Z999AA10123456784\",\n  \"shipping_method_id\": 2,\n  \"expected_arrival_date\":
+                \"2025-05-20\",\n  \"port_eta\": \"2025-05-08\",\n  \"warehouse_eta\":
+                \"2025-05-20\",\n  \"notes\": \"Updated tracking info\",\n  \"lines\":
+                [\n    {\n      \"id\": 101,\n      \"purchase_order_line_id\": 55,\n      \"product_id\":
+                12,\n      \"expected_quantity\": 60\n    }\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -125626,8 +125722,18 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"message\": \"Cannot update a shipment that is not in\
-                \ draft status.\"\n}"
+              examples:
+                example-0:
+                  summary: 422 Not Editable
+                  value: "{\n  \"message\": \"Cannot update a shipment that is not\
+                    \ in draft status.\"\n}"
+                example-1:
+                  summary: 422 Destination Warehouse Locked
+                  value: "{\n  \"message\": \"The destination warehouse cannot be\
+                    \ changed once goods have been received against this shipment.\"\
+                    ,\n  \"errors\": {\n    \"destination_warehouse_id\": [\"The destination\
+                    \ warehouse cannot be changed once goods have been received against\
+                    \ this shipment.\"]\n  }\n}"
       operationId: put-api-inbound-shipments-inbound-shipment
     delete:
       tags:
@@ -125806,16 +125912,17 @@ paths:
                 ,\n      \"shipping_method_id\": 3,\n      \"expected_arrival_date\"\
                 : \"2025-05-15\",\n      \"actual_arrival_date\": null,\n      \"\
                 shipped_at\": \"2025-04-20T14:00:00+00:00\",\n      \"late_shipment\"\
-                : false,\n      \"notes\": \"Priority shipment\",\n      \"created_by\"\
-                : 1,\n      \"asn_last_sent_at\": null,\n      \"total_expected_quantity\"\
-                : 250.0,\n      \"total_received_quantity\": 0.0,\n      \"inbound_shipment_lines_count\"\
-                : 5,\n      \"supplier\": {\"id\": 7, \"name\": \"Acme Supplies\"\
-                },\n      \"destination_warehouse\": {\"id\": 1, \"name\": \"Main\
-                \ Warehouse\"},\n      \"shipping_method\": {\"id\": 3, \"name\":\
-                \ \"Ground\"},\n      \"creator\": {\"id\": 1, \"name\": \"Admin User\"\
-                },\n      \"inbound_shipment_lines\": [],\n      \"created_at\": \"\
-                2025-04-18T10:00:00.000000Z\",\n      \"updated_at\": \"2025-04-20T14:00:00.000000Z\"\
-                \n    }\n  ],\n  \"first_page_url\": \"https://sku2.test/api/inbound-shipments?page=1\"\
+                : false,\n      \"created_from_receipt\": false,\n      \"notes\"\
+                : \"Priority shipment\",\n      \"created_by\": 1,\n      \"asn_last_sent_at\"\
+                : null,\n      \"total_expected_quantity\": 250.0,\n      \"total_received_quantity\"\
+                : 0.0,\n      \"inbound_shipment_lines_count\": 5,\n      \"supplier\"\
+                : {\"id\": 7, \"name\": \"Acme Supplies\"},\n      \"destination_warehouse\"\
+                : {\"id\": 1, \"name\": \"Main Warehouse\"},\n      \"shipping_method\"\
+                : {\"id\": 3, \"name\": \"Ground\"},\n      \"creator\": {\"id\":\
+                \ 1, \"name\": \"Admin User\"},\n      \"inbound_shipment_lines\"\
+                : [],\n      \"created_at\": \"2025-04-18T10:00:00.000000Z\",\n  \
+                \    \"updated_at\": \"2025-04-20T14:00:00.000000Z\"\n    }\n  ],\n\
+                \  \"first_page_url\": \"https://sku2.test/api/inbound-shipments?page=1\"\
                 ,\n  \"from\": 1,\n  \"last_page\": 5,\n  \"last_page_url\": \"https://sku2.test/api/inbound-shipments?page=5\"\
                 ,\n  \"next_page_url\": \"https://sku2.test/api/inbound-shipments?page=2\"\
                 ,\n  \"path\": \"https://sku2.test/api/inbound-shipments\",\n  \"\
@@ -126483,24 +126590,21 @@ paths:
         fully assigned.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Warehouse scope (SKU-8053):** results are NOT restricted to the shipment''s
+        destination warehouse. The PO header `destination_warehouse_id` is only a
+        pre-fill default — an inbound shipment carries its own authoritative destination,
+        so any open, unreceived PO may be assigned regardless of its header warehouse.
+        POs whose header warehouse matches this shipment''s destination are surfaced
+        first as the likeliest match, then ordered by id descending.'
       parameters:
       - name: Accept
         in: header
         schema:
           type: string
         example: application/json
-      - name: search
-        in: query
-        schema:
-          type: string
-        description: Search by PO number or supplier name
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        description: 'Items per page (default: 10)'
-        example: '10'
       - name: inbound_shipment
         in: path
         schema:
