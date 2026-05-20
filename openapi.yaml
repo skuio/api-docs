@@ -126,9 +126,11 @@ tags:
 - name: Document Inbox
 - name: Report Templates
 - name: Integration Instance
+- name: Pre-Start-Date Orders
 - name: Fulfillment
 - name: Carriers
 - name: Field Mappings
+- name: Returns & Refunds
 - name: Product Import
 - name: Vendor Credits
 - name: Lifecycle
@@ -129465,7 +129467,20 @@ paths:
       description: 'Get all Temu integration instances without pagination.
 
 
-        Returns all integrations at once — intended for frontend dropdown selectors.'
+        Returns all integrations at once — intended for frontend dropdown selectors.
+
+
+        **Response fields (per instance):**
+
+        - `id`, `name`, `integration_settings`, `created_at`, `updated_at`
+
+        - `has_warehouse_mappings` (bool) - True if at least one Temu warehouse is
+        mapped to a SKU warehouse. Used to warn users to map warehouses before fulfilling
+        orders.
+
+        - `has_carrier_mappings` (bool) - True if at least one Temu carrier is mapped
+        to a SKU shipping method. Used to warn users to map carriers before fulfilling
+        orders.'
       parameters:
       - name: Accept
         in: header
@@ -129675,9 +129690,17 @@ paths:
         - `integration_instance` - The ID of the integration instance
 
 
-        **Response:**
+        **Response fields:**
 
-        Returns integration instance with all settings.'
+        - `id`, `name`, `integration_settings`, `created_at`, `updated_at`
+
+        - `has_warehouse_mappings` (bool) - True if at least one Temu warehouse is
+        mapped to a SKU warehouse. Used to warn users to map warehouses before fulfilling
+        orders.
+
+        - `has_carrier_mappings` (bool) - True if at least one Temu carrier is mapped
+        to a SKU shipping method. Used to warn users to map carriers before fulfilling
+        orders.'
       parameters:
       - name: Accept
         in: header
@@ -131254,6 +131277,320 @@ paths:
           content:
             application/json: {}
       operationId: post-api-temu-integration-instance-orders-create-products-from-items
+  /api/temu/{integration_instance}/pre-start-date-orders:
+    get:
+      tags:
+      - Pre-Start-Date Orders
+      summary: Query Pre-Start-Date Orders
+      description: 'Query Temu for orders created before the tenant''s inventory start
+        date. Returns lightweight order data with eligibility flags for the import
+        modal — orders that already exist locally are flagged as `already_imported`,
+        and cancelled orders are flagged as ineligible.
+
+
+        Authenticate with a Personal Access Token (PAT).
+
+
+        **Path Parameters:**
+
+        - `integration_instance` — Temu Integration Instance ID
+
+
+        **Query Parameters:**
+
+        - `created_at_min` (required) — Earliest order creation date (YYYY-MM-DD).
+        Must be before the tenant''s inventory start date.
+
+        - `created_at_max` (optional) — Latest order creation date. Defaults to inventory
+        start date - 1 day.
+
+        - `parent_order_status` (optional) — Temu parentOrderStatus value or `any`.
+
+
+        **Response:**
+
+        Returns `{ data: [...], inventory_start_date, meta: { total_queried, eligible_count,
+        already_imported_count } }`.
+
+
+        **Notes:**
+
+        - The Temu API uses `updateAtStart`/`updateAtEnd` filters; results are filtered
+        client-side by `parentOrderTime` against the inventory start date.
+
+        - Maximum 10 pages × 100 orders = 1000 orders per query.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: created_at_min
+        in: query
+        schema:
+          type: string
+        description: Required. Earliest order creation date (YYYY-MM-DD). Must be
+          before the tenant's inventory start date.
+        example: '2024-01-01'
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Temu Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - parent_order_sn: PO-251234567890
+                  name: Jane Doe
+                  email: jane@example.com
+                  created_at: '2024-11-15T03:24:00Z'
+                  order_status: '3'
+                  total_price: '49.99'
+                  currency: USD
+                  line_items:
+                  - title: Wireless Earbuds
+                    sku: SKU-12345
+                    quantity: 1
+                    current_quantity: 1
+                    price: '49.99'
+                    variant_title: null
+                  eligible: true
+                  eligibility_reason: null
+                  already_imported: false
+                inventory_start_date: '2025-01-01'
+                meta:
+                  total_queried: 42
+                  eligible_count: 38
+                  already_imported_count: 3
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The created at min field is required.
+                errors:
+                  created_at_min:
+                  - The created at min field is required.
+                  inventory_start_date:
+                  - Inventory start date must be set before importing pre-start-date
+                    orders.
+      operationId: get-api-temu-integration-instance-pre-start-date-orders
+  /api/temu/{integration_instance}/pre-start-date-orders/search:
+    get:
+      tags:
+      - Pre-Start-Date Orders
+      summary: Search Pre-Start-Date Order
+      description: 'Look up a specific Temu order by parent order SN. Returns an empty
+        result set if the order is not found or was created on/after the tenant''s
+        inventory start date.
+
+
+        Authenticate with a Personal Access Token (PAT).
+
+
+        **Path Parameters:**
+
+        - `integration_instance` — Temu Integration Instance ID
+
+
+        **Query Parameters:**
+
+        - `search_by` (required) — `parent_order_sn`
+
+        - `search_term` (required) — The parent order SN to look up.
+
+
+        **Response:**
+
+        Same shape as the `query` endpoint: `{ data: [...], inventory_start_date,
+        meta: {...} }`. The `data` array will contain at most one order.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: search_by
+        in: query
+        schema:
+          type: string
+        description: Required. The field to search by. Currently only `parent_order_sn`
+          is supported.
+        example: parent_order_sn
+      - name: search_term
+        in: query
+        schema:
+          type: string
+        description: Required. The order identifier to look up.
+        example: PO-251234567890
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Temu Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - parent_order_sn: PO-251234567890
+                  name: Jane Doe
+                  email: jane@example.com
+                  created_at: '2024-11-15T03:24:00Z'
+                  order_status: '3'
+                  total_price: '49.99'
+                  currency: USD
+                  line_items: []
+                  eligible: true
+                  eligibility_reason: null
+                  already_imported: false
+                inventory_start_date: '2025-01-01'
+                meta:
+                  total_queried: 1
+                  eligible_count: 1
+                  already_imported_count: 0
+      operationId: get-api-temu-integration-instance-pre-start-date-orders-search
+  /api/temu/{integration_instance}/pre-start-date-orders/import:
+    post:
+      tags:
+      - Pre-Start-Date Orders
+      summary: Import Pre-Start-Date Orders
+      description: 'Import selected pre-start-date orders from Temu. For each parent
+        order SN, the endpoint fetches the full order from Temu and persists it locally
+        via the standard Temu order repository pipeline. Orders that already exist
+        locally are skipped.
+
+
+        Authenticate with a Personal Access Token (PAT).
+
+
+        **Path Parameters:**
+
+        - `integration_instance` — Temu Integration Instance ID
+
+
+        **Request Body:**
+
+        - `parent_order_sns` (required, array, 1–50 items) — The parent order SNs
+        to import. Each must be a non-empty string.
+
+
+        **Response:**
+
+        Returns `{ imported: int, skipped: int, details: [...] }`. Each entry in `details`
+        reports the per-order outcome (`imported`, `skipped`, or `error`).
+
+
+        **Validation:**
+
+        - Inventory start date must be set on the tenant before calling this endpoint
+        (otherwise returns 422).
+
+        - Maximum of 50 orders per import call.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                parent_order_sns:
+                - PO-251234567890
+                - PO-259876543210
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Temu Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                imported: 1
+                skipped: 1
+                details:
+                - parent_order_sn: PO-251234567890
+                  status: imported
+                - parent_order_sn: PO-259876543210
+                  status: skipped
+                  reason: already_exists
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Inventory Start Date Missing
+                  value:
+                    error: Inventory start date must be set before importing pre-start-date
+                      orders.
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: At least one order must be selected for import.
+                    errors:
+                      parent_order_sns:
+                      - At least one order must be selected for import.
+      operationId: post-api-temu-integration-instance-pre-start-date-orders-import
   /api/temu/{integration_instance}/fulfillments:
     get:
       tags:
@@ -132163,6 +132500,772 @@ paths:
           content:
             application/json: {}
       operationId: put-api-temu-integration-instance-field-mappings
+  /api/temu/{integration_instance}/parent-after-sales:
+    get:
+      tags:
+      - Returns & Refunds
+      summary: List Parent After-Sales
+      description: 'Paginated list of Temu Parent After-Sales (returns + refunds)
+        stored locally.
+
+
+        Data is synced from Temu''s `bg.aftersales.parentaftersales.list.get` endpoint
+        via the Refresh endpoint below.
+
+
+        **Path Parameters:**
+
+        - `integration_instance` - Integration instance ID
+
+
+        **Query Parameters:**
+
+        - Standard Spatie filters: `filter[parentAfterSalesId]`, `filter[parentOrderSn]`,
+        `filter[parentAfterSalesStatus]`, `filter[afterSalesReasonCode]`, `filter[refundAmount]`,
+        plus datetime variants for `applyTime`, `updateTime`, `created_at`, `updated_at`.
+
+        - `filter[search]` - AdvancedSearch across `parentAfterSalesId` + `parentOrderSn`.
+
+        - `sort` - Any of the listed allowed sort fields. Default `-updateTime`.
+
+        - `page` / `per_page` - Pagination (default per_page = 15).
+
+
+        **Response items include:**
+
+        - `parentAfterSalesStatus` (1-11) and `parentAfterSalesStatusLabel`
+
+        - `afterSalesStatusGroups` - aggregations (Pending, Requested, Package Shipped,
+        Platform Reviewing, Refunded, Rejected, Cancelled)
+
+        - `afterSalesReasonCode` (raw integer code from Temu)
+
+        - `refundAmount` (in cents) and `refundAmountDecimal` (major units)
+
+        - `applyTime`, `updateTime` - ISO timestamps'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-temu-integration-instance-parent-after-sales
+  /api/temu/{integration_instance}/parent-after-sales/refresh:
+    post:
+      tags:
+      - Returns & Refunds
+      summary: Refresh Parent After-Sales
+      description: 'Queue a background job (`RefreshTemuParentAfterSalesJob`) that
+        pulls parent after-sales records updated within the given window from Temu
+        and upserts them locally.
+
+
+        **Path Parameters:**
+
+        - `integration_instance` - Integration instance ID
+
+
+        **Request Body:**
+
+        - `days_updated` (optional, default 30) - How many days back to sync `updateTime`
+        for.
+
+
+        **Response:**
+
+        - `data.queued` - true if the job was queued.
+
+        - `message` - Status message.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n    \"days_updated\": 30\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-parent-after-sales-refresh
+  /api/temu/{integration_instance}/webhooks/configurations:
+    get:
+      tags:
+      - Webhooks
+      summary: List Webhook Configurations
+      description: "List every available Temu TMC event code with its current subscription\
+        \ state for this integration instance.\n\n**Path Parameters:**\n- `integration_instance`\
+        \ - Integration instance ID\n\n**Response:**\n- `data.configurations[]` -\
+        \ Array of webhook configuration rows.\n  - `event_code` - TMC event code\
+        \ (e.g. `bg.order.created`)\n  - `label` - Human-friendly label (e.g. `Order\
+        \ Created`)\n  - `description` - When this event fires.\n  - `is_enabled`\
+        \ - Whether the shop is currently subscribed.\n  - `subscribed_at` - ISO-8601\
+        \ timestamp of when the subscription was created (null if disabled)."
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  configurations:
+                  - event_code: bg.order.created
+                    label: Order Created
+                    description: Fires when a new order is placed on Temu.
+                    is_enabled: true
+                    subscribed_at: '2026-05-19T12:00:00+00:00'
+                  - event_code: bg.order.shipped
+                    label: Order Shipped
+                    description: Fires when an order has been marked as shipped on
+                      Temu.
+                    is_enabled: false
+                    subscribed_at: null
+      operationId: get-api-temu-integration-instance-webhooks-configurations
+  /api/temu/{integration_instance}/webhooks/configurations/{event_code}/enable:
+    post:
+      tags:
+      - Webhooks
+      summary: Enable Webhook Subscription
+      description: 'Subscribe the shop to a single TMC event code via `bg.tmc.message.update`
+        and persist the local mirror row in `temu_webhooks`.
+
+
+        **Path Parameters:**
+
+        - `integration_instance` - Integration instance ID
+
+        - `event_code` - TMC event code. Either the raw form (e.g. `bg.order.created`)
+        or the URL-safe triple-dash form (`bg---order---created`).
+
+
+        **Response:**
+
+        - `data.success`
+
+        - `data.created` - true if a new subscription was created, false if it already
+        existed.
+
+        - `data.webhook` - The local `TemuWebhook` row.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      - name: event_code
+        in: path
+        schema:
+          type: string
+        required: true
+        description: URL-safe TMC event code. Dots in the code may also be sent as
+          triple-dashes, e.g. `bg---order---created`.
+        example: bg.order.created
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-webhooks-configurations-event-code-enable
+  /api/temu/{integration_instance}/webhooks/configurations/{event_code}/disable:
+    post:
+      tags:
+      - Webhooks
+      summary: Disable Webhook Subscription
+      description: 'Unsubscribe the shop from a single TMC event code via `bg.tmc.message.update`
+        and delete the local mirror row.
+
+
+        If Temu reports the subscription is already gone (error 110020009 / not found),
+        the local mirror is still cleared.
+
+
+        **Response:**
+
+        - `data.success`
+
+        - `data.deleted` - true if a local row was removed.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      - name: event_code
+        in: path
+        schema:
+          type: string
+        required: true
+        description: URL-safe TMC event code (or triple-dash form).
+        example: bg.order.created
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-webhooks-configurations-event-code-disable
+  /api/temu/{integration_instance}/webhooks/configurations/enable-all:
+    post:
+      tags:
+      - Webhooks
+      summary: Enable All Webhooks
+      description: 'Queue `CreateTemuWebhooksJob` for the integration instance — subscribes
+        the shop to every event code in `TemuEventCodeEnum`. The HTTP call returns
+        immediately; the actual TMC `bg.tmc.message.update` calls happen on the queue
+        worker.
+
+
+        **Response:**
+
+        - `data.queued` - true once the job is dispatched.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-webhooks-configurations-enable-all
+  /api/temu/{integration_instance}/webhook-events:
+    get:
+      tags:
+      - Webhooks
+      summary: List Webhook Events
+      description: 'Paginated list of TMC events captured for this integration instance,
+        with Spatie QueryBuilder filtering and sorting.
+
+
+        **Path Parameters:**
+
+        - `integration_instance` - Integration instance ID
+
+
+        **Filters:** `event_code`, `processing_status`, `unique_id`, `message_id`,
+        `processing_attempts`, `payload_date`, `created_at`, `processing_completed_at`,
+        plus a full-text `search`.
+
+
+        **Sorts:** id, event_code, unique_id, message_id, processing_status, processing_attempts,
+        payload_date, created_at, processing_completed_at. Prefix with `-` for DESC.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 4231
+                  event_code: bg.order.created
+                  event_label: Order Created
+                  message_id: msg_a1b2c3d4
+                  unique_id: PO-1001
+                  processing_status: processed
+                  processing_attempts: 1
+                  last_processing_attempt_at: '2026-05-19T18:42:01.000000Z'
+                  processing_error: null
+                  payload_date: '2026-05-19T18:41:55.000000Z'
+                  created_at: '2026-05-19T18:42:00.000000Z'
+                  processed_at: '2026-05-19T18:42:01.000000Z'
+                  processing_completed_at: '2026-05-19T18:42:01.000000Z'
+                  integration_instance:
+                    id: 7
+                    name: Acme US
+                current_page: 1
+                last_page: 1
+                per_page: 15
+                total: 1
+                from: 1
+                to: 1
+      operationId: get-api-temu-integration-instance-webhook-events
+  /api/temu/{integration_instance}/webhook-events/stats:
+    get:
+      tags:
+      - Webhooks
+      summary: Webhook Event Stats
+      description: Aggregate counts of webhook events for an integration instance,
+        broken down by `processing_status`. Used to render the summary cards on the
+        webhooks settings page.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                data:
+                  pending_count: 3
+                  processing_count: 0
+                  processed_count: 412
+                  failed_count: 2
+                  total_count: 417
+                integration_instance:
+                  id: 7
+                  name: Acme US
+      operationId: get-api-temu-integration-instance-webhook-events-stats
+  /api/temu/webhook-events/{event_id}:
+    get:
+      tags:
+      - Webhooks
+      summary: Show Event
+      description: Full record for a single webhook event, including the raw payload
+        (`json_data`) Temu delivered.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: event_id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Webhook event id
+        example: '4231'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                data:
+                  id: 4231
+                  event_code: bg.order.created
+                  event_label: Order Created
+                  message_id: msg_a1b2c3d4
+                  unique_id: PO-1001
+                  processing_status: processed
+                  processing_attempts: 1
+                  last_processing_attempt_at: '2026-05-19T18:42:01.000000Z'
+                  processing_error: null
+                  payload_date: '2026-05-19T18:41:55.000000Z'
+                  created_at: '2026-05-19T18:42:00.000000Z'
+                  processed_at: '2026-05-19T18:42:01.000000Z'
+                  processing_completed_at: '2026-05-19T18:42:01.000000Z'
+                  integration_instance:
+                    id: 7
+                    name: Acme US
+                  integration_instance_id: 7
+                  processing_started_at: '2026-05-19T18:42:00.500000Z'
+                  json_data:
+                    parentOrderSn: PO-1001
+                    orderSn: OS-1001-1
+                    eventTime: 1747680115
+      operationId: get-api-temu-webhook-events-event-id
+  /api/temu/{integration_instance}/webhook-events/process:
+    post:
+      tags:
+      - Webhooks
+      summary: Process Pending Events
+      description: 'Synchronously process all pending webhook events for the integration
+        instance (optionally scoped to a single event code).
+
+
+        **Request Body:**
+
+        - `event_code` (optional) - Restrict to one TMC event code from `TemuEventCodeEnum`.
+
+        - `limit` (optional, 1-100) - Maximum number of events to process in this
+        call.
+
+
+        **Response:**
+
+        - `data.processed_count`
+
+        - `data.failed_count`'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"event_code\": \"bg.order.created\",\n  \"limit\":
+                50\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-webhook-events-process
+  /api/temu/{integration_instance}/webhook-events/retry-failed:
+    post:
+      tags:
+      - Webhooks
+      summary: Retry Failed Events
+      description: 'Reset failed events with fewer than 3 attempts back to pending
+        and process them again.
+
+
+        **Request Body:**
+
+        - `limit` (optional, 1-100)'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"limit\": 50\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-integration-instance-webhook-events-retry-failed
+  /api/temu/webhook-events/{event_id}/process:
+    post:
+      tags:
+      - Webhooks
+      summary: Process Event (single)
+      description: Process a specific webhook event. No-ops if it has already been
+        processed.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: event_id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Webhook event id
+        example: '4231'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-webhook-events-event-id-process
+  /api/temu/webhook-events/{event_id}/reprocess:
+    post:
+      tags:
+      - Webhooks
+      summary: Reprocess Event (single)
+      description: Force-reset a single event to pending and run it through processing
+        again (works even for already-processed events).
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: event_id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Webhook event id
+        example: '4231'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-webhook-events-event-id-reprocess
+  /api/temu/webhook-events/bulk-reprocess:
+    post:
+      tags:
+      - Webhooks
+      summary: Bulk Reprocess Events
+      description: 'Bulk reset + reprocess. Either provide `event_ids` or set `apply_to_all=true`
+        with `filters` + `integration_instance_id`.
+
+
+        **Request Body:**
+
+        - `event_ids` (required unless apply_to_all=true) - Array of webhook event
+        ids.
+
+        - `apply_to_all` (boolean) - When true, use `filters` to select records.
+
+        - `filters` (object) - Same shape as the listing endpoint filters.
+
+        - `integration_instance_id` (required when apply_to_all=true)'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"event_ids\": [\n    4231,\n    4232,\n    4233\n  ]\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-temu-webhook-events-bulk-reprocess
+  /api/temu/webhook-events/bulk-delete:
+    delete:
+      tags:
+      - Webhooks
+      summary: Bulk Delete Events
+      description: 'Delete webhook events. Requires `confirmation: "YES"` to prevent
+        accidental loss.
+
+
+        **Request Body:**
+
+        - `event_ids` (required unless apply_to_all=true)
+
+        - `apply_to_all` (boolean)
+
+        - `filters` (object)
+
+        - `integration_instance_id` (required when apply_to_all=true)
+
+        - `confirmation` (required) - Must be the literal string `YES`.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: delete-api-temu-webhook-events-bulk-delete
+  /api/temu/{integration_instance}/webhook-events/delete-all:
+    delete:
+      tags:
+      - Webhooks
+      summary: Delete All Events for Instance
+      description: 'Permanently delete every webhook event for the integration instance.
+        Irreversible — requires `confirmation: "YES"`.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Integration Instance ID
+        example: '{{temu_instance_id}}'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: delete-api-temu-integration-instance-webhook-events-delete-all
   /api/vendor-credits:
     get:
       tags:
@@ -134890,9 +135993,11 @@ x-tagGroups:
   - Landed Cost Invoice OCR
   - Document Inbox
   - Integration Instance
+  - Pre-Start-Date Orders
   - Fulfillment
   - Carriers
   - Field Mappings
+  - Returns & Refunds
   - Product Import
   - Vendor Credits
   - Lifecycle
