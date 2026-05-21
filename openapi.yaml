@@ -116532,8 +116532,9 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Note: Updates acquire a Redis lock to prevent concurrent edits. Returns 409
-        Conflict if lock cannot be acquired.
+        Note: Updates acquire a Redis lock to serialize concurrent edits to the same
+        PO. The request blocks for up to 10 seconds waiting for the lock; if the lock
+        still cannot be acquired it returns 409 Conflict.
 
 
         Update-only fields:
@@ -116603,8 +116604,8 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"message\": \"This action is not currently available\
-                \ because there is another user who is performing it now.\"\n}"
+              example: "{\n  \"message\": \"Your previous change is still saving —\
+                \ please try again in a moment.\"\n}"
       operationId: put-api-purchase-orders-purchase-order
     delete:
       tags:
@@ -116751,8 +116752,9 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Note: Updates acquire a Redis lock to prevent concurrent edits. Returns 409
-        Conflict if lock cannot be acquired.
+        Note: Updates acquire a Redis lock to serialize concurrent edits to the same
+        PO. The request blocks for up to 10 seconds waiting for the lock; if the lock
+        still cannot be acquired it returns 409 Conflict.
 
 
         Update-only fields:
@@ -116827,8 +116829,8 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"message\": \"This action is not currently available\
-                \ because there is another user who is performing it now.\"\n}"
+              example: "{\n  \"message\": \"Your previous change is still saving —\
+                \ please try again in a moment.\"\n}"
       operationId: put-domain-api-purchase-orders-purchase-order
     delete:
       tags:
@@ -119051,6 +119053,181 @@ paths:
               example: "{\n  \"data\": {\"id\": 101},\n  \"message\": \"Tax rates\
                 \ cleared from all lines.\"\n}"
       operationId: post-domain-api-purchase-orders-purchaseorder-clear-tax-rate
+  /api/purchase-order-lines/{purchase_order_line}:
+    patch:
+      tags:
+      - Purchase Orders
+      summary: Update PO Line
+      description: 'Update a single purchase order line. Designed for the PO grid''s
+        inline-edit interactions (tax rate, quantity, unit cost, discount, description,
+        FOC toggle, nominal code).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Concurrency: Shares the per-PO Redis lock used by `PATCH /api/purchase-orders/:purchase_order`
+        so concurrent edits on the same purchase order serialize rather than collide.
+        The endpoint will wait up to 10 seconds for the lock; if it cannot acquire
+        it, returns 409.
+
+
+        Request body (all fields optional — only sent fields are touched):
+
+        - `quantity` (numeric, min 0, < 10000000): new ordered quantity. Validated
+        against `received_quantity` and `invoice_total` — cannot drop below either.
+
+        - `amount` (numeric, min 0, < 10000000): unit cost.
+
+        - `description` (nullable string, max 255): free-text override for the product
+        name on this line.
+
+        - `tax_rate_id` (nullable integer, exists in `tax_rates`): set or clear the
+        tax rate. When cleared, `tax_allocation` is reset to 0.
+
+        - `discount` (nullable numeric, 0–100): percentage discount. Stored as `discount_rate`
+        (e.g. 25 → 0.25).
+
+        - `nominal_code_id` (nullable integer, exists in `nominal_codes`).
+
+        - `is_free_of_charge` (boolean): toggle the FOC flag.
+
+        - `free_of_charge_reason` (nullable enum, required when `is_free_of_charge=true`):
+        one of the `FreeOfChargeReasonEnum` cases.
+
+
+        Side effects:
+
+        - Recomputes `tax_allocation` whenever the tax rate or any subtotal input
+        (quantity/amount/discount) changes.
+
+        - Recomputes the parent PO''s `total_cost` and `total_quantity`.
+
+        - Refreshes the PO''s `receipt_status` when the quantity changes.
+
+        - When the quantity is reduced, excess awaiting-receipt inventory allocations
+        on this line are reverted so the next coverage sync can rebalance them.
+
+
+        Returns the refreshed PurchaseOrderLineResource.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                quantity: 12
+                amount: 9.95
+                description: Optional override of the line description
+                tax_rate_id: 5
+                discount: 10
+                nominal_code_id: 42
+                is_free_of_charge: false
+                free_of_charge_reason: null
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_order_line
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order line ID to update
+        example: '101'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 101
+                  quantity: 12
+                  sku:
+                    id: 4421
+                    sku: ACME-WIDGET-BLU
+                  barcode: '5012345678900'
+                  sales_channel_unique_id: null
+                  is_variation: false
+                  img_url: null
+                  supplier_sku: SUP-WIDGET-001
+                  supplier_product_id: 882
+                  price: 9.95
+                  is_free_of_charge: false
+                  free_of_charge_reason: null
+                  free_of_charge_reason_label: null
+                  name: Acme Widget, Blue
+                  nominal_code_id: 42
+                  nominal_code: Cost of Goods Sold
+                  nominal_code_code: '5000'
+                  received: 0
+                  effective_ordered: 12
+                  invoiced_quantity: null
+                  uninvoiced_quantity: null
+                  unfulfilled_quantity: null
+                  shipped_quantity: null
+                  weight: 1.2
+                  weight_unit: kg
+                  length: null
+                  width: null
+                  height: null
+                  dimension_unit: null
+                  tax_rate: 20
+                  tax_rate_id: 5
+                  tax_rate_name: Standard 20%
+                  tax_allocation: 21.49
+                  discount: 10
+                  discount_rate: 0.1
+                  discount_amount: 0.995
+                  discount_amount_extended: 11.94
+                  item_tax_value: 21.49
+                  line_total: 128.94
+                  created_at: '2026-05-10T14:22:01.000000Z'
+                  updated_at: '2026-05-21T09:31:44.000000Z'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Your previous change is still saving — please try again in
+                  a moment.
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Quantity Below Received
+                  value:
+                    message: Quantity (4) cannot be less than the already-received
+                      quantity (6).
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: Discount must be between 0 and 100.
+                    errors:
+                      discount:
+                      - Discount must be between 0 and 100.
+      operationId: patch-api-purchase-order-lines-purchase-order-line
   /api/purchase-order-lines/{purchase_order_line}/short-close:
     post:
       tags:
