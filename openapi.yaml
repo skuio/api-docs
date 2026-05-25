@@ -130542,6 +130542,74 @@ paths:
               example:
                 message: Short-close event has already been reversed.
       operationId: delete-api-purchase-order-line-short-close-events-short-close-event
+  //{domain}/api/purchase-orders/{purchase_order}/shipment-line-options:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get PO Lines for Shipment Picker
+      description: 'Lines for the Create Shipment / Add to Existing Shipment pickers
+        on the PO Shipments tab.
+
+
+        Returns every unreceived line on the PO with server-computed `assigned_quantity`
+        (units already claimed by live inbound shipments — InTransit, PartiallyReceived,
+        Received) and `available_quantity` (what the user can still add). Draft, Cancelled,
+        and Closed shipments do NOT count toward `assigned_quantity`.
+
+
+        Fully-received lines (effective_received >= quantity) are excluded. AWD /
+        FBA receipts are honoured via `getEffectiveReceivedQuantity()` so received
+        quantity is correct even when the `received_quantity` column is not directly
+        updated.
+
+
+        There is intentionally no pagination cap — a single PO can have hundreds of
+        lines and silent truncation hid line items from users (Freshdesk #1892).
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"purchase_order_line_id\"\
+                : 201,\n      \"product_id\": 10,\n      \"sku\": \"WIDGET-A\",\n\
+                \      \"product_name\": \"Widget A\",\n      \"img_url\": \"https://cdn.sku.io/products/10/primary.jpg\"\
+                ,\n      \"ordered_quantity\": 100,\n      \"received_quantity\":\
+                \ 0,\n      \"unreceived_quantity\": 100,\n      \"assigned_quantity\"\
+                : 40,\n      \"available_quantity\": 60,\n      \"already_on_shipment\"\
+                : true\n    },\n    {\n      \"purchase_order_line_id\": 202,\n  \
+                \    \"product_id\": 11,\n      \"sku\": \"WIDGET-B\",\n      \"product_name\"\
+                : \"Widget B\",\n      \"img_url\": null,\n      \"ordered_quantity\"\
+                : 50,\n      \"received_quantity\": 0,\n      \"unreceived_quantity\"\
+                : 50,\n      \"assigned_quantity\": 0,\n      \"available_quantity\"\
+                : 50,\n      \"already_on_shipment\": false\n    }\n  ]\n}"
+      operationId: get-domain-api-purchase-orders-purchase-order-shipment-line-options
   /api/purchase-orders/{purchase_order}/receipts:
     get:
       tags:
@@ -136350,10 +136418,30 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        Async behavior (SKU-8063):
+
+        - By default, this endpoint dispatches the receive to a background job chain
+        and returns 202 Accepted with `data.tracked_job_log_id`. The frontend should
+        open the global job tray (notifyJobStarted) and watch lastCompletedJob to
+        refresh.
+
+        - Pass `?async=0` to force the legacy synchronous response (200 with the receipt
+        resource).
+
+        - The async path is only taken when the payload is ad-hoc eligible: requires
+        `purchase_order_id`, and rejects any payload that includes `unexpected_items`,
+        `inbound_shipment_id`, or negative `receipt_lines[].quantity`. Ineligible
+        payloads silently fall back to the sync path.
+
+        - 409 Conflict is returned when a ProcessPurchaseOrderReceiptJob is already
+        in flight (PENDING or PROCESSING) for the same `purchase_order_id` — the caller
+        should tell the user to track progress in the job tray instead of retrying.
+
+
         Fields:
 
         - purchase_order_id (conditional): Required if purchase_order_shipment_id
-        is not provided
+        is not provided. Required for the async path.
 
         - purchase_order_shipment_id (optional): Specific shipment ID to receive.
         If omitted, receives for the entire PO
@@ -136373,7 +136461,7 @@ paths:
         receive against this specific inbound shipment. Restricts delegation to that
         shipment and over-receives it past its planned capacity if the received quantity
         exceeds what was expected. Used by the PO-detail receive drawer when the receiver
-        explicitly picks a target shipment
+        explicitly picks a target shipment. Presence forces sync fallback.
 
         - force_new_shipment (optional, boolean): If true, skip auto-routing/delegation
         to existing planned shipments and create a brand-new ad-hoc inbound shipment
@@ -136391,10 +136479,11 @@ paths:
         - receipt_lines[].purchase_order_line_reference (conditional): PO line reference
         code. Alternative to IDs
 
-        - receipt_lines[].quantity (required): Quantity received
+        - receipt_lines[].quantity (required): Quantity received. Negative quantities
+        force sync fallback.
 
         - unexpected_items (optional): Items received that were not on the original
-        PO
+        PO. Presence forces sync fallback.
 
         - unexpected_items[].product_id (conditional): Product ID. Required without
         product_sku
@@ -136451,6 +136540,20 @@ paths:
                 \ \"name\": \"Jane Smith\"},\n    \"inbound_shipment_receipt_lines\"\
                 : [\n      {\n        \"id\": 701,\n        \"purchase_order_shipment_line_id\"\
                 : 301,\n        \"quantity\": 100\n      }\n    ]\n  }\n}"
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Receiving started \\u2014 track progress\
+                \ in the job tray\",\n  \"data\": {\n    \"tracked_job_log_id\": 98765\n\
+                \  }\n}"
         '400':
           description: Bad Request
           headers:
@@ -136465,6 +136568,19 @@ paths:
               example: "{\n  \"errors\": [\n    {\n      \"message\": \"Purchase order\
                 \ 200 is not open\",\n      \"code\": \"PurchaseOrder\",\n      \"\
                 field\": \"id\"\n    }\n  ]\n}"
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"A receive is already in progress for this\
+                \ purchase order. Track progress in the job tray.\"\n}"
       operationId: post-api-inbound-shipments-receive
   /api/inbound-shipments/receipts/{receipt}:
     put:
