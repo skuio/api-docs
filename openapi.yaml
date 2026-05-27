@@ -133,6 +133,7 @@ tags:
 - name: Purchase Invoice OCR
 - name: Landed Cost Invoice OCR
 - name: Document Inbox
+- name: Fulfillment Orders
 - name: Report Templates
 - name: Integration Instance
 - name: Pre-Start-Date Orders
@@ -131060,14 +131061,22 @@ paths:
       - Suppliers
       summary: Validate Import
       description: "Validates import data rows for a supplier without creating any\
-        \ records. Safe to call repeatedly for UI previewing. Returns matched/unmatched\
-        \ products and validation errors.\n\nAuthentication: Requires Bearer token.\n\
+        \ records. Safe to call repeatedly for UI previewing. Resolves SKU and warehouse\
+        \ names against the tenant's catalogue and returns a per-row preview alongside\
+        \ an aggregate summary.\n\nThere is no hard row cap on this endpoint — SKU\
+        \ and warehouse lookups are chunked internally so large files can be submitted\
+        \ in one request. Per-request execution time and memory limits are raised\
+        \ for the duration of the call.\n\nAuthentication: Requires Bearer token.\n\
         \nPath params:\n- supplier: Supplier ID\n\nBody fields:\n- rows (required):\
-        \ Array of raw import rows (min 1)\n  - rows.*.sku (optional): Product SKU\n\
-        \  - rows.*.quantity (optional): Stock quantity\n  - rows.*.eta (optional):\
-        \ ETA date string\n  - rows.*.in_stock (optional): Stock flag\n  - rows.*.discontinued\
-        \ (optional): Discontinued flag\n  - rows.*.warehouse (optional): Warehouse\
-        \ name"
+        \ Array of raw import rows (1+).\n  - rows.*.sku (optional): Product SKU.\
+        \ Resolved case-insensitively.\n  - rows.*.quantity (optional): Stock quantity\
+        \ (numeric string)\n  - rows.*.eta (optional): ETA date string\n  - rows.*.in_stock\
+        \ (optional): Stock flag (1/0/true/false/yes/y)\n  - rows.*.discontinued (optional):\
+        \ Discontinued flag (1/0/true/false/yes/y)\n  - rows.*.warehouse (optional):\
+        \ Warehouse name. Falls back to the supplier's default warehouse when omitted.\n\
+        \nErrors:\n- 422 when standard validation fails (e.g. empty rows array).\n\
+        - 422 when the manager raises an exception during lookup (translated from\
+        \ a 500 so the client gets an actionable message)."
       requestBody:
         content:
           '*/*':
@@ -131102,29 +131111,55 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"valid\": [\n    {\n      \"sku\": \"WIDGET-001\",\n\
-                \      \"product_id\": 42,\n      \"warehouse_id\": 2,\n      \"quantity\"\
-                : 500,\n      \"eta\": \"2024-09-01\",\n      \"in_stock\": null,\n\
-                \      \"discontinued\": false\n    }\n  ],\n  \"invalid\": [\n  \
-                \  {\n      \"sku\": \"UNKNOWN-SKU\",\n      \"errors\": [\"Product\
-                \ not found for SKU: UNKNOWN-SKU\"]\n    }\n  ],\n  \"total\": 2,\n\
-                \  \"valid_count\": 1,\n  \"invalid_count\": 1\n}"
+              example: "{\n  \"items\": [\n    {\n      \"row_index\": 0,\n      \"\
+                sku\": \"WIDGET-001\",\n      \"product_id\": 42,\n      \"product_name\"\
+                : \"Widget 001\",\n      \"warehouse\": {\"id\": 2, \"name\": \"Main\
+                \ Warehouse\"},\n      \"quantity\": 500,\n      \"eta\": \"2024-09-01\"\
+                ,\n      \"in_stock\": false,\n      \"discontinued\": false,\n  \
+                \    \"errors\": []\n    },\n    {\n      \"row_index\": 1,\n    \
+                \  \"sku\": \"UNKNOWN-SKU\",\n      \"product_id\": null,\n      \"\
+                product_name\": null,\n      \"warehouse\": {\"id\": 2, \"name\":\
+                \ \"Main Warehouse\"},\n      \"quantity\": null,\n      \"eta\":\
+                \ null,\n      \"in_stock\": false,\n      \"discontinued\": false,\n\
+                \      \"errors\": [\"SKU 'UNKNOWN-SKU' not found.\"]\n    }\n  ],\n\
+                \  \"summary\": {\n    \"total_items\": 2,\n    \"total_errors\":\
+                \ 1,\n    \"total_valid\": 1\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Validation failed: Supplier not found\"\
+                \n}"
       operationId: post-api-supplier-inventories-5-import-validate
   /api/supplier-inventories/5/import:
     post:
       tags:
       - Suppliers
       summary: Execute Import
-      description: "Executes a supplier inventory import — creates or updates inventory\
-        \ records for a specific supplier.\n\nAuthentication: Requires Bearer token.\n\
-        \nPath params:\n- supplier: Supplier ID\n\nBody fields:\n- items (required):\
-        \ Array of validated inventory items (min 1)\n  - items.*.product_id (required):\
-        \ Product ID (must exist)\n  - items.*.warehouse_id (optional): Warehouse\
-        \ ID (must exist if provided)\n  - items.*.quantity (optional): Stock quantity,\
-        \ integer >= 0\n  - items.*.eta (optional): Expected availability date\n \
-        \ - items.*.in_stock (optional): Boolean stock flag\n  - items.*.discontinued\
-        \ (optional): Boolean discontinued flag\n\nNote: Use the validate endpoint\
-        \ first to preview and catch errors before importing."
+      description: "Queues a supplier inventory import — creates or updates inventory\
+        \ records for a specific supplier in the background.\n\nThis endpoint is asynchronous.\
+        \ The HTTP response returns immediately (202 Accepted) with a `tracked_job_log_id`\
+        \ that the client polls via the global job tray for progress and completion\
+        \ status. There is no hard row cap on the payload — the queued job processes\
+        \ items in chunks of 500 in its own transaction per chunk, so payloads of\
+        \ any size complete cleanly without holding a long-running transaction open.\n\
+        \nAuthentication: Requires Bearer token.\n\nPath params:\n- supplier: Supplier\
+        \ ID\n\nBody fields:\n- items (required): Array of validated inventory items\
+        \ (1+).\n  - items.*.product_id (required): Product ID (must exist)\n  - items.*.warehouse_id\
+        \ (optional): Warehouse ID (must exist if provided)\n  - items.*.quantity\
+        \ (optional): Stock quantity, integer >= 0\n  - items.*.eta (optional): Expected\
+        \ availability date\n  - items.*.in_stock (optional): Boolean stock flag\n\
+        \  - items.*.discontinued (optional): Boolean discontinued flag\n\nErrors:\n\
+        - 422 when standard validation fails (e.g. missing product_id, empty items\
+        \ array).\n- 404 when the supplier does not exist.\n\nNote: Use the validate\
+        \ endpoint first to preview and catch errors before importing."
       requestBody:
         content:
           '*/*':
@@ -131147,8 +131182,8 @@ paths:
           type: string
         example: application/json
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Accepted
           headers:
             Content-Type:
               schema:
@@ -131158,8 +131193,9 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"created\": 1,\n  \"updated\": 1,\n  \"errors\": []\n\
-                }"
+              example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 12345\n  },\n\
+                \  \"message\": \"Import queued — track progress in the job tray.\"\
+                \n}"
         '422':
           description: Unprocessable Entity
           headers:
@@ -131171,8 +131207,10 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"message\": \"Import failed: Product ID 9999 not found\"\
-                \n}"
+              example: "{\n  \"message\": \"The given data was invalid.\",\n  \"errors\"\
+                : {\n    \"items.0.product_id\": [\n      {\n        \"message\":\
+                \ \"The selected items.0.product_id is invalid.\",\n        \"code\"\
+                : \"Exists\"\n      }\n    ]\n  }\n}"
       operationId: post-api-supplier-inventories-5-import
   /api/purchase-orders:
     get:
@@ -145968,6 +146006,588 @@ paths:
           content:
             application/json: {}
       operationId: get-api-document-inbox-customer-po-extraction-id-siblings
+  /api/sales-orders/{salesOrder}/fulfillment-orders:
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: List Fulfillment Orders for a Sales Order
+      description: 'Lists every FulfillmentOrder attached to a SalesOrder with eager-loaded
+        lines + warehouse. Powers the Pending sub-tab in the Vue3 SO detail page.
+
+
+        Returns 404 if the feature flag is off.
+
+
+        Response is a JSON:API-style resource collection (no pagination — typically
+        a handful of FOs per SO).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+                - id: 452
+                  sales_order_id: 123
+                  warehouse_id: 9
+                  status: in_progress
+                  request_status: submitted
+                  external_id: shipfusion-93214
+                  external_type: shipfusion
+                  integration_instance_id: 4
+                  submitted_at: '2026-05-26T09:45:00+00:00'
+                  accepted_at: '2026-05-26T09:46:00+00:00'
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T09:40:00+00:00'
+                  updated_at: '2026-05-26T09:46:00+00:00'
+                  warehouse:
+                    id: 9
+                    name: 3PL Atlanta
+                    type: 3pl
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: get-api-sales-orders-salesorder-fulfillment-orders
+  /api/fulfillment-orders/{fulfillmentOrder}:
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: Get Fulfillment Order Detail
+      description: 'Returns a single FulfillmentOrder with its lines and warehouse
+        eager-loaded. Each line exposes its `quantity` (the original budget) and `remaining_quantity`
+        (the over-fulfilment backstop — units still available to consume via a SalesOrderFulfillmentLine).
+
+
+        Returns 404 if the feature flag is off or the FO does not exist.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:15:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  - id: 902
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55348
+                    quantity: 2
+                    remaining_quantity: 1
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:32:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+      operationId: get-api-fulfillment-orders-fulfillmentorder
+  /api/fulfillment-orders:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Create Fulfillment Order
+      description: 'Creates a new FulfillmentOrder + its line budgets in a single
+        transaction. Each line''s `remaining_quantity` is initialized to `quantity`.
+
+
+        **Overfulfilment guard.** For every line, the manager row-locks the parent
+        SalesOrderLine and validates that `SUM(quantity)` across all non-cancelled
+        FOs for that SOL + the new requested quantity does not exceed `SalesOrderLine.quantity`.
+        Violations return 422.
+
+
+        **Request body fields:**
+
+        - `sales_order_id` (required, integer, must exist) — parent SO.
+
+        - `warehouse_id` (required, integer, must exist) — the warehouse this FO will
+        be routed to. Cannot be changed once the FO leaves Open/Unsubmitted (see Move
+        endpoint).
+
+        - `lines` (required, array, min 1) — one entry per SOL being budgeted from
+        this warehouse.
+
+        - `lines.*.sales_order_line_id` (required, integer, must exist) — SOL ID.
+
+        - `lines.*.quantity` (required, integer, min 1) — units to budget for this
+        SOL from this warehouse.
+
+        - `external_id` (nullable, string, max 128) — external provider''s FO/shipment
+        ID once submitted.
+
+        - `external_type` (nullable, string, max 64) — provider type discriminator
+        (e.g. "shipfusion", "3pl").
+
+        - `integration_instance_id` (nullable, integer, must exist) — integration
+        instance for the provider.
+
+
+        Returns 201 with the eager-loaded FO + lines + warehouse on success, 422 on
+        overfulfilment, 404 if the feature flag is off.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"sales_order_id\": 123,\n  \"warehouse_id\": 7,\n  \"lines\":
+                [\n    {\n      \"sales_order_line_id\": 55347,\n      \"quantity\":
+                3\n    },\n    {\n      \"sales_order_line_id\": 55348,\n      \"quantity\":
+                2\n    }\n  ],\n  \"external_id\": null,\n  \"external_type\": null,\n  \"integration_instance_id\":
+                null\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:15:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Overfulfilment
+                  value:
+                    error: 'Cannot fulfill 99 of sales_order_line 55347: only 3 units
+                      remain unbudgeted across all FulfillmentOrders.'
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: The lines field must have at least 1 items.
+                    errors:
+                      lines:
+                      - The lines field must have at least 1 items.
+      operationId: post-api-fulfillment-orders
+  /api/fulfillment-orders/{fulfillmentOrder}/move:
+    patch:
+      tags:
+      - Fulfillment Orders
+      summary: Move Fulfillment Order to Different Warehouse
+      description: 'Pre-submit warehouse re-route. Updates the FO''s `warehouse_id`
+        only.
+
+
+        **Mutability gate.** This action is allowed ONLY when the FO is `status=open`
+        AND `request_status=unsubmitted`. Once we hand the FO off to a provider (anything
+        beyond unsubmitted) the warehouse decision is frozen. Violations return 409.
+
+
+        **Body fields:**
+
+        - `warehouse_id` (required, integer, must exist) — new destination warehouse.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"warehouse_id\": 9\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 9
+                  status: open
+                  request_status: unsubmitted
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:18:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 9
+                    name: 3PL Atlanta
+                    type: 3pl
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'Cannot move fulfillment_order 451: warehouse is locked once
+                  status=in_progress or request_status has left unsubmitted (currently
+                  status=in_progress, request_status=submitted).'
+      operationId: patch-api-fulfillment-orders-fulfillmentorder-move
+  /api/fulfillment-orders/{fulfillmentOrder}/submit:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Submit Fulfillment Order to Provider
+      description: 'Transitions `request_status` from `unsubmitted` → `submitting`
+        and stamps `submitted_at` to the moment of hand-off (NOT when the carrier
+        confirms — see Stage 2 for the carrier-callback flow that flips `submitting`
+        → `submitted`/`accepted`).
+
+
+        **Mutability gate.** Allowed ONLY when `status=open` AND `request_status=unsubmitted`.
+        Violations return 409.
+
+
+        No request body.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: submitting
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: '2026-05-26T10:20:00+00:00'
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:20:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'Cannot submit fulfillment_order 451: only open + unsubmitted
+                  FOs can be submitted (currently status=open, request_status=submitting).'
+      operationId: post-api-fulfillment-orders-fulfillmentorder-submit
+  /api/fulfillment-orders/{fulfillmentOrder}/cancel:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Cancel Fulfillment Order
+      description: 'Cancels the FO, releases its line budgets back to the parent SOLs
+        (so a different FO can pick them up), and optionally records a rejection reason.
+        Sets `status=cancelled` + `cancelled_at`.
+
+
+        **Mutability gate.** Rejected if the FO is already terminal (`status=closed`/`cancelled`)
+        OR if `request_status` is currently in-flight with the provider (`submitting`,
+        `cancellation_requested`). Use the cancel-request flow in Stage 2 to cancel
+        an in-flight FO.
+
+
+        **Body fields:**
+
+        - `reason` (nullable, string, max 1000) — stored on `rejection_reason` for
+        audit.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"reason\": \"Customer requested change of address\"\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: cancelled
+                  request_status: unsubmitted
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: '2026-05-26T10:25:00+00:00'
+                  rejection_reason: Customer requested change of address
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:25:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'Cannot cancel fulfillment_order 451: FO is in flight with
+                  the provider (request_status=submitting). Use the cancel-request
+                  flow to cancel an in-flight FO.'
+      operationId: post-api-fulfillment-orders-fulfillmentorder-cancel
   /api/report-templates:
     get:
       tags:
@@ -153045,6 +153665,7 @@ x-tagGroups:
   - Purchase Invoice OCR
   - Landed Cost Invoice OCR
   - Document Inbox
+  - Fulfillment Orders
   - Integration Instance
   - Pre-Start-Date Orders
   - Fulfillment
