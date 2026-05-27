@@ -8234,15 +8234,46 @@ paths:
     delete:
       tags:
       - Authentication
-      summary: Delete All Access Tokens
-      description: 'Deletes all API access tokens for the authenticated user, effectively
-        revoking all active sessions.
+      summary: Sign Out of All Sessions (Global Logout)
+      description: 'Signs the authenticated user out of every browser and device —
+        across every subdomain and every pod.
 
 
-        Authentication: Requires Bearer token.
+        What it does:
+
+        - Increments the user''s central `auth_version` counter by 1
+
+        - Deletes every Session-type Personal Access Token for the user (Sanctum bearer
+        sessions)
+
+        - Invalidates the caller''s own cookie session (if cookie-authenticated)
+
+        - Busts the per-user auth_version cache so the next request reads the new
+        value immediately
 
 
-        Note: Not available when CACHE_STORE is ''array''.'
+        What survives:
+
+        - Personal Access Tokens (PAT type) — long-lived API credentials. Revoke individually
+        from Settings → Developer → Personal Access Tokens.
+
+        - Integration tokens (3PL / channel connections). Revoke individually from
+        Connected Apps.
+
+
+        How other devices are kicked: every request authenticated by a Session token
+        (or cookie session) carries a stamped `auth_v`. The EnforceAuthVersion middleware
+        compares it to the current `auth_version` on the user row; if the stamp is
+        stale, the request is rejected with 401 / ERR_AUTH_REVOKED and the cookie
+        session is invalidated. This works across all pods because `users.auth_version`
+        lives in the central DB.
+
+
+        Authentication: Requires Bearer token (Session type) or active cookie session.
+
+
+        Note: Not available when CACHE_STORE is ''array'' — the auth_version cache
+        bust would be a no-op across processes.'
       parameters:
       - name: Accept
         in: header
@@ -8261,8 +8292,7 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"message\": \"API access token deleted successfully.\"\
-                \n}"
+              example: "{\n  \"message\": \"All sessions logged out.\"\n}"
         '501':
           description: Not Implemented
           headers:
