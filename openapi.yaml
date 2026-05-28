@@ -25817,8 +25817,7 @@ paths:
       tags:
       - Store Email Templates
       summary: Create Store Email Template
-      description: 'Creates a new store email template. Always creates as a non-system
-        template.
+      description: 'Creates a new store email template (always non-system).
 
 
         Authentication: Requires Bearer token.
@@ -25826,30 +25825,42 @@ paths:
 
         Fields:
 
-        - store_id (required on create): ID of the store (must exist in stores table)
+        - store_id (required): store ID (must exist)
 
-        - type (required on create): Template type (e.g. purchase_order, purchase_order_updated,
-        bulk_purchase_order)
+        - context (required): bound entity — one of sales_order, purchase_order, sales_credit,
+        vendor_credit, bulk_purchase_order, warehouse_transfer. Determines available
+        variables and attachable documents.
 
-        - subject (required on create): Email subject line, max 255 chars
+        - event (required): trigger within the context (e.g. confirmation, updated,
+        fulfilled, submitted, issued, manual). The legacy `type` column is derived
+        from context+event server-side.
 
-        - html_body (required on create): HTML body of the email template (supports
-        template variables)
+        - name (optional): human label for the template
 
-        - enabled (optional): Boolean, whether template is active
+        - subject (required): subject line, max 255
 
-        - attach_pdf (optional): Boolean, whether to attach a PDF
+        - html_body (required): HTML body (supports {{ }} merge variables)
 
-        - sent_type (optional): One of: automatically, manually'
+        - enabled (optional): boolean. For automatic events only one template per
+        (store, context, event) stays enabled.
+
+        - sent_type (optional): automatically | manually
+
+        - cc (optional): array of email addresses
+
+        - attachments (optional): array of document keys valid for the context (e.g.
+        po_pdf, po_csv, po_xlsx, invoice_pdf, credit_note_pdf, vendor_credit_pdf)'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"store_id\": 3,\n  \"type\": \"purchase_order\",\n  \"subject\":
-                \"Your PO #{{order_number}} is ready\",\n  \"html_body\": \"<html><body><p>Dear
-                {{supplier_name}}, your order is ready.</p></body></html>\",\n  \"enabled\":
-                true,\n  \"attach_pdf\": true,\n  \"sent_type\": \"automatically\"\n}"'
+              example: '"{\n  \"store_id\": 3,\n  \"context\": \"purchase_order\",\n  \"event\":
+                \"manual\",\n  \"name\": \"Standard supplier PO email\",\n  \"subject\":
+                \"Order {{purchase_order_number}} from {{company_name}}\",\n  \"html_body\":
+                \"<html><body><p>Dear {{supplier_name}}, please find our order attached.</p></body></html>\",\n  \"enabled\":
+                true,\n  \"sent_type\": \"manually\",\n  \"cc\": [\n    \"ops@example.com\"\n  ],\n  \"attachments\":
+                [\n    \"po_pdf\"\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -25862,8 +25873,8 @@ paths:
           type: string
         example: application/json
       responses:
-        '201':
-          description: Created
+        '200':
+          description: OK
           headers:
             Content-Type:
               schema:
@@ -25874,29 +25885,18 @@ paths:
               schema:
                 type: string
               example: "{\n  \"status\": \"success\",\n  \"data\": {\n    \"id\":\
-                \ 12,\n    \"store_id\": 3,\n    \"type\": \"purchase_order\",\n \
-                \   \"subject\": \"Your PO #{{order_number}} is ready\",\n    \"title\"\
-                : \"Your PO #{{order_number}} is ready\",\n    \"enabled\": true,\n\
-                \    \"attach_pdf\": true,\n    \"sent_type\": \"automatically\",\n\
-                \    \"html_body\": \"<html><body><p>Dear {{supplier_name}}, your\
-                \ order is ready.</p></body></html>\",\n    \"is_system_template\"\
-                : false,\n    \"cc\": null,\n    \"created_at\": \"2024-06-15T12:00:00.000000Z\"\
-                ,\n    \"updated_at\": \"2024-06-15T12:00:00.000000Z\"\n  }\n}"
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"message\": \"The store id field is required.\",\n \
-                \ \"errors\": {\n    \"store_id\": [\"The store id field is required.\"\
-                ],\n    \"sent_type\": [\"The selected sent type is invalid.\"]\n\
-                \  }\n}"
+                \ 12,\n    \"store_id\": 3,\n    \"type\": \"user_purchase_order\"\
+                ,\n    \"context\": \"purchase_order\",\n    \"event\": \"manual\"\
+                ,\n    \"name\": \"Standard supplier PO email\",\n    \"subject\"\
+                : \"Order {{purchase_order_number}} from {{company_name}}\",\n   \
+                \ \"title\": \"Order {{purchase_order_number}} from {{company_name}}\"\
+                ,\n    \"enabled\": true,\n    \"attach_pdf\": false,\n    \"attachments\"\
+                : [\n      \"po_pdf\"\n    ],\n    \"sent_type\": \"manually\",\n\
+                \    \"html_body\": \"<html><body><p>Dear {{supplier_name}}, please\
+                \ find our order attached.</p></body></html>\",\n    \"is_system_template\"\
+                : false,\n    \"cc\": [\n      \"ops@example.com\"\n    ],\n    \"\
+                created_at\": \"2026-05-28T12:00:00.000000Z\",\n    \"updated_at\"\
+                : \"2026-05-28T12:00:00.000000Z\"\n  }\n}"
       operationId: post-api-store-email-templates
     delete:
       tags:
@@ -25970,6 +25970,63 @@ paths:
                 updated_at\": \"2024-06-01T10:00:00.000000Z\",\n      \"created_at\"\
                 : \"2024-06-01T10:00:00.000000Z\"\n    }\n  ]\n}"
       operationId: get-api-store-email-templates-user-templates
+  /api/store-email-templates/contexts:
+    get:
+      tags:
+      - Store Email Templates
+      summary: List Template Contexts
+      description: 'Returns the email-template context catalog: for each context (bound
+        entity) its label, available events (automatic/manual), merge variables, and
+        attachable documents. The editor and send dialogs use this as the single source
+        of truth for what a template can contain.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"purchase_order\": {\n      \"label\"\
+                : \"Purchase Order\",\n      \"events\": [\n        {\n          \"\
+                key\": \"submitted\",\n          \"label\": \"PO Submitted\",\n  \
+                \        \"trigger\": \"automatic\",\n          \"description\": \"\
+                Sends automatically to the supplier every time a purchase order is\
+                \ submitted.\"\n        },\n        {\n          \"key\": \"updated\"\
+                ,\n          \"label\": \"PO Updated\",\n          \"trigger\": \"\
+                automatic\",\n          \"description\": \"Sends automatically every\
+                \ time a submitted purchase order is changed.\"\n        },\n    \
+                \    {\n          \"key\": \"manual\",\n          \"label\": \"Manual\
+                \ Send\",\n          \"trigger\": \"manual\",\n          \"description\"\
+                : \"Never sends on its own. You choose this template from the purchase\
+                \ order screen when you want to email the supplier.\"\n        }\n\
+                \      ],\n      \"variables\": [\n        {\n          \"token\"\
+                : \"{{purchase_order_number}}\",\n          \"label\": \"Purchase\
+                \ Order ID\",\n          \"group\": \"Details\",\n          \"is_table\"\
+                : false\n        },\n        {\n          \"token\": \"{{purchase_order_lines}}\"\
+                ,\n          \"label\": \"Order Item List\",\n          \"group\"\
+                : \"Line Items\",\n          \"is_table\": true\n        }\n     \
+                \ ],\n      \"documents\": [\n        {\n          \"key\": \"po_pdf\"\
+                ,\n          \"label\": \"PO PDF\",\n          \"mime\": \"application/pdf\"\
+                \n        },\n        {\n          \"key\": \"po_csv\",\n        \
+                \  \"label\": \"PO CSV\",\n          \"mime\": \"text/csv\"\n    \
+                \    },\n        {\n          \"key\": \"po_xlsx\",\n          \"\
+                label\": \"PO XLSX\",\n          \"mime\": \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\"\
+                \n        }\n      ]\n    }\n  }\n}"
+      operationId: get-api-store-email-templates-contexts
   /api/store-email-templates/1:
     get:
       tags:
@@ -26025,18 +26082,25 @@ paths:
       tags:
       - Store Email Templates
       summary: Update Store Email Template
-      description: 'Updates an existing store email template. All fields are optional.
+      description: 'Updates an existing store email template.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Accepts the same fields as create (context, event, name, subject, html_body,
+        enabled, sent_type, cc, attachments). Enabling an automatic-event template
+        disables any other enabled template in the same (store, context, event) slot.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"subject\": \"Updated: Your PO #{{order_number}}\",\n  \"html_body\":
-                \"<html><body><p>Updated template content.</p></body></html>\",\n  \"enabled\":
-                false,\n  \"sent_type\": \"manually\"\n}"'
+              example: '"{\n  \"context\": \"purchase_order\",\n  \"event\": \"manual\",\n  \"name\":
+                \"Standard supplier PO email\",\n  \"subject\": \"Updated subject
+                {{purchase_order_number}}\",\n  \"html_body\": \"<html><body><p>Updated
+                body.</p></body></html>\",\n  \"enabled\": true,\n  \"attachments\":
+                [\n    \"po_pdf\",\n    \"po_csv\"\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -26351,8 +26415,7 @@ paths:
       tags:
       - Store Email Templates
       summary: Send Email
-      description: 'Sends a custom email to the customer/supplier associated with
-        an order. Supports purchase_order and other order types.
+      description: 'Sends a customized email for a record (manual send) to its customer/supplier.
 
 
         Authentication: Requires Bearer token.
@@ -26360,24 +26423,29 @@ paths:
 
         Fields:
 
-        - order_type (required): Type of the order (e.g. purchase_order, sales_order)
+        - order_type (required): SalesOrder | PurchaseOrder | VendorCredit
 
-        - order_id (required): ID of the order record
+        - order_id (required): the record ID
 
-        - subject (required): Email subject line
+        - subject (required)
 
-        - html_body (required): HTML email body content
+        - html_body (required)
 
-        - cc (optional): Array of CC email addresses'
+        - cc (optional): array of email addresses
+
+        - attachments (optional): array of document keys to attach, resolved via the
+        record''s attachable-document registry (e.g. po_pdf, po_csv, po_xlsx for PurchaseOrder;
+        invoice_pdf for SalesOrder; vendor_credit_pdf for VendorCredit). Unknown keys
+        are ignored; generation failures are skipped so the email still sends.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"order_type\": \"purchase_order\",\n  \"order_id\":
-                42,\n  \"subject\": \"Your Purchase Order #PO-2024-0042\",\n  \"html_body\":
-                \"<html><body><p>Dear Supplier, your PO is attached.</p></body></html>\",\n  \"cc\":
-                [\"manager@company.com\"]\n}"'
+              example: '"{\n  \"order_type\": \"PurchaseOrder\",\n  \"order_id\":
+                1042,\n  \"subject\": \"Order PO-1042\",\n  \"html_body\": \"<html><body><p>Please
+                find your order attached.</p></body></html>\",\n  \"cc\": [\n    \"buyer@example.com\"\n  ],\n  \"attachments\":
+                [\n    \"po_pdf\"\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
