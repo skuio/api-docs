@@ -17,12 +17,12 @@ This release 1 added, 4 changed API endpoint(s).
 ## Changed
 
 - `GET //{domain}/api/purchase-orders/list` — List Purchase Orders (Vue3 List)
-  - new parameter(s): filter[logistics_<slug>_actual][on_or_before], filter[logistics_<slug>_estimate][on_or_after]
+  - new parameter(s): `filter[logistics_<slug>_actual][on_or_before]`, `filter[logistics_<slug>_estimate][on_or_after]`
 - `GET //{protocol}{domain}/api/inbound-shipments` — List Inbound Shipments
-  - new parameter(s): filter[logistics_<slug>_actual][is_empty], filter[logistics_<slug>_estimate][on_or_after], filter_groups[conjunction]
+  - new parameter(s): `filter[logistics_<slug>_actual][is_empty]`, `filter[logistics_<slug>_estimate][on_or_after]`, `filter_groups[conjunction]`
 - `GET /api/inbound-shipments` — List Inbound Shipments
-  - new parameter(s): filter[logistics_<slug>_actual][is_empty], filter[logistics_<slug>_estimate][on_or_after], filter_groups[conjunction]
+  - new parameter(s): `filter[logistics_<slug>_actual][is_empty]`, `filter[logistics_<slug>_estimate][on_or_after]`, `filter_groups[conjunction]`
 - `GET /api/purchase-orders/list` — List Purchase Orders (Vue3 List)
-  - new parameter(s): filter[logistics_<slug>_actual][on_or_before], filter[logistics_<slug>_estimate][on_or_after]
+  - new parameter(s): `filter[logistics_<slug>_actual][on_or_before]`, `filter[logistics_<slug>_estimate][on_or_after]`
 
 _Spec version 1.0.0 → 1.0.0._
