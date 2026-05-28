@@ -76,6 +76,7 @@ tags:
 - name: Subscriptions
 - name: Horizon
 - name: Queue Admin
+- name: Filter Suggestions
 - name: Transactions
 - name: Webhook Configuration
 - name: Webhook Events
@@ -14567,34 +14568,6 @@ paths:
                 per_page: 20
                 total: 8
       operationId: get-api-low-stock-items
-  /api/inventory-management:
-    get:
-      tags:
-      - Misc
-      summary: Inventory Management Settings
-      description: 'Returns inventory management configuration settings.
-
-
-        Authentication: Requires Bearer token.'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-              example:
-                data:
-                  costing_method: fifo
-                  negative_stock_allowed: false
-                  auto_allocate: true
-      operationId: get-api-inventory-management
   /api/low-stock-items/export:
     get:
       tags:
@@ -14654,6 +14627,34 @@ paths:
 
                 '
       operationId: get-api-low-stock-items-export
+  /api/inventory-management:
+    get:
+      tags:
+      - Misc
+      summary: Inventory Management Settings
+      description: 'Returns inventory management configuration settings.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  costing_method: fifo
+                  negative_stock_allowed: false
+                  auto_allocate: true
+      operationId: get-api-inventory-management
   /api/discount-codes:
     get:
       tags:
@@ -22912,6 +22913,207 @@ paths:
                 : true },\n    { \"url\": null, \"label\": \"Next &raquo;\", \"active\"\
                 : false }\n  ]\n}"
       operationId: get-api-v2-queue-admin-actions
+  /api/ai/filter-suggestions:
+    post:
+      tags:
+      - Filter Suggestions
+      summary: Generate Filter Tree from Prompt
+      description: 'Translate a natural-language search request into a structured
+        `FilterTree` payload that conforms to the Vue 3 datatable advanced-filter
+        system.
+
+
+        **Authentication:** Requires Bearer token (Personal Access Token).
+
+
+        **Rate limit:** 60 requests per hour per user.
+
+
+        **Behavior:**
+
+        - The server forwards the prompt and the page''s `availableFilters` to OpenAI
+        (model: `gpt-4o-mini`) using strict JSON Schema structured outputs.
+
+        - The returned tree is validated server-side: any condition referencing a
+        column that wasn''t in `availableFilters`, an operator illegal for that column''s
+        type, or a value outside the column''s `lookupOptions` whitelist is dropped
+        silently.
+
+        - If no filter conditions survive sanitization, the response is `{ "data":
+        { "tree": { "conjunction": "and", "children": [] } } }` and the frontend treats
+        it as a no-op.
+
+        - Maximum nesting depth is 2 (root + one sub-group). Deeper trees are rejected
+        at the JSON Schema layer.
+
+
+        **Request body:**
+
+        - `prompt` (string, required, 3–2000 chars) — the user''s natural-language
+        filter request.
+
+        - `pageContext` (string, optional, max 200 chars) — short label for the current
+        page (e.g. `Sales Orders`, `Customers`). Improves the LLM''s column choice.
+
+        - `availableFilters` (array, required, 1–200 items) — the page''s `AdvancedFilterConfig[]`
+        mapped to `{column, label, type, allowedOperators?, lookupOptions?, group?}`.
+
+        - `availableFilters[].type` (string, required) — one of `text`, `numeric`,
+        `date`, `datetime`, `checkbox`.
+
+        - `availableFilters[].allowedOperators` (array<string>, optional) — restrict
+        operators for this column. Defaults to the type''s full vocabulary if omitted.
+
+        - `availableFilters[].lookupOptions` (array, optional, max 500) — `{value,
+        title?}` whitelist for select-style columns. The LLM is told it MUST pick
+        a value from this list; the sanitizer drops conditions whose value isn''t
+        in it.
+
+
+        **Failure modes:**
+
+        - `401 Unauthenticated` — missing or invalid token.
+
+        - `422 Validation` — `prompt` blank, too long, or `availableFilters` missing/empty.
+
+        - `429 Too Many Requests` — rate limit exceeded.
+
+        - `502 Bad Gateway` — OpenAI auth failed (server''s `OPENAI_API_KEY` invalid)
+        or OpenAI is unreachable.
+
+        - `503 Service Unavailable` — OpenAI not configured on this environment (server
+        has no `OPENAI_API_KEY`).
+
+
+        **Cost note:** Each call uses ~300–1500 tokens of `gpt-4o-mini` (≈ $0.001
+        or less). Logged metadata: `user_id`, `prompt_length` (not the prompt body),
+        `tokens`, `latency_ms`, `page_context`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                prompt: show me all customers with email containing sku.io created
+                  in the last 30 days
+                pageContext: Customers
+                availableFilters:
+                - column: email
+                  label: Email
+                  type: text
+                - column: name
+                  label: Name
+                  type: text
+                - column: created_at
+                  label: Created At
+                  type: date
+                - column: status
+                  label: Status
+                  type: text
+                  allowedOperators:
+                  - is
+                  - is_not
+                  - is_one_of
+                  lookupOptions:
+                  - value: active
+                    title: Active
+                  - value: inactive
+                    title: Inactive
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 — Filter tree generated
+                  value: "{\n  \"data\": {\n    \"tree\": {\n      \"conjunction\"\
+                    : \"and\",\n      \"children\": [\n        {\n          \"type\"\
+                    : \"condition\",\n          \"condition\": {\n            \"column\"\
+                    : \"email\",\n            \"operator\": \"contains\",\n      \
+                    \      \"value\": \"sku.io\"\n          }\n        },\n      \
+                    \  {\n          \"type\": \"condition\",\n          \"condition\"\
+                    : {\n            \"column\": \"created_at\",\n            \"operator\"\
+                    : \"within\",\n            \"value\": 30,\n            \"secondaryOperator\"\
+                    : \"days_ago\"\n          }\n        }\n      ]\n    }\n  }\n}"
+                example-1:
+                  summary: 200 — No applicable filters
+                  value: "{\n  \"data\": {\n    \"tree\": {\n      \"conjunction\"\
+                    : \"and\",\n      \"children\": []\n    }\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The prompt field is required.\",\n  \"\
+                errors\": {\n    \"prompt\": [\"The prompt field is required.\"]\n\
+                \  }\n}"
+        '429':
+          description: Too Many Requests
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Retry-After:
+              schema:
+                type: integer
+                example: '1234'
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Too Many Attempts.\"\n}"
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"OpenAI authentication failed.\"\n}"
+        '503':
+          description: Service Unavailable
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"OpenAI is not configured on this environment.\"\
+                \n}"
+      operationId: post-api-ai-filter-suggestions
   /api/big-commerce/dashboard:
     get:
       tags:
@@ -151896,6 +152098,7 @@ x-tagGroups:
   - Reporting
   - Product Listings (V2)
   - Queue Admin
+  - Filter Suggestions
   - Transactions
   - Webhook Configuration
   - Webhook Events
