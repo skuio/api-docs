@@ -114249,7 +114249,13 @@ paths:
         items: optional array of stock take line items. Can be added later.
 
 
-        warehouse_id must be a standard (non-virtual) warehouse.'
+        warehouse_id must be a standard (non-virtual) warehouse.
+
+
+        Response includes `deletable` (boolean) and `delete_blocked_reasons` (string[]):
+        a draft/open stock take is always deletable; a closed stock take is deletable
+        only when none of its FIFO cost layers have been consumed (otherwise `deletable`
+        is false and `delete_blocked_reasons` lists the blocking stock take items).'
       requestBody:
         content:
           '*/*':
@@ -114284,10 +114290,12 @@ paths:
               schema:
                 type: string
               example: "{\n  \"data\": {\n    \"id\": 43,\n    \"date_count\": \"\
-                2024-10-10T00:00:00+00:00\",\n    \"warehouse\": {\"id\": 2, \"name\"\
-                : \"Main Warehouse\"},\n    \"mode\": \"full_count\",\n    \"status\"\
-                : \"draft\",\n    \"notes\": \"Q4 annual count\",\n    \"items\":\
-                \ [],\n    \"created_at\": \"2024-10-08T09:00:00+00:00\"\n  }\n}"
+                2024-10-10T00:00:00+00:00\",\n    \"warehouse\": {\n      \"id\":\
+                \ 2,\n      \"name\": \"Main Warehouse\"\n    },\n    \"mode\": \"\
+                full_count\",\n    \"status\": \"draft\",\n    \"deletable\": true,\n\
+                \    \"delete_blocked_reasons\": [],\n    \"notes\": \"Q4 annual count\"\
+                ,\n    \"items\": [],\n    \"created_at\": \"2024-10-08T09:00:00+00:00\"\
+                \n  }\n}"
       operationId: post-api-stock-takes
     delete:
       tags:
@@ -114339,7 +114347,13 @@ paths:
 
 
         Loads: warehouse, stockTakeItems (with inventoryMovements.fifoLayer for closed
-        takes), parentStockTake, childStockTakes.'
+        takes), parentStockTake, childStockTakes.
+
+
+        Response includes `deletable` (boolean) and `delete_blocked_reasons` (string[]):
+        a draft/open stock take is always deletable; a closed stock take is deletable
+        only when none of its FIFO cost layers have been consumed (otherwise `deletable`
+        is false and `delete_blocked_reasons` lists the blocking stock take items).'
       parameters:
       - name: Accept
         in: header
@@ -114370,14 +114384,15 @@ paths:
                 \   \"condition\": null,\n    \"warehouse\": {\n      \"id\": 2,\n\
                 \      \"name\": \"Main Warehouse\",\n      \"type\": \"standard\"\
                 ,\n      \"country_code\": \"US\"\n    },\n    \"mode\": \"full_count\"\
-                ,\n    \"status\": \"open\",\n    \"value_change\": null,\n    \"\
-                variance_direction\": null,\n    \"notes\": \"Q4 annual count\",\n\
-                \    \"parent_stock_take\": null,\n    \"child_stock_takes\": [],\n\
-                \    \"items\": [\n      {\n        \"id\": 101,\n        \"product_id\"\
-                : 55,\n        \"snapshot_inventory\": 100,\n        \"qty_counted\"\
-                : 98,\n        \"unit_cost\": 12.50\n      }\n    ],\n    \"during_count_movement_count\"\
-                : 3,\n    \"created_at\": \"2024-10-08T09:00:00+00:00\",\n    \"updated_at\"\
-                : \"2024-10-10T14:00:00+00:00\",\n    \"archived_at\": null\n  }\n\
+                ,\n    \"status\": \"open\",\n    \"deletable\": true,\n    \"delete_blocked_reasons\"\
+                : [],\n    \"value_change\": null,\n    \"variance_direction\": null,\n\
+                \    \"notes\": \"Q4 annual count\",\n    \"parent_stock_take\": null,\n\
+                \    \"child_stock_takes\": [],\n    \"items\": [\n      {\n     \
+                \   \"id\": 101,\n        \"product_id\": 55,\n        \"snapshot_inventory\"\
+                : 100,\n        \"qty_counted\": 98,\n        \"unit_cost\": 12.5\n\
+                \      }\n    ],\n    \"during_count_movement_count\": 3,\n    \"\
+                created_at\": \"2024-10-08T09:00:00+00:00\",\n    \"updated_at\":\
+                \ \"2024-10-10T14:00:00+00:00\",\n    \"archived_at\": null\n  }\n\
                 }"
         '404':
           description: Not Found
@@ -114405,7 +114420,13 @@ paths:
 
 
         Returns 400 if the stock take is closed and attempts to change quantities,
-        or if adjustment-mode items cannot be modified.'
+        or if adjustment-mode items cannot be modified.
+
+
+        Response includes `deletable` (boolean) and `delete_blocked_reasons` (string[]):
+        a draft/open stock take is always deletable; a closed stock take is deletable
+        only when none of its FIFO cost layers have been consumed (otherwise `deletable`
+        is false and `delete_blocked_reasons` lists the blocking stock take items).'
       requestBody:
         content:
           '*/*':
@@ -114446,8 +114467,9 @@ paths:
               schema:
                 type: string
               example: "{\n  \"data\": {\n    \"id\": 42,\n    \"notes\": \"Updated\
-                \ notes for Q4 count\",\n    \"status\": \"draft\",\n    \"updated_at\"\
-                : \"2024-10-09T11:00:00+00:00\"\n  }\n}"
+                \ notes for Q4 count\",\n    \"status\": \"draft\",\n    \"deletable\"\
+                : true,\n    \"delete_blocked_reasons\": [],\n    \"updated_at\":\
+                \ \"2024-10-09T11:00:00+00:00\"\n  }\n}"
       operationId: put-api-stock-takes-stock-take
     delete:
       tags:
@@ -117563,6 +117585,72 @@ paths:
               example: "{\n  \"message\": \"The given data was invalid.\",\n  \"errors\"\
                 : {\n    \"ids\": [\"The ids field is required.\"]\n  }\n}"
       operationId: post-api-fifo-layers-recalculate-total-costs
+  /api/fifo-layers/15/parents:
+    get:
+      tags:
+      - Costing
+      summary: Get FIFO Layer Parents
+      description: 'Returns the immediate (depth-1) parent FIFO layers consumed to
+        produce the given output layer, with the aggregated quantity consumed from
+        each parent. Used by the FIFO Layer detail page''s ''Consumed From'' panel
+        to render the upstream lots that were assembled into this batch.
+
+
+        For standard MO output layers, parents are resolved by walking inventory_movements
+        where movement.fifo_layer_id points at a consumption (component) movement
+        and the resulting upstream FIFO layer is the parent. For Simple Mode (assemble/disassemble)
+        outputs, the same walk works because the consumption movements link back to
+        component FIFO layers identically.
+
+
+        Returns an empty `data` array for raw layers (e.g. purchase receipts) with
+        no upstream consumption movements.
+
+
+        Results are sorted: most recently produced parents first, then by largest
+        quantity consumed.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value: "{\n  \"data\": [\n    {\n      \"id\": \"parent-3\",\n \
+                    \     \"fifo_layer_id\": 3,\n      \"entity_type\": \"purchase_order\"\
+                    ,\n      \"reference\": \"PO-2024-014\",\n      \"batch_number\"\
+                    : \"LBL-2024-014\",\n      \"product_id\": 51,\n      \"product_name\"\
+                    : \"Adhesive Label 60x40\",\n      \"sku\": \"LBL-60x40\",\n \
+                    \     \"manufacture_date\": \"2024-05-01\",\n      \"fifo_layer_date\"\
+                    : \"2024-05-12\",\n      \"quantity_consumed\": 2\n    },\n  \
+                    \  {\n      \"id\": \"parent-2\",\n      \"fifo_layer_id\": 2,\n\
+                    \      \"entity_type\": \"purchase_order\",\n      \"reference\"\
+                    : \"PO-2024-011\",\n      \"batch_number\": \"POUCH-2024-011\"\
+                    ,\n      \"product_id\": 47,\n      \"product_name\": \"Empty\
+                    \ 250g Pouch\",\n      \"sku\": \"POUCH-250\",\n      \"manufacture_date\"\
+                    : \"2024-04-28\",\n      \"fifo_layer_date\": \"2024-05-10\",\n\
+                    \      \"quantity_consumed\": 2\n    }\n  ]\n}"
+                example-1:
+                  summary: 200 OK (no parents)
+                  value: "{\n  \"data\": []\n}"
+      operationId: get-api-fifo-layers-15-parents
   /api/cogs/sku-health:
     get:
       tags:
