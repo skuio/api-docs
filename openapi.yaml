@@ -123576,6 +123576,73 @@ paths:
               example:
                 message: 'Failed to cancel: Cancel not supported for provider: manual'
       operationId: post-api-v2-sales-order-fulfillments-salesorderfulfillment-cancel-provider-order
+  /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/shipping-details:
+    patch:
+      tags:
+      - Fulfillments
+      summary: Edit Shipping Details
+      description: 'Edit an existing fulfillment''s shipping details — tracking number
+        and shipping cost. A narrow, guard-free update: unlike the fulfill flow it
+        does NOT require an open sales order or fulfillment lines, so a tracking number
+        can be corrected after the order has shipped/closed. Never changes the warehouse
+        (Stage 0 lock untouched).
+
+
+        Body fields (all optional — send only what changes):
+
+        - tracking_number (string, nullable, max 255)
+
+        - cost (numeric, nullable, >= 0, < 100000)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                tracking_number: 1Z999AA10123456784
+                cost: 12.5
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderFulfillment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order fulfillment ID
+        example: '1001'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Shipping details updated
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The cost must be less than 100000.
+                errors:
+                  cost:
+                  - The cost must be less than 100000.
+      operationId: patch-api-v2-sales-order-fulfillments-salesorderfulfillment-shipping-details
   /api/v2/merged-shipments:
     get:
       tags:
@@ -133067,15 +133134,21 @@ paths:
         \ items in chunks of 500 in its own transaction per chunk, so payloads of\
         \ any size complete cleanly without holding a long-running transaction open.\n\
         \nAuthentication: Requires Bearer token.\n\nPath params:\n- supplier: Supplier\
-        \ ID\n\nBody fields:\n- items (required): Array of validated inventory items\
-        \ (1+).\n  - items.*.product_id (required): Product ID (must exist)\n  - items.*.warehouse_id\
-        \ (optional): Warehouse ID (must exist if provided)\n  - items.*.quantity\
+        \ ID\n\nBody fields:\n- items (required): Array of inventory items (1+). Only\
+        \ the top-level `items` array is validated at the HTTP layer; each row is\
+        \ validated inside the queued job and any per-row problems are surfaced as\
+        \ failures in the tracked job results rather than as a 422. (Per-row `exists`\
+        \ validation was intentionally removed from the request layer to avoid an\
+        \ N+1 that timed out large payloads.)\n  - items.*.product_id (required):\
+        \ Product ID\n  - items.*.warehouse_id (optional): Warehouse ID\n  - items.*.quantity\
         \ (optional): Stock quantity, integer >= 0\n  - items.*.eta (optional): Expected\
         \ availability date\n  - items.*.in_stock (optional): Boolean stock flag\n\
         \  - items.*.discontinued (optional): Boolean discontinued flag\n\nErrors:\n\
-        - 422 when standard validation fails (e.g. missing product_id, empty items\
-        \ array).\n- 404 when the supplier does not exist.\n\nNote: Use the validate\
-        \ endpoint first to preview and catch errors before importing."
+        - 422 only when the top-level `items` array is missing or empty.\n- 404 when\
+        \ the supplier does not exist.\n- Invalid rows (e.g. unknown product_id) do\
+        \ NOT return 422 — the import is queued and those rows are reported as failures\
+        \ in the tracked job results.\n\nNote: Use the validate endpoint first to\
+        \ preview and catch row-level errors before importing."
       requestBody:
         content:
           '*/*':
@@ -133124,9 +133197,8 @@ paths:
               schema:
                 type: string
               example: "{\n  \"message\": \"The given data was invalid.\",\n  \"errors\"\
-                : {\n    \"items.0.product_id\": [\n      {\n        \"message\":\
-                \ \"The selected items.0.product_id is invalid.\",\n        \"code\"\
-                : \"Exists\"\n      }\n    ]\n  }\n}"
+                : {\n    \"items\": [\n      \"The items field is required.\"\n  \
+                \  ]\n  }\n}"
       operationId: post-api-supplier-inventories-5-import
   /api/purchase-orders:
     get:
@@ -148504,6 +148576,333 @@ paths:
                   the provider (request_status=submitting). Use the cancel-request
                   flow to cancel an in-flight FO.'
       operationId: post-api-fulfillment-orders-fulfillmentorder-cancel
+  /api/fulfillment-orders/{fulfillmentOrder}/split:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Split Fulfillment Order
+      description: "Manually carve an **unsubmitted (proforma)** FulfillmentOrder\
+        \ into a NEW open/unsubmitted FO sized to the supplied per-line quantities.\
+        \ The original FO keeps the remainder. This is pure FulfillmentOrderLine budget\
+        \ redistribution — **neither FO is submitted** as a result (split and submit\
+        \ are separate concerns). To dispatch part of an order, split it then submit/hold\
+        \ each piece.\n\n**Only valid while the FO is `open` + `unsubmitted`.** Allocations\
+        \ are SOL-linked, so no allocation moves on a split.\n\n**Request body**\n\
+        - `lines` (required, array, min 1): the quantities to carve into the new FO.\n\
+        \  - `lines[].sales_order_line_id` (required, integer, exists) — a SOL present\
+        \ on this FO.\n  - `lines[].quantity` (required, integer, min 1) — must not\
+        \ exceed the FOL's `remaining_quantity`, and must not carve the FO's entire\
+        \ remaining budget (that would leave nothing behind — submit/fulfill the whole\
+        \ FO instead).\n\n**Responses**\n- `201` — the NEW carved FO (open/unsubmitted).\n\
+        - `422` — a quantity exceeds the FOL remaining budget, or validation failed.\n\
+        - `409` — the FO is not open+unsubmitted, or the request would carve the entire\
+        \ FO (nothing left to split)."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                lines:
+                - sales_order_line_id: 55347
+                  quantity: 2
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID (the proforma to split — must be open + unsubmitted)
+        example: '451'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 452
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  requested_shipping_method_id: null
+                  requested_shipping_method: null
+                  requested_ship_date: null
+                  requested_metadata: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-30T10:20:00+00:00'
+                  updated_at: '2026-05-30T10:20:00+00:00'
+                  lines:
+                  - id: 902
+                    fulfillment_order_id: 452
+                    sales_order_line_id: 55347
+                    quantity: 2
+                    remaining_quantity: 2
+                    created_at: '2026-05-30T10:20:00+00:00'
+                    updated_at: '2026-05-30T10:20:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'FulfillmentOrder #451 cannot be split for execution: status=open,
+                  request_status=unsubmitted. Only open + unsubmitted FOs can be split,
+                  and only for a PARTIAL execution (a full execution must transition
+                  in place).'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'FulfillmentOrderLine #901 cannot be over-fulfilled: requested
+                  99 but only 5 remaining (quantity=5).'
+      operationId: post-api-fulfillment-orders-fulfillmentorder-split
+  /api/fulfillment-orders/{fulfillmentOrder}/retry-submission:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Retry Fulfillment Order Submission
+      description: 'Operator recovery action for a FO that is **stuck submitting**
+        — i.e. `request_status=submitting` for longer than the stuck threshold (`config(''fulfillment.stuck_submitting_threshold_minutes'')`,
+        default 15) without the provider confirming. Resets `request_status` back
+        to `unsubmitted` and clears `submitted_at`, so the operator (or the dispatcher)
+        can re-attempt the hand-off.
+
+
+        The FO detail/list payloads expose `is_stuck_submitting` (boolean) so the
+        UI can surface the amber ''stuck dispatch'' banner that drives this action.
+
+
+        **Mutability gate.** Allowed ONLY when `request_status=submitting` AND the
+        FO is not terminal (`status` not closed/cancelled). Any other state returns
+        409.
+
+
+        No request body.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:42:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'Cannot retry submission for fulfillment_order 451: only a
+                  FO that is currently submitting can be retried (currently status=open,
+                  request_status=unsubmitted).'
+      operationId: post-api-fulfillment-orders-fulfillmentorder-retry-submission
+  /api/fulfillment-orders/{fulfillmentOrder}/force-fail-submission:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Force-Fail Fulfillment Order Submission
+      description: 'Operator recovery action for a FO that is **stuck submitting**
+        when retrying is not appropriate (e.g. confirmed provider/carrier outage).
+        Transitions `request_status` to `rejected` and records the supplied reason
+        on `rejection_reason`. The FO drops out of the in-flight set so it can be
+        cancelled or re-routed.
+
+
+        The FO detail/list payloads expose `is_stuck_submitting` (boolean) so the
+        UI can surface the amber ''stuck dispatch'' banner that drives this action.
+
+
+        **Mutability gate.** Allowed ONLY when `request_status=submitting` AND the
+        FO is not terminal (`status` not closed/cancelled). Any other state returns
+        409.
+
+
+        **Body fields:**
+
+        - `reason` (nullable, string, max 1000) — stored on `rejection_reason` for
+        audit. Defaults to ''Force-failed by operator (stuck dispatch).'' when omitted.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"reason\": \"Carrier outage — manual force-fail\"\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 7
+                  status: open
+                  request_status: rejected
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  submitted_at: '2026-05-26T10:20:00+00:00'
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: Carrier outage — manual force-fail
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:45:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:15:00+00:00'
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'Cannot force-fail submission for fulfillment_order 451: only
+                  a FO that is currently submitting can be force-failed (currently
+                  status=open, request_status=unsubmitted).'
+      operationId: post-api-fulfillment-orders-fulfillmentorder-force-fail-submission
   /api/report-templates:
     get:
       tags:
