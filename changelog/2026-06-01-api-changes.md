@@ -1,0 +1,1303 @@
+---
+title: API changes — 2026-06-01
+description: This release 1065 added, 88 changed API endpoint(s).
+authors: [product-team]
+tags: [added, changed, breaking]
+date: 2026-06-01
+---
+
+This release 1065 added, 88 changed API endpoint(s).
+
+:::danger Breaking change
+This release removes endpoints or adds newly-required request fields. Review the **Removed** and **Changed** sections before upgrading your integration.
+:::
+
+<!-- truncate -->
+
+## Added
+
+- `DELETE //{domain}/api/3pl/tokens/{integrationInstance}` — Delete 3PL Integration Token
+- `DELETE //{domain}/api/amazon-inbound-shortages/{amazonInboundShortage}` — Delete Inbound Shortage
+- `DELETE //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers` — Delete AWD Ledgers
+- `DELETE //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}` — Delete reimbursement case
+- `DELETE //{domain}/api/amazon/unified/awd/initial-inventory` — Delete AWD initial inventory
+- `DELETE //{domain}/api/amazon/unified/awd/ledgers` — Delete AWD ledgers
+- `DELETE //{domain}/api/amazon/unified/awd/shipments` — Delete AWD shipments
+- `DELETE //{domain}/api/amazon/unified/fee-mappings/{feeMapping}` — Delete Fee Mapping
+- `DELETE //{domain}/api/amazon/unified/financial-event-groups/{financialEventGroup}/accounting-transactions` — Delete Accounting Transactions
+- `DELETE //{domain}/api/amazon/unified/settlement-mapping-groups/{settlementMappingGroup}` — Delete Mapping Group
+- `DELETE //{domain}/api/amazon/{integrationInstance}` — Delete Amazon Integration Instance
+- `DELETE //{domain}/api/amazon/{integrationInstance}/awd/ledgers` — Delete AWD Ledgers
+- `DELETE //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan_item}` — Remove Item from Draft Plan
+- `DELETE //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}` — Delete Draft Inbound Plan
+- `DELETE //{domain}/api/amazon/{integrationInstance}/finances/settlement-mapping-groups/{settlementMappingGroup}` — Delete Mapping Group
+- `DELETE //{domain}/api/amazon/{integrationInstance}/orders/{order}` — Delete Order
+- `DELETE //{domain}/api/amazon/{integrationInstance}/outbound/{id}` — Delete Outbound Fulfillment
+- `DELETE //{domain}/api/amazon/{integrationInstance}/products/{product}/map` — Unmap Single Product
+- `DELETE //{domain}/api/amazon/{integrationInstance}/removal-orders/{orderId}/undo-all-receipts` — Undo All Receipts for Removal Order
+- `DELETE //{domain}/api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/clear-warehouse` — Clear Receiving Warehouse
+- `DELETE //{domain}/api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/remove-receipt` — Remove Receipt (Single Shipment)
+- `DELETE //{domain}/api/big-commerce/{integrationInstance}` — Delete Integration Instance
+- `DELETE //{domain}/api/ebay/integration-instances/{integrationInstance}` — Delete Integration Instance
+- `DELETE //{domain}/api/ebay/{integrationInstance}/legacy-products/{product}` — Delete Legacy Product
+- `DELETE //{domain}/api/qbo/accounts` — Delete Accounts
+- `DELETE //{domain}/api/qbo/bills` — Delete Bills
+- `DELETE //{domain}/api/qbo/credit-memos` — Delete Credit Memos
+- `DELETE //{domain}/api/qbo/customers` — Delete Customers
+- `DELETE //{domain}/api/qbo/customers/{qboCustomer}/unlink-sku-customer` — Unlink SKU Customer
+- `DELETE //{domain}/api/qbo/integrations/{id}` — Delete Integration
+- `DELETE //{domain}/api/qbo/invoices` — Delete Invoices
+- `DELETE //{domain}/api/qbo/items` — Delete Items
+- `DELETE //{domain}/api/qbo/journals` — Delete Journals
+- `DELETE //{domain}/api/qbo/payments` — Delete Payments
+- `DELETE //{domain}/api/qbo/purchase-orders` — Delete Purchase Orders
+- `DELETE //{domain}/api/qbo/tax-codes` — Delete Tax Codes
+- `DELETE //{domain}/api/qbo/tax-rates` — Delete Tax Rates
+- `DELETE //{domain}/api/qbo/vendors` — Delete Vendors
+- `DELETE //{domain}/api/shipfusion/integration-instances/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/SF-12345` — Delete Order
+- `DELETE //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-mappings/IL` — Delete Warehouse Mapping
+- `DELETE //{domain}/api/shiphero/integration-instances/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/shipmyorders/integration-instances/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/shipmyorders/invoices` — Bulk Delete Invoices
+- `DELETE //{domain}/api/shipmyorders/invoices/{id}` — Delete Invoice
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}` — Disconnect Integration Instance
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}` — Delete Order
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/sku-order` — Delete Linked SKU Order
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/payment-method-mappings` — Delete Payment Method Mapping
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}` — Delete Product
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/map` — Unmap Product SKU
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/shipping-method-mappings/{skuShippingMethodId}` — Delete Shipping Method Mapping
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/warehouse-mappings/{tiktokShopWarehouseId}` — Delete Warehouse Mapping
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}` — Delete Integration Instance
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/payment-method-mappings` — Delete Payment Method Mapping
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/shipping-method-mappings/{skuShippingMethodId}` — Delete Shipping Method Mapping
+- `DELETE //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/warehouse-mappings/{tiktokShopWarehouseId}` — Delete Warehouse Mapping
+- `DELETE //{domain}/api/tiktok-shop/webhook-events` — Delete All Webhook Events
+- `DELETE //{domain}/api/tiktok-shop/webhook-events/{tikTokShopWebhookEvent}` — Delete Webhook Event
+- `DELETE //{domain}/api/trackstar/integration-instances/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/trackstar/integration-instances/{integration_instance}/warehouse-mappings/{warehouse_mapping}` — Delete Warehouse Mapping
+- `DELETE //{domain}/api/veracore/integration-instances/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/walmart/{integrationInstance}` — Delete Integration Instance
+- `DELETE //{domain}/api/walmart/{integrationInstance}/products/{product}/map` — Unmap Single Product
+- `DELETE //{domain}/api/woo-commerce/{integration_instance}` — Delete Integration Instance
+- `DELETE //{domain}/api/woo-commerce/{integration_instance}/orders/{order}` — Delete Order
+- `DELETE //{domain}/api/woo-commerce/{integration_instance}/products/{product}` — Delete Product
+- `DELETE //{domain}/api/xero/integrations/{id}` — Delete Integration Instance
+- `DELETE /api/amazon/integration-instances/{integrationInstance}/ledgers` — Delete AWD Ledgers
+- `DELETE /api/amazon/reimbursement-cases/{reimbursementCase}` — Delete reimbursement case
+- `DELETE /api/amazon/unified/awd/initial-inventory` — Delete AWD initial inventory
+- `DELETE /api/amazon/unified/awd/ledgers` — Delete AWD ledgers
+- `DELETE /api/amazon/unified/awd/shipments` — Delete AWD shipments
+- `GET //{domain}/amazon/callback` — OAuth Callback (Web)
+- `GET //{domain}/api/3pl/asns` — List ASNs (Advanced Shipping Notices)
+- `GET //{domain}/api/3pl/orders` — List Orders (Outbound Fulfillments)
+- `GET //{domain}/api/3pl/products` — List Products
+- `GET //{domain}/api/amazon` — List Amazon Integration Instances
+- `GET //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers` — List AWD Ledgers (per integration instance)
+- `GET //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/linkable-for-sales-order-line/{salesOrderLineId}` — Get Linkable Ledgers for Sales Order Line
+- `GET //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}` — Show AWD Ledger
+- `GET //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/linkable-destination-warehouses` — Get Linkable Destination Warehouses
+- `GET //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/linkable-sales-order-lines` — Get Linkable Sales Order Lines (for AWD ledger)
+- `GET //{domain}/api/amazon/inventory-valuation/cost-source-breakdown` — Cost Source Breakdown
+- `GET //{domain}/api/amazon/inventory-valuation/cost-source-event-breakdown` — Cost Source Event Breakdown
+- `GET //{domain}/api/amazon/inventory-valuation/cost-source-layer-drilldown` — Cost Source Layer Drilldown
+- `GET //{domain}/api/amazon/inventory-valuation/dashboard` — Get Dashboard Data
+- `GET //{domain}/api/amazon/inventory-valuation/fifo-layers/{layerId}/revert-eligibility` — Check FIFO Layer Revert Eligibility
+- `GET //{domain}/api/amazon/list` — List Amazon Integration Instances (Simple Dropdown)
+- `GET //{domain}/api/amazon/mappings/available-fields` — Get available fields
+- `GET //{domain}/api/amazon/reimbursement-cases` — List reimbursement cases
+- `GET //{domain}/api/amazon/reimbursement-cases/summary` — Reimbursement cases headline summary
+- `GET //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}` — Show reimbursement case
+- `GET //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}/activity-log` — Reimbursement case activity log
+- `GET //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}/notes` — List reimbursement case notes
+- `GET //{domain}/api/amazon/unified/awd/initial-inventory/details` — Get AWD initial inventory details
+- `GET //{domain}/api/amazon/unified/awd/initial-inventory/status` — Get AWD initial inventory status
+- `GET //{domain}/api/amazon/unified/awd/initial-inventory/summary` — Get AWD initial inventory summary
+- `GET //{domain}/api/amazon/unified/awd/ledgers` — List AWD ledgers (paginated)
+- `GET //{domain}/api/amazon/unified/awd/ship-from-mappings` — List ship-from mappings (paginated)
+- `GET //{domain}/api/amazon/unified/awd/shipments` — List AWD shipments (paginated)
+- `GET //{domain}/api/amazon/unified/awd/shipments/1001` — Show AWD shipment
+- `GET //{domain}/api/amazon/unified/awd/shipments/1001/eligible-purchase-orders` — Get eligible purchase orders for AWD shipment
+- `GET //{domain}/api/amazon/unified/awd/shipments/{id}` — Get AWD Shipment
+- `GET //{domain}/api/amazon/unified/customer-returns` — List FBA Customer Returns (Across Instances)
+- `GET //{domain}/api/amazon/unified/discrepancies` — List Discrepancies
+- `GET //{domain}/api/amazon/unified/discrepancies/export` — Export Discrepancies
+- `GET //{domain}/api/amazon/unified/discrepancies/statistics` — Get Discrepancy Statistics
+- `GET //{domain}/api/amazon/unified/discrepancies/{id}` — Get Discrepancy
+- `GET //{domain}/api/amazon/unified/fba-inventory` — List FBA Inventory
+- `GET //{domain}/api/amazon/unified/fee-mappings` — List Fee Mappings
+- `GET //{domain}/api/amazon/unified/fee-mappings/recategorize-historical/preview` — Preview Recategorization
+- `GET //{domain}/api/amazon/unified/fifo-inventory-valuation` — Get FIFO Inventory Valuation
+- `GET //{domain}/api/amazon/unified/fifo-inventory-valuation/max-date` — Get Max Report Date
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs` — List FIFO Layers
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/12345` — Show FIFO Layer detail
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/12345/activity-log` — Activity Log for a FIFO Layer (paginated)
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/12345/consumptions` — List Consumptions for a Specific FIFO Layer (paginated)
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/consumptions` — List Consumptions across all FIFO Layers (paginated)
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/export` — Export FIFO Layers
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/import/template` — Download COGS Import Template (CSV)
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/{id}` — Get FIFO Layer
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/{id}/activity-log` — Get Layer Activity Log
+- `GET //{domain}/api/amazon/unified/fifo-layers/cogs/{id}/consumptions` — List Consumptions for Layer
+- `GET //{domain}/api/amazon/unified/finance-dashboard` — Get Finance Dashboard
+- `GET //{domain}/api/amazon/unified/financial-event-groups` — List Financial Event Groups
+- `GET //{domain}/api/amazon/unified/financial-event-groups/export` — Export Financial Event Groups
+- `GET //{domain}/api/amazon/unified/financial-event-groups/{id}` — Get Financial Event Group
+- `GET //{domain}/api/amazon/unified/fnsku-products` — List FNSKU Products (paginated, with reconciliation data)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101` — Show FNSKU Product Detail
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/asin-suggestion` — ASIN Suggestion (single)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/discrepancies` — FNSKU Discrepancies (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/inventory-tally-summary` — Inventory Tally Summary
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/ledgers` — FNSKU Ledgers (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/reconciliation-chart-data` — Reconciliation Chart Data
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/reconciliation-sync-status` — Reconciliation Sync Status
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/reconciliation-timeline` — Reconciliation Timeline (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/removal-orders` — FNSKU Removal Orders (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/removal-shipments` — FNSKU Removal Shipments (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/suggested-initial-unit-cost` — Suggested Initial Unit Cost (single)
+- `GET //{domain}/api/amazon/unified/fnsku-products/101/summary-ledgers` — FNSKU Summary Ledgers (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/activity-log` — Auto-Mapping Activity Log
+- `GET //{domain}/api/amazon/unified/fnsku-products/export` — Export FNSKU Products (unpaginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/mapped` — List Mapped FNSKU Products (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/mapped-by-asin` — List Mapped FNSKUs Grouped by ASIN
+- `GET //{domain}/api/amazon/unified/fnsku-products/search` — Search FNSKU products
+- `GET //{domain}/api/amazon/unified/fnsku-products/stats` — Get ASIN mapping statistics
+- `GET //{domain}/api/amazon/unified/fnsku-products/unmapped` — List Unmapped FNSKU Products (paginated)
+- `GET //{domain}/api/amazon/unified/fnsku-products/unmapped-by-asin` — List Unmapped FNSKUs Grouped by ASIN
+- `GET //{domain}/api/amazon/unified/fnsku-products/{fnskuProductId}` — Get FNSKU Product
+- `GET //{domain}/api/amazon/unified/fnsku-products/{fnskuProductId}/inventory-tally-summary` — Get Inventory Tally Summary
+- `GET //{domain}/api/amazon/unified/fnsku-products/{fnskuProduct}/discrepancies` — Get Discrepancies for FNSKU Product
+- `GET //{domain}/api/amazon/unified/fnsku-products/{fnskuProduct}/ledgers` — Get Ledgers for FNSKU Product
+- `GET //{domain}/api/amazon/unified/fulfillment-orders` — List Unified MCF Fulfillment Orders
+- `GET //{domain}/api/amazon/unified/fulfillment-orders/{fulfillmentOrder}` — Show Unified MCF Fulfillment Order
+- `GET //{domain}/api/amazon/unified/ledgers` — List Ledgers
+- `GET //{domain}/api/amazon/unified/ledgers/export` — Export Ledgers
+- `GET //{domain}/api/amazon/unified/ledgers/{id}` — Get Ledger
+- `GET //{domain}/api/amazon/unified/ledgers/{id}/activity-log` — Get Ledger Activity Log
+- `GET //{domain}/api/amazon/unified/legacy-inbound-shipments` — List Legacy FBA Inbound Shipments
+- `GET //{domain}/api/amazon/unified/legacy-inbound-shipments/export` — Export Shipment Items (CSV)
+- `GET //{domain}/api/amazon/unified/legacy-inbound-shipments/kpi-stats` — Get KPI Stats
+- `GET //{domain}/api/amazon/unified/merchant-sku-mappings` — List Merchant SKU Mappings
+- `GET //{domain}/api/amazon/unified/new-inbound-shipments` — List Shipments
+- `GET //{domain}/api/amazon/unified/new-inbound-shipments/export` — Export Shipment Items (CSV)
+- `GET //{domain}/api/amazon/unified/new-inbound-shipments/kpi-stats` — KPI Stats
+- `GET //{domain}/api/amazon/unified/removal-orders` — List Removal Orders (Grouped Across Instances)
+- `GET //{domain}/api/amazon/unified/removal-orders/export` — Export Removal Orders
+- `GET //{domain}/api/amazon/unified/removal-orders/{id}` — Get Removal Order
+- `GET //{domain}/api/amazon/unified/removal-orders/{removalOrder}` — Show Removal Order
+- `GET //{domain}/api/amazon/unified/removal-shipments` — List Removal Shipments (paginated, across instances)
+- `GET //{domain}/api/amazon/unified/removal-shipments/1001` — Show Removal Shipment
+- `GET //{domain}/api/amazon/unified/removal-shipments/export` — Export Removal Shipments (across instances)
+- `GET //{domain}/api/amazon/unified/removal-shipments/{id}` — Get Removal Shipment
+- `GET //{domain}/api/amazon/unified/reports` — List Reports
+- `GET //{domain}/api/amazon/unified/reports/available-types` — Get Available Report Types
+- `GET //{domain}/api/amazon/unified/reports/statistics` — Get Report Statistics
+- `GET //{domain}/api/amazon/unified/reports/{reportId}` — Get Report
+- `GET //{domain}/api/amazon/unified/restock-report` — List Restock Report
+- `GET //{domain}/api/amazon/unified/settlement-data` — List Settlement Data
+- `GET //{domain}/api/amazon/unified/settlement-data/lookups` — Get Settlement Data Lookups
+- `GET //{domain}/api/amazon/unified/settlement-fallback-settings` — Get Fallback Settings
+- `GET //{domain}/api/amazon/unified/settlement-mapping-groups` — List Mapping Groups
+- `GET //{domain}/api/amazon/unified/settlement-type-mappings` — List Type Mappings
+- `GET //{domain}/api/amazon/unified/settlement-type-mappings/export` — Export Type Mappings
+- `GET //{domain}/api/amazon/unified/settlement-type-mappings/lookups` — Get Type Mapping Lookups
+- `GET //{domain}/api/amazon/unified/summary-ledgers` — List Summary Ledgers
+- `GET //{domain}/api/amazon/unified/summary-ledgers/current-summary` — Get Current Summary
+- `GET //{domain}/api/amazon/unified/summary-ledgers/export` — Export Summary Ledgers
+- `GET //{domain}/api/amazon/unified/summary-ledgers/{id}` — Get Summary Ledger
+- `GET //{domain}/api/amazon/unified/summary-ledgers/{id}/activity-log` — Get Summary Ledger Activity Log
+- `GET //{domain}/api/amazon/unified/transactions` — List Transactions (paginated, cross-instance)
+- `GET //{domain}/api/amazon/unified/transactions/export` — Export Transactions (background job)
+- `GET //{domain}/api/amazon/unified/transactions/export/download` — Download Export File
+- `GET //{domain}/api/amazon/unified/transactions/process-all/status` — Process All Status
+- `GET //{domain}/api/amazon/unified/transactions/statistics` — Statistics (grouped breakdowns)
+- `GET //{domain}/api/amazon/unified/transactions/{id}` — Get Transaction
+- `GET //{domain}/api/amazon/unified/transactions/{transaction}` — Show Transaction
+- `GET //{domain}/api/amazon/unified/valuation-snapshots` — List Valuation Snapshots
+- `GET //{domain}/api/amazon/unified/valuation-snapshots/totals` — Get Valuation Totals
+- `GET //{domain}/api/amazon/{integrationInstance}` — Show Amazon Integration Instance
+- `GET //{domain}/api/amazon/{integrationInstance}/authenticate` — Authenticate (OAuth Callback)
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/ledgers` — List AWD Ledgers
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/ledgers/linkable-for-sales-order-line/{salesOrderLineId}` — Get Linkable Ledgers for Sales Order Line
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}` — Show AWD Ledger
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/linkable-destination-warehouses` — Get Linkable Destination Warehouses
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/linkable-sales-order-lines` — Get Linkable Sales Order Lines
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/shipments` — List AWD Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/shipments/{shipment}` — Show AWD Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/awd/shipments/{shipment}/export` — Export AWD Shipment Items
+- `GET //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans` — List Draft Inbound Plans
+- `GET //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}` — Show Draft Inbound Plan
+- `GET //{domain}/api/amazon/{integrationInstance}/fba-inventory` — List FBA Inventory
+- `GET //{domain}/api/amazon/{integrationInstance}/fba-inventory/{id}` — Show FBA Inventory Record
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/event-groups` — List Financial Event Groups
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/event-groups/{id}` — Show Financial Event Group
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/nominal-code-mappings` — List Nominal Code Mappings
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-data` — List Settlement Data
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings` — Get Type Mappings
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings/export` — Export Settlement Types
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings/lookups` — Get Type Mapping Lookups
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/{id}` — Show Settlement Data
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-finance-settings` — Get Fallback Settings (Per Instance)
+- `GET //{domain}/api/amazon/{integrationInstance}/finances/settlement-mapping-groups` — List Mapping Groups
+- `GET //{domain}/api/amazon/{integrationInstance}/fnsku-products` — List FNSKU Products
+- `GET //{domain}/api/amazon/{integrationInstance}/fnsku-products/activity-log` — Get Activity Log
+- `GET //{domain}/api/amazon/{integrationInstance}/fnsku-products/auto-mapping-settings` — Get Auto-Mapping Settings
+- `GET //{domain}/api/amazon/{integrationInstance}/fnsku-products/{fnskuProduct}` — Show FNSKU Product
+- `GET //{domain}/api/amazon/{integrationInstance}/get-authorization-url` — Get Authorization URL
+- `GET //{domain}/api/amazon/{integrationInstance}/inbound/ship-from-mappings` — List Ship From Mappings
+- `GET //{domain}/api/amazon/{integrationInstance}/inbound/shipments` — List Inbound Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/inbound/shipments/export` — Export Inbound Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/inbound/shipments/unlinked` — Get Unlinked Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/inbound/shipments/{shipment}` — Show Inbound Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/initial-inventory` — List Initial Inventory
+- `GET //{domain}/api/amazon/{integrationInstance}/initial-inventory/{initialInventory}` — Show Initial Inventory
+- `GET //{domain}/api/amazon/{integrationInstance}/ledger-summaries` — List Ledger Summaries
+- `GET //{domain}/api/amazon/{integrationInstance}/ledger-summaries/{id}` — Show Ledger Summary
+- `GET //{domain}/api/amazon/{integrationInstance}/lpn-lookup` — LPN Lookup
+- `GET //{domain}/api/amazon/{integrationInstance}/mappings` — Get mappings for integration instance
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments` — List New Inbound Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/unlinked` — Get Unlinked New Inbound Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}` — Show New Inbound Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/activity-log` — Get Activity Log for New Inbound Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/items` — Get Items For Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/receipts` — Get New Inbound Shipment Receipts
+- `GET //{domain}/api/amazon/{integrationInstance}/orders` — List Orders
+- `GET //{domain}/api/amazon/{integrationInstance}/orders/filter-options` — Get Filter Options
+- `GET //{domain}/api/amazon/{integrationInstance}/orders/{order}` — Show Order
+- `GET //{domain}/api/amazon/{integrationInstance}/outbound` — List Outbound Fulfillments
+- `GET //{domain}/api/amazon/{integrationInstance}/outbound/unlinked` — Get Unlinked Outbound Fulfillments
+- `GET //{domain}/api/amazon/{integrationInstance}/products` — List Amazon Products for Integration
+- `GET //{domain}/api/amazon/{integrationInstance}/products/export` — Export Products
+- `GET //{domain}/api/amazon/{integrationInstance}/products/filter-options` — Get Product Filter Options
+- `GET //{domain}/api/amazon/{integrationInstance}/products/latest-sync-info` — Get Latest Sync Info
+- `GET //{domain}/api/amazon/{integrationInstance}/products/{product}` — Show Amazon Product
+- `GET //{domain}/api/amazon/{integrationInstance}/products/{product}/orders` — Get Orders for Product
+- `GET //{domain}/api/amazon/{integrationInstance}/products/{product}/raw` — Get Raw Catalog Data from Amazon
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-orders` — List Removal Orders (DataTable)
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-orders/export` — Export Removal Orders (CSV/XLSX)
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-orders/order-details` — Get Order Details (by query string)
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-orders/unlinked` — Get Unlinked Removal Orders
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-orders/{orderId}` — Get Order Details (by path)
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-shipments` — List Removal Shipments (DataTable)
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-shipments/export` — Export Removal Shipments
+- `GET //{domain}/api/amazon/{integrationInstance}/removal-shipments/{removalShipment}` — Show Removal Shipment
+- `GET //{domain}/api/amazon/{integrationInstance}/reports/get-info` — Get Report Info
+- `GET //{domain}/api/amazon/{integrationInstance}/setup-step` — Get Setup Wizard Step
+- `GET //{domain}/api/amazon/{integrationInstance}/warehouses` — List Warehouses
+- `GET //{domain}/api/big-commerce` — List Integration Instances
+- `GET //{domain}/api/big-commerce/{integrationInstance}` — Get Integration Instance
+- `GET //{domain}/api/big-commerce/{integrationInstance}/get-authorization-url` — Get Authorization URL
+- `GET //{domain}/api/big-commerce/{integrationInstance}/orders` — List Orders
+- `GET //{domain}/api/big-commerce/{integrationInstance}/orders/export` — Export Orders
+- `GET //{domain}/api/big-commerce/{integrationInstance}/orders/{order}` — Get Order
+- `GET //{domain}/api/big-commerce/{integrationInstance}/products` — List Products
+- `GET //{domain}/api/big-commerce/{integrationInstance}/products/export` — Export Products
+- `GET //{domain}/api/big-commerce/{integrationInstance}/products/{product}` — Get Product
+- `GET //{domain}/api/big-commerce/{integration_instance}/download-locations` — Download Locations
+- `GET //{domain}/api/ebay` — List Integration Instances (DataTable Global)
+- `GET //{domain}/api/ebay-global-reports/listed-blemished-products-out-of-stock` — Listed Blemished Products Out of Stock
+- `GET //{domain}/api/ebay-global-reports/uncovered-blemished-products` — Uncovered Blemished Products
+- `GET //{domain}/api/ebay-product-settings` — List Product Settings
+- `GET //{domain}/api/ebay/integration-instances` — List Integration Instances (DataTable)
+- `GET //{domain}/api/ebay/integration-instances/{integrationInstance}` — Show Integration Instance
+- `GET //{domain}/api/ebay/legacy-products` — List Legacy Products (DataTable Global)
+- `GET //{domain}/api/ebay/orders` — List Orders (DataTable Global)
+- `GET //{domain}/api/ebay/{integrationInstance}/legacy-products` — List Legacy Products (Integration)
+- `GET //{domain}/api/ebay/{integrationInstance}/legacy-products/export` — Export Legacy Products
+- `GET //{domain}/api/ebay/{integrationInstance}/legacy-products/{product}` — Show Legacy Product
+- `GET //{domain}/api/ebay/{integrationInstance}/orders` — List Orders (Integration)
+- `GET //{domain}/api/ebay/{integrationInstance}/orders/export` — Export Orders
+- `GET //{domain}/api/ebay/{integrationInstance}/orders/{order}` — Show Order
+- `GET //{domain}/api/ebay/{integrationInstance}/products/{product}/raw` — Get Raw Product from eBay
+- `GET //{domain}/api/export/xero/accounts` — Export Accounts
+- `GET //{domain}/api/magento/{integration_instance}/inventory-sources` — List Inventory Sources
+- `GET //{domain}/api/magento/{integration_instance}/product-attributes` — List Product Attributes
+- `GET //{domain}/api/qbo/accounts` — List Accounts
+- `GET //{domain}/api/qbo/accounts/export` — Export Accounts
+- `GET //{domain}/api/qbo/accounts/statistics` — Get Account Statistics
+- `GET //{domain}/api/qbo/accounts/{id}` — Get Account
+- `GET //{domain}/api/qbo/bills` — List Bills
+- `GET //{domain}/api/qbo/bills/export` — Export Bills
+- `GET //{domain}/api/qbo/bills/statistics` — Get Bill Statistics
+- `GET //{domain}/api/qbo/bills/{id}` — Get Bill
+- `GET //{domain}/api/qbo/conflicts/summary` — Get Conflict Summary
+- `GET //{domain}/api/qbo/conflicts/{entityType}` — List Conflicts by Entity Type
+- `GET //{domain}/api/qbo/conflicts/{entityType}/{entityId}` — Get Conflict Details
+- `GET //{domain}/api/qbo/credit-memos` — List Credit Memos
+- `GET //{domain}/api/qbo/credit-memos/export` — Export Credit Memos
+- `GET //{domain}/api/qbo/credit-memos/statistics` — Get Credit Memo Statistics
+- `GET //{domain}/api/qbo/credit-memos/{id}` — Get Credit Memo
+- `GET //{domain}/api/qbo/custom-field-mappings` — Get Custom Field Mappings
+- `GET //{domain}/api/qbo/customers` — List Customers
+- `GET //{domain}/api/qbo/customers/export` — Export Customers
+- `GET //{domain}/api/qbo/customers/linked` — Get Linked Customers
+- `GET //{domain}/api/qbo/customers/unlinked` — Get Unlinked Customers
+- `GET //{domain}/api/qbo/customers/{id}` — Get Customer
+- `GET //{domain}/api/qbo/dashboard` — Get Dashboard
+- `GET //{domain}/api/qbo/integrations` — List Integrations
+- `GET //{domain}/api/qbo/integrations/test-connection` — Test Connection
+- `GET //{domain}/api/qbo/invoices` — List Invoices
+- `GET //{domain}/api/qbo/invoices/export` — Export Invoices
+- `GET //{domain}/api/qbo/invoices/sync-status` — Get Invoice Sync Status
+- `GET //{domain}/api/qbo/invoices/{id}` — Get Invoice
+- `GET //{domain}/api/qbo/items` — List Items
+- `GET //{domain}/api/qbo/items/export` — Export Items
+- `GET //{domain}/api/qbo/items/{id}` — Get Item
+- `GET //{domain}/api/qbo/journals` — List Journals
+- `GET //{domain}/api/qbo/journals/{id}` — Get Journal
+- `GET //{domain}/api/qbo/payment-type-mappings` — List Payment Type Mappings
+- `GET //{domain}/api/qbo/payment-type-mappings/available-accounts` — Get Available Bank Accounts
+- `GET //{domain}/api/qbo/payment-type-mappings/{paymentTypeId}` — Get Payment Type Mapping
+- `GET //{domain}/api/qbo/payments` — List Payments
+- `GET //{domain}/api/qbo/payments/{id}` — Get Payment
+- `GET //{domain}/api/qbo/purchase-orders` — List Purchase Orders
+- `GET //{domain}/api/qbo/purchase-orders/{id}` — Get Purchase Order
+- `GET //{domain}/api/qbo/tax-code-mappings` — List Tax Code Mappings
+- `GET //{domain}/api/qbo/tax-code-mappings/available-tax-codes` — Get Available Tax Codes
+- `GET //{domain}/api/qbo/tax-code-mappings/{taxRateId}` — Get Tax Code Mapping
+- `GET //{domain}/api/qbo/tax-codes` — List Tax Codes
+- `GET //{domain}/api/qbo/tax-codes/{id}` — Get Tax Code
+- `GET //{domain}/api/qbo/tax-rates` — List Tax Rates
+- `GET //{domain}/api/qbo/tax-rates/{id}` — Get Tax Rate
+- `GET //{domain}/api/qbo/vendors` — List Vendors
+- `GET //{domain}/api/qbo/vendors/{id}` — Get Vendor
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/dashboard` — Get Dashboard Metrics
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/discrepancies` — Get Inventory Discrepancies
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/last-synced-at` — Get Last Synced At
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/product-movements` — Get Product Inventory Movements
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/without-shipfusion-inventory` — Get Products Without Shipfusion Inventory
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/without-sku-products` — Get Items Without SKU Products
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders` — List Orders
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/SF-12345` — Show Order
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/oldest-incomplete` — Get Oldest Incomplete Order
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/sync-progress/{trackedJobLogId}` — Get Order Sync Progress
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/{order}/detail` — Get Order Detail (JSON)
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-mappings` — List Warehouse Mappings
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments` — List Warehouse Shipments
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/WS-5001` — Show Warehouse Shipment
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/sync-progress/{trackedJobLogId}` — Get Warehouse Shipment Sync Progress
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/{warehouse_shipment}/detail` — Get Warehouse Shipment Detail (JSON)
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/webhook-events` — List Webhook Events
+- `GET //{domain}/api/shipfusion/integration-instances/{integration_instance}/webhook-events/{webhook_event}` — Show Webhook Event
+- `GET //{domain}/api/shiphero/integration-instances/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/shiphero/{integration_instance}/inventory/discrepancies` — Get Inventory Discrepancies
+- `GET //{domain}/api/shiphero/{integration_instance}/inventory/last-synced-at` — Get Last Synced At
+- `GET //{domain}/api/shiphero/{integration_instance}/inventory/product-movements` — Get Product Inventory Movements
+- `GET //{domain}/api/shiphero/{integration_instance}/inventory/without-shiphero-inventory` — Get SKU Products Without ShipHero Inventory
+- `GET //{domain}/api/shiphero/{integration_instance}/inventory/without-sku-products` — Get Items Without SKU Products
+- `GET //{domain}/api/shiphero/{integration_instance}/warehouses` — List Warehouses
+- `GET //{domain}/api/shiphero/{integration_instance}/warehouses/download` — Download Warehouses from ShipHero
+- `GET //{domain}/api/shipmyorders/integration-instances/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/shipmyorders/inventory/discrepancies` — Get Inventory Discrepancies
+- `GET //{domain}/api/shipmyorders/inventory/without-sku-products` — Get Items Without SKU Products
+- `GET //{domain}/api/shipmyorders/inventory/without-smo-inventory` — Get SKU Products Without SMO Inventory
+- `GET //{domain}/api/shipmyorders/invoices` — List Invoices
+- `GET //{domain}/api/shipmyorders/invoices/mapping-rules` — List Mapping Rules
+- `GET //{domain}/api/shipmyorders/invoices/{id}` — Show Invoice
+- `GET //{domain}/api/shipstation/submit-orders` — Submit Orders to ShipStation
+- `GET //{domain}/api/shipstation/warehouses` — Get ShipStation Warehouses
+- `GET //{domain}/api/shipstation/warehouses/mappings` — Get Warehouse Mappings
+- `GET //{domain}/api/shopify/{integrationInstance}/access-scopes` — List Access Scopes
+- `GET //{domain}/api/shopify/{integrationInstance}/products/{product}/revenue-conversion/affected-orders` — Get Affected Orders
+- `GET //{domain}/api/shopify/{integrationInstance}/products/{product}/revenue-conversion/preview` — Preview Revenue Conversion
+- `GET //{domain}/api/shopify/{integrationInstance}/shop-plan` — Get Shop Plan
+- `GET //{domain}/api/starshipit/integration-instances/{integration_instance}/orders-chart` — Get Orders Chart (Date Range)
+- `GET //{domain}/api/starshipit/integration-instances/{integration_instance}/orders/{order}` — Get Order
+- `GET //{domain}/api/starshipit/integration-instances/{integration_instance}/orders/{order}/label` — Download Label (PDF base64)
+- `GET //{domain}/api/starshipit/integration-instances/{integration_instance}/orders/{order}/packing-slip` — Download Packing Slip (PDF base64)
+- `GET //{domain}/api/starshipit/integration-instances/{integration_instance}/orders/{order}/webhook-events` — Get Order Webhook Events
+- `GET //{domain}/api/stripe/integrations/{id}` — Show Integration Instance
+- `GET //{domain}/api/stripe/integrations/{id}/invoices` — List Invoices by Instance
+- `GET //{domain}/api/stripe/sales-orders/{salesOrderId}/invoices` — List Invoices for Sales Order
+- `GET //{domain}/api/stripe/webhook-events` — List Webhook Events
+- `GET //{domain}/api/stripe/webhook-events/{id}` — Show Webhook Event
+- `GET //{domain}/api/tiktok-shop/config` — Get Config
+- `GET //{domain}/api/tiktok-shop/integration-instances` — List Integration Instances
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}` — Get Integration Instance
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/pending` — List Pending Fulfillments
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/stats` — Fulfillment Sync Stats
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/locations` — List TikTok Warehouses
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/mappings` — Get Field Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/filter-options` — Get Filter Options
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/latest-sync-info` — Get Latest Sync Info
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/search` — Search Orders (Local DB)
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/raw` — Get Raw Order from TikTok
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/payment-method-mappings` — List Payment Method Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/pre-start-date-orders` — Query Pre-Start-Date Orders
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/pre-start-date-orders/search` — Search Pre-Start-Date Orders
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/csv-mappings` — Download CSV Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/filter-options` — Get Product Filter Options
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{tiktok_shop_product_id}/orders` — Get Orders Containing Product
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{tiktok_shop_product_id}/raw` — Get Raw Product from TikTok
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/shipping-method-mappings` — List Shipping Method Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/shipping-providers` — List Shipping Providers
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/transactions/{transaction_id}/raw` — Get Raw Transaction from TikTok
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/warehouse-mappings` — List Warehouse Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/webhook-test/topics` — Webhook Test — Topics & Sample Payloads
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}` — Show Integration Instance
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/locations` — List Locations
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/payment-method-mappings` — List Payment Method Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/shipping-method-mappings` — List Shipping Method Mappings
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/shipping-providers` — List Shipping Providers
+- `GET //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
+- `GET //{domain}/api/tiktok-shop/mappings/available-fields` — Get Available Fields
+- `GET //{domain}/api/tiktok-shop/oauth/init` — OAuth Init
+- `GET //{domain}/api/tiktok-shop/orders` — List Orders
+- `GET //{domain}/api/tiktok-shop/orders/{order_id}` — Get Order
+- `GET //{domain}/api/tiktok-shop/orders/{tikTokShopOrder}` — Show Order
+- `GET //{domain}/api/tiktok-shop/packages` — List Packages
+- `GET //{domain}/api/tiktok-shop/products` — List Products
+- `GET //{domain}/api/tiktok-shop/products/{product_id}` — Get Product
+- `GET //{domain}/api/tiktok-shop/products/{tikTokShopProduct}` — Show Product
+- `GET //{domain}/api/tiktok-shop/refunds` — List Refunds
+- `GET //{domain}/api/tiktok-shop/refunds/{refund_id}` — Get Refund
+- `GET //{domain}/api/tiktok-shop/refunds/{tikTokShopRefund}` — Show Refund
+- `GET //{domain}/api/tiktok-shop/returns` — List Returns
+- `GET //{domain}/api/tiktok-shop/returns/{return_id}` — Get Return
+- `GET //{domain}/api/tiktok-shop/returns/{tikTokShopReturn}` — Show Return
+- `GET //{domain}/api/tiktok-shop/transactions` — List Transactions
+- `GET //{domain}/api/tiktok-shop/transactions/{tikTokShopTransaction}` — Show Transaction
+- `GET //{domain}/api/tiktok-shop/transactions/{transaction_id}` — Get Transaction
+- `GET //{domain}/api/tiktok-shop/webhook-events` — List Webhook Events
+- `GET //{domain}/api/tiktok-shop/webhook-events/stats` — Get Webhook Event Stats
+- `GET //{domain}/api/tiktok-shop/webhook-events/{tikTokShopWebhookEvent}` — Show Webhook Event
+- `GET //{domain}/api/tiktok-shop/webhook-test/status` — Webhook Test — Status
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/bills` — List Bills
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/bills/charge-types` — Get Charge Types
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/bills/object-types` — Get Object Types
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/bills/summary` — Bills Summary
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/dashboard` — Dashboard Metrics
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inbound-shipments` — List Inbound Shipments
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inbound-shipments/in-transit` — In-Transit Shipments
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inbound-shipments/{inbound_shipment}` — Show Inbound Shipment
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory` — List Inventory
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory-ledger` — List Inventory Ledger
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory-ledger/filters` — Get Ledger Filters
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory-ledger/summary` — Get Ledger Summary
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/discrepancies` — Inventory Discrepancies
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/last-synced-at` — Get Last Synced At
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/low-stock` — Low Stock Items
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/out-of-stock` — Out of Stock Items
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/totals-by-sku` — Totals by SKU
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/without-sku-products` — Items Without SKU Products
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/without-trackstar-inventory` — SKU Products Without Trackstar Inventory
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/orders` — List Orders
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/by-trackstar-id/{trackstar_id}` — Show Order by Trackstar ID
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/sync-progress/{trackedJobLogId}` — Get Sync Progress
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/{order}` — Show Order by Database ID
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/{order}/detail` — Order Detail (Raw JSON)
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/products` — List Products
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/products/by-sku` — Get Product by SKU
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/products/kits` — List Kit Products
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/products/{product}` — Show Product
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/returns` — List Returns
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/returns/pending` — Pending Returns
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/returns/{return}` — Show Return
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/shipping-methods` — List Shipping Methods
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/shipping-methods/carriers` — Get Carriers
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/warehouse-mappings` — List Warehouse Mappings
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/webhook-events` — List Webhook Events
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/webhook-events/unprocessed` — Unprocessed Webhook Events
+- `GET //{domain}/api/trackstar/integration-instances/{integration_instance}/webhook-events/{webhook_event}` — Show Webhook Event
+- `GET //{domain}/api/veracore/integration-instances/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/walmart` — List Integration Instances
+- `GET //{domain}/api/walmart/{integrationInstance}` — Get Integration Instance
+- `GET //{domain}/api/walmart/{integrationInstance}/get-authorization-url` — Get Authorization URL
+- `GET //{domain}/api/walmart/{integrationInstance}/orders` — List Orders
+- `GET //{domain}/api/walmart/{integrationInstance}/orders/export` — Export Orders
+- `GET //{domain}/api/walmart/{integrationInstance}/orders/{order}` — Get Order
+- `GET //{domain}/api/walmart/{integrationInstance}/products` — List Products
+- `GET //{domain}/api/walmart/{integrationInstance}/products/export` — Export Products
+- `GET //{domain}/api/walmart/{integrationInstance}/products/{product}` — Get Product
+- `GET //{domain}/api/walmart/{integrationInstance}/products/{product}/raw` — Get Raw Product from Walmart
+- `GET //{domain}/api/walmart/{integration_instance}/download-locations` — Download Locations
+- `GET //{domain}/api/woo-commerce` — List Integration Instances
+- `GET //{domain}/api/woo-commerce/{integrationInstance}/products/{product}/raw` — Get Raw Product from WooCommerce
+- `GET //{domain}/api/woo-commerce/{integration_instance}` — Show Integration Instance
+- `GET //{domain}/api/woo-commerce/{integration_instance}/get-authorization-url` — Get Authorization URL
+- `GET //{domain}/api/woo-commerce/{integration_instance}/orders` — List Orders
+- `GET //{domain}/api/woo-commerce/{integration_instance}/orders/export` — Export Orders
+- `GET //{domain}/api/woo-commerce/{integration_instance}/orders/{order}` — Show Order
+- `GET //{domain}/api/woo-commerce/{integration_instance}/products` — List Products
+- `GET //{domain}/api/woo-commerce/{integration_instance}/products/export` — Export Products
+- `GET //{domain}/api/woo-commerce/{integration_instance}/products/{product}` — Show Product
+- `GET //{domain}/api/xero/accounts` — List Accounts
+- `GET //{domain}/api/xero/authorize` — Generate OAuth URL
+- `GET //{domain}/api/xero/dashboard` — Show Dashboard
+- `GET //{domain}/api/xero/integrations` — List Integration Instances
+- `GET //{domain}/api/xero/tax-rates` — List Tax Rates (Legacy)
+- `GET //{domain}/api/xero/v2/accounts` — List Accounts (V2)
+- `GET //{domain}/api/xero/v2/bills` — List Bills (V2)
+- `GET //{domain}/api/xero/v2/contacts` — List Contacts (V2)
+- `GET //{domain}/api/xero/v2/credit-notes` — List Credit Notes (V2)
+- `GET //{domain}/api/xero/v2/invoices` — List Invoices (V2)
+- `GET //{domain}/api/xero/v2/manual-journals` — List Manual Journals (V2)
+- `GET //{domain}/api/xero/v2/payments` — List Payments (V2)
+- `GET //{domain}/api/xero/v2/purchase-orders` — List Purchase Orders (V2)
+- `GET //{domain}/api/xero/v2/tax-rates` — List Tax Rates (V2)
+- `GET //{domain}/api/xero/webhook-settings/{integrationInstanceId}` — Show Webhook Settings
+- `GET //{domain}/tiktok-shop/callback` — OAuth Callback
+- `GET /amazon/callback` — OAuth Callback (Web)
+- `GET /api/amazon` — List Amazon Integration Instances
+- `GET /api/amazon/integration-instances/{integrationInstance}/ledgers` — List AWD Ledgers (per integration instance)
+- `GET /api/amazon/integration-instances/{integrationInstance}/ledgers/linkable-for-sales-order-line/{salesOrderLineId}` — Get Linkable Ledgers for Sales Order Line
+- `GET /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}` — Show AWD Ledger
+- `GET /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/linkable-destination-warehouses` — Get Linkable Destination Warehouses
+- `GET /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/linkable-sales-order-lines` — Get Linkable Sales Order Lines (for AWD ledger)
+- `GET /api/amazon/reimbursement-cases` — List reimbursement cases
+- `GET /api/amazon/reimbursement-cases/summary` — Reimbursement cases headline summary
+- `GET /api/amazon/reimbursement-cases/{reimbursementCase}` — Show reimbursement case
+- `GET /api/amazon/reimbursement-cases/{reimbursementCase}/activity-log` — Reimbursement case activity log
+- `GET /api/amazon/reimbursement-cases/{reimbursementCase}/notes` — List reimbursement case notes
+- `GET /api/amazon/unified/awd/initial-inventory/details` — Get AWD initial inventory details
+- `GET /api/amazon/unified/awd/shipments/1001` — Show AWD shipment
+- `GET /api/amazon/unified/awd/shipments/1001/eligible-purchase-orders` — Get eligible purchase orders for AWD shipment
+- `GET /api/amazon/unified/fifo-layers/cogs/12345` — Show FIFO Layer detail
+- `GET /api/amazon/unified/fifo-layers/cogs/12345/activity-log` — Activity Log for a FIFO Layer (paginated)
+- `GET /api/amazon/unified/fifo-layers/cogs/12345/consumptions` — List Consumptions for a Specific FIFO Layer (paginated)
+- `GET /api/amazon/unified/fnsku-products/101` — Show FNSKU Product Detail
+- `GET /api/amazon/unified/fnsku-products/101/asin-suggestion` — ASIN Suggestion (single)
+- `GET /api/amazon/unified/fnsku-products/101/discrepancies` — FNSKU Discrepancies (paginated)
+- `GET /api/amazon/unified/fnsku-products/101/inventory-tally-summary` — Inventory Tally Summary
+- `GET /api/amazon/unified/fnsku-products/101/ledgers` — FNSKU Ledgers (paginated)
+- `GET /api/amazon/unified/fnsku-products/101/reconciliation-chart-data` — Reconciliation Chart Data
+- `GET /api/amazon/unified/fnsku-products/101/reconciliation-sync-status` — Reconciliation Sync Status
+- `GET /api/amazon/unified/fnsku-products/101/reconciliation-timeline` — Reconciliation Timeline (paginated)
+- `GET /api/amazon/unified/fnsku-products/101/removal-orders` — FNSKU Removal Orders (paginated)
+- `GET /api/amazon/unified/fnsku-products/101/removal-shipments` — FNSKU Removal Shipments (paginated)
+- `GET /api/amazon/unified/fnsku-products/101/suggested-initial-unit-cost` — Suggested Initial Unit Cost (single)
+- `GET /api/amazon/unified/fnsku-products/101/summary-ledgers` — FNSKU Summary Ledgers (paginated)
+- `GET /api/amazon/unified/fulfillment-orders` — List Unified MCF Fulfillment Orders
+- `GET /api/amazon/unified/fulfillment-orders/{fulfillmentOrder}` — Show Unified MCF Fulfillment Order
+- `GET /api/amazon/unified/legacy-inbound-shipments/kpi-stats` — Get KPI Stats
+- `GET /api/amazon/unified/new-inbound-shipments/kpi-stats` — KPI Stats
+- `GET /api/amazon/unified/removal-orders/{removalOrder}` — Show Removal Order
+- `GET /api/amazon/unified/removal-shipments/1001` — Show Removal Shipment
+- `GET /api/amazon/unified/transactions/{transaction}` — Show Transaction
+- `GET /api/amazon/{integrationInstance}/get-authorization-url` — Get Authorization URL
+- `GET /api/amazon/{integrationInstance}/inbound/shipments/{shipment}/activity-log` — Get Activity Log for Inbound Shipment
+- `GET /api/amazon/{integrationInstance}/inbound/shipments/{shipment}/items` — Get Items For Inbound Shipment
+- `GET /api/amazon/{integrationInstance}/inbound/shipments/{shipment}/receipts` — Get Inbound Shipment Receipts
+- `GET /api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/activity-log` — Get Activity Log for New Inbound Shipment
+- `GET /api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/items` — Get Items For Shipment
+- `GET /api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}/receipts` — Get New Inbound Shipment Receipts
+- `GET /api/amazon/{integrationInstance}/products/export` — Export Products
+- `GET /api/amazon/{integrationInstance}/products/filter-options` — Get Product Filter Options
+- `GET /api/amazon/{integrationInstance}/products/latest-sync-info` — Get Latest Sync Info
+- `PATCH //{domain}/api/amazon/unified/fee-mappings/{feeMapping}` — Update Fee Mapping
+- `PATCH //{domain}/api/amazon/unified/fnsku-products/101/initial-unit-cost` — Update Initial Unit Cost (single)
+- `PATCH //{domain}/api/amazon/unified/fnsku-products/{fnskuProductId}/initial-unit-cost` — Update Initial Unit Cost
+- `PATCH //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/bulk-update` — Bulk Update Items
+- `PATCH //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan_item}` — Update Item
+- `PATCH //{domain}/api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/close-receiving` — Close Receiving
+- `PATCH //{domain}/api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/resume-receiving` — Resume Receiving
+- `PATCH //{domain}/api/amazon/{integrationInstance}/settings` — Update Amazon Settings (Vue 3 Partial Update)
+- `PATCH //{domain}/api/amazon/{integrationInstance}/setup-step` — Update Setup Wizard Step
+- `PATCH //{domain}/api/big-commerce/{integrationInstance}` — Partial Update Integration Instance
+- `PATCH //{domain}/api/qbo/integrations/{id}` — Update Integration Settings
+- `PATCH //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}` — Update Integration Instance
+- `PATCH //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}` — Update Integration Instance
+- `PATCH //{domain}/api/walmart/{integrationInstance}` — Partial Update Integration Instance
+- `PATCH //{domain}/api/xero/integrations/{id}` — Update Integration Instance
+- `PATCH //{domain}/api/xero/webhook-settings/{integrationInstanceId}` — Update Webhook Settings
+- `PATCH /api/amazon/unified/fnsku-products/101/initial-unit-cost` — Update Initial Unit Cost (single)
+- `POST //{domain}/api/3pl/asns/receipt` — Receive ASN (Report Receipt)
+- `POST //{domain}/api/3pl/inventory-adjustments` — Create Inventory Adjustment
+- `POST //{domain}/api/3pl/orders/{salesOrderFulfillment}/fulfill` — Fulfill Order
+- `POST //{domain}/api/3pl/tokens` — Create 3PL Integration Token
+- `POST //{domain}/api/amazon` — Create Amazon Integration Instance
+- `POST //{domain}/api/amazon-inbound-shortages/{amazonInboundShortage}/generate-accounting-transaction` — Generate Accounting Transaction for Shortage
+- `POST //{domain}/api/amazon-pending-inbounds/{pendingInbound}/create-shortage` — Create Shortage from Pending Inbound
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/import` — Import AWD Ledger CSV
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/reconcile` — Reconcile Specific IDs
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/reconcile-all` — Reconcile All Unreconciled
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/unreconcile` — Unreconcile Specific IDs
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/link-sales-order-line` — Link AWD Ledger to Sales Order Line
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/link-warehouse-transfer` — Link AWD Ledger to Warehouse Transfer
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/unlink-sales-order-line` — Unlink AWD Ledger from Sales Order Line
+- `POST //{domain}/api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/unlink-warehouse-transfer` — Unlink AWD Ledger from Warehouse Transfer
+- `POST //{domain}/api/amazon/inventory-valuation/dashboard/refresh-reports` — Refresh Reports
+- `POST //{domain}/api/amazon/inventory-valuation/dashboard/run-scheduled-job` — Run Scheduled Job
+- `POST //{domain}/api/amazon/inventory-valuation/fifo-layers/batch-revert-eligibility` — Batch Check Revert Eligibility
+- `POST //{domain}/api/amazon/inventory-valuation/fifo-layers/bulk-revert` — Bulk Revert Manual Overrides
+- `POST //{domain}/api/amazon/inventory-valuation/fifo-layers/{layerId}/revert` — Revert FIFO Layer Override
+- `POST //{domain}/api/amazon/reimbursement-cases` — Create reimbursement case
+- `POST //{domain}/api/amazon/reimbursement-cases/detect` — Trigger reimbursement case detection
+- `POST //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}/assign` — Assign reimbursement case to user
+- `POST //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}/notes` — Create reimbursement case note
+- `POST //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}/transition` — Transition reimbursement case status
+- `POST //{domain}/api/amazon/unified/awd/initial-inventory/confirm-no-inventory` — Confirm no AWD initial inventory
+- `POST //{domain}/api/amazon/unified/awd/initial-inventory/import` — Import AWD initial inventory
+- `POST //{domain}/api/amazon/unified/awd/ledgers/import` — Import AWD ledger CSV
+- `POST //{domain}/api/amazon/unified/awd/ledgers/reconcile` — Reconcile AWD ledgers
+- `POST //{domain}/api/amazon/unified/awd/ledgers/unreconcile` — Unreconcile AWD ledgers
+- `POST //{domain}/api/amazon/unified/awd/refresh` — Refresh AWD shipments (dispatch jobs)
+- `POST //{domain}/api/amazon/unified/awd/reset-access` — Reset AWD access denied flag
+- `POST //{domain}/api/amazon/unified/awd/ship-from-mappings/bulk-update` — Bulk update ship-from mappings
+- `POST //{domain}/api/amazon/unified/awd/shipments/1001/link-purchase-order` — Link AWD shipment to purchase order
+- `POST //{domain}/api/amazon/unified/awd/shipments/1001/unlink-purchase-order` — Unlink AWD shipment from purchase order
+- `POST //{domain}/api/amazon/unified/awd/shipments/process` — Process AWD shipments
+- `POST //{domain}/api/amazon/unified/awd/shipments/unprocess` — Unprocess AWD shipments
+- `POST //{domain}/api/amazon/unified/awd/sync-enabled` — Update AWD sync enabled
+- `POST //{domain}/api/amazon/unified/customer-returns/bulk-mark-reviewed` — Bulk Mark Customer Returns as Reviewed
+- `POST //{domain}/api/amazon/unified/customer-returns/bulk-mark-unreviewed` — Bulk Mark Customer Returns as Unreviewed
+- `POST //{domain}/api/amazon/unified/discrepancies` — Create Discrepancy
+- `POST //{domain}/api/amazon/unified/discrepancies/recheck-all-async` — Recheck All Discrepancies (Async)
+- `POST //{domain}/api/amazon/unified/discrepancies/{discrepancy}/recheck` — Recheck Discrepancy
+- `POST //{domain}/api/amazon/unified/fee-mappings` — Create Fee Mapping
+- `POST //{domain}/api/amazon/unified/fee-mappings/recategorize-historical` — Recategorize Historical
+- `POST //{domain}/api/amazon/unified/fifo-layers/cogs/bulk-update` — Bulk Update COGS
+- `POST //{domain}/api/amazon/unified/fifo-layers/cogs/import` — Execute COGS Import
+- `POST //{domain}/api/amazon/unified/fifo-layers/cogs/import/validate` — Validate COGS Import
+- `POST //{domain}/api/amazon/unified/financial-event-groups/bulk-generate` — Bulk Generate
+- `POST //{domain}/api/amazon/unified/financial-event-groups/{financialEventGroup}/generate-accounting-transactions` — Generate Accounting Transactions
+- `POST //{domain}/api/amazon/unified/fnsku-products/101/reconcile` — Reconcile Single FNSKU
+- `POST //{domain}/api/amazon/unified/fnsku-products/101/unreconcile` — Unreconcile Single FNSKU
+- `POST //{domain}/api/amazon/unified/fnsku-products/auto-mapping-settings` — Update Auto-Mapping Settings (Bulk)
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-link` — Bulk Link (to single product)
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-reconcile` — Bulk Reconcile
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-suggested-initial-unit-cost` — Bulk Suggested Initial Unit Cost
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-unlink` — Bulk Unlink
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-unreconcile` — Bulk Unreconcile
+- `POST //{domain}/api/amazon/unified/fnsku-products/bulk-update-initial-unit-cost` — Bulk Update Initial Unit Cost
+- `POST //{domain}/api/amazon/unified/fnsku-products/complete-partial-mapping` — Complete Partial Mapping (by ASIN)
+- `POST //{domain}/api/amazon/unified/fnsku-products/create-fifo-layers` — Create FIFO Layers for Initial Inventory
+- `POST //{domain}/api/amazon/unified/fnsku-products/map-by-asin` — Map all FNSKUs for an ASIN to a Product
+- `POST //{domain}/api/amazon/unified/fnsku-products/map-single-fnsku` — Map Single FNSKU to a Product
+- `POST //{domain}/api/amazon/unified/fnsku-products/reconcile-all` — Reconcile All (tracked job)
+- `POST //{domain}/api/amazon/unified/fnsku-products/resolve-filtered-ids` — Resolve Filtered IDs (for bulk ops)
+- `POST //{domain}/api/amazon/unified/fnsku-products/unreconcile-all` — Unreconcile All (tracked job)
+- `POST //{domain}/api/amazon/unified/legacy-inbound-shipments/process-all` — Process All Unprocessed Shipments (dispatch tracked job)
+- `POST //{domain}/api/amazon/unified/legacy-inbound-shipments/refresh` — Refresh All Shipments (dispatch tracked job)
+- `POST //{domain}/api/amazon/unified/new-inbound-shipments/process-all` — Process All (Apply Unprocessed Shipments)
+- `POST //{domain}/api/amazon/unified/new-inbound-shipments/refresh` — Refresh All (Sync from Amazon)
+- `POST //{domain}/api/amazon/unified/removal-orders/bulk-archive` — Bulk Archive Removal Orders
+- `POST //{domain}/api/amazon/unified/removal-orders/bulk-unarchive` — Bulk Unarchive Removal Orders
+- `POST //{domain}/api/amazon/unified/removal-orders/bulk-unprocess` — Bulk Unprocess Removal Orders
+- `POST //{domain}/api/amazon/unified/removal-shipments/bulk-archive` — Bulk Archive Removal Shipments
+- `POST //{domain}/api/amazon/unified/removal-shipments/bulk-unarchive` — Bulk Unarchive Removal Shipments
+- `POST //{domain}/api/amazon/unified/reports/{reportId}/process` — Process Report
+- `POST //{domain}/api/amazon/unified/settlement-mapping-groups` — Create Mapping Group
+- `POST //{domain}/api/amazon/unified/settlement-type-mappings/import` — Import Type Mappings
+- `POST //{domain}/api/amazon/unified/transactions/bulk-process` — Bulk Process Transactions
+- `POST //{domain}/api/amazon/unified/transactions/bulk-unprocess` — Bulk Unprocess Transactions
+- `POST //{domain}/api/amazon/unified/transactions/process-all` — Process All (background job)
+- `POST //{domain}/api/amazon/unified/transactions/sync` — Sync Transactions (background job)
+- `POST //{domain}/api/amazon/unified/transactions/{transaction}/process` — Process Transaction
+- `POST //{domain}/api/amazon/unified/transactions/{transaction}/unprocess` — Unprocess Transaction
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/import` — Import AWD Ledger
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/reconcile` — Reconcile AWD Ledgers
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/reconcile-all` — Reconcile All AWD Ledgers
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/unreconcile` — Unreconcile AWD Ledgers
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/link-sales-order-line` — Link to Sales Order Line
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/link-warehouse-transfer` — Link to Warehouse Transfer
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/unlink-sales-order-line` — Unlink from Sales Order Line
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/ledgers/{awdLedger}/unlink-warehouse-transfer` — Unlink from Warehouse Transfer
+- `POST //{domain}/api/amazon/{integrationInstance}/awd/shipments/{shipment}/refresh` — Refresh AWD Shipment
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans` — Create Draft Inbound Plan
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/add-item` — Add Item to Draft Plan
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/bulk-add` — Bulk Add Items to Draft Plan
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/cancel-amazon-plan` — Cancel Amazon Plan
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/create-warehouse-transfer` — Create Warehouse Transfer
+- `POST //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/submit-to-amazon` — Submit Plan to Amazon
+- `POST //{domain}/api/amazon/{integrationInstance}/finances/nominal-code-mappings` — Create Nominal Code Mapping
+- `POST //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings/import` — Import Settlement Types
+- `POST //{domain}/api/amazon/{integrationInstance}/finances/settlement-mapping-groups` — Create Mapping Group
+- `POST //{domain}/api/amazon/{integrationInstance}/fnsku-products/bulk-map-by-asin` — Bulk Map by ASIN
+- `POST //{domain}/api/amazon/{integrationInstance}/fnsku-products/create` — Generate FNSKU Products
+- `POST //{domain}/api/amazon/{integrationInstance}/fnsku-products/link-to-product` — Link FNSKU to Product
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/process` — Process Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/process-all` — Process All Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/ship-from-mappings` — Update Ship From Mappings
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/shipments/get-shipment` — Get Shipment from Amazon
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/shipments/refresh` — Refresh Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/shipments/set-sent-before-initial-count` — Set Sent Before Initial Count
+- `POST //{domain}/api/amazon/{integrationInstance}/inbound/unprocess` — Unprocess Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/reconcile` — Reconcile Initial Inventories (Batch)
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/reconcile-all` — Reconcile All Initial Inventory
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/reconcile-for-fnskus` — Reconcile Initial Inventories for FNSKUs
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/unreconcile` — Unreconcile Initial Inventories (Batch)
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/unreconcile-all` — Unreconcile All Initial Inventory
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/{initialInventory}/reconcile` — Reconcile Initial Inventory
+- `POST //{domain}/api/amazon/{integrationInstance}/initial-inventory/{initialInventory}/unreconcile` — Unreconcile Initial Inventory
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/archive` — Archive New Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/process` — Process New Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/process-all` — Process All Unprocessed New Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/set-sent-before-initial-count` — Set Sent Before Initial Count
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/unarchive` — Unarchive New Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments/unprocess` — Unprocess New Inbound Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/new-ledgers/bulk-cogs-suggestions` — New Ledger Bulk COGS Suggestions
+- `POST //{domain}/api/amazon/{integrationInstance}/orders/bulk-archive` — Bulk Archive Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/orders/bulk-delete` — Bulk Delete Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/orders/bulk-unarchive` — Bulk Unarchive Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/orders/{order}/archive` — Archive Order
+- `POST //{domain}/api/amazon/{integrationInstance}/orders/{order}/unarchive` — Unarchive Order
+- `POST //{domain}/api/amazon/{integrationInstance}/outbound/create-fulfillment/{amazonFulfillmentOrder}/{salesOrder}` — Create Fulfillment
+- `POST //{domain}/api/amazon/{integrationInstance}/outbound/refresh` — Refresh Outbound Fulfillments
+- `POST //{domain}/api/amazon/{integrationInstance}/products/archiveable` — Check Archiveable
+- `POST //{domain}/api/amazon/{integrationInstance}/products/create-sku-products` — Create SKU.io Products (Bulk)
+- `POST //{domain}/api/amazon/{integrationInstance}/products/import-mappings` — Import Mappings (CSV/XLSX)
+- `POST //{domain}/api/amazon/{integrationInstance}/products/refresh` — Refresh All Products (Tracked)
+- `POST //{domain}/api/amazon/{integrationInstance}/products/sync-inventory` — Sync Inventory to Amazon
+- `POST //{domain}/api/amazon/{integrationInstance}/products/{product}/archive` — Archive Single Product
+- `POST //{domain}/api/amazon/{integrationInstance}/products/{product}/create-sku-product` — Create SKU.io Product from Amazon Product
+- `POST //{domain}/api/amazon/{integrationInstance}/products/{product}/map` — Map Single Product to SKU.io Product
+- `POST //{domain}/api/amazon/{integrationInstance}/products/{product}/refresh` — Refresh Single Product (Catalog Lookup)
+- `POST //{domain}/api/amazon/{integrationInstance}/products/{product}/unarchive` — Unarchive Single Product
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/archive` — Archive Removal Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/set-warehouse` — Set Receiving Warehouse
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/unarchive` — Unarchive Removal Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/unprocess` — Unprocess Removal Orders
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/{removalOrder}/mark-item-as-unknown` — Mark Item As Unknown
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-orders/{removalOrder}/unmark-item-as-unknown` — Unmark Item As Unknown
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-shipments/bulk-remove-receipts` — Bulk Remove Receipts
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-shipments/receive-bulk` — Bulk Receive Shipments
+- `POST //{domain}/api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/receive` — Receive Shipment
+- `POST //{domain}/api/amazon/{integrationInstance}/reports/create` — Create Report
+- `POST //{domain}/api/amazon/{integrationInstance}/reports/{report}/sync` — Sync Report
+- `POST //{domain}/api/big-commerce` — Create Integration Instance
+- `POST //{domain}/api/big-commerce/{integrationInstance}/fulfill` — Fulfill Order
+- `POST //{domain}/api/big-commerce/{integrationInstance}/orders/create-sku-orders` — Create SKU Orders from BigCommerce
+- `POST //{domain}/api/big-commerce/{integrationInstance}/orders/refresh` — Refresh Orders
+- `POST //{domain}/api/big-commerce/{integrationInstance}/orders/refresh-order` — Refresh Single Order
+- `POST //{domain}/api/big-commerce/{integrationInstance}/products/archiveable` — Check Archiveable Products
+- `POST //{domain}/api/big-commerce/{integrationInstance}/products/create-sku-products` — Create SKU Products from BigCommerce
+- `POST //{domain}/api/big-commerce/{integrationInstance}/products/deleteable` — Check Deleteable Products
+- `POST //{domain}/api/big-commerce/{integrationInstance}/products/import-mappings` — Import Product Mappings
+- `POST //{domain}/api/big-commerce/{integrationInstance}/products/refresh` — Refresh Products
+- `POST //{domain}/api/ebay-product-settings` — Save Product Settings
+- `POST //{domain}/api/ebay/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/archiveable` — Check Archiveable Products
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/build-payload` — Build Payload
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/create-sku-products` — Create SKU Products from Listings
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/get-suggested-categories` — Get Suggested Categories
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/hydrate-product-template` — Hydrate Product Template
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/import-mappings` — Import Mappings
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/publish` — Publish Listings
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/refresh` — Refresh Legacy Products
+- `POST //{domain}/api/ebay/{integrationInstance}/legacy-products/sync-inventory` — Sync Inventory
+- `POST //{domain}/api/ebay/{integrationInstance}/orders/create-sku-orders` — Create SKU Orders from Ebay
+- `POST //{domain}/api/ebay/{integrationInstance}/orders/refresh` — Refresh Orders
+- `POST //{domain}/api/ebay/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `POST //{domain}/api/magento/{integration_instance}/inventory-sources` — Download Inventory Sources
+- `POST //{domain}/api/qbo/accounts/archive` — Archive Accounts
+- `POST //{domain}/api/qbo/accounts/nominal-codes` — Create Nominal Codes
+- `POST //{domain}/api/qbo/accounts/refresh` — Refresh Accounts
+- `POST //{domain}/api/qbo/accounts/unarchive` — Unarchive Accounts
+- `POST //{domain}/api/qbo/bills/archive` — Archive Bills
+- `POST //{domain}/api/qbo/bills/refresh` — Refresh Bills
+- `POST //{domain}/api/qbo/bills/unarchive` — Unarchive Bills
+- `POST //{domain}/api/qbo/conflicts/detect` — Detect Conflicts
+- `POST //{domain}/api/qbo/conflicts/{entityType}/bulk-resolve` — Bulk Resolve Conflicts
+- `POST //{domain}/api/qbo/conflicts/{entityType}/{entityId}/resolve` — Resolve Conflict
+- `POST //{domain}/api/qbo/credit-memos/archive` — Archive Credit Memos
+- `POST //{domain}/api/qbo/credit-memos/refresh` — Refresh Credit Memos
+- `POST //{domain}/api/qbo/credit-memos/unarchive` — Unarchive Credit Memos
+- `POST //{domain}/api/qbo/custom-field-mappings/fetch-fields` — Fetch Custom Fields from QBO
+- `POST //{domain}/api/qbo/customers/archive` — Archive Customers
+- `POST //{domain}/api/qbo/customers/create-sku-customers` — Create SKU Customers from QBO
+- `POST //{domain}/api/qbo/customers/refresh` — Refresh Customers
+- `POST //{domain}/api/qbo/customers/refresh-sku-customers` — Refresh SKU Customers from QBO
+- `POST //{domain}/api/qbo/customers/unlink-sku-customers` — Unlink SKU Customers (Bulk)
+- `POST //{domain}/api/qbo/customers/{qboCustomer}/link-sku-customer` — Link SKU Customer
+- `POST //{domain}/api/qbo/integrations/complete` — Complete OAuth Setup
+- `POST //{domain}/api/qbo/integrations/initialize` — Initialize OAuth
+- `POST //{domain}/api/qbo/invoices/archive` — Archive Invoices
+- `POST //{domain}/api/qbo/invoices/refresh` — Refresh Invoices
+- `POST //{domain}/api/qbo/invoices/sync` — Sync Invoices to QBO
+- `POST //{domain}/api/qbo/items/archive` — Archive Items
+- `POST //{domain}/api/qbo/items/refresh` — Refresh Items
+- `POST //{domain}/api/qbo/journals/archive` — Archive Journals
+- `POST //{domain}/api/qbo/journals/refresh` — Refresh Journals
+- `POST //{domain}/api/qbo/payment-type-mappings/bulk-update` — Bulk Update Payment Type Mappings
+- `POST //{domain}/api/qbo/payments/archive` — Archive Payments
+- `POST //{domain}/api/qbo/payments/refresh` — Refresh Payments
+- `POST //{domain}/api/qbo/purchase-orders/archive` — Archive Purchase Orders
+- `POST //{domain}/api/qbo/purchase-orders/refresh` — Refresh Purchase Orders
+- `POST //{domain}/api/qbo/tax-code-mappings/bulk-update` — Bulk Update Tax Code Mappings
+- `POST //{domain}/api/qbo/tax-codes/archive` — Archive Tax Codes
+- `POST //{domain}/api/qbo/tax-codes/refresh` — Refresh Tax Codes
+- `POST //{domain}/api/qbo/tax-rates/archive` — Archive Tax Rates
+- `POST //{domain}/api/qbo/tax-rates/refresh` — Refresh Tax Rates
+- `POST //{domain}/api/qbo/vendors/archive` — Archive Vendors
+- `POST //{domain}/api/qbo/vendors/refresh` — Refresh Vendors
+- `POST //{domain}/api/shipfusion/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/create-stock-take` — Create Stock Take from Discrepancies
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/inventory/refresh` — Refresh Inventory
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/sync` — Sync Orders (Queue Job)
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/update-tracking` — Update Tracking Info
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/{order}/sync-detail` — Sync Order Detail
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-mappings` — Create Warehouse Mapping
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/sync` — Sync Warehouse Shipments (Queue Job)
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/{warehouse_shipment}/sync-detail` — Sync Warehouse Shipment Detail
+- `POST //{domain}/api/shipfusion/integration-instances/{integration_instance}/webhook-events/{webhook_event}/retry` — Retry Webhook Event
+- `POST //{domain}/api/shiphero/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/shiphero/{integration_instance}/inventory/create-stock-take` — Create Stock Take From Discrepancies
+- `POST //{domain}/api/shiphero/{integration_instance}/inventory/refresh` — Refresh Inventory
+- `POST //{domain}/api/shipmyorders/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/shipmyorders/inventory/refresh` — Refresh Inventory
+- `POST //{domain}/api/shipmyorders/invoices` — Create Invoice
+- `POST //{domain}/api/shipmyorders/invoices/deletable` — Check If Invoices Are Deletable
+- `POST //{domain}/api/shipmyorders/invoices/mapping-rules` — Save Mapping Rules
+- `POST //{domain}/api/shipmyorders/invoices/process` — Bulk Process Invoices
+- `POST //{domain}/api/shipmyorders/invoices/process-all` — Process All Invoices
+- `POST //{domain}/api/shipmyorders/invoices/unprocess` — Bulk Unprocess Invoices
+- `POST //{domain}/api/shipmyorders/invoices/unprocess-all` — Unprocess All Invoices
+- `POST //{domain}/api/shipmyorders/invoices/{invoice}/process` — Process Invoice
+- `POST //{domain}/api/shipmyorders/invoices/{invoice}/unprocess` — Unprocess Invoice
+- `POST //{domain}/api/shipstation/warehouses/download` — Download ShipStation Warehouses
+- `POST //{domain}/api/shipstation/warehouses/map` — Map Warehouses
+- `POST //{domain}/api/shipstation/warehouses/unmap` — Unmap Warehouses
+- `POST //{domain}/api/shipstation/{integration_instance}/download-shipping-services` — Download Shipping Services
+- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/revenue-conversion` — Convert Product Lines to Revenue
+- `POST //{domain}/api/stripe/integrations` — Create Stripe Integration
+- `POST //{domain}/api/stripe/integrations/{id}/authorize` — Start Authorization (OAuth)
+- `POST //{domain}/api/stripe/integrations/{id}/disconnect` — Disconnect Integration
+- `POST //{domain}/api/stripe/invoices` — Send Invoice
+- `POST //{domain}/api/stripe/invoices/{id}/refunds` — Issue Refund
+- `POST //{domain}/api/stripe/invoices/{id}/void` — Void Invoice
+- `POST //{domain}/api/stripe/webhook-events/{id}/replay` — Replay Webhook Event
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/submit-all` — Submit All Pending Fulfillments
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/submit-bulk` — Submit Bulk Fulfillments
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/{sales_order_fulfillment_id}/submit` — Submit Single Fulfillment
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/locations` — Refresh Locations from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/bulk-archive` — Bulk Archive Orders
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/bulk-delete` — Bulk Delete Orders
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/bulk-delete-sku-orders` — Bulk Delete Linked SKU Orders
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/bulk-unarchive` — Bulk Unarchive Orders
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/create-sku-orders` — Create SKU Orders from TikTok Shop
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/refresh` — Refresh Orders from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/refresh-one` — Refresh Single Order
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/update-sku-orders` — Update SKU Orders from TikTok Shop
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/archive` — Archive Order
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/submit-tracking` — Submit Tracking
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/unarchive` — Unarchive Order
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/payment-method-mappings` — Upsert Payment Method Mapping
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/pre-start-date-orders/import` — Import Pre-Start-Date Orders
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/bulk-archive` — Bulk Archive Products
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/bulk-delete` — Bulk Delete Products
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/bulk-unarchive` — Bulk Unarchive Products
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/bulk-unmap` — Bulk Unmap Product SKUs
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/csv-mappings` — Upload CSV Mappings
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/sync` — Sync Products from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/archive` — Archive Product
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/map` — Map Product SKU
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/unarchive` — Unarchive Product
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/refunds/sync` — Sync Refunds from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/returns/sync` — Sync Returns from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/shipping-method-mappings` — Upsert Shipping Method Mapping
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/transactions/sync` — Sync Transactions from TikTok
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/warehouse-mappings` — Upsert Warehouse Mapping
+- `POST //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/webhook-test/process` — Webhook Test — Process (Replay)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/locations` — Refresh Locations
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/orders/refresh` — Refresh Orders (Tracked)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/orders/{tikTokShopOrder}/submit-tracking` — Submit Tracking
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/payment-method-mappings` — Upsert Payment Method Mapping
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/products/sync` — Sync Products (Tracked)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/refunds/sync` — Sync Refunds (Tracked)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/returns/sync` — Sync Returns (Tracked)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/shipping-method-mappings` — Upsert Shipping Method Mapping
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/transactions/sync` — Sync Transactions (Tracked)
+- `POST //{domain}/api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/warehouse-mappings` — Upsert Warehouse Mapping
+- `POST //{domain}/api/tiktok-shop/webhook-events/bulk-delete` — Bulk Delete Webhook Events
+- `POST //{domain}/api/tiktok-shop/webhook-events/bulk-process-pending` — Bulk Process Pending Webhook Events
+- `POST //{domain}/api/tiktok-shop/webhook-events/bulk-retry-failed` — Bulk Retry Failed Webhook Events
+- `POST //{domain}/api/tiktok-shop/webhook-events/{tikTokShopWebhookEvent}/process` — Process Webhook Event
+- `POST //{domain}/api/tiktok-shop/webhook-events/{tikTokShopWebhookEvent}/reprocess` — Reprocess Webhook Event
+- `POST //{domain}/api/tiktok-shop/webhooks` — Receive Webhook (TikTok → SKU.io)
+- `POST //{domain}/api/trackstar/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/bills/sync` — Sync Bills
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/inbound-shipments/sync` — Sync Inbound Shipments
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory-ledger/sync` — Sync Inventory Ledger
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/create-stock-take` — Create Stock Take from Discrepancies
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/inventory/sync` — Sync Inventory
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/sync` — Sync Orders (Queued)
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/orders/{order}/sync-detail` — Sync Order Detail
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/products/sync` — Sync Products
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/returns/sync` — Sync Returns
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/test-connection` — Test Connection
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/warehouse-mappings` — Create Warehouse Mapping
+- `POST //{domain}/api/trackstar/integration-instances/{integration_instance}/warehouse-mappings/sync-warehouses` — Sync Warehouses from Trackstar
+- `POST //{domain}/api/veracore/integration-instances` — Create Integration Instance
+- `POST //{domain}/api/walmart` — Create Integration Instance
+- `POST //{domain}/api/walmart/{integrationInstance}/fulfill` — Fulfill Order
+- `POST //{domain}/api/walmart/{integrationInstance}/orders/create-sku-orders` — Create SKU Orders from Walmart
+- `POST //{domain}/api/walmart/{integrationInstance}/orders/refresh` — Refresh Orders
+- `POST //{domain}/api/walmart/{integrationInstance}/orders/refresh-order` — Refresh Single Order
+- `POST //{domain}/api/walmart/{integrationInstance}/orders/update-sku-orders` — Update SKU Orders from Walmart
+- `POST //{domain}/api/walmart/{integrationInstance}/products/archiveable` — Check Archiveable Products
+- `POST //{domain}/api/walmart/{integrationInstance}/products/create-sku-products` — Create SKU Products from Walmart
+- `POST //{domain}/api/walmart/{integrationInstance}/products/deleteable` — Check Deleteable Products
+- `POST //{domain}/api/walmart/{integrationInstance}/products/import-mappings` — Import Product Mappings
+- `POST //{domain}/api/walmart/{integrationInstance}/products/refresh` — Refresh Products
+- `POST //{domain}/api/walmart/{integrationInstance}/products/sync-inventory` — Sync Inventory
+- `POST //{domain}/api/walmart/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product from Walmart Product
+- `POST //{domain}/api/walmart/{integrationInstance}/products/{product}/map` — Map Single Product
+- `POST //{domain}/api/walmart/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `POST //{domain}/api/webhooks/stripe` — Platform Webhook
+- `POST //{domain}/api/webhooks/stripe/{integration_instance_id}` — Connect Account Webhook
+- `POST //{domain}/api/webhooks/xero/{instanceUuid}` — Receive Xero Webhook
+- `POST //{domain}/api/woo-commerce` — Create Integration Instance
+- `POST //{domain}/api/woo-commerce/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product from WooCommerce Product
+- `POST //{domain}/api/woo-commerce/{integrationInstance}/products/{product}/smart-match` — Smart Match Product
+- `POST //{domain}/api/woo-commerce/{integration_instance}/fulfill` — Fulfill Orders
+- `POST //{domain}/api/woo-commerce/{integration_instance}/orders/create-sku-orders` — Create SKU Orders from WooCommerce
+- `POST //{domain}/api/woo-commerce/{integration_instance}/orders/refresh` — Refresh Orders
+- `POST //{domain}/api/woo-commerce/{integration_instance}/orders/refresh-order` — Refresh Single Order
+- `POST //{domain}/api/woo-commerce/{integration_instance}/orders/update-sku-orders` — Update SKU Orders from WooCommerce
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/archiveable` — Check Archiveable Products
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/create-sku-products` — Create SKU Products from WooCommerce
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/import-mappings` — Import Product Mappings
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/refresh` — Refresh Products
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/refresh-tracked` — Refresh Products (Tracked)
+- `POST //{domain}/api/woo-commerce/{integration_instance}/products/sync-inventory` — Sync Inventory to WooCommerce
+- `POST //{domain}/api/xero/accounts/create-nominal-codes` — Create Nominal Codes from Accounts
+- `POST //{domain}/api/xero/accounts/download` — Download Accounts from Xero
+- `POST //{domain}/api/xero/contacts/sync` — Sync Contacts
+- `POST //{domain}/api/xero/tax-rates/download` — Download Tax Rates from Xero
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/import` — Import AWD Ledger CSV
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/reconcile` — Reconcile Specific IDs
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/reconcile-all` — Reconcile All Unreconciled
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/unreconcile` — Unreconcile Specific IDs
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/link-sales-order-line` — Link AWD Ledger to Sales Order Line
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/link-warehouse-transfer` — Link AWD Ledger to Warehouse Transfer
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/unlink-sales-order-line` — Unlink AWD Ledger from Sales Order Line
+- `POST /api/amazon/integration-instances/{integrationInstance}/ledgers/{awdLedger}/unlink-warehouse-transfer` — Unlink AWD Ledger from Warehouse Transfer
+- `POST /api/amazon/reimbursement-cases` — Create reimbursement case
+- `POST /api/amazon/reimbursement-cases/detect` — Trigger reimbursement case detection
+- `POST /api/amazon/reimbursement-cases/{reimbursementCase}/assign` — Assign reimbursement case to user
+- `POST /api/amazon/reimbursement-cases/{reimbursementCase}/notes` — Create reimbursement case note
+- `POST /api/amazon/reimbursement-cases/{reimbursementCase}/transition` — Transition reimbursement case status
+- `POST /api/amazon/unified/awd/initial-inventory/confirm-no-inventory` — Confirm no AWD initial inventory
+- `POST /api/amazon/unified/awd/initial-inventory/import` — Import AWD initial inventory
+- `POST /api/amazon/unified/awd/ledgers/import` — Import AWD ledger CSV
+- `POST /api/amazon/unified/awd/ledgers/reconcile` — Reconcile AWD ledgers
+- `POST /api/amazon/unified/awd/ledgers/unreconcile` — Unreconcile AWD ledgers
+- `POST /api/amazon/unified/awd/reset-access` — Reset AWD access denied flag
+- `POST /api/amazon/unified/awd/ship-from-mappings/bulk-update` — Bulk update ship-from mappings
+- `POST /api/amazon/unified/awd/shipments/1001/link-purchase-order` — Link AWD shipment to purchase order
+- `POST /api/amazon/unified/awd/shipments/1001/unlink-purchase-order` — Unlink AWD shipment from purchase order
+- `POST /api/amazon/unified/awd/shipments/unprocess` — Unprocess AWD shipments
+- `POST /api/amazon/unified/awd/sync-enabled` — Update AWD sync enabled
+- `POST /api/amazon/unified/fnsku-products/101/reconcile` — Reconcile Single FNSKU
+- `POST /api/amazon/unified/fnsku-products/101/unreconcile` — Unreconcile Single FNSKU
+- `POST /api/amazon/unified/fnsku-products/bulk-suggested-initial-unit-cost` — Bulk Suggested Initial Unit Cost
+- `POST /api/amazon/unified/fnsku-products/bulk-unlink` — Bulk Unlink
+- `POST /api/amazon/unified/fnsku-products/bulk-update-initial-unit-cost` — Bulk Update Initial Unit Cost
+- `POST /api/amazon/unified/fnsku-products/complete-partial-mapping` — Complete Partial Mapping (by ASIN)
+- `POST /api/amazon/unified/fnsku-products/create-fifo-layers` — Create FIFO Layers for Initial Inventory
+- `POST /api/amazon/unified/fnsku-products/resolve-filtered-ids` — Resolve Filtered IDs (for bulk ops)
+- `POST /api/amazon/unified/fnsku-products/unreconcile-all` — Unreconcile All (tracked job)
+- `POST /api/amazon/{integrationInstance}/new-inbound/shipments/unarchive` — Unarchive New Inbound Shipments
+- `POST /api/amazon/{integrationInstance}/products/archiveable` — Check Archiveable
+- `POST /api/amazon/{integrationInstance}/products/create-sku-products` — Create SKU.io Products (Bulk)
+- `POST /api/amazon/{integrationInstance}/products/import-mappings` — Import Mappings (CSV/XLSX)
+- `POST /api/amazon/{integrationInstance}/products/refresh` — Refresh All Products (Tracked)
+- `POST /api/amazon/{integrationInstance}/products/sync-inventory` — Sync Inventory to Amazon
+- `PUT //{domain}/api/amazon-inbound-shortages/{amazonInboundShortage}` — Update Inbound Shortage
+- `PUT //{domain}/api/amazon/product/{product}/update-metadata` — Update Single Product Metadata (Label / Prep Owner)
+- `PUT //{domain}/api/amazon/reimbursement-cases/{reimbursementCase}` — Update reimbursement case
+- `PUT //{domain}/api/amazon/unified/awd/ship-from-mappings/12` — Update ship-from mapping
+- `PUT //{domain}/api/amazon/unified/discrepancies/{discrepancy}/investigation-status` — Update Investigation Status
+- `PUT //{domain}/api/amazon/unified/financial-event-groups/{financialEventGroup}/base-currency-rate` — Update Base Currency Rate
+- `PUT //{domain}/api/amazon/unified/merchant-sku-mappings/bulk` — Bulk Update Merchant SKU Mappings
+- `PUT //{domain}/api/amazon/unified/merchant-sku-mappings/{id}` — Update Merchant SKU Mapping
+- `PUT //{domain}/api/amazon/unified/settlement-fallback-settings` — Update Fallback Settings
+- `PUT //{domain}/api/amazon/unified/settlement-mapping-groups/{settlementMappingGroup}` — Update Mapping Group
+- `PUT //{domain}/api/amazon/unified/settlement-type-mappings/bulk-assign` — Bulk Assign Type Mappings
+- `PUT //{domain}/api/amazon/{integrationInstance}` — Update Amazon Integration Instance
+- `PUT //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}` — Update Draft Inbound Plan
+- `PUT //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings` — Map Settlement Types
+- `PUT //{domain}/api/amazon/{integrationInstance}/finances/settlement-data/type-mappings/bulk-assign` — Bulk Assign Type Mappings
+- `PUT //{domain}/api/amazon/{integrationInstance}/finances/settlement-finance-settings` — Update Fallback Settings (Per Instance)
+- `PUT //{domain}/api/amazon/{integrationInstance}/finances/settlement-mapping-groups/reorder` — Reorder Mapping Groups
+- `PUT //{domain}/api/amazon/{integrationInstance}/finances/settlement-mapping-groups/{settlementMappingGroup}` — Update Mapping Group
+- `PUT //{domain}/api/amazon/{integrationInstance}/fnsku-products/auto-mapping-settings` — Update Auto-Mapping Settings
+- `PUT //{domain}/api/amazon/{integrationInstance}/mappings` — Update mappings for integration instance
+- `PUT //{domain}/api/amazon/{integrationInstance}/products/archive` — Archive Products (Bulk)
+- `PUT //{domain}/api/amazon/{integrationInstance}/products/delete` — Delete Products (Bulk)
+- `PUT //{domain}/api/amazon/{integrationInstance}/products/deleteable` — Check Deleteable
+- `PUT //{domain}/api/amazon/{integrationInstance}/products/map` — Map Products to SKU.io Products (Bulk)
+- `PUT //{domain}/api/amazon/{integrationInstance}/products/unarchive` — Unarchive Products (Bulk)
+- `PUT //{domain}/api/big-commerce/{integrationInstance}` — Update Integration Instance
+- `PUT //{domain}/api/big-commerce/{integrationInstance}/products/archive` — Archive Products
+- `PUT //{domain}/api/big-commerce/{integrationInstance}/products/delete` — Delete Products
+- `PUT //{domain}/api/big-commerce/{integrationInstance}/products/map` — Map Products
+- `PUT //{domain}/api/big-commerce/{integrationInstance}/products/unarchive` — Unarchive Products
+- `PUT //{domain}/api/big-commerce/{integration_instance}/store-mapped-warehouse-locations` — Store Mapped Warehouse Locations
+- `PUT //{domain}/api/ebay/integration-instances/{integrationInstance}` — Update Integration Instance
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/archive` — Archive Legacy Products
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/delete` — Delete Legacy Products (Bulk)
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/deleteable` — Check Deleteable Products
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/map` — Map Products
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/unarchive` — Unarchive Legacy Products
+- `PUT //{domain}/api/ebay/{integrationInstance}/legacy-products/{product}` — Update Legacy Product
+- `PUT //{domain}/api/magento/{integration_instance}/download-orders` — Download Orders
+- `PUT //{domain}/api/magento/{integration_instance}/download-products` — Download Products
+- `PUT //{domain}/api/qbo/custom-field-mappings` — Update Custom Field Mappings
+- `PUT //{domain}/api/qbo/payment-type-mappings/{paymentTypeId}` — Update Payment Type Mapping
+- `PUT //{domain}/api/qbo/tax-code-mappings/{taxRateId}` — Update Tax Code Mapping
+- `PUT //{domain}/api/shipfusion/integration-instances/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/shipfusion/integration-instances/{integration_instance}/warehouse-mappings/IL` — Update Warehouse Mapping
+- `PUT //{domain}/api/shiphero/integration-instances/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/shiphero/update-order/{sales_order_fulfillment}` — Update Order From Fulfillment (Power User)
+- `PUT //{domain}/api/shiphero/{integration_instance}/warehouses/map` — Map Warehouses
+- `PUT //{domain}/api/shipmyorders/integration-instances/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/shipmyorders/invoices/archive` — Bulk Archive Invoices
+- `PUT //{domain}/api/shipmyorders/invoices/unarchive` — Bulk Unarchive Invoices
+- `PUT //{domain}/api/shipmyorders/invoices/{id}/archive` — Archive Invoice
+- `PUT //{domain}/api/shipmyorders/invoices/{id}/unarchived` — Unarchive Invoice
+- `PUT //{domain}/api/shipmyorders/invoices/{shipMyOrdersInvoice}` — Update Invoice
+- `PUT //{domain}/api/shipstation/update-order/{sales_order_fulfillment}` — Update ShipStation Order from Fulfillment
+- `PUT //{domain}/api/shopify/{integrationInstance}/returns-access` — Set Returns Access
+- `PUT //{domain}/api/tiktok-shop/integration-instances/{integration_instance_id}/mappings` — Update Field Mappings
+- `PUT //{domain}/api/trackstar/integration-instances/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/trackstar/integration-instances/{integration_instance}/shipping-methods/{trackstar_shipping_method}/mapping` — Update Shipping Method Mapping
+- `PUT //{domain}/api/trackstar/integration-instances/{integration_instance}/warehouse-mappings/{warehouse_mapping}` — Update Warehouse Mapping
+- `PUT //{domain}/api/veracore/integration-instances/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/veracore/update-order/{sales_order_fulfillment}` — Update Order From Fulfillment (Power User)
+- `PUT //{domain}/api/walmart/{integrationInstance}` — Update Integration Instance
+- `PUT //{domain}/api/walmart/{integrationInstance}/products/archive` — Archive Products
+- `PUT //{domain}/api/walmart/{integrationInstance}/products/delete` — Delete Products
+- `PUT //{domain}/api/walmart/{integrationInstance}/products/map` — Map Products
+- `PUT //{domain}/api/walmart/{integrationInstance}/products/unarchive` — Unarchive Products
+- `PUT //{domain}/api/walmart/{integration_instance}/store-mapped-warehouse-locations` — Store Mapped Warehouse Locations
+- `PUT //{domain}/api/woo-commerce/{integration_instance}` — Update Integration Instance
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/orders/{order}` — Update Order
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/archive` — Archive Products
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/delete` — Delete Products
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/deleteable` — Check Deleteable Products
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/map` — Map Products
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/unarchive` — Unarchive Products
+- `PUT //{domain}/api/woo-commerce/{integration_instance}/products/{product}` — Update Product
+- `PUT /api/amazon/reimbursement-cases/{reimbursementCase}` — Update reimbursement case
+- `PUT /api/amazon/unified/awd/ship-from-mappings/12` — Update ship-from mapping
+- `PUT /api/amazon/{integrationInstance}/products/archive` — Archive Products (Bulk)
+- `PUT /api/amazon/{integrationInstance}/products/delete` — Delete Products (Bulk)
+- `PUT /api/amazon/{integrationInstance}/products/deleteable` — Check Deleteable
+- `PUT /api/amazon/{integrationInstance}/products/map` — Map Products to SKU.io Products (Bulk)
+- `PUT /api/amazon/{integrationInstance}/products/unarchive` — Unarchive Products (Bulk)
+
+## Changed
+
+- `DELETE /api/amazon/{integrationInstance}` — Delete Amazon Integration Instance
+  - new response code(s): `204`
+  - removed response code(s): `200`
+- `DELETE /api/amazon/{integrationInstance}/products/{product}/map` — Unmap Single Product
+  - new response code(s): `422`
+- `DELETE /api/amazon/{integrationInstance}/removal-orders/{orderId}/undo-all-receipts` — Undo All Receipts for Removal Order
+  - new parameter(s): `Authorization`
+- `DELETE /api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/clear-warehouse` — Clear Receiving Warehouse
+  - new parameter(s): `Authorization`
+- `DELETE /api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/remove-receipt` — Remove Receipt (Single Shipment)
+  - new parameter(s): `Authorization`
+  - removed response code(s): `404`
+- `GET /api/amazon/unified/awd/initial-inventory/status` — Get AWD initial inventory status
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/awd/initial-inventory/summary` — Get AWD initial inventory summary
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/awd/ledgers` — List AWD ledgers (paginated) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/awd/ship-from-mappings` — List ship-from mappings (paginated)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/awd/shipments` — List AWD shipments (paginated) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/customer-returns` — List FBA Customer Returns (Across Instances) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `date_from`, `date_to`, `integration_instance_ids`, `page`, `per_page`, `search`
+- `GET /api/amazon/unified/fifo-layers/cogs/consumptions` — List Consumptions across all FIFO Layers (paginated) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/fifo-layers/cogs/import/template` — Download COGS Import Template (CSV)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/fnsku-products` — List FNSKU Products (paginated, with reconciliation data) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `integration_instance_ids`, `page`, `per_page`, `search`, `sort`
+- `GET /api/amazon/unified/fnsku-products/activity-log` — Auto-Mapping Activity Log **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/fnsku-products/export` — Export FNSKU Products (unpaginated)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/fnsku-products/mapped` — List Mapped FNSKU Products (paginated) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/fnsku-products/mapped-by-asin` — List Mapped FNSKUs Grouped by ASIN **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/fnsku-products/search` — Search FNSKU products **(breaking)**
+  - new parameter(s): `Authorization`, `fnsku`
+  - removed parameter(s): `q`
+- `GET /api/amazon/unified/fnsku-products/stats` — Get ASIN mapping statistics **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `integration_instance_ids`
+- `GET /api/amazon/unified/fnsku-products/unmapped` — List Unmapped FNSKU Products (paginated) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/fnsku-products/unmapped-by-asin` — List Unmapped FNSKUs Grouped by ASIN **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `page`, `per_page`
+- `GET /api/amazon/unified/legacy-inbound-shipments` — List Legacy FBA Inbound Shipments **(breaking)**
+  - removed parameter(s): `integration_instance_ids`, `page`, `per_page`, `search`
+- `GET /api/amazon/unified/new-inbound-shipments` — List Shipments **(breaking)**
+  - removed parameter(s): `integration_instance_ids`, `page`, `per_page`, `search`
+- `GET /api/amazon/unified/removal-orders` — List Removal Orders (Grouped Across Instances) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `date_from`, `date_to`, `disposition`, `integration_instance_ids`, `order_status`, `order_type`, `page`, `per_page`, `search`
+- `GET /api/amazon/unified/removal-orders/export` — Export Removal Orders **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `date_from`, `date_to`, `disposition`, `integration_instance_ids`, `order_status`, `order_type`, `search`
+- `GET /api/amazon/unified/removal-shipments` — List Removal Shipments (paginated, across instances) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `carrier`, `date_from`, `date_to`, `disposition`, `integration_instance_ids`, `page`, `per_page`, `removal_order_type`, `search`
+- `GET /api/amazon/unified/removal-shipments/export` — Export Removal Shipments (across instances) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `carrier`, `date_from`, `date_to`, `disposition`, `integration_instance_ids`, `removal_order_type`, `search`
+- `GET /api/amazon/unified/transactions` — List Transactions (paginated, cross-instance) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `date_from`, `date_to`, `integration_instance_ids`, `page`, `per_page`, `processed`, `search`, `transaction_status`, `transaction_type`
+- `GET /api/amazon/unified/transactions/export` — Export Transactions (background job)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/transactions/export/download` — Download Export File
+  - new parameter(s): `Authorization`
+  - new response code(s): `404`
+- `GET /api/amazon/unified/transactions/process-all/status` — Process All Status
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/unified/transactions/statistics` — Statistics (grouped breakdowns) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `date_from`, `date_to`, `integration_instance_ids`, `processed`, `search`, `transaction_status`, `transaction_type`
+- `GET /api/amazon/{integrationInstance}/products` — List Amazon Products for Integration **(breaking)**
+  - new parameter(s): `filter[archived]`, `per_page`
+  - removed parameter(s): `archived`, `limit`, `search`
+- `GET /api/amazon/{integrationInstance}/products/{product}/orders` — Get Orders for Product
+  - new parameter(s): `page`, `per_page`
+- `GET /api/amazon/{integrationInstance}/products/{product}/raw` — Get Raw Catalog Data from Amazon
+  - new response code(s): `422`
+- `GET /api/amazon/{integrationInstance}/removal-orders` — List Removal Orders (DataTable) **(breaking)**
+  - new parameter(s): `Authorization`
+  - removed parameter(s): `archived`, `page`, `per_page`
+- `GET /api/amazon/{integrationInstance}/removal-orders/export` — Export Removal Orders (CSV/XLSX)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/{integrationInstance}/removal-orders/order-details` — Get Order Details (by query string)
+  - new parameter(s): `Authorization`
+  - removed response code(s): `200`, `404`
+- `GET /api/amazon/{integrationInstance}/removal-orders/unlinked` — Get Unlinked Removal Orders
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/{integrationInstance}/removal-orders/{orderId}` — Get Order Details (by path)
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/{integrationInstance}/removal-shipments` — List Removal Shipments (DataTable) **(breaking)**
+  - new parameter(s): `Authorization`, `limit`
+  - removed parameter(s): `per_page`
+- `GET /api/amazon/{integrationInstance}/removal-shipments/export` — Export Removal Shipments
+  - new parameter(s): `Authorization`
+- `GET /api/amazon/{integrationInstance}/removal-shipments/{removalShipment}` — Show Removal Shipment
+  - new parameter(s): `Authorization`
+  - new response code(s): `404`
+- `PATCH /api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/close-receiving` — Close Receiving
+  - new parameter(s): `Authorization`, `Content-Type`
+  - new response code(s): `422`
+- `PATCH /api/amazon/{integrationInstance}/removal-orders/{removalOrderId}/resume-receiving` — Resume Receiving
+  - new parameter(s): `Authorization`, `Content-Type`
+- `POST /api/amazon/unified/awd/refresh` — Refresh AWD shipments (dispatch jobs)
+  - new parameter(s): `Authorization`, `Content-Type`
+  - new response code(s): `422`
+- `POST /api/amazon/unified/awd/shipments/process` — Process AWD shipments
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/customer-returns/bulk-mark-reviewed` — Bulk Mark Customer Returns as Reviewed
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/customer-returns/bulk-mark-unreviewed` — Bulk Mark Customer Returns as Unreviewed
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fifo-layers/cogs/bulk-update` — Bulk Update COGS
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fifo-layers/cogs/import` — Execute COGS Import
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fifo-layers/cogs/import/validate` — Validate COGS Import
+  - new parameter(s): `Authorization`
+  - new response code(s): `422`
+- `POST /api/amazon/unified/fnsku-products/bulk-link` — Bulk Link (to single product)
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fnsku-products/bulk-reconcile` — Bulk Reconcile
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fnsku-products/bulk-unreconcile` — Bulk Unreconcile
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fnsku-products/map-by-asin` — Map all FNSKUs for an ASIN to a Product
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fnsku-products/map-single-fnsku` — Map Single FNSKU to a Product
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/fnsku-products/reconcile-all` — Reconcile All (tracked job)
+  - new parameter(s): `Authorization`, `Content-Type`
+- `POST /api/amazon/unified/legacy-inbound-shipments/process-all` — Process All Unprocessed Shipments (dispatch tracked job)
+  - new parameter(s): `Content-Type`
+- `POST /api/amazon/unified/legacy-inbound-shipments/refresh` — Refresh All Shipments (dispatch tracked job)
+  - new parameter(s): `Content-Type`
+- `POST /api/amazon/unified/new-inbound-shipments/process-all` — Process All (Apply Unprocessed Shipments)
+  - new parameter(s): `Content-Type`
+- `POST /api/amazon/unified/new-inbound-shipments/refresh` — Refresh All (Sync from Amazon)
+  - new parameter(s): `Content-Type`
+- `POST /api/amazon/unified/removal-orders/bulk-archive` — Bulk Archive Removal Orders
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/unified/removal-orders/bulk-unarchive` — Bulk Unarchive Removal Orders
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/unified/removal-orders/bulk-unprocess` — Bulk Unprocess Removal Orders
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/unified/removal-shipments/bulk-archive` — Bulk Archive Removal Shipments
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/unified/removal-shipments/bulk-unarchive` — Bulk Unarchive Removal Shipments
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/unified/transactions/bulk-process` — Bulk Process Transactions
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/transactions/bulk-unprocess` — Bulk Unprocess Transactions
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/transactions/process-all` — Process All (background job)
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/unified/transactions/sync` — Sync Transactions (background job)
+  - new parameter(s): `Authorization`
+  - new response code(s): `422`
+- `POST /api/amazon/unified/transactions/{transaction}/process` — Process Transaction
+  - new parameter(s): `Authorization`, `Content-Type`
+  - new response code(s): `422`
+- `POST /api/amazon/unified/transactions/{transaction}/unprocess` — Unprocess Transaction
+  - new parameter(s): `Authorization`, `Content-Type`
+- `POST /api/amazon/{integrationInstance}/new-inbound/shipments/process` — Process New Inbound Shipments
+  - new response code(s): `207`
+- `POST /api/amazon/{integrationInstance}/new-inbound/shipments/process-all` — Process All Unprocessed New Inbound Shipments
+  - new parameter(s): `Content-Type`
+- `POST /api/amazon/{integrationInstance}/products/{product}/create-sku-product` — Create SKU.io Product from Amazon Product
+  - new response code(s): `422`
+- `POST /api/amazon/{integrationInstance}/products/{product}/map` — Map Single Product to SKU.io Product
+  - new response code(s): `422`
+- `POST /api/amazon/{integrationInstance}/products/{product}/refresh` — Refresh Single Product (Catalog Lookup)
+  - new response code(s): `403`
+- `POST /api/amazon/{integrationInstance}/removal-orders/archive` — Archive Removal Orders
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/{integrationInstance}/removal-orders/set-warehouse` — Set Receiving Warehouse
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/{integrationInstance}/removal-orders/unarchive` — Unarchive Removal Orders
+  - new parameter(s): `Authorization`
+- `POST /api/amazon/{integrationInstance}/removal-orders/{removalOrder}/mark-item-as-unknown` — Mark Item As Unknown
+  - new parameter(s): `Authorization`, `Content-Type`
+- `POST /api/amazon/{integrationInstance}/removal-orders/{removalOrder}/unmark-item-as-unknown` — Unmark Item As Unknown
+  - new parameter(s): `Authorization`, `Content-Type`
+- `POST /api/amazon/{integrationInstance}/removal-shipments/bulk-remove-receipts` — Bulk Remove Receipts
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/{integrationInstance}/removal-shipments/receive-bulk` — Bulk Receive Shipments
+  - new parameter(s): `Authorization`
+  - removed response code(s): `422`
+- `POST /api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/receive` — Receive Shipment
+  - new parameter(s): `Authorization`
+  - removed response code(s): `404`
+- `PUT /api/amazon/{integrationInstance}/mappings` — Update mappings for integration instance
+  - new response code(s): `422`
+
+_Spec version 1.0.0 → 1.0.0._
