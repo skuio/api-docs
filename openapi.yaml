@@ -130826,7 +130826,11 @@ paths:
         so partially-refunded credits no longer double-count against Balance Due.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.\n\n**Address override fields:** `shipping_overridden_at`
+        is an ISO-8601 UTC timestamp (or null) set when an operator manually corrects
+        the ship-to/billing address; `is_shipping_overridden` is the boolean equivalent.
+        When set, sales-channel resyncs (e.g. Amazon) will not overwrite the corrected
+        inline address columns.'
       parameters:
       - name: Accept
         in: header
@@ -130873,6 +130877,8 @@ paths:
                     province: California
                     zip: '90001'
                     country: United States
+                  shipping_overridden_at: null
+                  is_shipping_overridden: false
                   billing_address:
                     name: Acme Corp
                     address1: 123 Main St
@@ -131032,6 +131038,8 @@ paths:
                 data:
                   id: 500
                   sales_order_number: SO-0158
+                  shipping_overridden_at: null
+                  is_shipping_overridden: false
                   order_status: open
                   fulfillment_status: fulfilled
                   payment_status: null
@@ -131636,6 +131644,8 @@ paths:
                   currency_rate: 1
                   requested_shipping_method: UPS Ground
                   shipping_address: 123 Main St
+                  shipping_overridden_at: null
+                  is_shipping_overridden: false
                   shipping_city: Brooklyn
                   shipping_province: NY
                   shipping_zip: '11201'
@@ -132617,6 +132627,189 @@ paths:
               example: "{\n  \"message\": \"Sales order line successfully converted\
                 \ to revenue line\"\n}"
       operationId: post-api-sales-order-lines-salesorderline-financiallinetype-convert-to-financial-line
+  /api/sales-order-lines/{salesOrderLine}/suggest-warehouse:
+    get:
+      tags:
+      - Sales Order Lines
+      summary: Suggest Fulfillment Warehouse
+      description: Read-only fulfillment-routing suggestion for an UNALLOCATED line.
+        Runs the same warehouse priority + on-hand check the real routing uses to
+        pick a default warehouse, and returns the ordered candidates with per-warehouse
+        availability so the Allocate dialog can explain WHY a warehouse won and offer
+        an override. Allocation itself is then performed via the split-across-warehouses
+        endpoint with a single slice. Authenticate with a Personal Access Token (PAT).
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderLine
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: SalesOrderLine ID
+        example: '55347'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  sales_order_line_id: 55347
+                  quantity_needed: 4
+                  chosen_warehouse_id: 9
+                  chosen_warehouse_name: Main Warehouse
+                  strategy: priority
+                  strategy_label: Configured warehouse priority order
+                  candidates:
+                  - warehouse_id: 1
+                    warehouse_name: Default Warehouse
+                    warehouse_type: direct
+                    priority_rank: 1
+                    available: 0
+                    has_stock: false
+                    fully_covers: false
+                    chosen: false
+                  - warehouse_id: 9
+                    warehouse_name: Main Warehouse
+                    warehouse_type: direct
+                    priority_rank: 2
+                    available: 50
+                    has_stock: true
+                    fully_covers: true
+                    chosen: true
+      operationId: get-api-sales-order-lines-salesorderline-suggest-warehouse
+  /api/sales-order-lines/{salesOrderLine}/split-across-warehouses:
+    post:
+      tags:
+      - Sales Order Lines
+      summary: Split Line Across Warehouses
+      description: 'Redistribute a sales order line''s **pre-dispatch** fulfillment
+        across multiple warehouses WITHOUT duplicating the line (Pattern C). The channel
+        line stays 1:1 with upstream; the split materialises as **one InventoryAllocation
+        + one FulfillmentOrder per warehouse** (`1 SOL → N allocations → N FOs`).
+        Each slice allocates on-hand up to availability at that warehouse, with the
+        remainder planned (backorder).
+
+
+        **Pre-dispatch only.** Allowed while every fulfillment order for the line
+        is still `open + unsubmitted`. Once any FO has been submitted to a carrier
+        the line can no longer be redistributed — returns **409**.
+
+
+        **Body fields:**
+
+        - `slices` (required, array, min 1) — the target distribution.
+
+        - `slices[].warehouse_id` (required, integer, must exist) — destination warehouse
+        for this slice.
+
+        - `slices[].quantity` (required, integer, min 1) — units to fulfil from that
+        warehouse.
+
+
+        The slice total must not exceed the line''s unfulfilled quantity (**422**
+        otherwise). Duplicate warehouses are merged. Returns the refreshed sales order.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"slices\": [\n    { \"warehouse_id\": 9, \"quantity\":
+                3 },\n    { \"warehouse_id\": 11, \"quantity\": 2 }\n  ]\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderLine
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: SalesOrderLine ID
+        example: '55347'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1234
+                  sales_order_number: SO-0123
+                  order_status: open
+                  item_info:
+                  - sales_order_line_id: 55347
+                    item_quantity: 5
+                    fulfilled_quantity: 0
+                    submitted_quantity: 0
+                    allocated_quantity: 5
+                    on_hand_allocated_quantity: 3
+                    planned_quantity: 1
+                    awaiting_receipt_quantity: 1
+                    backorder_warehouses:
+                    - warehouse_id: 9
+                      quantity: 1
+                      status: planned
+                    - warehouse_id: 12
+                      quantity: 1
+                      status: awaiting_receipt
+                    warehouse:
+                      id: 9
+                      name: Default Warehouse
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'SalesOrderLine #55347 cannot be split across warehouses: it
+                  has a fulfillment order beyond open+unsubmitted (already submitted
+                  to a carrier). Splitting is a pre-dispatch operation.'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Split total (12) exceeds the line's unfulfilled quantity (10).
+      operationId: post-api-sales-order-lines-salesorderline-split-across-warehouses
   /api/sales-order-lines/import:
     post:
       tags:
@@ -133471,6 +133664,92 @@ paths:
                   cost:
                   - The cost must be less than 100000.
       operationId: patch-api-v2-sales-order-fulfillments-salesorderfulfillment-shipping-details
+  /api/sales-order-fulfillments/{salesOrderFulfillment}:
+    delete:
+      tags:
+      - Fulfillments
+      summary: Void Shipment
+      description: 'Voids a shipment (SalesOrderFulfillment) — a SOFT, reversible
+        cancel that does NOT hard-delete the record (SKU-8019 ''A1''). Voiding: reverses
+        the shipment''s inventory movements, reverts Fulfilled→Allocated allocations,
+        restores the parent FulfillmentOrder budget and reopens the SAME FO to Open/Unsubmitted
+        so it can be re-fulfilled, cancels the carrier order, and flips the SOF to
+        status=canceled with voided_at/voided_by_user_id/void_reason set. The SOF
+        + its lines are RETAINED for history; voided shipments are excluded from the
+        active fulfillment tab (voided_at IS NULL filter).
+
+
+        Not voidable (returns 400): an already-shipped shipment (status fulfilled
+        / fulfilled_awaiting_info — use a return/RMA), an already-voided shipment,
+        or a multi-channel (MCF / merge-group) submission (void individual standalone
+        shipments only).
+
+
+        Request body (optional):
+
+        - void_reason (string, optional): reason recorded on the void + FO activity
+        entry. Falls back to `reason` if absent.
+
+
+        Query params:
+
+        - check-deletable (0|1, default 1): when 1, runs the carrier-side ''already
+        shipped at provider'' guard before voiding.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderFulfillment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order fulfillment (shipment) ID
+        example: '1001'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The sales order fulfillment SO-0123.2 voided successfully
+                data: []
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                errors:
+                - message: 'Shipment SO-0123.2 cannot be voided: status=fulfilled.
+                    Shipped shipments (fulfilled, fulfilled_awaiting_info) are not
+                    voidable — use a return/RMA instead.'
+                  code: DeleteShippingProviderOrder422
+                  field: id
+      operationId: delete-api-sales-order-fulfillments-salesorderfulfillment
   /api/v2/merged-shipments:
     get:
       tags:
@@ -158118,6 +158397,93 @@ paths:
                       lines:
                       - The lines field must have at least 1 items.
       operationId: post-api-fulfillment-orders
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: Dispatch Board — Active FOs Across All Orders
+      description: 'Cross-order **dispatch board** feed: every ACTIVE fulfillment
+        order across all sales orders (excludes `closed` and `cancelled`), with `salesOrder`
+        (for `sales_order_number`), `warehouse`, and `lines` eager-loaded. The frontend
+        groups these into Kanban columns by `request_status` / `status` (Awaiting
+        dispatch → Submitting → Submitted/Accepted → In progress → Needs attention).
+        Capped at the most recent 300.
+
+
+        No query parameters in v1. Authenticate with a Personal Access Token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 451
+                  sales_order_id: 123
+                  sales_order_number: SO-0042
+                  warehouse_id: 7
+                  status: open
+                  request_status: unsubmitted
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  requested_shipping_method_id: null
+                  requested_shipping_method: null
+                  requested_ship_date: null
+                  requested_metadata: null
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-31T10:15:00+00:00'
+                  updated_at: '2026-05-31T10:15:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 5
+                    remaining_quantity: 5
+                  warehouse:
+                    id: 7
+                    name: Default Warehouse
+                    type: direct
+                    order_fulfillment: starshipit
+                - id: 452
+                  sales_order_id: 124
+                  sales_order_number: SO-0043
+                  warehouse_id: 9
+                  status: open
+                  request_status: rejected
+                  is_stuck_submitting: false
+                  rejection_reason: Invalid postal code for service
+                  created_at: '2026-05-31T10:20:00+00:00'
+                  updated_at: '2026-05-31T10:21:00+00:00'
+                  lines:
+                  - id: 902
+                    fulfillment_order_id: 452
+                    sales_order_line_id: 55400
+                    quantity: 4
+                    remaining_quantity: 4
+                  warehouse:
+                    id: 9
+                    name: West Coast WH
+                    type: direct
+                    order_fulfillment: starshipit
+      operationId: get-api-fulfillment-orders
   /api/fulfillment-orders/{fulfillmentOrder}/move:
     patch:
       tags:
@@ -158731,6 +159097,404 @@ paths:
                   a FO that is currently submitting can be force-failed (currently
                   status=open, request_status=unsubmitted).'
       operationId: post-api-fulfillment-orders-fulfillmentorder-force-fail-submission
+  /api/fulfillment-orders/{fulfillmentOrder}/merge:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Merge Fulfillment Orders
+      description: 'Fold a sibling fulfillment order (`source_fulfillment_order_id`)
+        INTO the route FO (the target). The source''s lines are merged into the target
+        per sales order line, the emptied source FO is deleted, and the target is
+        returned. One fulfillment order → one submission → one shipment.
+
+
+        **Mutability gate.** Both FOs must be `status=open` AND `request_status` in
+        {`unsubmitted`, `rejected`}, at the SAME warehouse, on the SAME sales order.
+        Violations return 409 (not mutable) or 422 (different warehouse / different
+        sales order / self-merge).
+
+
+        **Body fields:**
+
+        - `source_fulfillment_order_id` (required, integer, must exist) — the FO to
+        merge in and remove.
+
+        - `requested_shipping_method_id` (optional, integer, nullable) — resolved
+        shipping method id (overwrites the target''s).
+
+        - `requested_shipping_method` (optional, string, nullable) — resolved shipping
+        method label.
+
+        - `requested_ship_date` (optional, date, nullable) — resolved requested ship
+        date.
+
+        - `requested_metadata` (optional, object, nullable) — resolved provider metadata;
+        REPLACES the target''s metadata wholesale, so send the complete merged object.
+        Allowed keys: `notes`, `fulfillment_sequence`, `signature_required`, `veracore_packing_slip_comments`,
+        `veracore_shipping_comments`, `veracore_third_party_type` (1–3), `veracore_third_party_account_number`,
+        `isInsured`, `instructionsForWarehouse`.
+
+
+        The resolved-shipping fields are the CONFLICT RESOLUTION chosen in the merge
+        dialog — omit them entirely to keep the target''s existing shipping details.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"source_fulfillment_order_id\": 452,\n  \"requested_shipping_method\":
+                \"UPS Ground\",\n  \"requested_metadata\": {\n    \"signature_required\":
+                true,\n    \"notes\": \"Combined into a single shipment\"\n  }\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Target FulfillmentOrder ID — the FO the source is folded INTO
+          (kept).
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  warehouse_id: 9
+                  status: open
+                  request_status: unsubmitted
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  requested_shipping_method_id: null
+                  requested_shipping_method: UPS Ground
+                  requested_ship_date: null
+                  requested_metadata:
+                    signature_required: true
+                    notes: Combined into a single shipment
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-26T10:22:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 5
+                    remaining_quantity: 5
+                    created_at: '2026-05-26T10:15:00+00:00'
+                    updated_at: '2026-05-26T10:22:00+00:00'
+                  warehouse:
+                    id: 9
+                    name: 3PL Atlanta
+                    type: 3pl
+                    order_fulfillment: starshipit
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'FulfillmentOrder #452 cannot be merged: status=open, request_status=submitted.
+                  Only open + unsubmitted/rejected FOs at the same warehouse are mergeable.'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Fulfillment orders at different warehouses cannot be merged
+                  — move one first.
+      operationId: post-api-fulfillment-orders-fulfillmentorder-merge
+  /api/fulfillment-orders/{fulfillmentOrder}/activity-log:
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: Get Fulfillment Order Activity Log
+      description: 'Paginated audit trail for a single fulfillment order — created,
+        warehouse move, shipping-method change, submit, merge, cancel — newest first.
+        The same events also roll up onto the parent sales order''s Activity tab (`GET
+        /api/v2/sales-orders/{salesOrder}/activity-log`).
+
+
+        **Query params (all optional):**
+
+        - `per_page` (integer, default 15)
+
+        - `filter[search]` (string) — searches causer name / event / property changes
+
+        - `filter[event]` (string) — exact event match (created, updated, deleted)
+
+        - `filter[source]` (string) — matches `properties.source`'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 88231
+                  description: updated
+                  event: updated
+                  subject_type: FulfillmentOrder
+                  subject_id: 451
+                  properties:
+                    attributes:
+                      requested_shipping_method_id: 9
+                      requested_shipping_method: UPS Ground
+                    old:
+                      requested_shipping_method_id: 4
+                      requested_shipping_method: USPS Priority
+                  causer_name: Kalvin Mizzi
+                  created_at: '2026-06-02T10:22:00+00:00'
+                - id: 88210
+                  description: created
+                  event: created
+                  subject_type: FulfillmentOrder
+                  subject_id: 451
+                  properties:
+                    attributes:
+                      sales_order_id: 123
+                      warehouse_id: 9
+                      status: open
+                      request_status: unsubmitted
+                  causer_name: null
+                  created_at: '2026-06-02T10:15:00+00:00'
+                current_page: 1
+                per_page: 15
+                total: 2
+                last_page: 1
+                from: 1
+                to: 2
+      operationId: get-api-fulfillment-orders-fulfillmentorder-activity-log
+  /api/fulfillment-orders/{fulfillmentOrder}/shipping:
+    patch:
+      tags:
+      - Fulfillment Orders
+      summary: Edit Fulfillment Order Shipping Details
+      description: 'Edit the **requested** shipping params on a proforma fulfillment
+        order before it is submitted — the shipping method, requested ship date, and
+        provider-specific metadata (e.g. notes). These travel with the FO into the
+        submission payload.
+
+
+        **Mutability gate.** Allowed ONLY while the FO is `status=open` AND `request_status`
+        is `unsubmitted` or `rejected` (i.e. not yet successfully sent). Once submitting/accepted
+        the carrier owns the values, so edits return **409**.
+
+
+        **Body fields (all optional — `sometimes`; only the keys present are written):**
+
+        - `requested_shipping_method_id` (nullable, integer, must exist in `shipping_methods`)
+        — the chosen shipping method.
+
+        - `requested_shipping_method` (nullable, string, max 255) — free-text method
+        label (used when no method id applies / provider-specific).
+
+        - `requested_ship_date` (nullable, date) — requested dispatch date.
+
+        - `requested_metadata` (nullable, object) — free-form, provider-varying values.
+        Only the keys the active provider owns are written; on submission they are
+        bridged onto the SalesOrderFulfillment metadata the carrier dispatchers read.
+
+        - `requested_metadata.notes` (nullable, string, max 2000) — fulfillment notes
+        for the provider.
+
+        - `requested_metadata.signature_required` (nullable, boolean) — signature
+        on delivery (Starshipit / ShipHero / ShipMyOrders / ShipFusion). Aliased to
+        `isSignatureRequired` for ShipHero & ShipMyOrders when bridged onto the fulfillment.
+
+        - `requested_metadata.veracore_packing_slip_comments` (nullable, string, max
+        500) — Veracore packing-slip comments.
+
+        - `requested_metadata.veracore_shipping_comments` (nullable, string, max 500)
+        — Veracore shipping comments.
+
+        - `requested_metadata.veracore_third_party_type` (nullable, integer, in 1,2,3)
+        — Veracore third-party billing type.
+
+        - `requested_metadata.veracore_third_party_account_number` (nullable, string,
+        max 100) — Veracore third-party account number.
+
+        - `requested_metadata.isInsured` (nullable, boolean) — ShipMyOrders insured
+        flag.
+
+        - `requested_metadata.instructionsForWarehouse` (nullable, string, max 500)
+        — ShipMyOrders warehouse instructions.
+
+        - `requested_metadata.fulfillment_sequence` (nullable, integer, min 1) — backup
+        override for the postfix pushed to the provider as the order number (`{sales_order_number}.{sequence}`).
+        Omit/null to auto-assign the next sequence at submit. The current default
+        is exposed on the FulfillmentOrderResource as `next_fulfillment_sequence`.
+
+
+        Returns the updated FulfillmentOrderResource (which includes `next_fulfillment_sequence`).'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"requested_shipping_method_id\": 12,\n  \"requested_shipping_method\":
+                \"Starshipit Express\",\n  \"requested_ship_date\": \"2026-06-02\",\n  \"requested_metadata\":
+                {\n    \"notes\": \"Leave at the side door.\",\n    \"signature_required\":
+                true,\n    \"veracore_packing_slip_comments\": \"Fragile\",\n    \"veracore_shipping_comments\":
+                \"\",\n    \"veracore_third_party_type\": 2,\n    \"veracore_third_party_account_number\":
+                \"ACME-123\",\n    \"isInsured\": true,\n    \"instructionsForWarehouse\":
+                \"Gift wrap\",\n    \"fulfillment_sequence\": 2\n  }\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 451
+                  sales_order_id: 123
+                  sales_order_number: SO-0123
+                  warehouse_id: 9
+                  status: open
+                  request_status: unsubmitted
+                  is_stuck_submitting: false
+                  external_id: null
+                  external_type: null
+                  integration_instance_id: null
+                  requested_shipping_method_id: 12
+                  requested_shipping_method: Starshipit Express
+                  requested_ship_date: '2026-06-02T00:00:00+00:00'
+                  requested_metadata:
+                    notes: Leave at the side door.
+                  next_fulfillment_sequence: 1
+                  submitted_at: null
+                  accepted_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  rejection_reason: null
+                  created_at: '2026-05-26T10:15:00+00:00'
+                  updated_at: '2026-05-31T18:40:00+00:00'
+                  lines:
+                  - id: 901
+                    fulfillment_order_id: 451
+                    sales_order_line_id: 55347
+                    quantity: 3
+                    remaining_quantity: 3
+                  warehouse:
+                    id: 9
+                    name: Default Warehouse
+                    type: standard
+                    order_fulfillment: starshipit
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: 'FulfillmentOrder #451 shipping details cannot be edited: status=open,
+                  request_status=submitting. Requested shipping is editable only before
+                  the order is successfully submitted (open + unsubmitted/rejected).'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The selected requested shipping method id is invalid.
+                errors:
+                  requested_shipping_method_id:
+                  - The selected requested shipping method id is invalid.
+      operationId: patch-api-fulfillment-orders-fulfillmentorder-shipping
   /api/report-templates:
     get:
       tags:
