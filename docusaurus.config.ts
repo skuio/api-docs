@@ -46,6 +46,10 @@ const config: Config = {
   ],
 
   plugins: [
+    // Click-to-zoom (lightbox) for every image across the docs site, including
+    // release-notes screenshots. Without this, images render at their column
+    // width with no way to enlarge them.
+    "docusaurus-plugin-image-zoom",
     function webpackFallbackPlugin() {
       return {
         name: "webpack-fallback-plugin",
@@ -185,6 +189,14 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // docusaurus-plugin-image-zoom: click any image to open a full-size lightbox.
+    zoom: {
+      selector: ".markdown img",
+      background: {
+        light: "rgb(255, 255, 255)",
+        dark: "rgb(50, 50, 50)",
+      },
+    },
     navbar: {
       title: "SKU.io Docs",
       logo: {
