@@ -68384,7 +68384,7 @@ paths:
       - Sales Channels
       summary: Show Install (Claim Page)
       description: 'PUBLIC (no authentication). Reveals the Shopify store being connected
-        on the anonymous claim page after an App Store cold install.
+        on the claim page after an App Store cold install.
 
 
         The opaque `claimToken` in the path IS the credential — it is minted after
@@ -68404,7 +68404,7 @@ paths:
         - shop_name (string): the shop''s display name (or a humanized subdomain fallback).
 
         - status (string): lifecycle status — one of pending_auth, awaiting_claim,
-        provisioning, claimed, claim_failed, failed, expired, abandoned.
+        claiming, claimed, claim_failed, failed, expired, abandoned.
 
 
         Returns 404 when the token matches nothing (invalid or already-consumed).'
@@ -68457,166 +68457,58 @@ paths:
               example:
                 message: This connection link is invalid or has already been used.
       operationId: get-domain-api-shopify-install-claimtoken
-  //{domain}/api/shopify/install/{claimToken}/status:
-    get:
+  //{domain}/api/shopify/install/{claimToken}/claim:
+    post:
       tags:
       - Sales Channels
-      summary: Poll Claim Status
-      description: 'PUBLIC (no authentication). Polls claim/provisioning progress
-        for the self-serve signup branch of the cold install. The claim page calls
-        this on an interval after submitting a signup, since provisioning a fresh
-        tenant (DB create + migrations + seed) takes minutes.
+      summary: Claim Install (Attach to Existing Workspace)
+      description: 'AUTHENTICATED. Attaches a stashed cold install to a workspace
+        the signed-in merchant already belongs to. The merchant MUST already have
+        a SKU.io account — this flow never creates users or tenants.
 
 
-        Lenient on state — unlike the claim endpoint it reads terminal rows too (that
-        is the whole point of polling).
+        The bearer user is resolved from auth:sanctum manually (no route middleware),
+        so the claim page stays anonymous until the merchant signs in; a Bearer token
+        is therefore REQUIRED and an anonymous request is rejected with 401.
+
+
+        Resolves synchronously and returns 200 with the cross-subdomain tenant-switch
+        handoff, which the claim page uses to drop the merchant onto their tenant,
+        authenticated. A re-install into a tenant that already has an instance for
+        the shop refreshes that instance''s token in place (no duplicate).
 
 
         Throttled to 30 req/min.
 
 
-        Response fields (under `data`):
+        Request fields:
 
-        - status (string): pending_auth | awaiting_claim | provisioning | claimed
-        | claim_failed | failed | expired | abandoned.
-
-        - progress (int): 0–100 provisioning progress.
-
-        - error (string, only when status=claim_failed): the provisioning failure
-        message.
+        - tenant_id (string, required): the id of a workspace the signed-in merchant
+        already belongs to; validated against the central tenants table.
 
 
-        Once status=claimed, the cross-subdomain handoff payload is merged in so the
-        page can redirect the merchant onto their new tenant:
+        Responses:
 
-        - switch_token (string): single-use, host-bound tenant-switch token (30s TTL).
+        - 200 OK: handoff payload — status=claimed, switch_token, target_host, tenant_id,
+        instance_id, landing_path.
 
-        - target_host (string): the tenant domain to redirect to (e.g. acme.sku.io).
+        - 401 Unauthorized: no signed-in user (the merchant must sign in first).
 
-        - tenant_id (string): the claimed tenant id.
+        - 404 Not Found: unknown/consumed claim token.
 
-        - instance_id (int): the Shopify integration instance materialized in the
-        tenant.
+        - 409 Conflict: the store is already being connected (lost the atomic claim
+        race) or already claimed.
 
-        - landing_path (string): where to land inside the tenant (/integrations/shopify/dashboard).
+        - 410 Gone: the claim link has expired (reinstall from the App Store).
 
-
-        Returns 404 when the token matches nothing.'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: domain
-        in: path
-        schema:
-          type: string
-        required: true
-      - name: claimToken
-        in: path
-        schema:
-          type: string
-        required: true
-        description: Opaque claim token.
-        example: 5f3a...e91c
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-              examples:
-                example-0:
-                  summary: 200 OK — Provisioning
-                  value:
-                    data:
-                      status: provisioning
-                      progress: 60
-                example-1:
-                  summary: 200 OK — Claimed (handoff)
-                  value:
-                    data:
-                      status: claimed
-                      progress: 100
-                      switch_token: eyJ0eXAiOiJ...handoff
-                      target_host: acme.sku.io
-                      tenant_id: acme
-                      instance_id: 42
-                      landing_path: /integrations/shopify/dashboard
-                example-2:
-                  summary: 200 OK — Claim Failed
-                  value:
-                    data:
-                      status: claim_failed
-                      progress: 0
-                      error: Tenant database migration failed; please retry.
-        '404':
-          description: Not Found
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-              example:
-                message: This connection link is invalid or has already been used.
-      operationId: get-domain-api-shopify-install-claimtoken-status
-  //{domain}/api/shopify/install/{claimToken}/claim:
-    post:
-      tags:
-      - Sales Channels
-      summary: Claim Install (Sign Up or Attach)
-      description: "Claim a stashed cold install into a tenant. The body is EXACTLY\
-        \ ONE of two mutually-exclusive shapes (enforced by required_without):\n\n\
-        1. Existing-workspace branch — a signed-in merchant attaches the install to\
-        \ a workspace they already belong to. REQUIRES a Bearer token (the user is\
-        \ resolved from auth:sanctum without route middleware). Resolves synchronously\
-        \ and returns 200 with the cross-subdomain handoff.\n   Body: { \"tenant_id\"\
-        : \"acme\" }\n\n2. New-merchant signup branch — a brand-new merchant signs\
-        \ up and self-provisions a fresh workspace. NO auth required. Returns 202;\
-        \ the tenant is provisioned asynchronously and the page polls 'Poll Claim\
-        \ Status'.\n   Body: { \"workspace_name\", \"name\", \"email\", \"password\"\
-        , \"password_confirmation\" }\n\nThrottled to 30 req/min.\n\nRequest fields:\n\
-        - tenant_id (string, required_without workspace_name): existing tenant id;\
-        \ must exist (validated against the central tenants table).\n- workspace_name\
-        \ (string, required_without tenant_id, max 255): the merchant's chosen workspace\
-        \ name; slugified to the new tenant id. Re-prompts (422) on an empty, reserved,\
-        \ or already-taken slug rather than silently suffixing.\n- name (string, required_with\
-        \ workspace_name, max 255): the owner's full name.\n- email (string, required_with\
-        \ workspace_name, email, max 255, unique): the owner's email; must not already\
-        \ exist.\n- password (string, required_with workspace_name, min 8, confirmed):\
-        \ owner password; send password_confirmation to match.\n- password_confirmation\
-        \ (string): must equal password.\n\nResponses:\n- 200 OK (existing-workspace):\
-        \ handoff payload — status=claimed, switch_token, target_host, tenant_id,\
-        \ instance_id, landing_path.\n- 202 Accepted (signup): status=provisioning,\
-        \ progress=0 — poll for completion.\n- 401 Unauthorized: tenant_id branch\
-        \ without a signed-in user.\n- 403 Forbidden: signed-in user lacks access\
-        \ to the selected workspace.\n- 404 Not Found: unknown/consumed claim token.\n\
-        - 409 Conflict: the store is already being connected (lost the atomic claim\
-        \ race) or already connected.\n- 410 Gone: the claim link has expired (reinstall\
-        \ from the App Store).\n- 422 Unprocessable: validation error, incl. a taken/reserved\
-        \ workspace name."
+        - 422 Unprocessable: validation error (e.g. unknown tenant_id).'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                workspace_name: Acme Supplies
-                name: Dana Merchant
-                email: dana@acme-supplies.com
-                password: s3cret-passw0rd
-                password_confirmation: s3cret-passw0rd
+                tenant_id: acme
       parameters:
       - name: Accept
         in: header
@@ -68660,8 +68552,8 @@ paths:
                   tenant_id: acme
                   instance_id: 42
                   landing_path: /integrations/shopify/dashboard
-        '202':
-          description: Accepted
+        '401':
+          description: Unauthorized
           headers:
             Content-Type:
               schema:
@@ -68672,9 +68564,20 @@ paths:
               schema:
                 type: object
               example:
-                data:
-                  status: provisioning
-                  progress: 0
+                message: You must be signed in to connect this store to your workspace.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: This connection link is invalid or has already been used.
         '409':
           description: Conflict
           headers:
@@ -68700,10 +68603,10 @@ paths:
               schema:
                 type: object
               example:
-                message: That workspace name is already taken. Please choose another.
+                message: The selected workspace could not be found.
                 errors:
-                  workspace_name:
-                  - That workspace name is already taken. Please choose another.
+                  tenant_id:
+                  - The selected workspace could not be found.
       operationId: post-domain-api-shopify-install-claimtoken-claim
   //{domain}/api/shopify/{integrationInstance}/orders:
     get:
