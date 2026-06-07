@@ -129747,6 +129747,108 @@ paths:
               example: "{\n  \"message\": \"COGS recalculation completed successfully\
                 \ for product\"\n}"
       operationId: post-domain-api-cogs-sku-health-101-recalculate
+  /api/cogs-revaluation:
+    get:
+      tags:
+      - Costing
+      summary: List Inventory Revaluations
+      description: 'Paginated inventory revaluation ledger across all FIFO layers
+        (append-only telescoping cost-change history).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Each row is one dated cost change for a FIFO layer: old -> new unit/total
+        cost, cost_version_before -> cost_version_after, the units on hand / consumed
+        at the time, the reason, who recorded it, and the effective vs posted dates.
+        Includes cross-link fields (link_reference, link_type_label, link_route) for
+        the underlying FIFO layer.
+
+
+        Filters (Spatie QueryBuilder):
+
+        - filter[reason] (exact, InventoryRevaluationReasonEnum): landed_cost_added,
+        vendor_invoice_correction, market_value_adjustment, system_error, other
+
+        - filter[cogs_source] (exact, CogsSourceEnum): e.g. manual, purchase_order
+
+        - filter[fifo_layer_id] (exact, integer)
+
+        - filter[product_id] (integer): matches revaluations whose FIFO layer belongs
+        to the product
+
+        - filter[warehouse_id] (integer): matches revaluations whose FIFO layer belongs
+        to the warehouse
+
+        - filter[effective_from] (date Y-m-d): effective_at >= value
+
+        - filter[effective_to] (date Y-m-d): effective_at <= value
+
+        - filter[search] (string): partial match on the linked product SKU or name
+
+
+        Sorting:
+
+        - sort (allowed: id, effective_at, posted_at, new_unit_cost, old_unit_cost,
+        created_at; prefix with - for descending). Default sort: -effective_at
+
+
+        Pagination:
+
+        - page (integer, default 1)
+
+        - per_page (integer, default 10)'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 9001,\n      \"fifo_layer_id\"\
+                : 501,\n      \"reason\": \"landed_cost_added\",\n      \"reason_label\"\
+                : \"Landed Cost Added\",\n      \"reason_notes\": \"Freight + duties\
+                \ allocated from customs invoice CI-4471\",\n      \"cogs_source\"\
+                : \"manual\",\n      \"cost_version_before\": 2,\n      \"cost_version_after\"\
+                : 3,\n      \"old_unit_cost\": 10.0,\n      \"new_unit_cost\": 12.33,\n\
+                \      \"unit_cost_delta\": 2.33,\n      \"old_total_cost\": 1000.0,\n\
+                \      \"new_total_cost\": 1233.0,\n      \"total_cost_delta\": 233.0,\n\
+                \      \"units_on_hand_at_time\": 80.0,\n      \"units_consumed_at_time\"\
+                : 20.0,\n      \"effective_at\": \"2026-05-01T00:00:00.000000Z\",\n\
+                \      \"posted_at\": \"2026-05-01T00:00:00.000000Z\",\n      \"created_at\"\
+                : \"2026-05-01T14:22:10.000000Z\",\n      \"user\": {\n        \"\
+                id\": 7,\n        \"name\": \"Jane Operator\"\n      },\n      \"\
+                fifo_layer\": {\n        \"id\": 501,\n        \"fifo_layer_date\"\
+                : \"2026-03-15T00:00:00.000000Z\",\n        \"original_quantity\"\
+                : 100.0,\n        \"available_quantity\": 80.0,\n        \"avg_cost\"\
+                : 12.33,\n        \"link_type\": \"App\\\\Models\\\\PurchaseOrderReceiving\"\
+                ,\n        \"link_id\": 3120,\n        \"link_reference\": \"PO-10044\"\
+                \n      },\n      \"product\": {\n        \"id\": 101,\n        \"\
+                sku\": \"WIDGET-RED-L\",\n        \"name\": \"Red Widget Large\"\n\
+                \      },\n      \"warehouse\": {\n        \"id\": 3,\n        \"\
+                name\": \"Main Warehouse\"\n      },\n      \"link_reference\": \"\
+                PO-10044\",\n      \"link_type_label\": \"FIFO Layer\",\n      \"\
+                link_route\": \"/inventory/fifo-layers/501\",\n      \"link_legacy_url\"\
+                : null\n    }\n  ],\n  \"current_page\": 1,\n  \"last_page\": 5,\n\
+                \  \"per_page\": 10,\n  \"total\": 47,\n  \"from\": 1,\n  \"to\":\
+                \ 10,\n  \"first_page_url\": \"{{protocol}}{{domain}}/api/cogs-revaluation?page=1\"\
+                ,\n  \"last_page_url\": \"{{protocol}}{{domain}}/api/cogs-revaluation?page=5\"\
+                ,\n  \"next_page_url\": \"{{protocol}}{{domain}}/api/cogs-revaluation?page=2\"\
+                ,\n  \"prev_page_url\": null,\n  \"path\": \"{{protocol}}{{domain}}/api/cogs-revaluation\"\
+                \n}"
+      operationId: get-api-cogs-revaluation
   /api/cogs-revaluation/variation-by-product:
     get:
       tags:
@@ -129944,7 +130046,22 @@ paths:
 
         - reason (optional, InventoryRevaluationReasonEnum): reason for revaluation
 
-        - reason_notes (optional, string): free-text notes'
+        - reason_notes (optional, string): free-text notes
+
+        - effective_at (optional, ISO 8601 datetime): date the cost change takes effect;
+        drives the point-in-time valuation overlay and the GL revaluation period.
+        Defaults to now(). If it falls inside a locked accounting period it is moved
+        forward to the first open day.
+
+        - posted_at (optional, ISO 8601 datetime): GL posting timestamp. Defaults
+        to now().
+
+        - old_unit_cost (optional, float): explicit prior per-unit cost; defaults
+        to the layer''s current average cost.
+
+        - old_total_cost (optional, float): explicit prior total cost for the layer.
+
+        - new_total_cost (optional, float): explicit new total cost for the layer.'
       requestBody:
         content:
           '*/*':
@@ -129952,7 +130069,9 @@ paths:
               type: string
               example: '"{\n  \"cogs_source\": \"purchase_order\",\n  \"new_unit_cost\":
                 12.33,\n  \"reason\": \"manual_adjustment\",\n  \"reason_notes\":
-                \"Correcting cost based on updated supplier invoice\"\n}"'
+                \"Correcting cost based on updated supplier invoice\",\n  \"effective_at\":
+                \"2024-06-01T00:00:00Z\",\n  \"posted_at\": \"2024-06-01T00:00:00Z\",\n  \"old_unit_cost\":
+                10.00,\n  \"old_total_cost\": 1000.00,\n  \"new_total_cost\": 1233.00\n}"'
       parameters:
       - name: Accept
         in: header
@@ -130001,8 +130120,14 @@ paths:
         \ Requires Bearer token.\n\nBody fields:\n- layerDataItems (required): Array\
         \ of layer revaluation items\n  - layerDataItems.*.fifo_layer_id: FIFO Layer\
         \ ID\n  - layerDataItems.*.cogs_source: Source of the cost value\n  - layerDataItems.*.new_unit_cost:\
-        \ New unit cost as float\n- reason (required): Reason enum value applied to\
-        \ all items\n- reason_notes (optional): Free-text explanation"
+        \ New unit cost as float\n  - layerDataItems.*.effective_at (optional): Date\
+        \ the cost change takes effect (per item); defaults to now(), moved to the\
+        \ first open day if the period is locked\n  - layerDataItems.*.posted_at (optional):\
+        \ GL posting timestamp (per item); defaults to now()\n  - layerDataItems.*.old_unit_cost\
+        \ (optional): Explicit prior per-unit cost (per item)\n  - layerDataItems.*.old_total_cost\
+        \ (optional): Explicit prior total cost (per item)\n  - layerDataItems.*.new_total_cost\
+        \ (optional): Explicit new total cost (per item)\n- reason (required): Reason\
+        \ enum value applied to all items\n- reason_notes (optional): Free-text explanation"
       requestBody:
         content:
           '*/*':
@@ -130010,7 +130135,8 @@ paths:
               type: string
               example: '"{\n  \"layerDataItems\": [\n    {\n      \"fifo_layer_id\":
                 101,\n      \"cogs_source\": \"purchase_order\",\n      \"new_unit_cost\":
-                14.99\n    },\n    {\n      \"fifo_layer_id\": 102,\n      \"cogs_source\":
+                14.99,\n      \"effective_at\": \"2024-06-01T00:00:00Z\",\n      \"old_unit_cost\":
+                12.00\n    },\n    {\n      \"fifo_layer_id\": 102,\n      \"cogs_source\":
                 \"manual\",\n      \"new_unit_cost\": 22.50\n    }\n  ],\n  \"reason\":
                 \"purchase_cost_update\",\n  \"reason_notes\": \"Quarterly cost reconciliation\"\n}"'
       parameters:
@@ -130691,7 +130817,22 @@ paths:
 
         - reason (optional, InventoryRevaluationReasonEnum): reason for revaluation
 
-        - reason_notes (optional, string): free-text notes'
+        - reason_notes (optional, string): free-text notes
+
+        - effective_at (optional, ISO 8601 datetime): date the cost change takes effect;
+        drives the point-in-time valuation overlay and the GL revaluation period.
+        Defaults to now(). If it falls inside a locked accounting period it is moved
+        forward to the first open day.
+
+        - posted_at (optional, ISO 8601 datetime): GL posting timestamp. Defaults
+        to now().
+
+        - old_unit_cost (optional, float): explicit prior per-unit cost; defaults
+        to the layer''s current average cost.
+
+        - old_total_cost (optional, float): explicit prior total cost for the layer.
+
+        - new_total_cost (optional, float): explicit new total cost for the layer.'
       requestBody:
         content:
           '*/*':
@@ -130699,7 +130840,9 @@ paths:
               type: string
               example: '"{\n  \"cogs_source\": \"purchase_order\",\n  \"new_unit_cost\":
                 12.33,\n  \"reason\": \"manual_adjustment\",\n  \"reason_notes\":
-                \"Correcting cost based on updated supplier invoice\"\n}"'
+                \"Correcting cost based on updated supplier invoice\",\n  \"effective_at\":
+                \"2024-06-01T00:00:00Z\",\n  \"posted_at\": \"2024-06-01T00:00:00Z\",\n  \"old_unit_cost\":
+                10.00,\n  \"old_total_cost\": 1000.00,\n  \"new_total_cost\": 1233.00\n}"'
       parameters:
       - name: Accept
         in: header
@@ -130753,7 +130896,14 @@ paths:
         \nAuthentication: Requires Bearer token.\n\nFields:\n- layerDataItems (required,\
         \ array of CreateInventoryRevaluationData)\n  - layerDataItems.*.fifo_layer_id\
         \ (required, integer)\n  - layerDataItems.*.cogs_source (required, CogsSourceEnum)\n\
-        \  - layerDataItems.*.new_unit_cost (required, float)\n- reason (required,\
+        \  - layerDataItems.*.new_unit_cost (required, float)\n  - layerDataItems.*.effective_at\
+        \ (optional, ISO 8601 datetime): date the cost change takes effect (per item);\
+        \ defaults to now(), moved to the first open day if the period is locked.\n\
+        \  - layerDataItems.*.posted_at (optional, ISO 8601 datetime): GL posting\
+        \ timestamp (per item); defaults to now().\n  - layerDataItems.*.old_unit_cost\
+        \ (optional, float): explicit prior per-unit cost (per item).\n  - layerDataItems.*.old_total_cost\
+        \ (optional, float): explicit prior total cost (per item).\n  - layerDataItems.*.new_total_cost\
+        \ (optional, float): explicit new total cost (per item).\n- reason (required,\
         \ InventoryRevaluationReasonEnum)\n- reason_notes (optional, string)"
       requestBody:
         content:
@@ -130761,7 +130911,8 @@ paths:
             schema:
               type: string
               example: '"{\n  \"layerDataItems\": [\n    {\"fifo_layer_id\": 501,
-                \"cogs_source\": \"purchase_order\", \"new_unit_cost\": 12.33},\n    {\"fifo_layer_id\":
+                \"cogs_source\": \"purchase_order\", \"new_unit_cost\": 12.33, \"effective_at\":
+                \"2024-06-01T00:00:00Z\", \"old_unit_cost\": 10.00},\n    {\"fifo_layer_id\":
                 502, \"cogs_source\": \"purchase_order\", \"new_unit_cost\": 12.33}\n  ],\n  \"reason\":
                 \"manual_adjustment\",\n  \"reason_notes\": \"Bulk correction based
                 on updated supplier invoices\"\n}"'
@@ -131380,7 +131531,21 @@ paths:
 
         - reason (optional): Reason enum value (e.g. purchase_cost_update, data_correction)
 
-        - reason_notes (optional): Free-text explanation'
+        - reason_notes (optional): Free-text explanation
+
+        - effective_at (optional, ISO 8601 datetime): Date the cost change takes effect;
+        drives the point-in-time valuation overlay and the GL revaluation period.
+        Defaults to now(); moved to the first open day if the period is locked.
+
+        - posted_at (optional, ISO 8601 datetime): GL posting timestamp. Defaults
+        to now().
+
+        - old_unit_cost (optional, float): Explicit prior per-unit cost; defaults
+        to the layer''s current average cost.
+
+        - old_total_cost (optional, float): Explicit prior total cost for the layer.
+
+        - new_total_cost (optional, float): Explicit new total cost for the layer.'
       requestBody:
         content:
           '*/*':
@@ -131388,7 +131553,9 @@ paths:
               type: string
               example: '"{\n  \"cogs_source\": \"purchase_order\",\n  \"new_unit_cost\":
                 14.99,\n  \"reason\": \"purchase_cost_update\",\n  \"reason_notes\":
-                \"Vendor invoice price correction for PO-2024-0042\"\n}"'
+                \"Vendor invoice price correction for PO-2024-0042\",\n  \"effective_at\":
+                \"2024-06-01T00:00:00Z\",\n  \"posted_at\": \"2024-06-01T00:00:00Z\",\n  \"old_unit_cost\":
+                12.00,\n  \"old_total_cost\": 1200.00,\n  \"new_total_cost\": 1499.00\n}"'
       parameters:
       - name: Accept
         in: header
