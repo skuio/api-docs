@@ -135840,6 +135840,14 @@ paths:
         query. Loaded in parallel with show().
 
 
+        Unmapped channel lines (product_id is null) include a `listing` object describing
+        the raw sales-channel listing (Amazon, Shopify, eBay, Magento, WooCommerce)
+        used by the "Link Line Item to Product" modal. For Amazon lines whose seller
+        SKU matches a synced AmazonProduct, the `listing` object also includes the
+        internal `id` and `integration_instance_id`, which the UI uses to deep-link
+        to the Amazon product detail page.
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
@@ -135880,6 +135888,39 @@ paths:
                     name: Main Warehouse
                   inventory_allocations: []
                   sales_order_fulfillment_lines_count: 1
+                  sales_credit_lines_count: 0
+                - id: 3002
+                  product_id: null
+                  quantity: 2
+                  amount: '19.99'
+                  description: JGR Japanese Go 2-Pack
+                  product: null
+                  listing:
+                    seller-sku: JGR-JAPANESE-GO_2PK
+                    item-name: JGR Japanese Go 2-Pack
+                    asin1: B0DFZJXP6C
+                    QuantityOrdered: 2
+                    ConditionId: New
+                    ConditionSubtypeId: New
+                    id: 88123
+                    integration_instance_id: 7
+                    unique_sales_channel_product_id: JGR-JAPANESE-GO_2PK
+                    skuAlias: JGR-2PK
+                    PartNumber: JGR-2PK
+                    item-condition: New
+                    Model: GO-2PK
+                    image_url: https://m.media-amazon.com/images/I/example.jpg
+                    brand: JGR
+                    manufacturer: JGR
+                    product_type: TOYS_AND_GAMES
+                    color: Multicolor
+                    size: 2-Pack
+                    style: Standard
+                    fulfillment_channel: AFN
+                    item_description: Two-pack of Japanese Go board game sets.
+                  warehouse: null
+                  inventory_allocations: []
+                  sales_order_fulfillment_lines_count: 0
                   sales_credit_lines_count: 0
       operationId: get-api-v2-sales-orders-salesorder-line-items
   /api/v2/sales-orders/{salesOrder}/customer-details:
@@ -138623,6 +138664,125 @@ paths:
                   code: DeleteShippingProviderOrder422
                   field: id
       operationId: delete-api-sales-order-fulfillments-salesorderfulfillment
+  /api/sales-order-fulfillments:
+    delete:
+      tags:
+      - Fulfillments
+      summary: Bulk Void Shipments
+      description: 'Bulk-voids shipments (SKU-8019). The DELETE verb is retained for
+        backwards compatibility, but it now performs a soft VOID (not a hard delete):
+        each shipment''s inventory is reversed, its parent FulfillmentOrder is reopened,
+        the carrier order is cancelled, and the SOF row is kept for history (status=canceled
+        + void audit columns).
+
+
+        Request body:
+
+        • ids (array<int>, required without apply_to_all): fulfillment IDs to void.
+
+        • apply_to_all (bool, optional): when true, voids every shipment matching
+        `filters` instead of `ids`.
+
+        • filters (object, optional): the V2 list filter set used to resolve IDs when
+        apply_to_all=true.
+
+        • force (bool, optional, default false): when false, shipments already shipped
+        at the provider are NOT voided — they land in the `needs_confirmation` bucket.
+        Re-submit those with force=true to void the local copy anyway (inventory reversed,
+        carrier order left as-is).
+
+        • void_reason (string, optional, max 1000): reason recorded on each void +
+        FO activity entry.
+
+
+        Selection size routing:
+
+        • ≤ 30 shipments: voided synchronously; the response `data` carries per-shipment
+        result buckets.
+
+        • > 30 shipments: dispatched to a background tracked job; the response `data`
+        carries `tracked_job_log_id` for the job progress tray.
+
+
+        Result buckets (synchronous):
+
+        • voided[]: { id, fulfillment_number } — successfully voided.
+
+        • needs_confirmation[]: { id, fulfillment_number, reason } — shipped at the
+        provider; re-submit with force=true.
+
+        • skipped[]: { id, fulfillment_number, reason } — already voided or otherwise
+        not voidable.
+
+        • errors[]: { id, fulfillment_number, error } — unexpected failures.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Voided (synchronous, ≤ 30)
+                  value:
+                    message: Voided 2 shipment(s). 1 shipped shipment(s) need confirmation
+                      to void the local copy.
+                    data:
+                      voided:
+                      - id: 1001
+                        fulfillment_number: SO-0123.1
+                      - id: 1002
+                        fulfillment_number: SO-0123.2
+                      needs_confirmation:
+                      - id: 1003
+                        fulfillment_number: SO-0124.1
+                        reason: shipped
+                      skipped: []
+                      errors: []
+                example-1:
+                  summary: 200 Dispatched to Background (> 30)
+                  value:
+                    message: Voiding shipments in the background — track progress
+                      in the job tray.
+                    data:
+                      tracked_job_log_id: 8842
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The ids field is required when apply to all is not present.
+                errors:
+                  ids:
+                  - The ids field is required when apply to all is not present.
+      operationId: delete-api-sales-order-fulfillments
   /api/v2/merged-shipments:
     get:
       tags:
