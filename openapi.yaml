@@ -2320,11 +2320,27 @@ paths:
 
         - revenue, revenue_allocated, credits, discount
 
+        - revenue_allocation_basis: "document" (revenue follows the order document)
+        or "cost_corrected" (bundle-group revenue re-allocated in proportion to actual
+        COGS so no component shows a phantom line-level loss — SKU-7157)
+
+        - document_revenue: pre-correction revenue computed from the order document
+        (quantity × amount − included tax); equals revenue unless revenue_allocation_basis
+        is cost_corrected (column-driven requests: served under the revenue_allocation_basis
+        inclusion key — returned whenever the Allocation column is included)
+
         - cogs, cogs_returned, cost_allocated, total_cost
 
         - profit, profit_margin
 
-        - created_at, updated_at'
+        - created_at, updated_at
+
+
+        Filtering & sorting: revenue_allocation_basis is available as a filterable
+        column (text operators; values: document, cost_corrected) and as a sort field
+        (sort=revenue_allocation_basis or -revenue_allocation_basis) alongside the
+        existing columns — SKU-7157. The matching report column is hidden by default
+        in the UI.'
       parameters:
       - name: Accept
         in: header
@@ -2369,6 +2385,7 @@ paths:
                 null, "supplier_name": "Supplier Co", "order_date": "2024-01-10",
                 "order_status": "completed", "fulfillment_status": "fulfilled", "customer":
                 {"id": 50, "name": "John Doe"}, "quantity": 5, "amount": 250.00, "revenue":
+                250.00, "revenue_allocation_basis": "document", "document_revenue":
                 250.00, "revenue_allocated": 0, "credits": 0, "discount": -10.00,
                 "cogs": 100.00, "cogs_returned": 0, "cost_allocated": 0, "total_cost":
                 100.00, "profit": 140.00, "profit_margin": 56.00, "created_at": "2024-01-10T12:00:00.000000Z",
@@ -2453,7 +2470,12 @@ paths:
         Authentication: Requires Bearer token (Power User access required).
 
 
-        Filters and sorts mirror the List Sales Order Line Financials endpoint.'
+        Filters and sorts mirror the List Sales Order Line Financials endpoint.
+
+
+        Exported columns now include an ''Allocation'' column (after ''Revenue Allocated'')
+        — ''Cost-corrected'' when the line''s revenue was re-allocated in proportion
+        to bundle-group COGS, otherwise ''Document'' (SKU-7157).'
       parameters:
       - name: Accept
         in: header
@@ -136156,6 +136178,16 @@ paths:
         to the Amazon product detail page.
 
 
+        Each line item includes `bundle_proration_basis` ("cost" | "price" | "quantity"
+        | null). For bundle component lines this indicates the methodology used to
+        prorate the bundle’s price across its components (SKU-7157): "cost" — proportional
+        to component unit costs (used when all components have unit_cost > 0); "price"
+        — proportional to component prices (fallback when any component is missing
+        a cost but all have price > 0); "quantity" — equal split per component quantity
+        (last-resort fallback). Null for non-component lines and for legacy component
+        lines expanded before this feature (those were price-based).
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
@@ -136184,6 +136216,7 @@ paths:
                   quantity: 3
                   amount: '29.99'
                   description: Premium Widget
+                  bundle_proration_basis: null
                   product:
                     id: 42
                     sku: WIDGET-001
@@ -136552,6 +136585,170 @@ paths:
               example:
                 message: Channel mappings updated successfully
       operationId: put-api-v2-sales-orders-salesorder-channel-mappings
+  /api/sales-orders/{salesOrder}/financials:
+    get:
+      tags:
+      - Sales Orders
+      summary: Get Sales Order Financials (Proforma)
+      description: "Recalculates and returns proforma (on-the-fly) line-level financials\
+        \ for a single sales order. The endpoint runs SalesOrderLineFinancialManager::calculate()\
+        \ for the order before responding, so figures always reflect current FIFO\
+        \ cost assignments — including the bundle cost-based revenue correction (SKU-7157).\n\
+        \nAuthentication: Requires Bearer token.\n\nResponse (wrapped in {data}):\n\
+        - id: Sales order ID\n- is_tax_included, currency (code cached at time of\
+        \ sale), currency_rate\n- sales_order_lines[]: per-line proforma P&L:\n  -\
+        \ product: {id, sku, name} (present when the line is a product line)\n  -\
+        \ description, quantity, price (per-unit amount in tenant currency), tax_allocation,\
+        \ tax_rate_id\n  - revenue: recognized revenue for the line (after any bundle\
+        \ cost-based correction)\n  - revenue_allocation_basis: \"document\" (revenue\
+        \ follows the order document) or \"cost_corrected\" (bundle-group revenue\
+        \ re-allocated in proportion to actual COGS so no component shows a phantom\
+        \ line-level loss — SKU-7157)\n  - document_revenue: pre-correction revenue\
+        \ computed from the order document (quantity × amount − included tax); equals\
+        \ revenue unless revenue_allocation_basis is cost_corrected\n  - bundle_id:\
+        \ parent bundle product ID when the line was expanded from a bundle (null\
+        \ otherwise)\n  - bundle_proration_basis: how the bundle's price was prorated\
+        \ across components at order entry — \"cost\", \"price\", or \"quantity\"\
+        \ (null for non-bundle or legacy lines)\n  - bundle: {id, sku, name} (present\
+        \ when bundle_id is set)\n  - revenue_allocated, credits, discount, total_revenue\n\
+        \  - cogs, cost_allocated, cogs_returned, total_cost\n  - profit, profit_margin\n\
+        \  - per_unit: {revenue, revenue_allocated, credits, discount, total_revenue,\
+        \ cogs, cost_allocated, cogs_returned, total_cost, profit}\n  - cost_breakdown:\
+        \ cost category → amount map\n  - cost_breakdown_layers[]: FIFO layer-level\
+        \ cost detail (layer_kind, fifo_layer_id, fifo_layer_date, quantity, source_type,\
+        \ source_label, source_id, breakdown, total, unit_cost)\n  - fifo_layers[]:\
+        \ {id, name, quantity, unit_cost, total_cost, layer_date}"
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '7760'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 7760
+                  sales_order_lines:
+                  - product:
+                      id: 101
+                      sku: GSS342
+                      name: Garment Steamer
+                    description: Garment Steamer
+                    quantity: 1
+                    price: 95.2
+                    tax_allocation: 0
+                    tax_rate_id: null
+                    revenue: 87.46
+                    revenue_allocation_basis: cost_corrected
+                    document_revenue: 95.2
+                    bundle_id: 555
+                    bundle_proration_basis: cost
+                    bundle:
+                      id: 555
+                      sku: BUNDLE-GS
+                      name: Steamer + Board Bundle
+                    revenue_allocated: 0
+                    credits: 0
+                    discount: 0
+                    total_revenue: 87.46
+                    cogs: 66.88
+                    cost_allocated: 0
+                    cogs_returned: 0
+                    total_cost: 66.88
+                    profit: 20.58
+                    profit_margin: 23.53
+                    per_unit:
+                      revenue: 87.46
+                      revenue_allocated: 0
+                      credits: 0
+                      discount: 0
+                      total_revenue: 87.46
+                      cogs: 66.88
+                      cost_allocated: 0
+                      cogs_returned: 0
+                      total_cost: 66.88
+                      profit: 20.58
+                    cost_breakdown:
+                      product: 66.88
+                    cost_breakdown_layers:
+                    - layer_kind: standard
+                      fifo_layer_id: 9001
+                      fifo_layer_date: 01/15/2026
+                      quantity: 1
+                      source_type: purchase_order
+                      source_label: PO-1001
+                      source_id: 1001
+                      breakdown:
+                        product: 66.88
+                      total: 66.88
+                      unit_cost: 66.88
+                    fifo_layers:
+                    - id: 9001
+                      name: PO-1001
+                      quantity: 1
+                      unit_cost: 66.88
+                      total_cost: 66.88
+                      layer_date: 1/15/2026
+                  - product:
+                      id: 102
+                      sku: 400-766
+                      name: Ironing Board
+                    description: Ironing Board
+                    quantity: 1
+                    price: 40.8
+                    tax_allocation: 0
+                    tax_rate_id: null
+                    revenue: 48.54
+                    revenue_allocation_basis: cost_corrected
+                    document_revenue: 40.8
+                    bundle_id: 555
+                    bundle_proration_basis: cost
+                    bundle:
+                      id: 555
+                      sku: BUNDLE-GS
+                      name: Steamer + Board Bundle
+                    revenue_allocated: 0
+                    credits: 0
+                    discount: 0
+                    total_revenue: 48.54
+                    cogs: 37.12
+                    cost_allocated: 0
+                    cogs_returned: 0
+                    total_cost: 37.12
+                    profit: 11.42
+                    profit_margin: 23.53
+                    per_unit:
+                      revenue: 48.54
+                      revenue_allocated: 0
+                      credits: 0
+                      discount: 0
+                      total_revenue: 48.54
+                      cogs: 37.12
+                      cost_allocated: 0
+                      cogs_returned: 0
+                      total_cost: 37.12
+                      profit: 11.42
+                    cost_breakdown:
+                      product: 37.12
+                    cost_breakdown_layers: []
+                    fifo_layers: []
+                  is_tax_included: false
+                  currency: USD
+                  currency_rate: 1
+      operationId: get-api-sales-orders-salesorder-financials
   /api/v2/sales-orders/sales-order-lines/{salesOrderLine}/backorder-detail:
     get:
       tags:
