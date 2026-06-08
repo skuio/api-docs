@@ -165214,6 +165214,350 @@ paths:
                     message: There are no packing slips for the selected fulfillment
                       orders.
       operationId: get-api-export-fulfillment-orders-packing-slips
+  /api/record-locks/{recordType}/{recordId}:
+    get:
+      tags:
+      - API
+      summary: Get Lock State
+      description: Returns the current authoritative lock state for a record — who,
+        if anyone, is editing it. Used on page load to decide whether the form should
+        start read-only. Does not change the lock.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 OK — locked by another user
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": true, "locked_by_id": 5, "locked_by_name": "Jane
+                    Doe", "acquired_at": "2026-06-07T10:00:00+00:00", "expires_at":
+                    "2026-06-07T10:01:00+00:00"}}'
+                example-1:
+                  summary: 200 OK — unlocked
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": false, "locked_by_id": null, "locked_by_name": null,
+                    "acquired_at": null, "expires_at": null}}'
+      operationId: get-api-record-locks-recordtype-recordid
+  /api/record-locks/{recordType}/{recordId}/acquire:
+    post:
+      tags:
+      - API
+      summary: Acquire Lock
+      description: 'Enter edit mode by acquiring the lock. First acquisition is atomic,
+        so two simultaneous editors cannot both win. The response is the authoritative
+        state afterwards: if `locked_by_id` equals the current user the caller holds
+        the lock and may edit; otherwise another user already holds it and the caller
+        must stay read-only. A holder re-acquiring simply refreshes the TTL. Takes
+        no request body.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 OK — lock acquired by caller
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": true, "locked_by_id": 5, "locked_by_name": "Jane
+                    Doe", "acquired_at": "2026-06-07T10:00:00+00:00", "expires_at":
+                    "2026-06-07T10:01:00+00:00"}}'
+                example-1:
+                  summary: 200 OK — already locked by another user
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": true, "locked_by_id": 9, "locked_by_name": "Sam Lee",
+                    "acquired_at": "2026-06-07T09:58:00+00:00", "expires_at": "2026-06-07T10:00:30+00:00"}}'
+      operationId: post-api-record-locks-recordtype-recordid-acquire
+  /api/record-locks/{recordType}/{recordId}/heartbeat:
+    post:
+      tags:
+      - API
+      summary: Heartbeat Lock
+      description: Keep the caller's lock alive by extending its TTL. The SPA calls
+        this on a timer (~every 20s) while in edit mode. Only the current holder extends
+        the lock; if the caller no longer holds it (it expired or was taken over)
+        this is a no-op that returns the authoritative state, so the client learns
+        it lost the lock and can drop back to read-only. Takes no request body.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 OK — lock refreshed
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": true, "locked_by_id": 5, "locked_by_name": "Jane
+                    Doe", "acquired_at": "2026-06-07T10:00:00+00:00", "expires_at":
+                    "2026-06-07T10:01:20+00:00"}}'
+                example-1:
+                  summary: 200 OK — caller no longer holds the lock
+                  value: '{"data": {"record_type": "sales-order", "record_id": 123,
+                    "is_locked": true, "locked_by_id": 9, "locked_by_name": "Sam Lee",
+                    "acquired_at": "2026-06-07T10:00:45+00:00", "expires_at": "2026-06-07T10:01:45+00:00"}}'
+      operationId: post-api-record-locks-recordtype-recordid-heartbeat
+  /api/record-locks/{recordType}/{recordId}/release:
+    post:
+      tags:
+      - API
+      summary: Release Lock
+      description: Leave edit mode by releasing the lock if the caller holds it. Broadcasts
+        the now-unlocked state to other viewers so their forms become editable again.
+        A non-holder calling release is a safe no-op. Takes no request body.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '{"data": {"record_type": "sales-order", "record_id": 123,
+                "is_locked": false, "locked_by_id": null, "locked_by_name": null,
+                "acquired_at": null, "expires_at": null}}'
+      operationId: post-api-record-locks-recordtype-recordid-release
+  /api/record-locks/{recordType}/{recordId}/request-edit:
+    post:
+      tags:
+      - API
+      summary: Request Edit Access
+      description: Politely knock for edit access while another user holds the lock.
+        Broadcasts a `record-lock.requested` ping to the current holder (a non-blocking
+        prompt that someone wants in) without changing the lock. Returns the current
+        state so the requester sees who they are waiting on. Takes no request body.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '{"data": {"record_type": "sales-order", "record_id": 123,
+                "is_locked": true, "locked_by_id": 9, "locked_by_name": "Sam Lee",
+                "acquired_at": "2026-06-07T09:58:00+00:00", "expires_at": "2026-06-07T10:00:30+00:00"}}'
+      operationId: post-api-record-locks-recordtype-recordid-request-edit
+  /api/record-locks/{recordType}/{recordId}/takeover:
+    post:
+      tags:
+      - API
+      summary: Take Over Lock
+      description: Forcibly seize the lock for the caller regardless of the current
+        holder (the "Take over" action). Broadcasts the new holder so the previous
+        editor's form flips to read-only. Use when the holder is unresponsive and
+        the caller must edit now. Takes no request body.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: X-Tenant-Id
+        in: header
+        schema:
+          type: string
+        description: Tenant to scope the request to. Required on multi-tenant hosts.
+        example: your-tenant-id
+      - name: recordType
+        in: path
+        schema:
+          type: string
+        required: true
+        description: 'Required. One of: sales-order, purchase-order, product.'
+        example: sales-order
+      - name: recordId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. Numeric id of the record.
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '{"data": {"record_type": "sales-order", "record_id": 123,
+                "is_locked": true, "locked_by_id": 5, "locked_by_name": "Jane Doe",
+                "acquired_at": "2026-06-07T10:05:00+00:00", "expires_at": "2026-06-07T10:06:00+00:00"}}'
+      operationId: post-api-record-locks-recordtype-recordid-takeover
   /api/report-templates:
     get:
       tags:
