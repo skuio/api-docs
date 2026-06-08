@@ -169456,15 +169456,26 @@ paths:
       tags:
       - Webhooks
       summary: Enable All Webhooks
-      description: 'Queue `CreateTemuWebhooksJob` for the integration instance — subscribes
-        the shop to every event code in `TemuEventCodeEnum`. The HTTP call returns
-        immediately; the actual TMC `bg.tmc.message.update` calls happen on the queue
-        worker.
+      description: 'Dispatch `CreateTemuWebhooksJob` via the **Tracked Job pattern**
+        — subscribes the integration instance to every event code in `TemuEventCodeEnum`
+        in one shot. The HTTP call returns immediately; the worker performs each TMC
+        `bg.tmc.message.update` call in the background.
+
+
+        The job uses `ShouldBeUnique` keyed on the integration instance id, so concurrent
+        `enable-all` clicks coalesce into a single run.
 
 
         **Response:**
 
-        - `data.queued` - true once the job is dispatched.'
+        - `data.tracked_job_log_id` — ID of the `TrackedJobLog` record. The frontend
+        subscribes to this via the global Job Progress Tray (`useJobProgressTray`)
+        to surface live progress and completion.
+
+        - `message` — `"Webhook subscription job dispatched"`.
+
+
+        Status code is `200`.'
       requestBody:
         content: {}
       parameters:
@@ -169487,9 +169498,21 @@ paths:
         example: '{{temu_instance_id}}'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 4271
+                message: Webhook subscription job dispatched
+                status: ok
       operationId: post-api-temu-integration-instance-webhooks-configurations-enable-all
   /api/temu/{integration_instance}/webhook-events:
     get:
