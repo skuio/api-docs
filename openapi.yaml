@@ -137527,6 +137527,239 @@ paths:
                 type: string
               example: "{\n  \"message\": \"No sales orders found to close.\"\n}"
       operationId: post-api-sales-orders-close
+  /api/sales-orders/bulk-email:
+    post:
+      tags:
+      - Sales Orders
+      summary: Bulk Email Customers About Orders
+      description: 'Dispatches a tracked background job that emails customers about
+        their selected sales orders. Multiple orders for the same customer (same store
+        + email, case-insensitive) are grouped into a single email (Cin7 Omni model).
+        Recipients without a resolvable email and opted-out customers are suppressed.
+        The send is capped at `config(''mail.bulk_sales_order_recipient_cap'')` distinct
+        recipients (default 5000); overflow recipients are reported via the job''s
+        `skipped_overflow` result and a warning log — never silently dropped. Every
+        send is written to the order''s activity log under one batch.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body (scope: one of `ids` or `filters` is required):
+
+        - `ids` (array<int>, required without `filters`): Sales order IDs to email
+        about.
+
+        - `filters` (object, required without `ids`): Filter set that resolves to
+        a list of sales order IDs (same shape used by the V2 sales-orders listing
+        endpoint). Combine with `apply_to_all`.
+
+        - `apply_to_all` (bool, optional): When true, the action targets every order
+        matching the active `filters` rather than an explicit `ids` list.
+
+        - `template_id` (int|null, optional): The `bulk_sales_order` store email template
+        the content was loaded from. Null when the body was composed ad hoc.
+
+        - `subject` (string, required, max 998): Email subject. Supports `{{customer_name}}`,
+        `{{order_count}}`, `{{store_name}}` tokens.
+
+        - `html_body` (string, required): Email body HTML. Supports the same tokens
+        plus `{{orders_table}}` (renders the customer''s grouped orders as a table).
+
+        - `cc` (array<email>, optional, max 25): CC addresses added to every email.
+
+        - `attachments` (array<string>, optional, max 25): Attachable-document keys
+        to include (e.g. `["invoice_pdf"]`).
+
+        - `group_by_customer` (bool, optional, default true): Group every selected
+        order for one customer (same store + email) into a single email (Cin7 Omni
+        model). When false, one email per order.
+
+        - `skip_without_email` (bool, optional, default true): Orders with no resolvable
+        email are always skipped. Must be true — sending `false` is rejected (422).
+
+        - `respect_opt_out` (bool, optional, default true): Skip customers flagged
+        `email_opt_out`.
+
+
+        Behavior:
+
+        - Returns immediately with the tracked job log ID; poll job progress via the
+        global job tray (job name `Bulk Email Sales Orders`).
+
+        - The job records per-recipient sent/skipped/failed counts and an `activity_batch_uuid`
+        in its results.
+
+        - The job has `tries = 1` and never auto-retries (prevents double-sends).'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"ids\": [\n    7116,\n    7117,\n    7118\n  ],\n  \"template_id\":
+                42,\n  \"subject\": \"An update on your orders, {{customer_name}}\",\n  \"html_body\":
+                \"<p>Hi {{customer_name}},</p><p>Here is a summary of your recent
+                orders:</p>{{orders_table}}\",\n  \"cc\": [\n    \"ops@acme.com\"\n  ],\n  \"attachments\":
+                [\n    \"invoice_pdf\"\n  ],\n  \"group_by_customer\": true,\n  \"skip_without_email\":
+                true,\n  \"respect_opt_out\": true\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 90210\n  },\n\
+                \  \"message\": \"Bulk email started for 2 customers (3 orders).\"\
+                \n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Orders without an email address are always\
+                \ skipped and cannot be force-sent.\",\n  \"errors\": {\n    \"subject\"\
+                : [\n      \"An email subject is required.\"\n    ],\n    \"skip_without_email\"\
+                : [\n      \"Orders without an email address are always skipped and\
+                \ cannot be force-sent.\"\n    ]\n  }\n}"
+      operationId: post-api-sales-orders-bulk-email
+  /api/sales-orders/bulk-email/preview:
+    post:
+      tags:
+      - Sales Orders
+      summary: Preview Bulk Customer Email
+      description: 'Resolves and groups a bulk-email selection without sending anything,
+        powering the confirmation dialog''s recipient summary and a masked sample
+        render. Accepts the exact same body as `POST /sales-orders/bulk-email`.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body (scope: one of `ids` or `filters` is required):
+
+        - `ids` (array<int>, required without `filters`): Sales order IDs to email
+        about.
+
+        - `filters` (object, required without `ids`): Filter set that resolves to
+        a list of sales order IDs (same shape used by the V2 sales-orders listing
+        endpoint). Combine with `apply_to_all`.
+
+        - `apply_to_all` (bool, optional): When true, the action targets every order
+        matching the active `filters` rather than an explicit `ids` list.
+
+        - `template_id` (int|null, optional): The `bulk_sales_order` store email template
+        the content was loaded from. Null when the body was composed ad hoc.
+
+        - `subject` (string, required, max 998): Email subject. Supports `{{customer_name}}`,
+        `{{order_count}}`, `{{store_name}}` tokens.
+
+        - `html_body` (string, required): Email body HTML. Supports the same tokens
+        plus `{{orders_table}}` (renders the customer''s grouped orders as a table).
+
+        - `cc` (array<email>, optional, max 25): CC addresses added to every email.
+
+        - `attachments` (array<string>, optional, max 25): Attachable-document keys
+        to include (e.g. `["invoice_pdf"]`).
+
+        - `group_by_customer` (bool, optional, default true): Group every selected
+        order for one customer (same store + email) into a single email (Cin7 Omni
+        model). When false, one email per order.
+
+        - `skip_without_email` (bool, optional, default true): Orders with no resolvable
+        email are always skipped. Must be true — sending `false` is rejected (422).
+
+        - `respect_opt_out` (bool, optional, default true): Skip customers flagged
+        `email_opt_out`.
+
+
+        Response data:
+
+        - `order_count` (int): Total orders resolved from the selection.
+
+        - `email_count` (int): Distinct emails that will be sent (after grouping +
+        cap).
+
+        - `skipped_no_email` (array<int>): Order IDs with no resolvable email.
+
+        - `skipped_opted_out` (array<int>): Order IDs whose customer opted out.
+
+        - `skipped_overflow` (int): Recipients beyond the cap that would be dropped.
+
+        - `groups_preview` (array, max 50): Per-recipient summary with a masked `email`,
+        `order_count`, and `order_numbers`.
+
+        - `sample` (object|null): First group''s masked `recipient` plus the rendered
+        `subject` and `body` HTML; null when no group is emailable.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"ids\": [\n    7116,\n    7117,\n    7118\n  ],\n  \"template_id\":
+                42,\n  \"subject\": \"An update on your orders, {{customer_name}}\",\n  \"html_body\":
+                \"<p>Hi {{customer_name}},</p><p>Here is a summary of your recent
+                orders:</p>{{orders_table}}\",\n  \"cc\": [\n    \"ops@acme.com\"\n  ],\n  \"attachments\":
+                [\n    \"invoice_pdf\"\n  ],\n  \"group_by_customer\": true,\n  \"skip_without_email\":
+                true,\n  \"respect_opt_out\": true\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"order_count\": 3,\n    \"email_count\"\
+                : 2,\n    \"skipped_no_email\": [\n      7119\n    ],\n    \"skipped_opted_out\"\
+                : [\n      7120\n    ],\n    \"skipped_overflow\": 0,\n    \"groups_preview\"\
+                : [\n      {\n        \"email\": \"j***@acme.com\",\n        \"order_count\"\
+                : 2,\n        \"order_numbers\": [\n          \"SO-7116\",\n     \
+                \     \"SO-7117\"\n        ]\n      },\n      {\n        \"email\"\
+                : \"s***@globex.com\",\n        \"order_count\": 1,\n        \"order_numbers\"\
+                : [\n          \"SO-7118\"\n        ]\n      }\n    ],\n    \"sample\"\
+                : {\n      \"recipient\": \"j***@acme.com\",\n      \"subject\": \"\
+                An update on your orders, Jane Doe\",\n      \"body\": \"<p>Hi Jane\
+                \ Doe,</p><p>Here is a summary of your recent orders:</p><table class='et-sales-order-table'>...</table>\"\
+                \n    }\n  }\n}"
+      operationId: post-api-sales-orders-bulk-email-preview
   /api/sales-orders/{salesOrder}/fulfillments:
     get:
       tags:
@@ -143544,6 +143777,98 @@ paths:
               example: "{\n  \"message\": \"return receipt line deleted successfully.\"\
                 ,\n  \"status\": \"success\"\n}"
       operationId: delete-domain-api-return-receipts-lines-returnreceiptline
+  /api/return-receipts/{returnReceipt}/lines/bulk-disposition:
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Bulk Set Disposition on Lines
+      description: 'Set the disposition (action + optional condition grade) on multiple
+        lines of a return receipt at once. When a line''s action changes, its prior
+        inventory effect is reversed and the new action is re-applied so inventory
+        stays consistent.\n\nAuthentication: Requires Bearer token.\n\nFields:\n-
+        line_ids (array of integers, required, min 1) — return receipt line IDs to
+        update; each must exist\n- action (string, required) — disposition to apply.
+        Bulk disposition only supports: added_to_stock, discarded. (Use the per-line
+        blemished SKU flow for new_blemished_sku.)\n- condition_grade (string, optional,
+        nullable) — condition grade to set on the lines. One of: A, B, C, unsellable'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"line_ids\": [\n    8,\n    9\n  ],\n  \"action\":
+                \"added_to_stock\",\n  \"condition_grade\": \"A\"\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: returnReceipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Return Receipt ID
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 5,\n    \"rma_id\": 1,\n   \
+                \ \"rma\": {\n      \"id\": 1,\n      \"rma_number\": \"RMA-0001\"\
+                ,\n      \"status\": \"received\"\n    },\n    \"warehouse_id\": 2,\n\
+                \    \"warehouse\": {\n      \"id\": 2,\n      \"name\": \"Main Warehouse\"\
+                \n    },\n    \"received_at\": \"2026-06-09T00:00:00.000000Z\",\n\
+                \    \"received_by_user_id\": 1,\n    \"received_by\": {\n      \"\
+                id\": 1,\n      \"name\": \"Dev User\"\n    },\n    \"notes\": null,\n\
+                \    \"return_receipt_lines\": [\n      {\n        \"id\": 8,\n  \
+                \      \"product_id\": 20,\n        \"product\": {\n          \"id\"\
+                : 20,\n          \"sku\": \"WIDGET-A\",\n          \"name\": \"Widget\
+                \ A\"\n        },\n        \"quantity\": 2,\n        \"action\": \"\
+                added_to_stock\",\n        \"condition_grade\": \"A\",\n        \"\
+                condition_grade_label\": \"Grade A \\u2014 Like New\",\n        \"\
+                disposition_policy_id\": null,\n        \"return_reason_id\": 1\n\
+                \      },\n      {\n        \"id\": 9,\n        \"product_id\": 21,\n\
+                \        \"product\": {\n          \"id\": 21,\n          \"sku\"\
+                : \"WIDGET-B\",\n          \"name\": \"Widget B\"\n        },\n  \
+                \      \"quantity\": 1,\n        \"action\": \"added_to_stock\",\n\
+                \        \"condition_grade\": \"A\",\n        \"condition_grade_label\"\
+                : \"Grade A \\u2014 Like New\",\n        \"disposition_policy_id\"\
+                : null,\n        \"return_reason_id\": 1\n      }\n    ],\n    \"\
+                created_at\": \"2026-06-09T09:00:00.000000Z\",\n    \"updated_at\"\
+                : \"2026-06-09T09:30:00.000000Z\"\n  },\n  \"message\": \"Disposition\
+                \ applied to 2 line(s).\"\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Bulk disposition only supports adding\
+                \ to stock or discarding. Use the blemished SKU flow for individual\
+                \ lines.\",\n  \"errors\": {\n    \"action\": [\n      \"Bulk disposition\
+                \ only supports adding to stock or discarding. Use the blemished SKU\
+                \ flow for individual lines.\"\n    ]\n  }\n}"
+      operationId: post-api-return-receipts-returnreceipt-lines-bulk-disposition
   /api/return-reasons:
     get:
       tags:
@@ -144081,6 +144406,378 @@ paths:
               example: "{\n  \"message\": \"2 return reasons unarchived successfully\"\
                 \n}"
       operationId: put-api-return-reasons-unarchive
+  /api/return-disposition-policies:
+    get:
+      tags:
+      - Returns & RMAs
+      summary: List Disposition Policies
+      description: 'List all return disposition policies, ordered by precedence (priority
+        ascending, then id ascending).\n\nAuthentication: Requires Bearer token.\n\nDisposition
+        policies are evaluated top-to-bottom at return-receiving time to auto-assign
+        a line''s disposition (added to stock, discarded, or new blemished SKU). The
+        first active policy whose match_* criteria all match wins; if none match,
+        the default is added_to_stock.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 1,\n      \"name\"\
+                : \"Like-new returns \\u2192 restock\",\n      \"is_active\": true,\n\
+                \      \"priority\": 0,\n      \"match_product_id\": null,\n     \
+                \ \"match_product_category_id\": null,\n      \"match_return_reason_id\"\
+                : null,\n      \"match_warehouse_id\": null,\n      \"match_condition_grade\"\
+                : \"A\",\n      \"match_condition_grade_label\": \"Grade A \\u2014\
+                \ Like New\",\n      \"action\": \"added_to_stock\",\n      \"action_label\"\
+                : \"Added to Stock\",\n      \"blemished_condition\": null,\n    \
+                \  \"created_at\": \"2026-06-09T09:00:00.000000Z\",\n      \"updated_at\"\
+                : \"2026-06-09T09:00:00.000000Z\"\n    },\n    {\n      \"id\": 2,\n\
+                \      \"name\": \"Grade B \\u2192 blemished SKU\",\n      \"is_active\"\
+                : true,\n      \"priority\": 1,\n      \"match_product_id\": null,\n\
+                \      \"match_product_category_id\": null,\n      \"match_return_reason_id\"\
+                : null,\n      \"match_warehouse_id\": null,\n      \"match_condition_grade\"\
+                : \"B\",\n      \"match_condition_grade_label\": \"Grade B \\u2014\
+                \ Good\",\n      \"action\": \"new_blemished_sku\",\n      \"action_label\"\
+                : \"New Blemished SKU\",\n      \"blemished_condition\": \"Open box\
+                \ \\u2014 good condition\",\n      \"created_at\": \"2026-06-09T09:00:00.000000Z\"\
+                ,\n      \"updated_at\": \"2026-06-09T09:00:00.000000Z\"\n    }\n\
+                \  ]\n}"
+      operationId: get-api-return-disposition-policies
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Create Disposition Policy
+      description: 'Create a new return disposition policy.\n\nAuthentication: Requires
+        Bearer token.\n\nFields:\n- name (string, required, max 255) — human-readable
+        policy name\n- action (string, required) — disposition to apply when this
+        policy matches. One of: added_to_stock, discarded, new_blemished_sku\n- is_active
+        (boolean, optional, default true) — only active policies are evaluated at
+        resolve time\n- priority (integer, optional, min 0) — lower numbers are evaluated
+        first; ties broken by id\n- match_product_id (integer, optional, nullable)
+        — restrict to a single product\n- match_product_category_id (integer, optional,
+        nullable) — restrict to a product category (matches the product''s category
+        and any ancestor category)\n- match_return_reason_id (integer, optional, nullable)
+        — restrict to a return reason\n- match_warehouse_id (integer, optional, nullable)
+        — restrict to a warehouse\n- match_condition_grade (string, optional, nullable)
+        — restrict to a condition grade. One of: A, B, C, unsellable\n- blemished_condition
+        (string, optional, nullable, max 255) — condition note applied when action
+        is new_blemished_sku'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"name\": \"Damaged electronics \\u2192 discard\",\n  \"action\":
+                \"discarded\",\n  \"is_active\": true,\n  \"priority\": 0,\n  \"match_product_id\":
+                null,\n  \"match_product_category_id\": 12,\n  \"match_return_reason_id\":
+                4,\n  \"match_warehouse_id\": null,\n  \"match_condition_grade\":
+                \"unsellable\",\n  \"blemished_condition\": null\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 3,\n    \"name\": \"Damaged\
+                \ electronics \\u2192 discard\",\n    \"is_active\": true,\n    \"\
+                priority\": 0,\n    \"match_product_id\": null,\n    \"match_product_category_id\"\
+                : 12,\n    \"match_product_category\": {\n      \"id\": 12,\n    \
+                \  \"name\": \"Electronics\"\n    },\n    \"match_return_reason_id\"\
+                : 4,\n    \"match_return_reason\": {\n      \"id\": 4,\n      \"name\"\
+                : \"Arrived damaged\"\n    },\n    \"match_warehouse_id\": null,\n\
+                \    \"match_condition_grade\": \"unsellable\",\n    \"match_condition_grade_label\"\
+                : \"Unsellable\",\n    \"action\": \"discarded\",\n    \"action_label\"\
+                : \"Discarded\",\n    \"blemished_condition\": null,\n    \"created_at\"\
+                : \"2026-06-09T09:00:00.000000Z\",\n    \"updated_at\": \"2026-06-09T09:00:00.000000Z\"\
+                \n  },\n  \"message\": \"Disposition Policy created successfully\"\
+                \n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The action field is required.\",\n  \"\
+                errors\": {\n    \"action\": [\n      \"The action field is required.\"\
+                \n    ]\n  }\n}"
+      operationId: post-api-return-disposition-policies
+  /api/return-disposition-policies/{returnDispositionPolicy}:
+    get:
+      tags:
+      - Returns & RMAs
+      summary: Get Disposition Policy
+      description: 'Get a single disposition policy with its matched product, category,
+        return reason, and warehouse summaries.\n\nAuthentication: Requires Bearer
+        token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: returnDispositionPolicy
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Disposition policy ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 3,\n    \"name\": \"Damaged\
+                \ electronics \\u2192 discard\",\n    \"is_active\": true,\n    \"\
+                priority\": 0,\n    \"match_product_id\": null,\n    \"match_product_category_id\"\
+                : 12,\n    \"match_product_category\": {\n      \"id\": 12,\n    \
+                \  \"name\": \"Electronics\"\n    },\n    \"match_return_reason_id\"\
+                : 4,\n    \"match_return_reason\": {\n      \"id\": 4,\n      \"name\"\
+                : \"Arrived damaged\"\n    },\n    \"match_warehouse_id\": null,\n\
+                \    \"match_condition_grade\": \"unsellable\",\n    \"match_condition_grade_label\"\
+                : \"Unsellable\",\n    \"action\": \"discarded\",\n    \"action_label\"\
+                : \"Discarded\",\n    \"blemished_condition\": null,\n    \"created_at\"\
+                : \"2026-06-09T09:00:00.000000Z\",\n    \"updated_at\": \"2026-06-09T09:00:00.000000Z\"\
+                \n  }\n}"
+      operationId: get-api-return-disposition-policies-returndispositionpolicy
+    put:
+      tags:
+      - Returns & RMAs
+      summary: Update Disposition Policy
+      description: 'Update an existing disposition policy. Send the full set of fields
+        (same shape as create).\n\nAuthentication: Requires Bearer token.\n\nFields:\n-
+        name (string, required, max 255) — human-readable policy name\n- action (string,
+        required) — disposition to apply when this policy matches. One of: added_to_stock,
+        discarded, new_blemished_sku\n- is_active (boolean, optional, default true)
+        — only active policies are evaluated at resolve time\n- priority (integer,
+        optional, min 0) — lower numbers are evaluated first; ties broken by id\n-
+        match_product_id (integer, optional, nullable) — restrict to a single product\n-
+        match_product_category_id (integer, optional, nullable) — restrict to a product
+        category (matches the product''s category and any ancestor category)\n- match_return_reason_id
+        (integer, optional, nullable) — restrict to a return reason\n- match_warehouse_id
+        (integer, optional, nullable) — restrict to a warehouse\n- match_condition_grade
+        (string, optional, nullable) — restrict to a condition grade. One of: A, B,
+        C, unsellable\n- blemished_condition (string, optional, nullable, max 255)
+        — condition note applied when action is new_blemished_sku'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"name\": \"Damaged electronics \\u2192 discard\",\n  \"action\":
+                \"discarded\",\n  \"is_active\": true,\n  \"priority\": 0,\n  \"match_product_id\":
+                null,\n  \"match_product_category_id\": 12,\n  \"match_return_reason_id\":
+                4,\n  \"match_warehouse_id\": null,\n  \"match_condition_grade\":
+                \"unsellable\",\n  \"blemished_condition\": null\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: returnDispositionPolicy
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Disposition policy ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 3,\n    \"name\": \"Damaged\
+                \ electronics \\u2192 discard\",\n    \"is_active\": true,\n    \"\
+                priority\": 0,\n    \"match_product_id\": null,\n    \"match_product_category_id\"\
+                : 12,\n    \"match_product_category\": {\n      \"id\": 12,\n    \
+                \  \"name\": \"Electronics\"\n    },\n    \"match_return_reason_id\"\
+                : 4,\n    \"match_return_reason\": {\n      \"id\": 4,\n      \"name\"\
+                : \"Arrived damaged\"\n    },\n    \"match_warehouse_id\": null,\n\
+                \    \"match_condition_grade\": \"unsellable\",\n    \"match_condition_grade_label\"\
+                : \"Unsellable\",\n    \"action\": \"discarded\",\n    \"action_label\"\
+                : \"Discarded\",\n    \"blemished_condition\": null,\n    \"created_at\"\
+                : \"2026-06-09T09:00:00.000000Z\",\n    \"updated_at\": \"2026-06-09T09:00:00.000000Z\"\
+                \n  },\n  \"message\": \"Disposition Policy updated successfully\"\
+                \n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The action field is required.\",\n  \"\
+                errors\": {\n    \"action\": [\n      \"The action field is required.\"\
+                \n    ]\n  }\n}"
+      operationId: put-api-return-disposition-policies-returndispositionpolicy
+    delete:
+      tags:
+      - Returns & RMAs
+      summary: Delete Disposition Policy
+      description: 'Delete a disposition policy. Already-received receipt lines retain
+        their assigned disposition; only future return-receiving evaluation is affected.\n\nAuthentication:
+        Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: returnDispositionPolicy
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Disposition policy ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Disposition Policy deleted successfully\"\
+                \n}"
+      operationId: delete-api-return-disposition-policies-returndispositionpolicy
+  /api/return-disposition-policies/reorder:
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Reorder Disposition Policies
+      description: 'Persist a new precedence order for the disposition policies. The
+        position of each id in the ordered_ids array becomes its priority (first =
+        priority 0, evaluated first).\n\nAuthentication: Requires Bearer token.\n\nFields:\n-
+        ordered_ids (array of integers, required, min 1) — policy IDs in the desired
+        evaluation order. Must be distinct and each must exist.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"ordered_ids\": [\n    2,\n    1,\n    3\n  ]\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 1,\n      \"name\"\
+                : \"Like-new returns \\u2192 restock\",\n      \"is_active\": true,\n\
+                \      \"priority\": 0,\n      \"match_product_id\": null,\n     \
+                \ \"match_product_category_id\": null,\n      \"match_return_reason_id\"\
+                : null,\n      \"match_warehouse_id\": null,\n      \"match_condition_grade\"\
+                : \"A\",\n      \"match_condition_grade_label\": \"Grade A \\u2014\
+                \ Like New\",\n      \"action\": \"added_to_stock\",\n      \"action_label\"\
+                : \"Added to Stock\",\n      \"blemished_condition\": null,\n    \
+                \  \"created_at\": \"2026-06-09T09:00:00.000000Z\",\n      \"updated_at\"\
+                : \"2026-06-09T09:00:00.000000Z\"\n    },\n    {\n      \"id\": 2,\n\
+                \      \"name\": \"Grade B \\u2192 blemished SKU\",\n      \"is_active\"\
+                : true,\n      \"priority\": 1,\n      \"match_product_id\": null,\n\
+                \      \"match_product_category_id\": null,\n      \"match_return_reason_id\"\
+                : null,\n      \"match_warehouse_id\": null,\n      \"match_condition_grade\"\
+                : \"B\",\n      \"match_condition_grade_label\": \"Grade B \\u2014\
+                \ Good\",\n      \"action\": \"new_blemished_sku\",\n      \"action_label\"\
+                : \"New Blemished SKU\",\n      \"blemished_condition\": \"Open box\
+                \ \\u2014 good condition\",\n      \"created_at\": \"2026-06-09T09:00:00.000000Z\"\
+                ,\n      \"updated_at\": \"2026-06-09T09:00:00.000000Z\"\n    }\n\
+                \  ],\n  \"message\": \"Disposition policy order updated.\"\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"A list of policy IDs is required to reorder.\"\
+                ,\n  \"errors\": {\n    \"ordered_ids\": [\n      \"A list of policy\
+                \ IDs is required to reorder.\"\n    ]\n  }\n}"
+      operationId: post-api-return-disposition-policies-reorder
   /api/discount-codes/{discount_code}:
     get:
       tags:
@@ -160473,6 +161170,194 @@ paths:
                   lines.0.expected_quantity:
                   - Expected quantity must be greater than zero.
       operationId: post-api-inbound-shipments-from-invoice-purchaseinvoice
+  //{protocol}{domain}/api/inbound-shipments:
+    get:
+      tags:
+      - Inbound Shipments
+      summary: List Inbound Shipments
+      description: 'Returns a paginated list of inbound shipments. Supports Spatie
+        QueryBuilder filters and sorts.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Available sorts: id, shipment_number, status, carrier, tracking_number, expected_arrival_date,
+        actual_arrival_date, shipped_at, num_lines, created_at, updated_at
+
+
+        Default sort: -id (newest first)
+
+
+        Pagination defaults: 10 per page
+
+
+        Logistics tracking date filter columns: logistics_<slug>_estimate, logistics_<slug>_actual
+        — where <slug> is the slug of any active LogisticsTrackingField. Each shipment
+        row also includes a logistics_tracking_field_values array with { field_slug,
+        field_name, estimate_date, actual_date } entries for every active logistics
+        tracking field.
+
+
+        Each shipment row also includes a purchase_orders array — the distinct set
+        of purchase orders linked via the shipment’s lines, each as { id, purchase_order_number
+        }. A single linked PO yields a one-element array; multiple yields N entries.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix with - for descending. Allowed: id, shipment_number,
+          status, carrier, tracking_number, expected_arrival_date, actual_arrival_date,
+          shipped_at, num_lines, created_at, updated_at'
+        example: -id
+      - name: filter[search]
+        in: query
+        schema:
+          type: string
+        description: Search across shipment number, carrier, tracking number, supplier
+          name
+      - name: filter[status]
+        in: query
+        schema:
+          type: string
+        description: Filter by status (draft, in_transit, received, closed, cancelled)
+      - name: filter[date_from]
+        in: query
+        schema:
+          type: string
+        description: Filter shipments created on or after this date (YYYY-MM-DD)
+      - name: filter[date_to]
+        in: query
+        schema:
+          type: string
+        description: Filter shipments created on or before this date (YYYY-MM-DD)
+      - name: filter[supplier_id]
+        in: query
+        schema:
+          type: string
+        description: Filter by supplier ID (exact match)
+      - name: filter[destination_warehouse_id]
+        in: query
+        schema:
+          type: string
+        description: Filter by destination warehouse ID
+      - name: filter[purchase_order_id]
+        in: query
+        schema:
+          type: string
+        description: Filter shipments that include lines from the given purchase order
+          ID
+      - name: filter[shipment_number.contains]
+        in: query
+        schema:
+          type: string
+        description: 'Advanced text filter: shipment number contains value'
+      - name: filter[carrier.contains]
+        in: query
+        schema:
+          type: string
+        description: 'Advanced text filter: carrier contains value'
+      - name: filter[tracking_number.contains]
+        in: query
+        schema:
+          type: string
+        description: 'Advanced text filter: tracking number contains value'
+      - name: filter[logistics_<slug>_estimate][on_or_after]
+        in: query
+        schema:
+          type: string
+        description: 'Date filter on a logistics tracking field estimate date for
+          the shipment. Replace <slug> with any active LogisticsTrackingField slug
+          (e.g. logistics_port-arrived_estimate). Operators: on, before, after, on_or_before,
+          on_or_after, between, is_empty, is_not_empty, is.'
+      - name: filter[logistics_<slug>_actual][is_empty]
+        in: query
+        schema:
+          type: string
+        description: Date filter on a logistics tracking field actual date for the
+          shipment (e.g. logistics_customs-cleared_actual). Same operators as the
+          estimate filter.
+      - name: filter_groups[conjunction]
+        in: query
+        schema:
+          type: string
+        description: 'GroupedFilterSupport tree root conjunction: and/or. Use filter_groups[children][i][...]
+          to express nested AND/OR conditions over the logistics tracking columns
+          (column = logistics_<slug>_estimate or logistics_<slug>_actual).'
+        example: and
+      - name: protocol
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"current_page\": 1,\n  \"data\": [\n    {\n      \"\
+                id\": 42,\n      \"shipment_number\": \"IS-00042\",\n      \"status\"\
+                : \"in_transit\",\n      \"status_label\": \"In Transit\",\n     \
+                \ \"supplier_id\": 7,\n      \"destination_warehouse_id\": 1,\n  \
+                \    \"carrier\": \"FedEx\",\n      \"tracking_number\": \"793644540\"\
+                ,\n      \"shipping_method_id\": 3,\n      \"expected_arrival_date\"\
+                : \"2025-05-15\",\n      \"port_eta\": \"2025-05-08\",\n      \"warehouse_eta\"\
+                : \"2025-05-15\",\n      \"actual_arrival_date\": null,\n      \"\
+                shipped_at\": \"2025-04-20T14:00:00+00:00\",\n      \"late_shipment\"\
+                : false,\n      \"created_from_receipt\": false,\n      \"notes\"\
+                : \"Priority shipment\",\n      \"created_by\": 1,\n      \"asn_last_sent_at\"\
+                : null,\n      \"total_expected_quantity\": 250.0,\n      \"total_received_quantity\"\
+                : 0.0,\n      \"inbound_shipment_lines_count\": 5,\n      \"purchase_orders\"\
+                : [\n        {\"id\": 30, \"purchase_order_number\": \"PO-001029\"\
+                },\n        {\"id\": 31, \"purchase_order_number\": \"PO-001030\"\
+                }\n      ],\n      \"supplier\": {\"id\": 7, \"name\": \"Acme Supplies\"\
+                },\n      \"destination_warehouse\": {\"id\": 1, \"name\": \"Main\
+                \ Warehouse\"},\n      \"shipping_method\": {\"id\": 3, \"name\":\
+                \ \"Ground\"},\n      \"creator\": {\"id\": 1, \"name\": \"Admin User\"\
+                },\n      \"inbound_shipment_lines\": [],\n      \"logistics_tracking_field_values\"\
+                : [\n        {\"field_slug\": \"port-arrived\", \"field_name\": \"\
+                Port Arrived\", \"estimate_date\": \"2025-05-08\", \"actual_date\"\
+                : null},\n        {\"field_slug\": \"customs-cleared\", \"field_name\"\
+                : \"Customs Cleared\", \"estimate_date\": \"2025-05-12\", \"actual_date\"\
+                : null}\n      ],\n      \"created_at\": \"2025-04-18T10:00:00.000000Z\"\
+                ,\n      \"updated_at\": \"2025-04-20T14:00:00.000000Z\"\n    }\n\
+                \  ],\n  \"first_page_url\": \"https://sku2.test/api/inbound-shipments?page=1\"\
+                ,\n  \"from\": 1,\n  \"last_page\": 5,\n  \"last_page_url\": \"https://sku2.test/api/inbound-shipments?page=5\"\
+                ,\n  \"next_page_url\": \"https://sku2.test/api/inbound-shipments?page=2\"\
+                ,\n  \"path\": \"https://sku2.test/api/inbound-shipments\",\n  \"\
+                per_page\": 10,\n  \"prev_page_url\": null,\n  \"to\": 10,\n  \"total\"\
+                : 48\n}"
+      operationId: get-protocoldomain-api-inbound-shipments
   /api/inbound-shipments/{inbound_shipment}/mark-as-shipped:
     post:
       tags:
