@@ -17806,28 +17806,54 @@ paths:
       tags:
       - Financials
       summary: Daily Financial Summary
-      description: 'Returns daily financial summary data for reporting.
+      description: 'Returns paginated daily financial summary rows. Each row is backed
+        by a polymorphic reportable: a Product or a Financial Line Type.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Filters (Spatie QueryBuilder syntax, filter[name]=value):
+
+        - filter[search] — searches product SKU/name and financial line type name/classification;
+        numeric values also match row ID
+
+        - filter[date_from] / filter[date_to] — date range on the summary date (YYYY-MM-DD)
+
+        - filter[id] / filter[reportable_type] — exact match
+
+        - filter[financial_line_type.{operator}] — financial line type NAME on FinancialLineType-backed
+        rows. Advanced text filter operators (append to the filter name): is, is_not,
+        contains, does_not_contain, is_one_of (comma-separated), starts_with, does_not_start_with,
+        ends_with, does_not_end_with, is_empty, is_not_empty. Bare filter[financial_line_type]=value
+        acts as implicit ''is''. Positive operators return only financial-line-type
+        rows that match; negative operators (is_not, does_not_*) exclude matching
+        line-type rows while keeping all other rows (e.g. product-backed rows).
+
+        - filter[classification.{operator}] — financial line type classification (''revenue''
+        or ''cost''), same operators as above
+
+        - Numeric advanced filters on: id, quantity, quantity_returned, num_orders,
+        revenue, revenue_allocated, revenue_credits, total_revenue, cost, cost_allocated,
+        cost_invoices, cost_returned, total_cost, profit, profit_margin (operators:
+        equals, not_equals, greater_than, greater_than_or_equal, less_than, less_than_or_equal,
+        between, is_empty, is_not_empty)
+
+        - Date advanced filters on: date, created_at, updated_at
+
+
+        Sorting: sort param, prefix with - for DESC. Allowed sorts: id, date, quantity,
+        num_orders, total_revenue, total_cost, profit, profit_margin, created_at,
+        updated_at. Default: -date.
+
+
+        Pagination: page, per_page (default 15).'
       parameters:
       - name: Accept
         in: header
         schema:
           type: string
         example: application/json
-      - name: date_from
-        in: query
-        schema:
-          type: string
-        description: Start date (YYYY-MM-DD)
-        example: '2024-03-01'
-      - name: date_to
-        in: query
-        schema:
-          type: string
-        description: End date (YYYY-MM-DD)
-        example: '2024-03-31'
       responses:
         '200':
           description: OK
@@ -17837,16 +17863,45 @@ paths:
                 type: object
               example:
                 data:
-                - date: '2024-03-01'
-                  revenue: '4250.00'
-                  cogs: '2100.00'
-                  gross_profit: '2150.00'
-                  orders: 18
-                - date: '2024-03-02'
-                  revenue: '3800.00'
-                  cogs: '1900.00'
-                  gross_profit: '1900.00'
-                  orders: 15
+                - id: 102
+                  date: '2024-03-01'
+                  reportable:
+                    id: 3
+                    type: App\Models\FinancialLineType
+                    financial_line_type:
+                      id: 3
+                      name: Shipping Revenue
+                      classification: revenue
+                  quantity: 0
+                  quantity_returned: 0
+                  num_orders: 18
+                  revenue: '240.00'
+                  revenue_allocated: '0.00'
+                  revenue_credits: '0.00'
+                  revenue_discount: '0.00'
+                  total_revenue: '240.00'
+                  cost: '0.00'
+                  cost_allocated: '0.00'
+                  cost_invoices: '0.00'
+                  cost_returned: '0.00'
+                  cost_breakdown: null
+                  total_cost: '0.00'
+                  profit: '240.00'
+                  profit_margin: '100.00'
+                  updated_at: '2024-03-02T04:10:11.000000Z'
+                  created_at: '2024-03-02T04:10:11.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 15
+                total: 1
+                from: 1
+                to: 1
+                first_page_url: https://sku-alt2.test/api/v2/financials/daily-summary?page=1
+                last_page_url: https://sku-alt2.test/api/v2/financials/daily-summary?page=1
+                next_page_url: null
+                prev_page_url: null
+                path: https://sku-alt2.test/api/v2/financials/daily-summary
+                links: []
       operationId: get-api-v2-financials-daily-summary
   /api/v2/financials/sales-order-lines:
     get:
@@ -40530,24 +40585,106 @@ paths:
       tags:
       - Export
       summary: Export Daily Financials
-      description: 'Exports daily financial reporting data as a CSV file.
+      description: 'Returns ALL daily financial summary rows (no pagination) as JSON
+        for CSV export. Applies the same filters and sorts as GET /api/v2/financials/daily-summary.
 
 
-        Authentication: Requires Bearer token
+        Authentication: Requires Bearer token.
 
 
-        Response: text/csv file download'
+        Filters (Spatie QueryBuilder syntax, filter[name]=value):
+
+        - filter[search], filter[date_from], filter[date_to], filter[id], filter[reportable_type]
+
+        - filter[financial_line_type.{operator}] — financial line type NAME. Advanced
+        text filter operators (append to the filter name): is, is_not, contains, does_not_contain,
+        is_one_of (comma-separated), starts_with, does_not_start_with, ends_with,
+        does_not_end_with, is_empty, is_not_empty. Bare filter[financial_line_type]=value
+        acts as implicit ''is''. Positive operators return only financial-line-type
+        rows that match; negative operators (is_not, does_not_*) exclude matching
+        line-type rows while keeping all other rows (e.g. product-backed rows).
+
+        - filter[classification.{operator}] — ''revenue'' or ''cost'', same operators
+
+        - Numeric advanced filters on all quantity/money columns; date advanced filters
+        on date, created_at, updated_at
+
+
+        Sorting: sort param, prefix with - for DESC. Allowed sorts: id, date, quantity,
+        num_orders, total_revenue, total_cost, profit, profit_margin, created_at,
+        updated_at. Default: -date.
+
+
+        Response: JSON { data: [...] } containing every matching row.'
       parameters:
       - name: Accept
         in: header
         schema:
           type: string
-        example: text/csv
+        example: application/json
       responses:
         '200':
-          description: Successful response
+          description: OK
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 102
+                  date: '2024-03-01'
+                  reportable:
+                    id: 3
+                    type: App\Models\FinancialLineType
+                    financial_line_type:
+                      id: 3
+                      name: Shipping Revenue
+                      classification: revenue
+                  quantity: 0
+                  quantity_returned: 0
+                  num_orders: 18
+                  revenue: '240.00'
+                  revenue_allocated: '0.00'
+                  revenue_credits: '0.00'
+                  revenue_discount: '0.00'
+                  total_revenue: '240.00'
+                  cost: '0.00'
+                  cost_allocated: '0.00'
+                  cost_invoices: '0.00'
+                  cost_returned: '0.00'
+                  cost_breakdown: null
+                  total_cost: '0.00'
+                  profit: '240.00'
+                  profit_margin: '100.00'
+                  updated_at: '2024-03-02T04:10:11.000000Z'
+                  created_at: '2024-03-02T04:10:11.000000Z'
+                - id: 101
+                  date: '2024-03-01'
+                  reportable:
+                    id: 55
+                    type: App\Models\Product
+                    product:
+                      id: 55
+                      sku: ACME-HOODIE-M
+                      brand: Acme
+                  quantity: 12
+                  quantity_returned: 1
+                  num_orders: 8
+                  revenue: '1450.00'
+                  revenue_allocated: '0.00'
+                  revenue_credits: '-120.00'
+                  revenue_discount: '0.00'
+                  total_revenue: '1330.00'
+                  cost: '640.00'
+                  cost_allocated: '0.00'
+                  cost_invoices: '0.00'
+                  cost_returned: '-55.00'
+                  cost_breakdown: null
+                  total_cost: '585.00'
+                  profit: '745.00'
+                  profit_margin: '56.02'
+                  updated_at: '2024-03-02T04:10:11.000000Z'
+                  created_at: '2024-03-02T04:10:11.000000Z'
       operationId: get-api-export-daily-financials
   /api/export/v2/profitability-drilldown:
     get:
