@@ -45500,6 +45500,9 @@ paths:
                     store_id: 12
                     integration_instance_id: 3
                   connection_status: connected
+                  account_status_signal: null
+                  pricing_health_signal: null
+                  fee_promotion_signals: []
                   integration_name: Amazon
                   store:
                     id: 12
@@ -45757,6 +45760,9 @@ paths:
                     batch_sales_order_invoices: true
                   is_automatic_sync_enabled: true
                   connection_status: connected
+                  account_status_signal: null
+                  pricing_health_signal: null
+                  fee_promotion_signals: []
                   integration_name: Amazon
                   created_at: '2026-01-15T10:30:00.000000Z'
                   updated_at: '2026-05-20T14:30:00.000000Z'
@@ -54995,6 +55001,10 @@ paths:
                   catalog_data:
                     attributes: {}
                   listing_url: https://www.amazon.com/dp/B0CXYZ1234
+                  is_listing_suppressed: false
+                  has_listing_issues: false
+                  realtime_listing_issues: []
+                  realtime_listing_status: null
                   archived_at: null
                   created_at: '2024-09-12T17:32:00+00:00'
                   updated_at: '2026-05-28T14:01:33+00:00'
@@ -55018,6 +55028,10 @@ paths:
                   fulfillment_channel: null
                   is_fba: false
                   sku_product: null
+                  is_listing_suppressed: false
+                  has_listing_issues: false
+                  realtime_listing_issues: []
+                  realtime_listing_status: null
                 current_page: 1
                 first_page_url: https://example.com/api/amazon/1/products?page=1
                 from: 1
@@ -55094,6 +55108,10 @@ paths:
                   status: Active
                   is_fba: true
                   listing_url: https://www.amazon.com/dp/B0CXYZ1234
+                  is_listing_suppressed: false
+                  has_listing_issues: false
+                  realtime_listing_issues: []
+                  realtime_listing_status: null
                   sku_product: null
       operationId: get-domain-api-amazon-integrationinstance-products-product
   //{domain}/api/amazon/product/{product}/update-metadata:
@@ -68738,6 +68756,248 @@ paths:
                     estimated_arrival_date: '2026-05-20T18:00:00.000000Z'
                     shipping_notes: null
       operationId: get-domain-api-amazon-unified-fulfillment-orders-fulfillmentorder
+  //{domain}/api/amazon/instances/{integrationInstance}/notification-subscriptions:
+    get:
+      tags:
+      - Sales Channels
+      summary: List Notification Subscriptions (with health)
+      description: List every SP-API push-notification subscription (any status) for
+        the given Amazon integration instance, each with a computed `healthy` flag.
+        A subscription is healthy when it is ACTIVE and has seen an event (or, if
+        brand-new, been alive) within the `window_minutes` silence window (config
+        `amazon.notifications.health_window_minutes`, default 120). Backs the per-instance
+        Notification Health panel. Requires an initialized tenant context.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 12
+                  integration_instance_id: 3
+                  notification_type: ORDER_CHANGE
+                  phase: 2
+                  channel: sqs
+                  subscription_id: b1d4c0e2-9f3a-4d5b-8c7e-1a2b3c4d5e6f
+                  destination_id: 9a8b7c6d-5e4f-3210-fedc-ba9876543210
+                  payload_version: '1.0'
+                  status: active
+                  last_event_at: '2026-06-09T11:42:00+00:00'
+                  healthy: true
+                  window_minutes: 120
+                  created_at: '2026-06-01T08:00:00+00:00'
+                  updated_at: '2026-06-09T11:42:00+00:00'
+                - id: 13
+                  integration_instance_id: 3
+                  notification_type: LISTINGS_ITEM_ISSUES_CHANGE
+                  phase: 5
+                  channel: eventbridge
+                  subscription_id: c2e5d1f3-0a4b-5e6c-9d8f-2b3c4d5e6f70
+                  destination_id: 0b9c8d7e-6f50-4321-0edc-cb9876543211
+                  payload_version: '1.0'
+                  status: active
+                  last_event_at: null
+                  healthy: true
+                  window_minutes: 120
+                  created_at: '2026-06-09T11:30:00+00:00'
+                  updated_at: '2026-06-09T11:30:00+00:00'
+      operationId: get-domain-api-amazon-instances-integrationinstance-notification-subscriptions
+    delete:
+      tags:
+      - Sales Channels
+      summary: Tear Down All Subscriptions
+      description: Tear down every active subscription for the instance. Best-effort
+        on Amazon's side (per-type), always marked deleted locally. Returns the count
+        of subscriptions unsubscribed. Requires an initialized tenant context.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  unsubscribed: 4
+                message: Subscriptions torn down
+      operationId: delete-domain-api-amazon-instances-integrationinstance-notification-subscriptions
+  //{domain}/api/amazon/instances/{integrationInstance}/notification-subscriptions/resync:
+    post:
+      tags:
+      - Sales Channels
+      summary: Resync (Reconcile) Subscriptions
+      description: 'Force a reconcile: converge the instance''s live subscriptions
+        onto exactly what its enabled phase flags imply — create newly-enabled notification
+        types, re-point relocated SQS/EventBridge destinations, and tear down disabled
+        types. Idempotent and safe to re-run after a partial failure; degrades per-type
+        rather than aborting, so one failing type never blocks the rest. Returns counts
+        of what changed. Requires an initialized tenant context.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  subscribed: 3
+                  unsubscribed: 1
+                  skipped: 9
+                  failed: 0
+                message: Subscriptions reconciled
+      operationId: post-domain-api-amazon-instances-integrationinstance-notification-subscriptions-resync
+  //{domain}/api/amazon/notification-events:
+    get:
+      tags:
+      - Sales Channels
+      summary: List Notification Events (audit log, paginated)
+      description: Paginated debug/audit log of delivered SP-API notification events
+        across all Amazon instances, newest first. Read-only — lets support staff
+        inspect exactly what Amazon delivered and how each event was processed (pending/processing/processed/failed,
+        plus the raw payload and any error) when reconciling a missed or mis-handled
+        notification. Filter by notification_type, processing_status, integration_instance_ids,
+        or a free-text search over notification_id/error.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 5012
+                  integration_instance_id: 3
+                  integration_instance_name: Amazon US - Main
+                  notification_id: a1b2c3d4-0000-1111-2222-333344445555
+                  notification_type: ORDER_CHANGE
+                  phase: 2
+                  payload_version: '1.0'
+                  event_time: '2026-06-09T11:42:00+00:00'
+                  processing_status: processed
+                  processed_at: '2026-06-09T11:42:03+00:00'
+                  error: null
+                  payload:
+                    NotificationType: ORDER_CHANGE
+                    Payload:
+                      OrderChangeNotification:
+                        AmazonOrderId: 111-2223334-5556667
+                  created_at: '2026-06-09T11:42:01+00:00'
+                  updated_at: '2026-06-09T11:42:03+00:00'
+                - id: 5011
+                  integration_instance_id: 3
+                  integration_instance_name: Amazon US - Main
+                  notification_id: b2c3d4e5-1111-2222-3333-444455556666
+                  notification_type: LISTINGS_ITEM_ISSUES_CHANGE
+                  phase: 5
+                  payload_version: '1.0'
+                  event_time: '2026-06-09T11:40:00+00:00'
+                  processing_status: failed
+                  processed_at: '2026-06-09T11:40:02+00:00'
+                  error: No matching AmazonProduct for SKU ABC-123
+                  payload:
+                    NotificationType: LISTINGS_ITEM_ISSUES_CHANGE
+                    Payload: {}
+                  created_at: '2026-06-09T11:40:01+00:00'
+                  updated_at: '2026-06-09T11:40:02+00:00'
+                current_page: 1
+                last_page: 12
+                per_page: 10
+                total: 118
+                from: 1
+                to: 10
+      operationId: get-domain-api-amazon-notification-events
   //{domain}/api/shopify/config:
     get:
       tags:
