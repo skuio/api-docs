@@ -35616,6 +35616,915 @@ paths:
                 , \"type\": \"cost\"},\n    {\"id\": 3, \"name\": \"Platform Fee\"\
                 , \"type\": \"cost\"}\n  ]\n}"
       operationId: get-api-reporting-profitability-financial-line-types
+  /api/reporting/sales-tax/liability:
+    get:
+      tags:
+      - Reporting
+      summary: Get Sales Tax Liability
+      description: 'Sales Tax Liability Report: tax collected and sales aggregated
+        by destination jurisdiction (country + region), with a taxable / non-taxable
+        split and Net Tax (tax collected minus refunded tax from credits). Amounts
+        are converted to the tenant base currency.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).
+
+
+        Required parameters:
+
+        - date_from: report period start
+
+        - date_to: report period end (>= date_from)
+
+
+        Optional:
+
+        - channel_ids[]: restrict to specific sales channels
+
+        - country_code: destination country ISO code (max 3)
+
+        - order_statuses[]: draft | reserved | open | closed (default open + closed)
+
+        - province_code: destination region/state code (max 10)
+
+        - group_by: state | in_state_out_of_state | responsibility | state_responsibility
+        (default state)
+
+
+        The `responsibility` and `state_responsibility` lenses (SKU-8076 Phase 2)
+        split tax by who collects & remits it: the seller, or a marketplace facilitator
+        (Amazon/eBay/Walmart/Temu/Faire by default). Rows then also carry tax_collection_responsibility,
+        is_default_classification, seller_net_tax and marketplace_net_tax. The `is_home_state`
+        flag marks the tenant''s resolved home nexus jurisdiction. Rows are sorted
+        by net_tax descending.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: date_from
+        in: query
+        schema:
+          type: string
+        description: Required. Start of the reporting period (date or datetime; treated
+          as app timezone).
+        example: '2026-01-01'
+      - name: date_to
+        in: query
+        schema:
+          type: string
+        description: Required. End of the reporting period. Must be on or after date_from.
+        example: '2026-03-31'
+      - name: group_by
+        in: query
+        schema:
+          type: string
+        description: 'Optional. Aggregation lens: state (one row per destination region)
+          | in_state_out_of_state (collapses to two rows: In-State home jurisdiction
+          vs Out-of-State) | responsibility (two rows: Seller-collected vs Marketplace
+          facilitator) | state_responsibility (one row per state, each carrying a
+          seller_net_tax / marketplace_net_tax split). Defaults to state.'
+        example: state
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"country_code\": \"US\",\n\
+                \      \"province_code\": \"CA\",\n      \"province\": \"California\"\
+                ,\n      \"is_home_state\": true,\n      \"order_count\": 142,\n \
+                \     \"gross_sales\": \"48230.50\",\n      \"taxable_sales\": \"\
+                41200.00\",\n      \"non_taxable_sales\": \"7030.50\",\n      \"tax_collected\"\
+                : \"3502.00\",\n      \"refunded_tax\": \"120.50\",\n      \"net_tax\"\
+                : \"3381.50\"\n    },\n    {\n      \"country_code\": \"US\",\n  \
+                \    \"province_code\": \"NY\",\n      \"province\": \"New York\"\
+                ,\n      \"is_home_state\": false,\n      \"order_count\": 88,\n \
+                \     \"gross_sales\": \"26110.00\",\n      \"taxable_sales\": \"\
+                24000.00\",\n      \"non_taxable_sales\": \"2110.00\",\n      \"tax_collected\"\
+                : \"2040.00\",\n      \"refunded_tax\": \"0.00\",\n      \"net_tax\"\
+                : \"2040.00\"\n    }\n  ],\n  \"totals\": {\n    \"order_count\":\
+                \ 230,\n    \"gross_sales\": \"74340.50\",\n    \"taxable_sales\"\
+                : \"65200.00\",\n    \"non_taxable_sales\": \"9140.50\",\n    \"tax_collected\"\
+                : \"5542.00\",\n    \"refunded_tax\": \"120.50\",\n    \"net_tax\"\
+                : \"5421.50\"\n  },\n  \"currency\": \"USD\",\n  \"period\": {\n \
+                \   \"date_from\": \"2026-01-01\",\n    \"date_to\": \"2026-03-31\"\
+                \n  }\n}"
+      operationId: get-api-reporting-sales-tax-liability
+  /api/reporting/sales-tax/liability/transactions:
+    get:
+      tags:
+      - Reporting
+      summary: Get Sales Tax Transactions (Drill-Down)
+      description: 'Paginated transaction drill-down behind a single jurisdiction
+        row of the liability report. Returns the underlying orders and credits (credit
+        amounts are negative) that compose the aggregated row, filtered by the same
+        parameters plus the selected province_code / country_code.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).
+
+
+        Required parameters:
+
+        - date_from, date_to
+
+
+        Optional: channel_ids[], country_code, order_statuses[], province_code, page,
+        per_page (1-200).
+
+
+        Results are a UNION of sales orders and sales credits ordered by transaction
+        date descending, returned in the standard Laravel pagination envelope.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: date_from
+        in: query
+        schema:
+          type: string
+        description: Required. Start of the reporting period (date or datetime; treated
+          as app timezone).
+        example: '2026-01-01'
+      - name: date_to
+        in: query
+        schema:
+          type: string
+        description: Required. End of the reporting period. Must be on or after date_from.
+        example: '2026-03-31'
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Optional. Page number (>= 1). Defaults to 1.
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Optional. Items per page (1-200). Defaults to 15.
+        example: '15'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"document_type\": \"order\"\
+                ,\n      \"order_id\": 33421,\n      \"number\": \"SO-10044\",\n \
+                \     \"date\": \"2026-03-28\",\n      \"channel\": \"Shopify US\"\
+                ,\n      \"customer_name\": \"Jane Doe\",\n      \"province_code\"\
+                : \"CA\",\n      \"taxable_amount\": \"310.00\",\n      \"tax\": \"\
+                26.35\"\n    },\n    {\n      \"document_type\": \"credit\",\n   \
+                \   \"order_id\": 33380,\n      \"number\": \"CN-2051\",\n      \"\
+                date\": \"2026-03-20\",\n      \"channel\": \"Shopify US\",\n    \
+                \  \"customer_name\": \"John Smith\",\n      \"province_code\": \"\
+                CA\",\n      \"taxable_amount\": \"-45.00\",\n      \"tax\": \"-3.83\"\
+                \n    }\n  ],\n  \"current_page\": 1,\n  \"last_page\": 8,\n  \"per_page\"\
+                : 15,\n  \"total\": 118,\n  \"from\": 1,\n  \"to\": 15,\n  \"first_page_url\"\
+                : \"{{protocol}}{{domain}}/api/reporting/sales-tax/liability/transactions?page=1\"\
+                ,\n  \"last_page_url\": \"{{protocol}}{{domain}}/api/reporting/sales-tax/liability/transactions?page=8\"\
+                ,\n  \"next_page_url\": \"{{protocol}}{{domain}}/api/reporting/sales-tax/liability/transactions?page=2\"\
+                ,\n  \"prev_page_url\": null,\n  \"path\": \"{{protocol}}{{domain}}/api/reporting/sales-tax/liability/transactions\"\
+                \n}"
+      operationId: get-api-reporting-sales-tax-liability-transactions
+  /api/reporting/sales-tax/liability/export:
+    get:
+      tags:
+      - Reporting
+      summary: Export Sales Tax Liability
+      description: 'Exports the Sales Tax Liability Report as a downloadable file
+        (CSV, XLSX, or PDF). Accepts the same filter parameters as the liability report.
+        The response is a binary file download (Content-Type varies: text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,
+        or application/pdf), not JSON. Columns: Country, Region, Region Code, In-State,
+        Orders, Gross Sales, Taxable Sales, Non-Taxable Sales, Tax Collected, Refunded
+        Tax, Net Tax, with a trailing TOTAL row.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: date_from
+        in: query
+        schema:
+          type: string
+        description: Required. Start of the reporting period (date or datetime; treated
+          as app timezone).
+        example: '2026-01-01'
+      - name: date_to
+        in: query
+        schema:
+          type: string
+        description: Required. End of the reporting period. Must be on or after date_from.
+        example: '2026-03-31'
+      - name: group_by
+        in: query
+        schema:
+          type: string
+        description: Optional. state | in_state_out_of_state (default state).
+        example: state
+      - name: format
+        in: query
+        schema:
+          type: string
+        description: 'Optional. Export format: csv | xlsx | pdf. Defaults to csv.'
+        example: csv
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-reporting-sales-tax-liability-export
+  /api/reporting/sales-tax/channel-responsibility:
+    get:
+      tags:
+      - Reporting
+      summary: Get Channel Tax Responsibility
+      description: 'Lists every sales channel (integration instance) with its resolved
+        tax-collection responsibility for the Sales Tax Liability Report (SKU-8076
+        Phase 2). Each channel is classified as `seller` (Seller-collected) or `marketplace_facilitator`
+        (Marketplace facilitator).
+
+
+        The `source` field indicates how the classification was resolved:
+
+        - override: a manual per-channel override was saved (is_default = false)
+
+        - default: resolved from the built-in marketplace-facilitator map (Amazon,
+        Ebay, Walmart, Temu, Faire => marketplace_facilitator; Shopify, WooCommerce,
+        BigCommerce, Magento, API Sales Channel, SKU.io => seller)
+
+        - unclassified: the channel''s integration name is in neither map, so it defaulted
+        conservatively to seller and is flagged for review (is_unclassified = true)
+
+
+        The top-level `has_unclassified` flag is true when at least one channel is
+        unclassified, so the UI can surface a review banner.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"integration_instance_id\"\
+                : 12,\n      \"name\": \"Amazon US\",\n      \"integration_name\"\
+                : \"Amazon\",\n      \"tax_collection_responsibility\": \"marketplace_facilitator\"\
+                ,\n      \"tax_collection_responsibility_label\": \"Marketplace facilitator\"\
+                ,\n      \"source\": \"default\",\n      \"is_default\": true,\n \
+                \     \"is_unclassified\": false\n    },\n    {\n      \"integration_instance_id\"\
+                : 8,\n      \"name\": \"Shopify US\",\n      \"integration_name\"\
+                : \"Shopify\",\n      \"tax_collection_responsibility\": \"seller\"\
+                ,\n      \"tax_collection_responsibility_label\": \"Seller-collected\"\
+                ,\n      \"source\": \"default\",\n      \"is_default\": true,\n \
+                \     \"is_unclassified\": false\n    },\n    {\n      \"integration_instance_id\"\
+                : 21,\n      \"name\": \"TikTok Shop\",\n      \"integration_name\"\
+                : \"TikTok\",\n      \"tax_collection_responsibility\": \"seller\"\
+                ,\n      \"tax_collection_responsibility_label\": \"Seller-collected\"\
+                ,\n      \"source\": \"unclassified\",\n      \"is_default\": true,\n\
+                \      \"is_unclassified\": true\n    }\n  ],\n  \"has_unclassified\"\
+                : true\n}"
+      operationId: get-api-reporting-sales-tax-channel-responsibility
+  /api/reporting/sales-tax/channel-responsibility/{integrationInstance}:
+    put:
+      tags:
+      - Reporting
+      summary: Update Channel Tax Responsibility
+      description: 'Overrides a single sales channel''s tax-collection responsibility
+        (SKU-8076 Phase 2). Saving an override sets `source` to override and `is_default`
+        to false for that channel; it persists to integration_instances.tax_collection_responsibility
+        and immediately affects the responsibility / state_responsibility lenses of
+        the Sales Tax Liability Report.
+
+
+        Request body:
+
+        - tax_collection_responsibility (required): seller | marketplace_facilitator
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                tax_collection_responsibility: marketplace_facilitator
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. The integration instance (sales channel) id whose tax-collection
+          responsibility is being overridden.
+        example: '8'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"integration_instance_id\": 8,\n  \
+                \  \"name\": \"Shopify US\",\n    \"integration_name\": \"Shopify\"\
+                ,\n    \"tax_collection_responsibility\": \"marketplace_facilitator\"\
+                ,\n    \"tax_collection_responsibility_label\": \"Marketplace facilitator\"\
+                ,\n    \"source\": \"override\",\n    \"is_default\": false,\n   \
+                \ \"is_unclassified\": false\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The selected tax collection responsibility\
+                \ is invalid.\",\n  \"errors\": {\n    \"tax_collection_responsibility\"\
+                : [\n      \"The selected tax collection responsibility is invalid.\"\
+                \n    ]\n  }\n}"
+      operationId: put-api-reporting-sales-tax-channel-responsibility-integrationinstance
+  /api/reporting/sales-tax/nexus:
+    get:
+      tags:
+      - Reporting
+      summary: Get Economic Nexus Exposure
+      description: 'Economic Nexus Monitoring dashboard (SKU-8076 Phase 3). Returns
+        one row per destination jurisdiction (state/region) with measured sales and
+        transaction counts compared against that jurisdiction''s configured economic-nexus
+        threshold, a computed status, and the percent-of-threshold.
+
+
+        Measured volume is computed per jurisdiction over that jurisdiction''s own
+        measurement window (rolling 12 months, calendar year, or previous-or-current
+        calendar year), honouring each threshold''s counts_marketplace_sales and counts_exempt_sales
+        flags.
+
+
+        Status values:
+
+        - registered: tenant is registered in the jurisdiction (reported regardless
+        of volume).
+
+        - threshold_met: measured volume meets/exceeds the threshold and the tenant
+        is NOT registered.
+
+        - approaching: measured volume is at or above warning_threshold_percent of
+        the threshold but below it.
+
+        - not_approaching: measured volume is comfortably below the threshold.
+
+        - no_threshold: no threshold configured for the jurisdiction.
+
+
+        Results are read from a per-tenant cache populated by the recompute job; computed_at
+        is the cache timestamp (null if never computed).
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"country_code\": \"US\",\n\
+                \      \"region_code\": \"CA\",\n      \"region\": \"California\"\
+                ,\n      \"measured_sales\": \"612450.00\",\n      \"measured_transactions\"\
+                : 4120,\n      \"threshold_amount\": \"500000.00\",\n      \"threshold_transaction_count\"\
+                : null,\n      \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n      \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n      \"percent_of_threshold\": 122.49,\n      \"is_registered\"\
+                : false,\n      \"status\": \"threshold_met\",\n      \"status_label\"\
+                : \"Threshold met\"\n    },\n    {\n      \"country_code\": \"US\"\
+                ,\n      \"region_code\": \"TX\",\n      \"region\": \"Texas\",\n\
+                \      \"measured_sales\": \"421000.00\",\n      \"measured_transactions\"\
+                : 1890,\n      \"threshold_amount\": \"500000.00\",\n      \"threshold_transaction_count\"\
+                : null,\n      \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n      \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n      \"percent_of_threshold\": 84.2,\n      \"is_registered\"\
+                : false,\n      \"status\": \"approaching\",\n      \"status_label\"\
+                : \"Approaching\"\n    },\n    {\n      \"country_code\": \"US\",\n\
+                \      \"region_code\": \"NY\",\n      \"region\": \"New York\",\n\
+                \      \"measured_sales\": \"95300.00\",\n      \"measured_transactions\"\
+                : 540,\n      \"threshold_amount\": \"500000.00\",\n      \"threshold_transaction_count\"\
+                : 100,\n      \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n      \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n      \"percent_of_threshold\": 540.0,\n      \"is_registered\"\
+                : true,\n      \"status\": \"registered\",\n      \"status_label\"\
+                : \"Registered\"\n    }\n  ],\n  \"currency\": \"USD\",\n  \"computed_at\"\
+                : \"2026-06-09T14:05:22+00:00\"\n}"
+      operationId: get-api-reporting-sales-tax-nexus
+  /api/reporting/sales-tax/nexus/recompute:
+    post:
+      tags:
+      - Reporting
+      summary: Recompute Economic Nexus Exposure
+      description: 'Dispatches the ''Recompute Nexus Exposure'' tracked background
+        job (SKU-8076 Phase 3), which measures sales by jurisdiction and refreshes
+        the per-tenant nexus exposure cache read by GET /api/reporting/sales-tax/nexus.
+        Progress is reported through the global job progress tray.
+
+
+        Request body:
+
+        - country_code (optional): destination country ISO code; uppercased server-side.
+        Defaults to US.
+
+
+        Returns the tracked_job_log_id so the frontend can follow progress. A second
+        dispatch is rejected with 409 while a recompute is already queued or running.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                country_code: US
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 8842\n  },\n\
+                \  \"message\": \"Nexus exposure recompute started.\"\n}"
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"A nexus exposure recompute is already\
+                \ in progress.\"\n}"
+      operationId: post-api-reporting-sales-tax-nexus-recompute
+  /api/reporting/sales-tax/nexus/thresholds:
+    get:
+      tags:
+      - Reporting
+      summary: List Economic Nexus Thresholds
+      description: 'Lists every configured economic-nexus threshold (SKU-8076 Phase
+        3) — one per jurisdiction. Each threshold defines the dollar amount and/or
+        transaction count, how they combine (threshold_logic), the measurement window,
+        and whether marketplace-facilitated and exempt sales count toward the measured
+        volume.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 5,\n      \"country_code\"\
+                : \"US\",\n      \"region_code\": \"CA\",\n      \"threshold_amount\"\
+                : \"500000.00\",\n      \"threshold_transaction_count\": null,\n \
+                \     \"threshold_logic\": \"or\",\n      \"threshold_logic_label\"\
+                : \"Amount or transactions\",\n      \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n      \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n      \"counts_marketplace_sales\": false,\n      \"counts_exempt_sales\"\
+                : true,\n      \"effective_from\": \"2019-04-01\",\n      \"notes\"\
+                : \"Wayfair economic nexus threshold.\"\n    },\n    {\n      \"id\"\
+                : 12,\n      \"country_code\": \"US\",\n      \"region_code\": \"\
+                NY\",\n      \"threshold_amount\": \"500000.00\",\n      \"threshold_transaction_count\"\
+                : 100,\n      \"threshold_logic\": \"and\",\n      \"threshold_logic_label\"\
+                : \"Amount and transactions\",\n      \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n      \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n      \"counts_marketplace_sales\": false,\n      \"counts_exempt_sales\"\
+                : true,\n      \"effective_from\": \"2019-06-21\",\n      \"notes\"\
+                : null\n    }\n  ]\n}"
+      operationId: get-api-reporting-sales-tax-nexus-thresholds
+  /api/reporting/sales-tax/nexus/thresholds/{taxNexusThreshold}:
+    put:
+      tags:
+      - Reporting
+      summary: Update Economic Nexus Threshold
+      description: 'Updates a single jurisdiction''s economic-nexus threshold config
+        (SKU-8076 Phase 3). All fields are optional; only the supplied fields change.
+
+
+        Request body:
+
+        - threshold_amount (nullable, numeric >= 0): dollar threshold; null to disable
+        the amount test.
+
+        - threshold_transaction_count (nullable, integer >= 0): transaction-count
+        threshold; null to disable the count test.
+
+        - threshold_logic (sometimes): and | or — whether both or either test triggers
+        nexus.
+
+        - measurement_period (sometimes): rolling_12_months | calendar_year | previous_or_current_calendar_year.
+
+        - counts_marketplace_sales (sometimes, boolean): whether marketplace-facilitated
+        sales count toward measured volume.
+
+        - counts_exempt_sales (sometimes, boolean): whether tax-exempt sales count
+        toward measured volume.
+
+        - effective_from (nullable, date): when the threshold takes effect.
+
+        - notes (nullable, string <= 255).
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                threshold_amount: 500000
+                threshold_transaction_count: 200
+                threshold_logic: or
+                measurement_period: previous_or_current_calendar_year
+                counts_marketplace_sales: false
+                counts_exempt_sales: true
+                effective_from: '2019-04-01'
+                notes: Wayfair economic nexus threshold.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: taxNexusThreshold
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. The economic-nexus threshold id being updated.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 5,\n    \"country_code\": \"\
+                US\",\n    \"region_code\": \"CA\",\n    \"threshold_amount\": \"\
+                500000.00\",\n    \"threshold_transaction_count\": 200,\n    \"threshold_logic\"\
+                : \"or\",\n    \"threshold_logic_label\": \"Amount or transactions\"\
+                ,\n    \"measurement_period\": \"previous_or_current_calendar_year\"\
+                ,\n    \"measurement_period_label\": \"Previous or current calendar\
+                \ year\",\n    \"counts_marketplace_sales\": false,\n    \"counts_exempt_sales\"\
+                : true,\n    \"effective_from\": \"2019-04-01\",\n    \"notes\": \"\
+                Wayfair economic nexus threshold.\"\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The threshold amount field must be at\
+                \ least 0.\",\n  \"errors\": {\n    \"threshold_amount\": [\n    \
+                \  \"The threshold amount field must be at least 0.\"\n    ]\n  }\n\
+                }"
+      operationId: put-api-reporting-sales-tax-nexus-thresholds-taxnexusthreshold
+  /api/reporting/sales-tax/nexus/registrations:
+    get:
+      tags:
+      - Reporting
+      summary: List Sales-Tax Registrations
+      description: 'Lists every sales-tax registration record (SKU-8076 Phase 3).
+        A registered jurisdiction is reported on the nexus dashboard with a ''registered''
+        status regardless of measured volume (registration override).
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 3,\n      \"country_code\"\
+                : \"US\",\n      \"region_code\": \"NY\",\n      \"is_registered\"\
+                : true,\n      \"registration_date\": \"2024-01-15\",\n      \"registration_number\"\
+                : \"NY-12345678\",\n      \"filing_frequency\": \"quarterly\",\n \
+                \     \"filing_frequency_label\": \"Quarterly\",\n      \"notes\"\
+                : \"Registered after crossing threshold in 2023.\"\n    }\n  ]\n}"
+      operationId: get-api-reporting-sales-tax-nexus-registrations
+    post:
+      tags:
+      - Reporting
+      summary: Create Sales-Tax Registration
+      description: 'Creates a sales-tax registration record for a jurisdiction (SKU-8076
+        Phase 3). The country+region pair must be unique.
+
+
+        Request body:
+
+        - country_code (required, size:2): ISO country code; uppercased server-side.
+
+        - region_code (required, <= 10 chars): state/region code; uppercased server-side.
+        Unique per country.
+
+        - is_registered (sometimes, boolean): whether the tenant is registered in
+        the jurisdiction.
+
+        - registration_date (nullable, date).
+
+        - registration_number (nullable, <= 100 chars).
+
+        - filing_frequency (nullable): monthly | quarterly | annually.
+
+        - notes (nullable, <= 255 chars).
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                country_code: US
+                region_code: NY
+                is_registered: true
+                registration_date: '2024-01-15'
+                registration_number: NY-12345678
+                filing_frequency: quarterly
+                notes: Registered after crossing threshold in 2023.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 3,\n    \"country_code\": \"\
+                US\",\n    \"region_code\": \"NY\",\n    \"is_registered\": true,\n\
+                \    \"registration_date\": \"2024-01-15\",\n    \"registration_number\"\
+                : \"NY-12345678\",\n    \"filing_frequency\": \"quarterly\",\n   \
+                \ \"filing_frequency_label\": \"Quarterly\",\n    \"notes\": \"Registered\
+                \ after crossing threshold in 2023.\"\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The region code has already been taken.\"\
+                ,\n  \"errors\": {\n    \"region_code\": [\n      \"The region code\
+                \ has already been taken.\"\n    ]\n  }\n}"
+      operationId: post-api-reporting-sales-tax-nexus-registrations
+  /api/reporting/sales-tax/nexus/registrations/{taxNexusRegistration}:
+    put:
+      tags:
+      - Reporting
+      summary: Update Sales-Tax Registration
+      description: 'Updates an existing sales-tax registration record (SKU-8076 Phase
+        3). The jurisdiction (country + region) is fixed once created; only the registration
+        details and status may change. All fields are optional.
+
+
+        Request body:
+
+        - is_registered (sometimes, boolean).
+
+        - registration_date (nullable, date).
+
+        - registration_number (nullable, <= 100 chars).
+
+        - filing_frequency (nullable): monthly | quarterly | annually.
+
+        - notes (nullable, <= 255 chars).
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                is_registered: true
+                registration_date: '2024-01-15'
+                registration_number: NY-12345678
+                filing_frequency: monthly
+                notes: Switched to monthly filing for 2026.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: taxNexusRegistration
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. The sales-tax registration id being updated. The jurisdiction
+          (country + region) is fixed once created.
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 3,\n    \"country_code\": \"\
+                US\",\n    \"region_code\": \"NY\",\n    \"is_registered\": true,\n\
+                \    \"registration_date\": \"2024-01-15\",\n    \"registration_number\"\
+                : \"NY-12345678\",\n    \"filing_frequency\": \"monthly\",\n    \"\
+                filing_frequency_label\": \"Monthly\",\n    \"notes\": \"Switched\
+                \ to monthly filing for 2026.\"\n  }\n}"
+      operationId: put-api-reporting-sales-tax-nexus-registrations-taxnexusregistration
+    delete:
+      tags:
+      - Reporting
+      summary: Delete Sales-Tax Registration
+      description: 'Deletes a sales-tax registration record (SKU-8076 Phase 3). The
+        jurisdiction reverts to volume-based status on the nexus dashboard.
+
+
+        Authentication: Requires Bearer token (scope rw:reports).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: taxNexusRegistration
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Required. The sales-tax registration id being deleted.
+        example: '3'
+      responses:
+        '204':
+          description: No Content
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: ''
+      operationId: delete-api-reporting-sales-tax-nexus-registrations-taxnexusregistration
   /api/reporting/inventory-valuation:
     get:
       tags:
@@ -107243,7 +108152,7 @@ paths:
 
         Request body:
 
-        - `image_ids` (`array<int>`, required) — 1–500 existing product_image ids.
+        - `image_ids` (array<int>, required) — 1–500 existing product_image ids.
 
 
         Returns 422 if `image_ids` is empty, exceeds 500, or contains an id that does
@@ -107323,7 +108232,7 @@ paths:
 
         Request body:
 
-        - `image_ids` (`array<int>`, required) — 1–500 existing product_image ids.
+        - `image_ids` (array<int>, required) — 1–500 existing product_image ids.
 
 
         Returns 422 if `image_ids` is empty, exceeds 500, or contains an id that does
