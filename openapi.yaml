@@ -77349,19 +77349,27 @@ paths:
       tags:
       - Sales Channels
       summary: Update Integration Instance
-      description: 'Update an existing Ebay integration instance. All fields are optional.
-        Requires Bearer token.
-
-
-        Request body fields:
-
-        - name (optional, string): Updated name for this integration
-
-        - connection_settings (optional, object): Updated API credentials
-
-        - integration_settings (optional, object): Updated settings
-
-        - is_automatic_sync_enabled (optional, boolean): Toggle automatic sync'
+      description: "Update an existing Ebay integration instance. All fields are optional.\
+        \ Requires Bearer token.\n\nRequest body fields:\n- name (optional, string):\
+        \ Updated name for this integration\n- connection_settings (optional, object):\
+        \ Updated API credentials\n- integration_settings (optional, object): Updated\
+        \ settings. Supported keys:\n  - start_date (string, date): Only orders created\
+        \ on/after this date are synced\n  - store_id (integer): SKU store to attach\
+        \ synced orders to (must exist in stores)\n  - auto_link_products (boolean),\
+        \ auto_create_products (boolean)\n  - sales_nominal_code_id, cogs_nominal_code_id,\
+        \ shipping_revenue_nominal_code_id, shipping_refund_nominal_code_id, sales_returns_allowances_nominal_code_id\
+        \ (integer|null): Nominal code mappings (must exist in nominal_codes)\n  -\
+        \ pricing (object): Sales-channel pricing settings (masterOfPrice etc.)\n\
+        \  - inventory (object): Sales-channel inventory settings (masterOfStock,\
+        \ selectedWarehouses)\n  - emailCustomers (boolean)\n  - proforma_marketplace_cost_percentage,\
+        \ proforma_payment_cost_percentage (float|null)\n  - sync_sales_order_invoices_to_accounting\
+        \ (boolean), sync_sales_credit_to_accounting (boolean)\n  - sync_refunds_as_sales_credits\
+        \ (boolean, default true): When enabled, REFUNDED eBay order refunds are synced\
+        \ into SKU as sales credits (with refund payment rows) by the order update\
+        \ pipeline. Disable to suppress automatic credit creation; status updates\
+        \ and cancellations are unaffected.\n  - batch_period_sales_order_fulfillments,\
+        \ batch_period_customer_returns (string|null)\n- is_automatic_sync_enabled\
+        \ (optional, boolean): Toggle automatic sync"
       requestBody:
         content:
           '*/*':
@@ -77369,7 +77377,8 @@ paths:
               type: string
               example: '"{\n  \"name\": \"My Ebay Store Updated\",\n  \"integration_settings\":
                 {\n    \"start_date\": \"2024-06-01\",\n    \"use_legacy_services\":
-                true\n  },\n  \"is_automatic_sync_enabled\": true\n}"'
+                true,\n    \"sync_refunds_as_sales_credits\": true\n  },\n  \"is_automatic_sync_enabled\":
+                true\n}"'
       parameters:
       - name: Accept
         in: header
@@ -145519,6 +145528,9 @@ paths:
         (= total − refund_payments_total − applied_to_other_total − fees_retained_total,
         clamped to zero). The frontend uses `outstanding_amount` for the Credits line
         so partially-refunded credits no longer double-count against Balance Due.
+        Each credit also includes `metadata` (nullable object) — a minimal source
+        subset `{source, sales_channel_refund_id}` used to render the channel-source
+        chip (e.g. eBay refund-synced credits); null for manually created credits.
 
 
         Authentication: Requires Bearer token.\n\n**Address override fields:** `shipping_overridden_at`
@@ -145602,6 +145614,9 @@ paths:
                     outstanding_amount: 11.51
                     statuses:
                       credit_status: open
+                    metadata:
+                      source: ebay
+                      sales_channel_refund_id: '5000012345'
                   purchase_orders: []
                   created_at: '2024-01-15T08:00:00.000000Z'
                   updated_at: '2024-01-18T14:00:00.000000Z'
@@ -150212,7 +150227,14 @@ paths:
 
         - outstanding_amount: total minus (refund_payments_total + applied_to_other_total
         + fees_retained_total), clamped to zero (i.e., the unrefunded, unapplied balance
-        still owed back to the customer)'
+        still owed back to the customer)
+
+
+        Response field `metadata` (object|null): minimal credit-source metadata for
+        channel-synced credits - `source` (e.g. `ebay`, `shopify`, `woocommerce`)
+        and `sales_channel_refund_id` (the channel refund ID). `null` for manually
+        created credits. Used by the UI for the source chip on the sales order Credits
+        tab.'
       parameters:
       - name: Accept
         in: header
@@ -150247,26 +150269,27 @@ paths:
                 : \"2025-04-10\",\n    \"is_for_overpayment\": false,\n    \"integration\"\
                 : \"Shopify\",\n    \"created_at\": \"2025-04-10T09:00:00.000000Z\"\
                 ,\n    \"updated_at\": \"2025-04-10T09:00:00.000000Z\",\n    \"archived_at\"\
-                : null,\n    \"to_warehouse\": {\"id\": 1, \"name\": \"Main Warehouse\"\
-                },\n    \"returns_receipt_date\": null,\n    \"returns_receipt_quantity\"\
-                : 0,\n    \"statuses\": {\n      \"credit_status\": \"open\",\n  \
-                \    \"return_status\": \"pending\"\n    },\n    \"additional_credit\"\
-                : 0.0,\n    \"tax_credit\": 5.0,\n    \"product_total\": 150.0,\n\
-                \    \"total\": 155.0,\n    \"refund_payments_total\": 143.49,\n \
-                \   \"applied_to_other_total\": 0.0,\n    \"fees_retained_total\"\
+                : null,\n    \"to_warehouse\": {\n      \"id\": 1,\n      \"name\"\
+                : \"Main Warehouse\"\n    },\n    \"returns_receipt_date\": null,\n\
+                \    \"returns_receipt_quantity\": 0,\n    \"statuses\": {\n     \
+                \ \"credit_status\": \"open\",\n      \"return_status\": \"pending\"\
+                \n    },\n    \"additional_credit\": 0.0,\n    \"tax_credit\": 5.0,\n\
+                \    \"product_total\": 150.0,\n    \"total\": 155.0,\n    \"refund_payments_total\"\
+                : 143.49,\n    \"applied_to_other_total\": 0.0,\n    \"fees_retained_total\"\
                 : 0.0,\n    \"outstanding_amount\": 11.51,\n    \"currency_code\"\
-                : \"USD\",\n    \"tags\": [\"returns\"],\n    \"sales_order_id\":\
-                \ 100,\n    \"sales_order\": {\"id\": 100, \"sales_order_number\"\
-                : \"SO-00100\"},\n    \"sales_credit_lines\": [\n      {\n       \
-                \ \"id\": 201,\n        \"product_id\": 12,\n        \"quantity\"\
+                : \"USD\",\n    \"tags\": [\n      \"returns\"\n    ],\n    \"sales_order_id\"\
+                : 100,\n    \"sales_order\": {\n      \"id\": 100,\n      \"sales_order_number\"\
+                : \"SO-00100\"\n    },\n    \"sales_credit_lines\": [\n      {\n \
+                \       \"id\": 201,\n        \"product_id\": 12,\n        \"quantity\"\
                 : 2,\n        \"price\": 75.0\n      }\n    ],\n    \"line_item_count\"\
                 : 1,\n    \"total_quantity\": 2,\n    \"first_line_sku\": \"WIDGET-A\"\
                 ,\n    \"exchange_orders\": [],\n    \"payments\": [],\n    \"has_products\"\
                 : true,\n    \"has_rma\": false,\n    \"rma\": null,\n    \"tax_lines\"\
                 : [],\n    \"tax_rate\": null,\n    \"calculated_tax_total\": 5.0,\n\
-                \    \"sales_credit_note\": \"Customer damaged item\",\n    \"is_tax_included\"\
-                : false,\n    \"tax_rate_id\": null,\n    \"accounting_transaction\"\
-                : null\n  }\n}"
+                \    \"sales_credit_note\": \"Customer damaged item\",\n    \"metadata\"\
+                : {\n      \"source\": \"ebay\",\n      \"sales_channel_refund_id\"\
+                : \"5012345678\"\n    },\n    \"is_tax_included\": false,\n    \"\
+                tax_rate_id\": null,\n    \"accounting_transaction\": null\n  }\n}"
       operationId: get-api-sales-credits-sales-credit
     put:
       tags:
