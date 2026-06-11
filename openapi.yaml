@@ -85744,9 +85744,12 @@ paths:
       tags:
       - Sales Channels
       summary: Get Config
-      description: 'Returns the public OAuth config (app_key, redirect_url) for the
-        requested environment. The Vue 3 frontend uses this to build the TikTok authorization
-        URL.
+      description: 'Returns the public OAuth config for the requested environment:
+        app_key, redirect_url (OAuth callback), and webhook_callback_url — the canonical
+        webhook address built from the central app URL (config(''app.url'')) that
+        must be registered in the TikTok Partner Center. The Vue 3 frontend uses this
+        to build the TikTok authorization URL and to display the webhook callback
+        address.
 
 
         Query: environment (sandbox|production, default sandbox).
@@ -85778,6 +85781,7 @@ paths:
                 type: string
               example: "{\n  \"data\": {\n    \"environment\": \"production\",\n \
                 \   \"app_key\": \"tt_app_key_xxx\",\n    \"redirect_url\": \"https://app.sku.io/tiktok-shop/callback\"\
+                ,\n    \"webhook_callback_url\": \"https://app.sku.io/webhooks/tiktok-shop\"\
                 \n  }\n}"
       operationId: get-domain-api-tiktok-shop-config
   //{domain}/api/tiktok-shop/oauth/init:
@@ -90262,20 +90266,44 @@ paths:
                   mappings:
                   - The mappings field is required.
       operationId: put-domain-api-tiktok-shop-integration-instances-integration-instance-id-mappings
-  //{domain}/api/tiktok-shop/webhooks:
+  //{domain}/webhooks/tiktok-shop:
     post:
       tags:
       - Sales Channels
       summary: Receive Webhook (TikTok → SKU.io)
-      description: 'Public endpoint that receives signed webhook events from TikTok
-        Shop. Topics: ORDER_STATUS_CHANGE, PACKAGE_UPDATE, REVERSE_ORDER_STATUS_CHANGE,
-        PRODUCT_STATUS_CHANGE, INVENTORY_UPDATE, AUTHORIZATION_REVOKED.'
+      description: 'Global (per-environment) endpoint that receives signed webhook
+        events from TikTok Shop — this is the URL configured on the TikTok Shop app.
+
+
+        No bearer auth: the request is authenticated by TikTok''s HMAC signature in
+        the `Authorization` header (HMAC-SHA256 over `app_secret + raw_body`, keyed
+        by the app secret — sandbox or production secret chosen by the resolved instance''s
+        environment setting).
+
+
+        **Tenant routing:** every tenant''s webhooks arrive at this ONE URL. The `InitializeTenantFromWebhookPayload`
+        middleware resolves the tenant from the payload `shop_id` (top-level or `data.shop_id`)
+        via the central `tenant_integration_routes` registry (external_key = the instance''s
+        primary shop id), forwards to the tenant''s home pod if needed, initialises
+        tenancy, and exposes the instance to the controller.
+
+
+        **Flow:** 400 empty body → 404 missing/unknown `shop_id` → 401 invalid signature
+        → 422 missing `type` → 200 event persisted + processing job dispatched.
+
+
+        Topics by `type`: 1 ORDER_STATUS_CHANGE, 2 REVERSE_STATUS_CHANGE, 5 PACKAGE_UPDATE,
+        7 PRODUCT_STATUS_CHANGE, 12 AUTHORIZATION_CANCELLATION; unknown types stored
+        as TYPE_{n}.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"type\": 1,\n  \"shop_id\": \"...\",\n  \"data\": {}\n}"'
+              example: '"{\n  \"shop_id\": \"7495092941234567890\",\n  \"type\": 1,\n  \"tts_notification_id\":
+                \"7development123456\",\n  \"timestamp\": 1717000000,\n  \"data\":
+                {\n    \"order_id\": \"576461413038785752\",\n    \"order_status\":
+                \"AWAITING_SHIPMENT\"\n  }\n}"'
       parameters:
       - name: Accept
         in: header
@@ -90287,12 +90315,13 @@ paths:
         schema:
           type: string
         example: application/json
-      - name: X-Authorization
+      - name: Authorization
         in: header
         schema:
           type: string
-        description: TikTok signed authorization header
-        example: '{signed-header}'
+        description: 'TikTok webhook signature: HMAC-SHA256 hex digest of app_secret
+          + raw_body, keyed by app_secret'
+        example: '{hmac-sha256-hex-signature}'
       - name: domain
         in: path
         schema:
@@ -90300,10 +90329,57 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
-      operationId: post-domain-api-tiktok-shop-webhooks
+            application/json:
+              schema:
+                type: object
+              example:
+                received: true
+        '401':
+          description: Unauthorized
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Invalid signature
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/html; charset=UTF-8
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: No tenant registered for this webhook payload key.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Invalid webhook payload
+      operationId: post-domain-webhooks-tiktok-shop
   //{domain}/api/tiktok-shop/webhook-events:
     get:
       tags:
@@ -93170,6 +93246,1534 @@ paths:
                 \      \"code\": \"IntegrationApiError\",\n        \"data\": []\n\
                 \      }\n    ]\n  }\n}"
       operationId: post-domain-api-shipstation-integration-instance-download-shipping-services
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Orders
+      description: 'Paginated list of locally cached ShipStation orders for an integration
+        instance (default sort `-id`, default 10 per page). Eager loads the linked
+        SKU fulfillment (+ sales order number and warehouse).
+
+
+        **Free-text search** — `filter[search]` searches `order_number`, `tracking_number`,
+        `shipstation_order_id`, `customer_name`. Prefers the Scout/Typesense index
+        (fast substring search); falls back to column-aware DB LIKE. `search_columns`
+        restricts which columns are searched; `search_strict_columns` switches listed
+        columns to exact `=` match. A fully-strict search always runs on the DB.
+
+
+        **Simple filters** — `filter[order_status]`, `filter[carrier_code]`, `filter[sku_fulfillment_id]`
+        (exact); `filter[has_fulfillment]`, `filter[has_tracking]` (true/false); `filter[date_from]`,
+        `filter[date_to]` (order_date bounds).
+
+
+        **Advanced operator filters** — `filter[<column>.<operator>]=value` (bare
+        `filter[<column>]=value` acts as implicit `is`):
+
+        - Text columns (`order_number`, `shipstation_order_id`, `order_key`, `tracking_number`,
+        `customer_name`, `order_status`, `carrier_code`, `service_code`): contains,
+        does_not_contain, is, is_not, is_one_of, starts_with, does_not_start_with,
+        ends_with, does_not_end_with, is_empty, is_not_empty
+
+        - Numeric column (`id`): is, is_not, is_one_of, greater_than, less_than, greater_than_or_equal,
+        less_than_or_equal, between, is_empty, is_not_empty
+
+        - Date column (`order_date`) and datetime columns (`ship_date`, `created_at`,
+        `updated_at` — timezone-aware): is, is_not, before, after, on_or_before, on_or_after,
+        between, is_empty, is_not_empty, today, yesterday, tomorrow, past_week, past_month,
+        past_year, next_week, next_month, next_year, days_ago, days_from_now, past_days,
+        next_days
+
+
+        **Grouped filters** — `filter_groups` (base64 JSON on GET; plain JSON in a
+        POST body) applies a nested AND/OR condition tree against the same registered
+        columns, taking precedence over flat filters.
+
+
+        **Sorting** — `sort` accepts: id, order_number, customer_name, order_date,
+        order_status, created_at, updated_at, ship_date, carrier_code, tracking_number
+        (prefix `-` for descending; default `-id`).
+
+
+        **Response fields of note** — `tracking_url` is resolved server-side from
+        carrier_code + tracking_number (null when the carrier is unknown); `customer_name`
+        is searchable/filterable; `sku_fulfillment` is a cross-link object (route,
+        sales order number, warehouse) or null; `json_object` is only included when
+        `include_json=1`.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (default 1).
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 10).
+        example: '10'
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                current_page: 1
+                data:
+                - id: 412
+                  integration_instance_id: 7
+                  shipstation_order_id: 987654321
+                  order_key: a1b2c3d4e5f6
+                  order_number: C604018.1
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane@example.com
+                  order_date: '2026-06-01T14:22:10+00:00'
+                  ship_date: '2026-06-02T18:05:00+00:00'
+                  ship_by_date: '2026-06-04T07:00:00+00:00'
+                  carrier_code: fedex
+                  service_code: fedex_ground
+                  tracking_number: '781234567890'
+                  tracking_url: https://www.fedex.com/fedextrack/?trknbr=781234567890
+                  sku_fulfillment:
+                    id: 650
+                    link_reference: 650
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 650
+                    link_route: /orders/sales-orders/fulfillments/650
+                    link_legacy_url: /sales-orders/1201
+                    status: fulfilled
+                    tracking_number: '781234567890'
+                    tracking_url: https://www.fedex.com/fedextrack/?trknbr=781234567890
+                    fulfilled_at: '2026-06-02T18:06:11+00:00'
+                    created_at: '2026-06-01T14:30:00+00:00'
+                    sales_order_number: C604018
+                    warehouse:
+                      id: 3
+                      name: Main Warehouse
+                  has_detailed_data: true
+                  details_last_updated: '2026-06-02T18:10:00+00:00'
+                  created_at: '2026-06-01T14:25:00+00:00'
+                  updated_at: '2026-06-02T18:10:00+00:00'
+                - id: 411
+                  integration_instance_id: 7
+                  shipstation_order_id: 987654300
+                  order_key: f6e5d4c3b2a1
+                  order_number: C604011.1
+                  order_status: awaiting_shipment
+                  order_status_label: Awaiting Shipment
+                  order_status_color: warning
+                  customer_email: bob@example.com
+                  order_date: '2026-06-01T09:11:42+00:00'
+                  ship_date: null
+                  ship_by_date: '2026-06-03T07:00:00+00:00'
+                  carrier_code: null
+                  service_code: null
+                  tracking_number: null
+                  tracking_url: null
+                  sku_fulfillment: null
+                  has_detailed_data: false
+                  details_last_updated: null
+                  created_at: '2026-06-01T09:15:00+00:00'
+                  updated_at: '2026-06-01T09:15:00+00:00'
+                first_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/7/orders?page=1'
+                from: 1
+                last_page: 21
+                last_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/7/orders?page=21'
+                links: []
+                next_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/7/orders?page=2'
+                path: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/7/orders'
+                per_page: 10
+                prev_page_url: null
+                to: 10
+                total: 204
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/search:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Search Orders (Live)
+      description: 'Search ShipStation **live** for orders matching a phrase, for
+        the refresh modal''s "Search Specific Order" tab. ShipStation''s V1 `orderNumber`
+        filter is a **starts-with** match, so the query should be an order number
+        or its prefix (up to 50 results are fetched). Each result is flagged with
+        whether it already exists in this instance''s local cache so the UI can offer
+        Download (new) vs Update (existing).
+
+
+        **Body parameters:**
+
+        - `query` — **required** string (max 255). The order number (or prefix) to
+        search for.
+
+
+        **Errors:**
+
+        - 422 if `query` is missing or exceeds 255 chars
+
+        - 502 if the upstream ShipStation call fails (message: `Search failed: ...`)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                query: C604018
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - shipstation_order_id: 987654321
+                  order_number: C604018.1
+                  status: shipped
+                  order_date: '2026-06-01T07:22:10.0000000'
+                  email: jane@example.com
+                  exists_in_database: true
+                  database_id: 412
+                - shipstation_order_id: 987654399
+                  order_number: C604018.2
+                  status: awaiting_shipment
+                  order_date: '2026-06-01T07:25:44.0000000'
+                  email: jane@example.com
+                  exists_in_database: false
+                  database_id: null
+                status: Success
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The query field is required.
+                errors:
+                  query:
+                  - The query field is required.
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-search
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/sync:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Orders
+      description: 'Queue a background orders sync from ShipStation into the local
+        cache. Dispatches a tracked job (`ShipstationSyncOrdersJob`, job name `Sync
+        ShipStation Orders: {instance name}`) and returns its `tracked_job_log_id`
+        for polling via the global job tray or the `sync-progress` endpoint.
+
+
+        **Body parameters (all optional):**
+
+        - `mode` — string. One of `since_latest` | `date_range` | `all`. With `all`
+        the job ignores any start date and pulls full history; with `date_range` use
+        `date_from`/`date_to`; with `since_latest` the job resumes from the most recently
+        synced order.
+
+        - `date_from` — date/datetime string (Carbon-parseable). Start bound for the
+        fetch. (`since_date` is accepted as a deprecated alias for backward compatibility
+        with the previous one-click refresh payload.)
+
+        - `date_to` — date/datetime string (Carbon-parseable). Optional end bound
+        (date_range mode).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                mode: date_range
+                date_from: '2026-05-01'
+                date_to: '2026-05-31'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5821
+                message: Order sync queued
+                status: Success
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-sync
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/sync-info:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Sync Info
+      description: 'Header data for the orders refresh modal: the most recently dated
+        order (number + ISO-8601 order date), the total cached order count, and the
+        effective **order start date** the "Fetch from Start Date" sync option will
+        use.
+
+
+        `order_start_date_source` explains where the start date came from, falling
+        back in order:
+
+        1. `ShipStation Order Start Date` — set on the integration instance
+
+        2. `Inventory Start Date` — the general inventory settings start date
+
+        3. `Default sync window (last 30 days)` — a fixed 30-day window used when
+        neither start date is configured
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  latest_order_number: C604018.1
+                  latest_order_date: '2026-06-01T14:22:10+00:00'
+                  total_orders: 204
+                  order_start_date: '2025-01-01'
+                  order_start_date_source: ShipStation Order Start Date
+                status: Success
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-sync-info
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/sync-progress/{trackedJobLogId}:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Sync Progress
+      description: 'Poll the progress of a queued orders sync by its tracked job log
+        id (returned by POST `/orders/sync`).
+
+
+        The job must be a ShipStation sync (`job_name` starting with `Sync ShipStation`)
+        belonging to this integration instance — matched either by the job name suffix
+        (`: {instance name}`) or by the log''s related model (`ShipstationIntegrationInstance`
+        + instance id). Anything else returns **404 Job not found** (also returned
+        when the id does not exist).
+
+
+        `status` is the TrackedJobLog status enum value (e.g. `pending`, `processing`,
+        `completed`, `failed`, `cancelled`).
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: trackedJobLogId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The tracked_job_log_id returned by POST /orders/sync.
+        example: '5821'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 5821
+                  status: processing
+                  job_name: 'Sync ShipStation Orders: My ShipStation'
+                  total_items: 500
+                  processed_items: 240
+                  progress_percentage: 48
+                  messages:
+                  - Fetched page 3 of 5
+                  results: null
+                  completed_at: null
+                status: Success
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Job not found
+                status: Error
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-sync-progress-trackedjoblogid
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/refresh-order:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Refresh Single Order
+      description: 'Download (or update) a single order **live** from ShipStation
+        by its ShipStation order id and upsert it into the local cache with detailed
+        data (`has_detailed_data: true`, `details_last_updated` stamped). Backs the
+        search tab''s per-result Download/Update buttons. Newly downloaded orders
+        are auto-linked to a matching SKU fulfillment when an unambiguous match exists.
+
+
+        **Body parameters:**
+
+        - `uniqueId` — **required** string. The ShipStation order id (`shipstation_order_id`
+        / `orderId`, as returned by the live search endpoint).
+
+
+        Returns the persisted order serialized with `json_object` included.
+
+
+        **Errors:**
+
+        - 422 if `uniqueId` is missing
+
+        - 502 if the upstream ShipStation fetch or persistence fails (message: `Failed
+        to refresh order: ...`)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                uniqueId: '987654321'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 412
+                  integration_instance_id: 7
+                  shipstation_order_id: 987654321
+                  order_key: a1b2c3d4e5f6
+                  order_number: C604018.1
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane@example.com
+                  order_date: '2026-06-01T14:22:10+00:00'
+                  ship_date: '2026-06-02T18:05:00+00:00'
+                  ship_by_date: '2026-06-04T07:00:00+00:00'
+                  carrier_code: fedex
+                  service_code: fedex_ground
+                  tracking_number: '781234567890'
+                  tracking_url: https://www.fedex.com/fedextrack/?trknbr=781234567890
+                  sku_fulfillment: null
+                  has_detailed_data: true
+                  details_last_updated: '2026-06-10T11:02:33+00:00'
+                  created_at: '2026-06-01T14:25:00+00:00'
+                  updated_at: '2026-06-10T11:02:33+00:00'
+                  json_object:
+                    orderId: 987654321
+                    orderNumber: C604018.1
+                    orderStatus: shipped
+                    items:
+                    - sku: WIDGET-1
+                      quantity: 2
+                message: Order refreshed from ShipStation
+                status: Success
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-refresh-order
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/submit-fulfillment:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Submit Fulfillment
+      description: 'Manually submit a SKU.io SalesOrderFulfillment to ShipStation
+        via the full Dispatcher path (`ShipstationDispatcher::dispatchFulfillmentToProvider`).
+        This exercises duplicate-order detection and all dispatcher fallbacks, then
+        returns the resulting local ShipStation order (serialized with `json_object`
+        included).
+
+
+        **Body parameters:**
+
+        - `sku_fulfillment_id` — **required** integer. The SalesOrderFulfillment id
+        to push to ShipStation.
+
+
+        **Errors:**
+
+        - 400 if `sku_fulfillment_id` is missing (message: `sku_fulfillment_id required`)
+
+        - 404 if the fulfillment does not exist (message: `Fulfillment not found`)
+
+        - 502 if the dispatch fails (message: `Failed to submit fulfillment: ...`)
+        or submission succeeded but no local order record was created
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sku_fulfillment_id: 650
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 413
+                  integration_instance_id: 7
+                  shipstation_order_id: 987654400
+                  order_key: 0a1b2c3d4e5f
+                  order_number: C604020.1
+                  order_status: awaiting_shipment
+                  order_status_label: Awaiting Shipment
+                  order_status_color: warning
+                  customer_email: sam@example.com
+                  order_date: '2026-06-10T10:55:00+00:00'
+                  ship_date: null
+                  ship_by_date: null
+                  carrier_code: null
+                  service_code: null
+                  tracking_number: null
+                  tracking_url: null
+                  sku_fulfillment:
+                    id: 650
+                    link_reference: 650
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 650
+                    link_route: /orders/sales-orders/fulfillments/650
+                    link_legacy_url: /sales-orders/1205
+                    status: pending
+                    tracking_number: null
+                    tracking_url: null
+                    fulfilled_at: null
+                    created_at: '2026-06-10T10:50:00+00:00'
+                    sales_order_number: C604020
+                    warehouse:
+                      id: 3
+                      name: Main Warehouse
+                  has_detailed_data: true
+                  details_last_updated: '2026-06-10T10:55:05+00:00'
+                  created_at: '2026-06-10T10:55:05+00:00'
+                  updated_at: '2026-06-10T10:55:05+00:00'
+                  json_object:
+                    orderId: 987654400
+                    orderNumber: C604020.1
+                    orderStatus: awaiting_shipment
+                message: Fulfillment submitted to ShipStation
+                status: Success
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Fulfillment not found
+                status: Error
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-submit-fulfillment
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Order
+      description: 'Returns a single ShipStation order from the local cache, serialized
+        via `ShipstationOrderResource`. Includes the order status (value + label +
+        color), carrier/service codes, a resolved `tracking_url` (derived from `carrier_code`
+        + `tracking_number` via `ShipstationTrackingUrl::resolve()`), and the linked
+        SKU.io sales order fulfillment (`sku_fulfillment`, null when not linked).
+
+
+        When `include_json=1` (or `true`) is supplied, the raw ShipStation JSON payload
+        is included as `json_object`.
+
+
+        Returns 404 when the order does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  integration_instance_id: 3
+                  shipstation_order_id: '987654321'
+                  order_key: manual-7f3b2c9d
+                  order_number: SO-10245
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane.doe@example.com
+                  order_date: '2026-05-28T14:32:00+00:00'
+                  ship_date: '2026-05-29T09:15:00+00:00'
+                  ship_by_date: null
+                  carrier_code: ups
+                  service_code: ups_ground
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                  sku_fulfillment:
+                    id: 815
+                    link_reference: 815
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 815
+                    link_route: /orders/sales-orders/fulfillments/815
+                    link_legacy_url: /sales-orders/501
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                    fulfilled_at: '2026-05-29T09:20:00+00:00'
+                    created_at: '2026-05-28T15:00:00+00:00'
+                    sales_order_number: SO-10245
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                  has_detailed_data: true
+                  details_last_updated: '2026-05-30T08:00:00+00:00'
+                  created_at: '2026-05-28T15:00:00+00:00'
+                  updated_at: '2026-05-30T08:00:00+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order not found for this instance
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-order
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/detail:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Order Detail (raw JSON)
+      description: 'Returns the full cached detail for a ShipStation order: the complete
+        raw `json_object` payload (including `items`, addresses, weight, advanced
+        options, etc. when full detail has been fetched), plus `has_detailed_data`
+        indicating whether the per-order detail endpoint has been synced (via `POST
+        .../sync-detail`) and `details_last_updated` for when that happened.
+
+
+        List-sync only populates summary fields; `has_detailed_data=false` means the
+        `json_object` may only contain the list-level payload.
+
+
+        Returns 404 when the order does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  shipstation_order_id: '987654321'
+                  order_number: SO-10245
+                  json_object:
+                    orderId: 987654321
+                    orderKey: manual-7f3b2c9d
+                    orderNumber: SO-10245
+                    orderDate: '2026-05-28T07:32:00.0000000'
+                    orderStatus: shipped
+                    customerEmail: jane.doe@example.com
+                    customerUsername: jane.doe@example.com
+                    billTo:
+                      name: Jane Doe
+                    shipTo:
+                      name: Jane Doe
+                      street1: 123 Main St
+                      city: Austin
+                      state: TX
+                      postalCode: '78701'
+                      country: US
+                    items:
+                    - orderItemId: 555001
+                      sku: WIDGET-L
+                      name: Large Widget
+                      quantity: 2
+                      unitPrice: 19.99
+                    carrierCode: ups
+                    serviceCode: ups_ground
+                    orderTotal: 52
+                    amountPaid: 52
+                    weight:
+                      value: 24
+                      units: ounces
+                  has_detailed_data: true
+                  details_last_updated: '2026-05-30T08:00:00+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order not found for this instance
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-order-detail
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/webhook-events:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Order Webhook Events
+      description: 'Recent webhook events scoped to this single ShipStation order,
+        matched on the order''s `order_number`, `tracking_number` or `shipstation_order_id`.
+        Used by the order detail page to render a per-order webhook audit trail.
+
+
+        Each event is serialized via `ShipstationWebhookEventResource` and includes
+        the event type (value + label + color), the ShipStation `resource_url`/`resource_type`,
+        whether the resource was fetched, signature validation status, the raw `payload`,
+        processing state (`processed`, `processed_at`, `error_message`) and the `dedup_key`.
+
+
+        Returns 404 when the order does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 311
+                  integration_instance_id: 3
+                  event_type: SHIP_NOTIFY
+                  event_type_label: Ship Notify
+                  event_type_color: success
+                  resource_url: https://ssapi.shipstation.com/orders?importBatch=1abc2def-3ghi-4jkl-5mno-6pqr7stu8vwx
+                  resource_type: SHIP_NOTIFY
+                  resource_fetched: true
+                  order_number: SO-10245
+                  shipstation_order_id: 987654321
+                  tracking_number: 1Z999AA10123456784
+                  signature_valid: true
+                  payload:
+                    resource_url: https://ssapi.shipstation.com/orders?importBatch=1abc2def-3ghi-4jkl-5mno-6pqr7stu8vwx
+                    resource_type: SHIP_NOTIFY
+                  processed: true
+                  processed_at: '2026-05-29T09:21:30+00:00'
+                  error_message: null
+                  dedup_key: ship_notify-987654321-1Z999AA10123456784
+                  created_at: '2026-05-29T09:21:28+00:00'
+                  updated_at: '2026-05-29T09:21:30+00:00'
+                - id: 298
+                  integration_instance_id: 3
+                  event_type: ORDER_NOTIFY
+                  event_type_label: Order Notify
+                  event_type_color: info
+                  resource_url: https://ssapi.shipstation.com/orders?importBatch=9zyx8wvu-7tsr-6qpo-5nml-4kji3hgf2edc
+                  resource_type: ORDER_NOTIFY
+                  resource_fetched: true
+                  order_number: SO-10245
+                  shipstation_order_id: 987654321
+                  tracking_number: null
+                  signature_valid: true
+                  payload:
+                    resource_url: https://ssapi.shipstation.com/orders?importBatch=9zyx8wvu-7tsr-6qpo-5nml-4kji3hgf2edc
+                    resource_type: ORDER_NOTIFY
+                  processed: true
+                  processed_at: '2026-05-28T15:01:02+00:00'
+                  error_message: null
+                  dedup_key: order_notify-987654321
+                  created_at: '2026-05-28T15:01:00+00:00'
+                  updated_at: '2026-05-28T15:01:02+00:00'
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-order-webhook-events
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/tracking:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Refresh Order Tracking
+      description: 'Refreshes tracking for a single order live from ShipStation''s
+        V1 `/shipments` endpoint (looked up by the order''s ShipStation order ID),
+        persists the tracking number / carrier / ship date to the local order cache,
+        and applies the tracking to the linked SKU.io SalesOrderFulfillment (if any).
+        Mirrors the Starshipit "Refresh Order Tracking" endpoint.
+
+
+        No request body. Returns the refreshed order (with `json_object` included)
+        and the message "Tracking refreshed from ShipStation".
+
+
+        Errors: 404 when the order does not belong to the instance; 400 when the order
+        has no `shipstation_order_id`; 502 when the live ShipStation call fails.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  integration_instance_id: 3
+                  shipstation_order_id: '987654321'
+                  order_key: manual-7f3b2c9d
+                  order_number: SO-10245
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane.doe@example.com
+                  order_date: '2026-05-28T14:32:00+00:00'
+                  ship_date: '2026-05-29T09:15:00+00:00'
+                  ship_by_date: null
+                  carrier_code: ups
+                  service_code: ups_ground
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                  sku_fulfillment:
+                    id: 815
+                    link_reference: 815
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 815
+                    link_route: /orders/sales-orders/fulfillments/815
+                    link_legacy_url: /sales-orders/501
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                    fulfilled_at: '2026-05-29T09:20:00+00:00'
+                    created_at: '2026-05-28T15:00:00+00:00'
+                    sales_order_number: SO-10245
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                  has_detailed_data: true
+                  details_last_updated: '2026-05-30T08:00:00+00:00'
+                  created_at: '2026-05-28T15:00:00+00:00'
+                  updated_at: '2026-06-10T10:05:00+00:00'
+                  json_object:
+                    orderId: 987654321
+                    orderNumber: SO-10245
+                    orderStatus: shipped
+                message: Tracking refreshed from ShipStation
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order is missing a ShipStation order ID, which is required
+                  to look up shipments.
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to refresh tracking: HTTP request returned status
+                  code 429'
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-order-tracking
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/sync-detail:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Order Detail
+      description: 'Fetches the full order detail for a single order live from the
+        ShipStation API (`ShipstationOrderManager::fetchOrderDetail()`), replacing
+        the cached `json_object` with the complete per-order payload (items, addresses,
+        weight, advanced options) and setting `has_detailed_data=true` + `details_last_updated`.
+
+
+        No request body. Returns the refreshed order serialized via `ShipstationOrderResource`
+        with `json_object` included so the detail page can re-render items / packages
+        / raw data immediately.
+
+
+        Errors: 404 when the order does not belong to the instance; 502 when the live
+        ShipStation call fails.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  integration_instance_id: 3
+                  shipstation_order_id: '987654321'
+                  order_key: manual-7f3b2c9d
+                  order_number: SO-10245
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane.doe@example.com
+                  order_date: '2026-05-28T14:32:00+00:00'
+                  ship_date: '2026-05-29T09:15:00+00:00'
+                  ship_by_date: null
+                  carrier_code: ups
+                  service_code: ups_ground
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                  sku_fulfillment: null
+                  has_detailed_data: true
+                  details_last_updated: '2026-06-10T10:12:00+00:00'
+                  created_at: '2026-05-28T15:00:00+00:00'
+                  updated_at: '2026-06-10T10:12:00+00:00'
+                  json_object:
+                    orderId: 987654321
+                    orderNumber: SO-10245
+                    orderStatus: shipped
+                    items:
+                    - orderItemId: 555001
+                      sku: WIDGET-L
+                      name: Large Widget
+                      quantity: 2
+                      unitPrice: 19.99
+                    shipTo:
+                      name: Jane Doe
+                      city: Austin
+                      state: TX
+                      country: US
+                    weight:
+                      value: 24
+                      units: ounces
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order not found for this instance
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to fetch order detail: Order 987654321 not found
+                  in ShipStation'
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-order-sync-detail
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/link-fulfillment:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Link Order to Fulfillment
+      description: 'Manually links a cached ShipStation order to a SKU.io SalesOrderFulfillment
+        by setting `sku_fulfillment_id` on the order (matched by its ShipStation order
+        ID).
+
+
+        Body fields:
+
+        - `sku_fulfillment_id` (integer, required) — the SalesOrderFulfillment ID
+        to link.
+
+
+        Returns the updated order (with `json_object` included and the populated `sku_fulfillment`
+        object).
+
+
+        Errors: 400 when `sku_fulfillment_id` is missing/zero; 404 when the order
+        does not belong to the instance, or when no cached order with that ShipStation
+        order ID exists.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sku_fulfillment_id: 815
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  integration_instance_id: 3
+                  shipstation_order_id: '987654321'
+                  order_key: manual-7f3b2c9d
+                  order_number: SO-10245
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane.doe@example.com
+                  order_date: '2026-05-28T14:32:00+00:00'
+                  ship_date: '2026-05-29T09:15:00+00:00'
+                  ship_by_date: null
+                  carrier_code: ups
+                  service_code: ups_ground
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                  sku_fulfillment:
+                    id: 815
+                    link_reference: 815
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 815
+                    link_route: /orders/sales-orders/fulfillments/815
+                    link_legacy_url: /sales-orders/501
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                    fulfilled_at: '2026-05-29T09:20:00+00:00'
+                    created_at: '2026-05-28T15:00:00+00:00'
+                    sales_order_number: SO-10245
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                  has_detailed_data: true
+                  details_last_updated: '2026-05-30T08:00:00+00:00'
+                  created_at: '2026-05-28T15:00:00+00:00'
+                  updated_at: '2026-06-10T10:20:00+00:00'
+                  json_object:
+                    orderId: 987654321
+                    orderNumber: SO-10245
+                    orderStatus: shipped
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: sku_fulfillment_id required
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order not found
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-order-link-fulfillment
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders/{order}/unlink-fulfillment:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Unlink Order from Fulfillment
+      description: 'Removes the manual link between a cached ShipStation order and
+        its SKU.io SalesOrderFulfillment by clearing `sku_fulfillment_id` on the order.
+
+
+        No request body. Returns the updated order (with `json_object` included) —
+        `sku_fulfillment` is null after unlinking.
+
+
+        Returns 404 when the order does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal ShipstationOrder ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 42
+                  integration_instance_id: 3
+                  shipstation_order_id: '987654321'
+                  order_key: manual-7f3b2c9d
+                  order_number: SO-10245
+                  order_status: shipped
+                  order_status_label: Shipped
+                  order_status_color: success
+                  customer_email: jane.doe@example.com
+                  order_date: '2026-05-28T14:32:00+00:00'
+                  ship_date: '2026-05-29T09:15:00+00:00'
+                  ship_by_date: null
+                  carrier_code: ups
+                  service_code: ups_ground
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: https://www.ups.com/track?loc=en_US&tracknum=1Z999AA10123456784
+                  sku_fulfillment: null
+                  has_detailed_data: true
+                  details_last_updated: '2026-05-30T08:00:00+00:00'
+                  created_at: '2026-05-28T15:00:00+00:00'
+                  updated_at: '2026-06-10T10:25:00+00:00'
+                  json_object:
+                    orderId: 987654321
+                    orderNumber: SO-10245
+                    orderStatus: shipped
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Order not found for this instance
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-orders-order-unlink-fulfillment
   //{domain}/api/shipstation/warehouses:
     get:
       tags:
@@ -93326,6 +94930,227 @@ paths:
           content:
             application/json: {}
       operationId: post-domain-api-shipstation-warehouses-unmap
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/warehouses:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Warehouses
+      description: 'All cached ShipStation warehouses for this instance, ordered by
+        name (no pagination or filters). Each entry includes the optional SKU.io warehouse
+        link (`warehouse_id` + `warehouse_name`) and origin-address fields.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                data:
+                - id: 5
+                  shipstation_id: 98765
+                  name: Main Fulfillment Center
+                  is_default: true
+                  warehouse_id: 3
+                  warehouse_name: Main Warehouse
+                  address_line_1: 123 Commerce St
+                  city: Austin
+                  state: TX
+                  postal_code: '78701'
+                  country: US
+                  created_at: '2026-04-10T08:00:00+00:00'
+                  updated_at: '2026-06-01T12:00:00+00:00'
+                - id: 6
+                  shipstation_id: 98766
+                  name: West Coast Annex
+                  is_default: false
+                  warehouse_id: null
+                  warehouse_name: null
+                  address_line_1: 55 Harbor Blvd
+                  city: Long Beach
+                  state: CA
+                  postal_code: '90802'
+                  country: US
+                  created_at: '2026-04-10T08:00:00+00:00'
+                  updated_at: '2026-06-01T12:00:00+00:00'
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-warehouses
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/warehouses/sync:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Warehouses
+      description: 'Queues the ShipstationSyncWarehousesJob as a tracked job that
+        pulls the warehouse list from the ShipStation API and upserts the local cache.
+        No request body. Returns `data.tracked_job_log_id` for the job progress tray.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Warehouse sync queued
+                data:
+                  tracked_job_log_id: 9140
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-warehouses-sync
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/warehouses/{shipstationId}/link:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Link Warehouse
+      description: 'Links (or unlinks) a ShipStation warehouse to a SKU.io warehouse.
+
+
+        Path params:
+
+        - `shipstationId` — the ShipStation warehouse id (shipstation_id), not the
+        local row id
+
+
+        Body fields:
+
+        - `warehouse_id` — SKU.io warehouse id to link; pass null (or omit) to unlink
+
+
+        Returns the updated warehouse resource.
+
+
+        Errors:
+
+        - 404 — no cached ShipStation warehouse with that shipstation_id for this
+        instance (''Warehouse not found'')
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                warehouse_id: 3
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: shipstationId
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                data:
+                  id: 5
+                  shipstation_id: 98765
+                  name: Main Fulfillment Center
+                  is_default: true
+                  warehouse_id: 3
+                  warehouse_name: Main Warehouse
+                  address_line_1: 123 Commerce St
+                  city: Austin
+                  state: TX
+                  postal_code: '78701'
+                  country: US
+                  created_at: '2026-04-10T08:00:00+00:00'
+                  updated_at: '2026-06-10T09:30:00+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: false
+                message: Warehouse not found
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-warehouses-shipstationid-link
   /api/shipstation/integration-instances/{integrationInstance}/fulfillments:
     get:
       tags:
@@ -93362,6 +95187,2742 @@ paths:
                 type: string
               example: null
       operationId: get-api-shipstation-integration-instances-integrationinstance-fulfillments
+  //{domain}/api/shipstation/integration-instances:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Create Integration Instance
+      description: "Creates a new ShipStation integration instance.\n\nOn success\
+        \ the manager immediately dispatches the initial background sync jobs for\
+        \ the new instance: auto-subscribe webhooks, sync warehouses, sync shipping\
+        \ methods, sync orders, and sync shipments (tracking info). Each sync surfaces\
+        \ in the global job progress tray.\n\nBody fields:\n- name (string, required):\
+        \ display name for the instance. Must be unique across all integration instances\
+        \ (validated by a unique rule and re-checked in the manager, which returns\
+        \ 422 with `Provider name (X) already exists` on conflict).\n- connection_settings\
+        \ (object, required): ShipStation V1 API credentials.\n  - connection_settings.apiKey\
+        \ (string, required in practice): ShipStation API Key.\n  - connection_settings.apiSecret\
+        \ (string, required in practice): ShipStation API Secret.\n  - connection_settings.timezone\
+        \ (string, optional): IANA timezone used to interpret ShipStation's local\
+        \ timestamps. Defaults to America/Los_Angeles (ShipStation V1 returns PST/PDT\
+        \ timestamps).\n- integration_settings (object, optional): initial integration\
+        \ settings (see Update for the full key list). Defaults to `{}`.\n  - integration_settings.sync_enabled\
+        \ (boolean): whether automatic order syncing is on.\n  - integration_settings.order_start_date\
+        \ (date string or null): earliest order date to sync. When not set, syncs\
+        \ fall back to the Inventory Start Date, then a fixed 30-day window.\n  -\
+        \ integration_settings.auto_submit_fulfillments (boolean): submit fulfillments\
+        \ automatically without manual review.\n- is_automatic_sync_enabled (boolean,\
+        \ optional): toggle the hourly scheduled syncs for this instance.\n\nResponse:\
+        \ `data.id` and `data.name` of the created instance.\n\nAuthentication: Requires\
+        \ Bearer token."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: ShipStation US
+                connection_settings:
+                  apiKey: ss_live_a1b2c3d4e5f6
+                  apiSecret: ss_secret_f6e5d4c3b2a1
+                  timezone: America/Los_Angeles
+                integration_settings:
+                  sync_enabled: true
+                  order_start_date: '2026-05-11'
+                  auto_submit_fulfillments: true
+                is_automatic_sync_enabled: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  name: ShipStation US
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Duplicate Name (manager check)
+                  value:
+                    message: Provider name (ShipStation US) already exists
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: The name has already been taken.
+                    errors:
+                      name:
+                      - The name has already been taken.
+      operationId: post-domain-api-shipstation-integration-instances
+  //{domain}/api/shipstation/integration-instances/{integration_instance}:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Integration Instance
+      description: 'Returns a single ShipStation integration instance with its connection
+        settings and integration settings.
+
+
+        Response fields:
+
+        - id (int), name (string), integration_id (int)
+
+        - connection_settings (object): apiKey, apiSecret, timezone
+
+        - integration_settings (object): connection_name, enable_fulfillment, order_start_date,
+        auto_submit_fulfillments, settings (legacy ShipStation options such as productFieldToPass,
+        gift_card_note_sales_order_custom_field_id, saturday_delivery_sales_order_custom_field_id,
+        send_sales_order_tags_as_notes), fulfillment_cost_financial_line_type_id,
+        and fulfillment (per-warehouse routing: enabledWarehousesIds / automatedWarehousesIds)
+
+        - is_automatic_sync_enabled (boolean)
+
+        - created_at / updated_at (ISO 8601)
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  name: ShipStation US
+                  integration_id: 27
+                  connection_settings:
+                    apiKey: ss_live_a1b2c3d4e5f6
+                    apiSecret: ss_secret_f6e5d4c3b2a1
+                    timezone: America/Los_Angeles
+                  integration_settings:
+                    connection_name: ShipStation US
+                    enable_fulfillment: true
+                    order_start_date: '2026-01-01'
+                    auto_submit_fulfillments: true
+                    settings:
+                      productFieldToPass: sku
+                      send_sales_order_tags_as_notes: false
+                    fulfillment_cost_financial_line_type_id: 4
+                    fulfillment:
+                      enabledWarehousesIds:
+                      - 1
+                      - 2
+                      automatedWarehousesIds:
+                      - 1
+                  is_automatic_sync_enabled: true
+                  created_at: '2026-05-01T10:15:00+00:00'
+                  updated_at: '2026-06-09T18:42:11+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: No query results for model [Modules\Shipstation\Entities\ShipstationIntegrationInstance]
+                  999
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance
+    put:
+      tags:
+      - Shipping Providers
+      summary: Update Integration Instance
+      description: "Updates a ShipStation integration instance. All fields are optional\
+        \ — only the keys present in the request are changed; connection_settings\
+        \ and integration_settings are shallow-merged into the existing stored values.\n\
+        \nBody fields (all optional):\n- name (string): must remain unique across\
+        \ integration instances (current instance ignored)\n- integration_id (int):\
+        \ must exist in the integrations table\n- connection_settings (object): merged\
+        \ into existing settings — apiKey (string), apiSecret (string), timezone (string,\
+        \ IANA; defaults to America/Los_Angeles)\n- integration_settings (object):\
+        \ merged into existing settings\n  - integration_settings.connection_name\
+        \ (string)\n  - integration_settings.enable_fulfillment (boolean): enable\
+        \ pushing SKU fulfillments to ShipStation\n  - integration_settings.order_start_date\
+        \ (date string or null): earliest order date to sync; null clears it. When\
+        \ not set, syncs fall back to the Inventory Start Date, then a fixed 30-day\
+        \ window\n  - integration_settings.auto_submit_fulfillments (boolean): submit\
+        \ fulfillments automatically without manual review (default true)\n  - integration_settings.settings\
+        \ (object): legacy ShipStation options — productFieldToPass, gift_card_note_sales_order_custom_field_id,\
+        \ saturday_delivery_sales_order_custom_field_id, send_sales_order_tags_as_notes\n\
+        \  - integration_settings.fulfillment_cost_financial_line_type_id (int|string|null):\
+        \ financial line type used for fulfillment costs\n- is_automatic_sync_enabled\
+        \ (boolean): toggle the hourly scheduled syncs for this instance\n\nResponse:\
+        \ the full updated instance (same shape as Get Integration Instance).\n\n\
+        Authentication: Requires Bearer token."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: ShipStation US
+                connection_settings:
+                  apiKey: ss_live_a1b2c3d4e5f6
+                  apiSecret: ss_secret_f6e5d4c3b2a1
+                  timezone: America/Los_Angeles
+                integration_settings:
+                  connection_name: ShipStation US
+                  enable_fulfillment: true
+                  order_start_date: '2026-01-01'
+                  auto_submit_fulfillments: true
+                  settings:
+                    productFieldToPass: sku
+                    send_sales_order_tags_as_notes: false
+                  fulfillment_cost_financial_line_type_id: 4
+                is_automatic_sync_enabled: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  name: ShipStation US
+                  integration_id: 27
+                  connection_settings:
+                    apiKey: ss_live_a1b2c3d4e5f6
+                    apiSecret: ss_secret_f6e5d4c3b2a1
+                    timezone: America/Los_Angeles
+                  integration_settings:
+                    connection_name: ShipStation US
+                    enable_fulfillment: true
+                    order_start_date: '2026-01-01'
+                    auto_submit_fulfillments: true
+                    settings:
+                      productFieldToPass: sku
+                      send_sales_order_tags_as_notes: false
+                    fulfillment_cost_financial_line_type_id: 4
+                    fulfillment:
+                      enabledWarehousesIds:
+                      - 1
+                      - 2
+                      automatedWarehousesIds:
+                      - 1
+                  is_automatic_sync_enabled: true
+                  created_at: '2026-05-01T10:15:00+00:00'
+                  updated_at: '2026-06-09T18:42:11+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The name has already been taken.
+                errors:
+                  name:
+                  - The name has already been taken.
+      operationId: put-domain-api-shipstation-integration-instances-integration-instance
+    delete:
+      tags:
+      - Shipping Providers
+      summary: Delete Integration Instance
+      description: 'Deletes a ShipStation integration instance. The deletion runs
+        asynchronously — a background job (ShipstationDeleteIntegrationInstanceJob)
+        removes the instance and its related data (orders, warehouses, shipping method
+        mappings, webhook events/subscriptions).
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Integration instance deleted successfully
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: No query results for model [Modules\Shipstation\Entities\ShipstationIntegrationInstance]
+                  999
+      operationId: delete-domain-api-shipstation-integration-instances-integration-instance
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/dashboard:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Dashboard Metrics
+      description: 'Returns dashboard metrics for a ShipStation integration instance.
+
+
+        Response fields (camelCase, serialized from ShipstationDashboardMetricsData):
+
+        - totalOrders (int): total synced ShipStation orders for the instance
+
+        - ordersByStatus (array): one row per ShipStation order status (awaiting_payment,
+        awaiting_shipment, pending_fulfillment, shipped, on_hold, cancelled, rejected_fulfillment,
+        unknown) with status, status_label and count (zero-filled for statuses with
+        no orders)
+
+        - ordersByCarrier (array): up to 20 carriers ordered by count desc, each {carrier,
+        count}
+
+        - totalWarehouses (int): synced ShipStation warehouses
+
+        - unprocessedWebhookEvents (int) / failedWebhookEvents (int): webhook event
+        queue health
+
+        - activeWebhookSubscriptions (int)
+
+        - ordersLastSyncedAt / trackingInfoLastUpdatedAt / warehousesLastSyncedAt
+        (ISO 8601 or null): last sync timestamps
+
+        - unlinkedOrders (int): ShipStation orders not linked to a SKU fulfillment
+
+        - schedules (object): sync schedule metadata keyed by orders, tracking_info,
+        warehouses — each {frequency: ''Hourly'' | ''Manual only'', seconds_until_next:
+        int | null} powering the dashboard countdown
+
+        - ordersChart (array): one {date, orders_count} row per day for the last 30
+        days (oldest first, zero-filled)
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  totalOrders: 1245
+                  ordersByStatus:
+                  - status: awaiting_payment
+                    status_label: Awaiting Payment
+                    count: 12
+                  - status: awaiting_shipment
+                    status_label: Awaiting Shipment
+                    count: 86
+                  - status: pending_fulfillment
+                    status_label: Pending Fulfillment
+                    count: 9
+                  - status: shipped
+                    status_label: Shipped
+                    count: 1098
+                  - status: on_hold
+                    status_label: On Hold
+                    count: 5
+                  - status: cancelled
+                    status_label: Cancelled
+                    count: 30
+                  - status: rejected_fulfillment
+                    status_label: Rejected Fulfillment
+                    count: 2
+                  - status: unknown
+                    status_label: Unknown
+                    count: 3
+                  ordersByCarrier:
+                  - carrier: stamps_com
+                    count: 640
+                  - carrier: ups
+                    count: 310
+                  - carrier: fedex
+                    count: 148
+                  totalWarehouses: 3
+                  unprocessedWebhookEvents: 4
+                  failedWebhookEvents: 1
+                  activeWebhookSubscriptions: 2
+                  ordersLastSyncedAt: '2026-06-10T08:00:12+00:00'
+                  trackingInfoLastUpdatedAt: '2026-06-10T08:05:43+00:00'
+                  warehousesLastSyncedAt: '2026-06-09T15:21:07+00:00'
+                  unlinkedOrders: 17
+                  schedules:
+                    orders:
+                      frequency: Hourly
+                      seconds_until_next: 1820
+                    tracking_info:
+                      frequency: Hourly
+                      seconds_until_next: 1820
+                    warehouses:
+                      frequency: Manual only
+                      seconds_until_next: null
+                  ordersChart:
+                  - date: '2026-05-12'
+                    orders_count: 38
+                  - date: '2026-05-13'
+                    orders_count: 42
+                  - date: '2026-05-14'
+                    orders_count: 0
+                  - date: '2026-05-15'
+                    orders_count: 51
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-dashboard
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/orders-chart:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Orders Chart (Date Range)
+      description: 'Returns a daily order-count time series for a ShipStation integration
+        instance over the given date range, powering the dashboard orders trend chart''s
+        custom range selection.
+
+
+        The response contains one bucket per day in [start_date, end_date] (oldest
+        first), counting orders by their order_date and filling zero-counts for days
+        with no orders so the chart x-axis is continuous.
+
+
+        Query parameters:
+
+        - start_date (required, date e.g. YYYY-MM-DD): start of the range
+
+        - end_date (required, date e.g. YYYY-MM-DD): end of the range; must be on
+        or after start_date
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: start_date
+        in: query
+        schema:
+          type: string
+        description: Start date of the range (YYYY-MM-DD). Required.
+        example: '2026-05-11'
+      - name: end_date
+        in: query
+        schema:
+          type: string
+        description: End date of the range (YYYY-MM-DD). Must be on or after start_date.
+          Required.
+        example: '2026-06-10'
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - date: '2026-05-11'
+                  orders_count: 0
+                - date: '2026-05-12'
+                  orders_count: 38
+                - date: '2026-05-13'
+                  orders_count: 42
+                - date: '2026-05-14'
+                  orders_count: 7
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The end date field must be a date after or equal to start
+                  date.
+                errors:
+                  end_date:
+                  - The end date field must be a date after or equal to start date.
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-orders-chart
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/test-connection:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Test Connection
+      description: 'Tests the ShipStation API connection for an integration instance
+        by calling the ShipStation V1 List Warehouses endpoint with the instance''s
+        stored apiKey/apiSecret.
+
+
+        No request body. Returns 200 with `Connection successful` when ShipStation
+        responds successfully, or 400 when the request fails (invalid credentials,
+        network error, etc.).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Connection successful
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Connection test failed. Please verify your API Key and API
+                  Secret.
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-test-connection
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/fulfillment-routing:
+    put:
+      tags:
+      - Shipping Providers
+      summary: Update Fulfillment Routing
+      description: 'Saves per-warehouse fulfillment routing for a ShipStation integration
+        instance — which SKU warehouses participate in ShipStation fulfillment and
+        which of those are pushed automatically (no manual review). Stored under integration_settings.fulfillment.
+
+
+        Body fields (both must be present, arrays of warehouse ids):
+
+        - enabledWarehousesIds (array<int>, required/present): warehouses that participate
+        in ShipStation fulfillment
+
+        - automatedWarehousesIds (array<int>, required/present): subset of enabled
+        warehouses whose fulfillments are pushed automatically. Ids not also present
+        in enabledWarehousesIds are silently dropped. Returns 422 if any warehouse
+        is already automated by another integration instance.
+
+
+        Response: the saved `fulfillment` object plus a confirmation message.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                enabledWarehousesIds:
+                - 1
+                - 2
+                - 3
+                automatedWarehousesIds:
+                - 1
+                - 2
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  fulfillment:
+                    enabledWarehousesIds:
+                    - 1
+                    - 2
+                    - 3
+                    automatedWarehousesIds:
+                    - 1
+                    - 2
+                message: Fulfillment routing saved
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Warehouse Conflict
+                  value:
+                    message: 'Warehouses already automated by another integration:
+                      4, 7'
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: The enabledWarehousesIds field must be present.
+                    errors:
+                      enabledWarehousesIds:
+                      - The enabledWarehousesIds field must be present.
+      operationId: put-domain-api-shipstation-integration-instances-integration-instance-fulfillment-routing
+  //{domain}/api/shipstation/integration-instances/{integrationInstance}/shipments:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Shipments
+      description: 'List label shipments for a ShipStation integration instance (paginated).
+        Backed by the dedicated shipstation_shipments table populated from ShipStation''s
+        GET /shipments endpoint.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Free-text search (filter[search]) matches tracking_number, shipstation_shipment_id,
+        order_number, carrier_code, service_code (Typesense-backed when available,
+        with DB LIKE fallback).
+
+
+        Allowed sorts: id, shipstation_shipment_id, order_number, tracking_number,
+        carrier_code, service_code, package_code, shipment_cost, weight_value, voided,
+        ship_date, create_date, created_at, updated_at. Prefix with - for DESC. Default
+        sort: -ship_date.
+
+
+        Advanced filter operators are supported per column via the AdvancedFiltersModal
+        (text operators on order_number/tracking_number/carrier_code/service_code/package_code/confirmation/warehouse_id,
+        numeric on id/shipstation_shipment_id/weight_value/shipment_cost, datetime
+        on ship_date/create_date/created_at/updated_at).
+
+
+        Pass include_json=1 to include the raw ShipStation payload (json_object) on
+        each row.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 101
+                  integration_instance_id: 4
+                  shipstation_shipment_id: 987654321
+                  order_id: 2456
+                  shipstation_order_id: 123456789
+                  order_number: SS-10342
+                  tracking_number: '9400111899560000000001'
+                  tracking_url: https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111899560000000001
+                  carrier_code: stamps_com
+                  service_code: usps_priority_mail
+                  package_code: package
+                  confirmation: delivery
+                  warehouse_id: '12345'
+                  weight_value: 14.5
+                  weight_units: ounces
+                  length: 10
+                  width: 8
+                  height: 4
+                  dimension_units: inches
+                  shipment_cost: 7.42
+                  insurance_cost: 0
+                  voided: false
+                  void_date: null
+                  is_return_label: false
+                  batch_number: '100301'
+                  ship_date: '2026-06-08T00:00:00+00:00'
+                  create_date: '2026-06-08T14:22:10+00:00'
+                  created_at: '2026-06-08T14:25:00+00:00'
+                  updated_at: '2026-06-08T14:25:00+00:00'
+                  order:
+                    id: 2456
+                    order_number: SS-10342
+                    shipstation_order_id: 123456789
+                    link_reference: SS-10342
+                    link_type_label: ShipStation Order
+                    link_id: 2456
+                    link_route: /integrations/shipstation/4/orders/2456
+                    link_legacy_url: null
+                  sku_fulfillment_id: 778
+                  sku_fulfillment_status: shipped
+                  sales_order_id: 3301
+                  sales_order_number: SO-3301
+                  sales_order_legacy_url: /sales-orders/3301
+                  warehouse:
+                    id: 2
+                    name: Main Warehouse
+                current_page: 1
+                last_page: 12
+                per_page: 10
+                total: 118
+                from: 1
+                to: 10
+                first_page_url: '...'
+                last_page_url: '...'
+                next_page_url: '...'
+                prev_page_url: null
+                path: '...'
+                links: []
+      operationId: get-domain-api-shipstation-integration-instances-integrationinstance-shipments
+  //{domain}/api/shipstation/integration-instances/{integrationInstance}/shipments/{shipment}:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Shipment
+      description: 'Get a single ShipStation shipment by local row id. Returns 404
+        when the shipment does not belong to the instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 101
+                  integration_instance_id: 4
+                  shipstation_shipment_id: 987654321
+                  order_id: 2456
+                  shipstation_order_id: 123456789
+                  order_number: SS-10342
+                  tracking_number: '9400111899560000000001'
+                  tracking_url: https://tools.usps.com/go/TrackConfirmAction?tLabels=9400111899560000000001
+                  carrier_code: stamps_com
+                  service_code: usps_priority_mail
+                  package_code: package
+                  confirmation: delivery
+                  warehouse_id: '12345'
+                  weight_value: 14.5
+                  weight_units: ounces
+                  length: 10
+                  width: 8
+                  height: 4
+                  dimension_units: inches
+                  shipment_cost: 7.42
+                  insurance_cost: 0
+                  voided: false
+                  void_date: null
+                  is_return_label: false
+                  batch_number: '100301'
+                  ship_date: '2026-06-08T00:00:00+00:00'
+                  create_date: '2026-06-08T14:22:10+00:00'
+                  created_at: '2026-06-08T14:25:00+00:00'
+                  updated_at: '2026-06-08T14:25:00+00:00'
+                  order:
+                    id: 2456
+                    order_number: SS-10342
+                    shipstation_order_id: 123456789
+                    link_reference: SS-10342
+                    link_type_label: ShipStation Order
+                    link_id: 2456
+                    link_route: /integrations/shipstation/4/orders/2456
+                    link_legacy_url: null
+                  sku_fulfillment_id: 778
+                  sku_fulfillment_status: shipped
+                  sales_order_id: 3301
+                  sales_order_number: SO-3301
+                  sales_order_legacy_url: /sales-orders/3301
+                  warehouse:
+                    id: 2
+                    name: Main Warehouse
+                message: null
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: ''
+      operationId: get-domain-api-shipstation-integration-instances-integrationinstance-shipments-shipment
+  //{domain}/api/shipstation/integration-instances/{integrationInstance}/shipments/sync:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Shipments
+      description: 'Queue a tracked background sync that pages ShipStation''s GET
+        /shipments endpoint into the shipstation_shipments table (and applies tracking
+        to linked orders/fulfillments, including a second pass over GET /fulfillments
+        for externally fulfilled orders).
+
+
+        Body fields (all optional):
+
+        - mode: ''all'' (full history), ''date_range'' (bounded by date_from/date_to),
+        ''since_latest'' (bounded by date_from). Default: falls back to date_from,
+        else the configured order start date.
+
+        - date_from / since_date: ISO datetime lower bound
+
+        - date_to: ISO datetime upper bound
+
+
+        Track progress in the global job tray (job name: ''Sync ShipStation Shipments:
+        {instance name}'').
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                mode: since_latest
+                date_from: '2026-05-01T00:00:00Z'
+                date_to: '2026-06-01T00:00:00Z'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 991
+                message: Shipments sync queued
+      operationId: post-domain-api-shipstation-integration-instances-integrationinstance-shipments-sync
+  //{domain}/api/shipstation/integration-instances/{integrationInstance}/shipments/sync-info:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Shipments Sync Info
+      description: 'Header data for the shipments refresh modal: the most recently
+        created shipment (by ShipStation createDate) and the total shipment count
+        for this instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  latest_shipment_identifier: '9400111899560000000001'
+                  latest_shipment_date: '2026-06-08T14:22:10+00:00'
+                  total_shipments: 118
+                message: null
+      operationId: get-domain-api-shipstation-integration-instances-integrationinstance-shipments-sync-info
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Shipping Methods
+      description: 'Returns every ShipStation carrier/service combination for the
+        instance (flattened to `carrier_code|service_code` codes, cached 10 minutes
+        from the ShipStation /carriers + /services endpoints, sorted by carrier then
+        service name) with its current SKU.io mapping (or null), plus the list of
+        available SKU.io shipping methods for the mapping dropdown.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                data:
+                  services:
+                  - code: ups|ups_ground
+                    carrier_code: ups
+                    carrier_name: UPS
+                    service_code: ups_ground
+                    service_name: UPS Ground
+                    is_domestic: true
+                    mapping:
+                      id: 12
+                      shipping_method_id: 4
+                      shipping_method_name: Ground Shipping
+                      shipping_method_type: standard
+                  - code: fedex|fedex_2day
+                    carrier_code: fedex
+                    carrier_name: FedEx
+                    service_code: fedex_2day
+                    service_name: FedEx 2Day
+                    is_domestic: true
+                    mapping: null
+                  sku_shipping_methods:
+                  - id: 4
+                    name: Ground Shipping
+                    full_name: Ground Shipping (3-5 days)
+                    type: standard
+                  - id: 5
+                    name: Expedited
+                    full_name: Expedited (2 days)
+                    type: expedited
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-shipping-methods
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/sync:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Shipping Methods
+      description: 'Queues the ShipstationSyncShippingMethodsJob as a tracked job
+        that force-refreshes the carrier/service cache from ShipStation. No request
+        body. Returns `data.tracked_job_log_id` for the job progress tray.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Shipping methods sync queued
+                data:
+                  tracked_job_log_id: 9142
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-sync
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/export:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Export Shipping Method Mappings (CSV)
+      description: 'Downloads the persisted mappings as CSV (Content-Type: text/csv,
+        Content-Disposition attachment named `shipstation-shipping-methods-{instance}-{date}.csv`).
+        Only stored mappings are exported — no live ShipStation API calls.
+
+
+        Columns: code, carrier_code, carrier_name, service_code, service_name, is_domestic
+        (yes/no), shipping_method_id, shipping_method_name.
+
+
+        The file is round-trippable with the import endpoint: blanking both shipping_method_id
+        and shipping_method_name on a row deletes that mapping on re-import.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: text/csv
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="shipstation-shipping-methods-1-2026-06-10.csv"
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'code,carrier_code,carrier_name,service_code,service_name,is_domestic,shipping_method_id,shipping_method_name
+
+                ups|ups_ground,ups,UPS,ups_ground,UPS Ground,yes,4,Ground Shipping
+                (3-5 days)
+
+                fedex|fedex_2day,fedex,FedEx,fedex_2day,FedEx 2Day,yes,5,Expedited
+                (2 days)
+
+                '
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-export
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/import:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Import Shipping Method Mappings (CSV)
+      description: 'Uploads a CSV of mappings (multipart/form-data).
+
+
+        Body fields:
+
+        - `file` — required, mimes: csv or txt, max 2048 KB. First row must be a header.
+
+
+        Row semantics (per line):
+
+        - `code` identifies the service (`carrier_code|service_code`); if blank, it
+        is rebuilt from carrier_code + service_code columns
+
+        - `shipping_method_id` (authoritative) or `shipping_method_name` (fallback,
+        matched case-insensitively against name or full_name) resolves the SKU.io
+        shipping method
+
+        - Both blank → the mapping for that code is deleted
+
+        - Unresolvable rows are collected into `errors` with their line numbers
+
+
+        Response data: `{created, updated, deleted, errors[]}` summary.
+
+
+        Errors:
+
+        - 422 — missing/invalid file (wrong mime type or > 2 MB)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Import processed
+                data:
+                  created: 3
+                  updated: 1
+                  deleted: 1
+                  errors:
+                  - 'Line 6: shipping method name ''Overnight Gold'' not found'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The file field is required.
+                errors:
+                  file:
+                  - The file field is required.
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-import
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/map:
+    put:
+      tags:
+      - Shipping Providers
+      summary: Map Shipping Method
+      description: 'Creates or updates a single mapping from a ShipStation `carrier_code|service_code`
+        code to a SKU.io shipping method. Carrier/service metadata is captured from
+        the cached service list when the code is recognized.
+
+
+        Body fields:
+
+        - `code` — required, string, max 255 (format: carrier_code|service_code)
+
+        - `shipping_method_id` — required, integer, must exist in shipping_methods
+
+
+        Errors:
+
+        - 422 — validation failure (missing code, unknown shipping_method_id)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                code: ups|ups_ground
+                shipping_method_id: 4
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Mapping saved
+                data:
+                  id: 12
+                  code: ups|ups_ground
+                  shipping_method_id: 4
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The selected shipping method id is invalid.
+                errors:
+                  shipping_method_id:
+                  - The selected shipping method id is invalid.
+      operationId: put-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-map
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/bulk-map:
+    put:
+      tags:
+      - Shipping Providers
+      summary: Bulk Map Shipping Methods
+      description: 'Maps many ShipStation service codes to a single SKU.io shipping
+        method in one call. Duplicate codes are de-duplicated; carrier/service metadata
+        is derived from the `carrier_code|service_code` split (no live ShipStation
+        lookup).
+
+
+        Body fields:
+
+        - `codes` — required, array, min 1; each entry required string max 255
+
+        - `shipping_method_id` — required, integer, must exist in shipping_methods
+
+
+        Response data: `updated_count` — number of mappings written.
+
+
+        Errors:
+
+        - 422 — validation failure (empty codes array, unknown shipping_method_id)
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                codes:
+                - ups|ups_ground
+                - fedex|fedex_2day
+                - usps|usps_priority_mail
+                shipping_method_id: 4
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: 3 mapping(s) saved
+                data:
+                  updated_count: 3
+      operationId: put-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-bulk-map
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/shipping-methods/map/ups|ups_ground:
+    delete:
+      tags:
+      - Shipping Providers
+      summary: Unmap Shipping Method
+      description: 'Deletes the mapping for a ShipStation service code.
+
+
+        Path params:
+
+        - `code` — the mapped `carrier_code|service_code` code. The route allows any
+        characters including slashes (`->where(''code'', ''.*'')`), so codes containing
+        `/` work; URL-encode the pipe (`%7C`) when needed.
+
+
+        Errors:
+
+        - 404 — no mapping exists for that code (''Mapping not found'')
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Mapping removed
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: false
+                message: Mapping not found
+      operationId: delete-domain-api-shipstation-integration-instances-integration-instance-shipping-methods-map-ups-ups-ground
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-events:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Webhook Events
+      description: 'Paginated list of inbound webhook events recorded for this ShipStation
+        integration instance, newest first (default sort -id).
+
+
+        **Filtering** (Spatie QueryBuilder + GroupedFilterSupport):
+
+        - `filter[search]` — multi-column AdvancedSearchFilter across `id`, `order_number`,
+        `tracking_number`, `event_type`; tune with top-level `search_columns` / `search_strict_columns`
+
+        - Numeric: `id`, `shipstation_order_id`
+
+        - Text: `event_type`, `resource_type`, `processed`, `signature_valid`, `order_number`,
+        `tracking_number`
+
+        - Datetime: `processed_at`, `created_at`, `updated_at`
+
+        - `filter[has_error]=true` — legacy flag for events with an error_message
+
+        - `filter_groups` — base64-encoded JSON tree for grouped AND/OR filtering
+        using the same column.operator names
+
+
+        **Sorting**: `id`, `created_at`, `updated_at`, `event_type`, `processed_at`
+        (default `-id`).
+
+
+        **Pagination**: standard Laravel paginator, `per_page` default 15.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (default 15)
+        example: '15'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort column. Allowed: id, created_at, updated_at, event_type,
+          processed_at. Prefix with - for descending. Default: -id'
+        example: -id
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                current_page: 1
+                data:
+                - id: 1201
+                  integration_instance_id: 5
+                  event_type: SHIP_NOTIFY
+                  event_type_label: Shipment Notification
+                  event_type_color: success
+                  resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&batchId=98765&includeShipmentItems=false
+                  resource_type: SHIP_NOTIFY
+                  resource_fetched: true
+                  order_number: SO-1234
+                  shipstation_order_id: 123456789
+                  tracking_number: '9405511899560001234567'
+                  signature_valid: true
+                  payload:
+                    resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&batchId=98765&includeShipmentItems=false
+                    resource_type: SHIP_NOTIFY
+                  processed: true
+                  processed_at: '2026-06-09T14:32:11+00:00'
+                  error_message: null
+                  dedup_key: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+                  created_at: '2026-06-09T14:32:08+00:00'
+                  updated_at: '2026-06-09T14:32:11+00:00'
+                - id: 1200
+                  integration_instance_id: 5
+                  event_type: ORDER_NOTIFY
+                  event_type_label: Order Notification
+                  event_type_color: info
+                  resource_url: https://ssapi.shipstation.com/orders?storeId=12345&importBatch=11223
+                  resource_type: ORDER_NOTIFY
+                  resource_fetched: false
+                  order_number: null
+                  shipstation_order_id: null
+                  tracking_number: null
+                  signature_valid: true
+                  payload:
+                    resource_url: https://ssapi.shipstation.com/orders?storeId=12345&importBatch=11223
+                    resource_type: ORDER_NOTIFY
+                  processed: false
+                  processed_at: null
+                  error_message: ShipStation API returned 429 Too Many Requests while
+                    fetching resource
+                  dedup_key: f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1
+                  created_at: '2026-06-09T14:30:55+00:00'
+                  updated_at: '2026-06-09T14:31:02+00:00'
+                first_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/5/webhook-events?page=1'
+                from: 1
+                last_page: 7
+                last_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/5/webhook-events?page=7'
+                links: []
+                next_page_url: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/5/webhook-events?page=2'
+                path: '{{protocol}}://{{domain}}/api/shipstation/integration-instances/5/webhook-events'
+                per_page: 15
+                prev_page_url: null
+                to: 15
+                total: 98
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-events
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-events/{webhook_event}:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Webhook Event
+      description: 'Returns the full detail for a single webhook event, including
+        the raw inbound `payload`, processing status, error message (if processing
+        failed), dedup key and signature validity.
+
+
+        Returns **404** if the event does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: webhook_event
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ShipstationWebhookEvent ID
+        example: '1201'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1201
+                  integration_instance_id: 5
+                  event_type: SHIP_NOTIFY
+                  event_type_label: Shipment Notification
+                  event_type_color: success
+                  resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&batchId=98765&includeShipmentItems=false
+                  resource_type: SHIP_NOTIFY
+                  resource_fetched: true
+                  order_number: SO-1234
+                  shipstation_order_id: 123456789
+                  tracking_number: '9405511899560001234567'
+                  signature_valid: true
+                  payload:
+                    resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&batchId=98765&includeShipmentItems=false
+                    resource_type: SHIP_NOTIFY
+                  processed: true
+                  processed_at: '2026-06-09T14:32:11+00:00'
+                  error_message: null
+                  dedup_key: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+                  created_at: '2026-06-09T14:32:08+00:00'
+                  updated_at: '2026-06-09T14:32:11+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-events-webhook-event
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-events/{webhook_event}/retry:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Retry Webhook Event
+      description: 'Queues the webhook event for reprocessing by dispatching `ShipstationProcessWebhookJob`.
+        Typically used on events whose `processed` flag is false and `error_message`
+        is set (e.g. a transient ShipStation API failure during the resource fetch).
+
+
+        The job re-runs the standard processing path: fetch the resource from ShipStation,
+        apply the fetched payload (order/shipment linkage), then mark the event processed
+        or record a new error.
+
+
+        Returns **404** if the event does not belong to the given integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: webhook_event
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ShipstationWebhookEvent ID to re-process
+        example: '1200'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Webhook event queued for retry
+                status: Success
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-webhook-events-webhook-event-retry
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-subscriptions:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Webhook Configurations
+      description: 'Returns the webhook configuration matrix for the instance:
+
+
+        - `configurations` — one row per ShipStation event type (`SHIP_NOTIFY`, `ITEM_SHIP_NOTIFY`,
+        `ORDER_NOTIFY`, `ITEM_ORDER_NOTIFY`, `FULFILLMENT_SHIPPED`, `FULFILLMENT_REJECTED`)
+        with label, color, description, and the linked local subscription (`subscription_id`,
+        `shipstation_webhook_id`, `friendly_name`, `is_enabled`)
+
+        - `target_url` — the public ingress URL ShipStation should POST notifications
+        to (encodes the integration instance id so tenancy can be initialised)
+
+        - `event_type_count` — total number of supported event types (6)
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  configurations:
+                  - event_type: SHIP_NOTIFY
+                    event_type_label: Shipment Notification
+                    event_type_color: success
+                    event_type_description: Sent when one or more shipments are created
+                      in ShipStation.
+                    subscription_id: 12
+                    shipstation_webhook_id: '784512'
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: SKU.io Shipment Notification
+                    is_enabled: true
+                  - event_type: ITEM_SHIP_NOTIFY
+                    event_type_label: Item Shipment Notification
+                    event_type_color: success
+                    event_type_description: Sent when shipments are created — payload
+                      includes per-item shipment detail.
+                    subscription_id: null
+                    shipstation_webhook_id: null
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: null
+                    is_enabled: false
+                  - event_type: ORDER_NOTIFY
+                    event_type_label: Order Notification
+                    event_type_color: info
+                    event_type_description: Sent when one or more new orders are imported
+                      into ShipStation.
+                    subscription_id: 13
+                    shipstation_webhook_id: '784513'
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: SKU.io Order Notification
+                    is_enabled: true
+                  - event_type: ITEM_ORDER_NOTIFY
+                    event_type_label: Item Order Notification
+                    event_type_color: info
+                    event_type_description: Sent when orders are imported — payload
+                      includes per-item order detail.
+                    subscription_id: null
+                    shipstation_webhook_id: null
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: null
+                    is_enabled: false
+                  - event_type: FULFILLMENT_SHIPPED
+                    event_type_label: Fulfillment Shipped
+                    event_type_color: success
+                    event_type_description: Sent when a fulfillment marked-as-shipped
+                      is recorded in ShipStation.
+                    subscription_id: null
+                    shipstation_webhook_id: null
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: null
+                    is_enabled: false
+                  - event_type: FULFILLMENT_REJECTED
+                    event_type_label: Fulfillment Rejected
+                    event_type_color: error
+                    event_type_description: Sent when ShipStation rejects an inbound
+                      fulfillment.
+                    subscription_id: null
+                    shipstation_webhook_id: null
+                    callback_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                    friendly_name: null
+                    is_enabled: false
+                  target_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                  event_type_count: 6
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-subscriptions
+    post:
+      tags:
+      - Shipping Providers
+      summary: Subscribe to Webhook Event
+      description: 'Creates a webhook subscription on the ShipStation account (POST
+        /webhooks/subscribe via the ShipStation V1 API) pointing at this instance''s
+        ingress URL, then records it locally.
+
+
+        **Body fields:**
+
+        - `event_type` (required, string) — one of: `SHIP_NOTIFY`, `ITEM_SHIP_NOTIFY`,
+        `ORDER_NOTIFY`, `ITEM_ORDER_NOTIFY`, `FULFILLMENT_SHIPPED`, `FULFILLMENT_REJECTED`
+
+        - `friendly_name` (optional, string, max 255) — display name for the webhook
+        in ShipStation; defaults to the event type label when omitted
+
+
+        Returns **422** when `event_type` is missing or not one of the allowed values.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                event_type: SHIP_NOTIFY
+                friendly_name: SKU.io Shipment Notification
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  event_type: SHIP_NOTIFY
+                  event_type_label: Shipment Notification
+                  event_type_color: success
+                  shipstation_webhook_id: '784512'
+                  target_url: https://acme.sku.io/api/shipstation/webhooks/5/notify
+                  friendly_name: SKU.io Shipment Notification
+                  active: true
+                  created_at: '2026-06-10T09:15:00+00:00'
+                  updated_at: '2026-06-10T09:15:00+00:00'
+                message: Webhook subscribed
+                status: Success
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The selected event type is invalid.
+                errors:
+                  event_type:
+                  - The selected event type is invalid.
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-webhook-subscriptions
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-subscriptions/sync:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Sync Subscriptions from ShipStation
+      description: 'Reconciles the local subscription table with the live webhook
+        list on the ShipStation account (GET /webhooks):
+
+
+        - Remote webhooks with a recognised event type that are missing locally are
+        **added**
+
+        - Local subscriptions whose ShipStation webhook no longer exists remotely
+        are **removed**
+
+
+        Returns counts of added/removed plus the resulting total.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  added: 1
+                  removed: 0
+                  total: 3
+                message: Sync complete — 1 added, 0 removed
+                status: Success
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-webhook-subscriptions-sync
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-subscriptions/{subscription}:
+    delete:
+      tags:
+      - Shipping Providers
+      summary: Unsubscribe Webhook
+      description: 'Removes the webhook subscription from the ShipStation account
+        (DELETE /webhooks/{id}) and deletes the local record.
+
+
+        Returns **404** if the subscription does not belong to the given integration
+        instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: subscription
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ShipstationWebhookSubscription ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Webhook unsubscribed
+                status: Success
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: delete-domain-api-shipstation-integration-instances-integration-instance-webhook-subscriptions-subscription
+  //{domain}/api/shipstation/webhook-test/status:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Webhook Test Status (Global)
+      description: 'Global (non-instance) availability check for the webhook tester.
+        Reports whether webhook testing is enabled (`available` is true in any non-production
+        environment) along with the current environment name.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  available: true
+                  environment: local
+                  message: Webhook testing is available in this environment
+      operationId: get-domain-api-shipstation-webhook-test-status
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-test/topics:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Webhook Topics
+      description: 'Lists all 6 testable ShipStation webhook topics (`SHIP_NOTIFY`,
+        `ITEM_SHIP_NOTIFY`, `ORDER_NOTIFY`, `ITEM_ORDER_NOTIFY`, `FULFILLMENT_SHIPPED`,
+        `FULFILLMENT_REJECTED`), each with a label, a description, and a `sample_payload`
+        in the ShipStation V1 notification shape (`resource_url` + `resource_type`).
+
+
+        Returns **403** in production.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  topics:
+                  - topic: SHIP_NOTIFY
+                    label: Shipment Notification
+                    description: Sent when one or more shipments are created in ShipStation.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&includeShipmentItems=true
+                      resource_type: SHIP_NOTIFY
+                  - topic: ITEM_SHIP_NOTIFY
+                    label: Item Shipment Notification
+                    description: Sent when shipments are created — payload includes
+                      per-item shipment detail.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&includeShipmentItems=true
+                      resource_type: ITEM_SHIP_NOTIFY
+                  - topic: ORDER_NOTIFY
+                    label: Order Notification
+                    description: Sent when one or more new orders are imported into
+                      ShipStation.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/orders?storeId=12345&includeShipmentItems=true
+                      resource_type: ORDER_NOTIFY
+                  - topic: ITEM_ORDER_NOTIFY
+                    label: Item Order Notification
+                    description: Sent when orders are imported — payload includes
+                      per-item order detail.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/orders?storeId=12345&includeShipmentItems=true
+                      resource_type: ITEM_ORDER_NOTIFY
+                  - topic: FULFILLMENT_SHIPPED
+                    label: Fulfillment Shipped
+                    description: Sent when a fulfillment marked-as-shipped is recorded
+                      in ShipStation.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/orders?storeId=12345&includeShipmentItems=true
+                      resource_type: FULFILLMENT_SHIPPED
+                  - topic: FULFILLMENT_REJECTED
+                    label: Fulfillment Rejected
+                    description: Sent when ShipStation rejects an inbound fulfillment.
+                    sample_payload:
+                      resource_url: https://ssapi.shipstation.com/orders?storeId=12345&includeShipmentItems=true
+                      resource_type: FULFILLMENT_REJECTED
+                  integration_instance_id: 5
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: false
+                message: Webhook testing is not available in production
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-test-topics
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-test/recent-events:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Recent Test Events
+      description: 'Returns the most recent webhook events recorded for this instance
+        (newest first), in the simplified shape the shared WebhookTester component
+        expects: `id`, `topic`, `unique_id` (dedup key), `processing_status` (processed
+        | failed | pending) and `created_at`.
+
+
+        Optionally filter by `topic` and cap with `limit` (default 20).
+
+
+        Returns **403** in production.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Maximum number of events to return (default 20)
+        example: '20'
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  events:
+                  - id: 1201
+                    topic: SHIP_NOTIFY
+                    unique_id: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+                    processing_status: processed
+                    created_at: '2026-06-09T14:32:08+00:00'
+                  - id: 1200
+                    topic: ORDER_NOTIFY
+                    unique_id: f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1
+                    processing_status: failed
+                    created_at: '2026-06-09T14:30:55+00:00'
+                  - id: 1199
+                    topic: ORDER_NOTIFY
+                    unique_id: 0f1e2d3c4b5a69788796a5b4c3d2e1f0
+                    processing_status: pending
+                    created_at: '2026-06-09T14:29:40+00:00'
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-test-recent-events
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-test/events/{eventId}/payload:
+    get:
+      tags:
+      - Shipping Providers
+      summary: Get Test Event Payload
+      description: 'Returns the raw stored payload (`json_data`) of a recorded webhook
+        event so it can be loaded into the tester, tweaked and replayed.
+
+
+        Returns **403** in production and **404** when the event does not exist for
+        this instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: eventId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ShipstationWebhookEvent ID
+        example: '1201'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  event:
+                    id: 1201
+                    topic: SHIP_NOTIFY
+                    unique_id: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+                    json_data:
+                      resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&batchId=98765&includeShipmentItems=false
+                      resource_type: SHIP_NOTIFY
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: false
+                message: Webhook event not found
+      operationId: get-domain-api-shipstation-integration-instances-integration-instance-webhook-test-events-eventid-payload
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-test/validate:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Validate Test Payload
+      description: 'Validates a candidate V1 notification payload without processing
+        it.
+
+
+        **Body fields:**
+
+        - `topic` (required, string) — the event type being tested; must be a known
+        type or an error is returned
+
+        - `data` (required, array/object) — the V1 notification body; checked for
+        a `resource_url` (must start with `https://ssapi.shipstation.com/`) and a
+        known `resource_type`. A `resource_type` that does not match `topic` produces
+        a warning rather than an error.
+
+
+        Responds with `valid`, `errors`, `warnings` and `detected_fields`.
+
+
+        Returns **403** in production and **422** when `topic`/`data` are missing.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                topic: SHIP_NOTIFY
+                data:
+                  resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&includeShipmentItems=true
+                  resource_type: SHIP_NOTIFY
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK (valid)
+                  value:
+                    data:
+                      valid: true
+                      topic: SHIP_NOTIFY
+                      errors: []
+                      warnings: []
+                      detected_fields:
+                        resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&includeShipmentItems=true
+                        resource_type: SHIP_NOTIFY
+                example-1:
+                  summary: 200 OK (invalid payload)
+                  value:
+                    data:
+                      valid: false
+                      topic: SHIP_NOTIFY
+                      errors:
+                      - resource_url must start with https://ssapi.shipstation.com/
+                      - 'Missing required field: resource_type'
+                      warnings: []
+                      detected_fields: {}
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-webhook-test-validate
+  //{domain}/api/shipstation/integration-instances/{integration_instance}/webhook-test/process:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Process Test Webhook
+      description: 'Replays a V1 notification through the real processing path: the
+        payload is validated, recorded via `recordWebhook` (with a uniquified `resource_url`
+        so dedup keys never collide on re-runs), then processed synchronously via
+        `processWebhookEvent` — which fetches the resource from ShipStation and applies
+        order/shipment linkage.
+
+
+        **Body fields:**
+
+        - `topic` (required, string) — event type to replay (`SHIP_NOTIFY`, `ITEM_SHIP_NOTIFY`,
+        `ORDER_NOTIFY`, `ITEM_ORDER_NOTIFY`, `FULFILLMENT_SHIPPED`, `FULFILLMENT_REJECTED`)
+
+        - `data` (required, array/object) — V1 notification body with `resource_url`
+        + `resource_type`
+
+
+        Returns **400** when the payload fails pre-validation, **403** in production,
+        **422** when `topic`/`data` are missing, and **500** with exception detail
+        when processing throws.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                topic: SHIP_NOTIFY
+                data:
+                  resource_url: https://ssapi.shipstation.com/shipments?storeId=12345&includeShipmentItems=true
+                  resource_type: SHIP_NOTIFY
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integration_instance
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  success: true
+                  message: Webhook processed successfully
+                  topic: SHIP_NOTIFY
+                  event_id: 1305
+                  processing_status: processed
+                  processing_error: null
+                  result:
+                    topic: SHIP_NOTIFY
+                    webhook_event_id: 1305
+                    order_number: SO-1234
+                    shipstation_order_id: 123456789
+                    tracking_number: '9405511899560001234567'
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: false
+                message: Payload validation failed
+                errors:
+                - resource_url must start with https://ssapi.shipstation.com/
+                - 'Missing required field: resource_type'
+      operationId: post-domain-api-shipstation-integration-instances-integration-instance-webhook-test-process
   //{domain}/api/veracore/integration-instances:
     post:
       tags:
