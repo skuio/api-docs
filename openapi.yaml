@@ -133723,6 +133723,147 @@ paths:
                 type: string
               example: <binary XLSX file — zip archive starting with PK\x03\x04 signature>
       operationId: get-domain-api-warehouses-transfers-import-lines-template
+  //{domain}/api/warehouses/transfers/{transfer}/shipments:
+    post:
+      tags:
+      - Adjustments & Transfers
+      summary: Create Shipment
+      description: "Creates a shipment for an already-open traditional (non-Amazon\
+        \ FBA) warehouse transfer. This is the explicit second step of the SKU-7965\
+        \ split lifecycle: open the transfer first (allocations only), then ship.\n\
+        \n**Effects:**\n- Deducts source warehouse stock\n- Creates `-active` and\
+        \ `+in_transit` inventory movements\n- Fulfils the line-level allocations\
+        \ created during open (Allocated → Fulfilled)\n\n**Request body (all fields\
+        \ optional unless noted):**\n- `shipment_date` (date) — defaults to today\
+        \ if omitted\n- `shipping_method_id` (integer) — must exist in `shipping_methods`\n\
+        - `tracking_number` (string, max 255)\n- `cost` (numeric, >= 0, < 100000)\n\
+        - `lines` (array, min 1 when present) — if omitted, all remaining open line\
+        \ quantities are shipped\n  - `lines[].warehouse_transfer_line_id` (integer,\
+        \ required_with:lines) — must belong to the transfer\n  - `lines[].quantity`\
+        \ (numeric, required_with:lines, min 0.0001)\n\n**Responses:**\n- `201 Created`\
+        \ — `WarehouseTransferResource` with updated shipments\n- `422 Unprocessable\
+        \ Entity` (`WarehouseTransferIsNotOpen`) — transfer is not in open status\n\
+        - `422 Unprocessable Entity` (`WarehouseTransferLineIsUnacceptable`) — a transfer\
+        \ line's requested quantity exceeds its allocated sum (allocations out of\
+        \ sync, e.g. stuck Fulfilled rows); the message includes the product SKU and\
+        \ the allocated quantity\n- `422 Unprocessable Entity` — transfer is an Amazon\
+        \ FBA transfer (use the Amazon-specific flow instead)\n- `400 Bad Request`\
+        \ (`ProductIsUnacceptable`) — not enough stock at the source warehouse for\
+        \ one of the requested lines\n\n**Requires permission:** `warehouse_transfers.ship`\n\
+        \nController: `App\\Http\\Controllers\\WarehouseTransferShipmentController::store`\n\
+        Form Request: `App\\Http\\Requests\\CreateWarehouseTransferShipmentRequest`\n\
+        Route name: `warehouses.transfers.shipments.store`"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                shipment_date: '2026-06-12'
+                shipping_method_id: 3
+                tracking_number: 1Z999AA10123456784
+                cost: 25.5
+                lines:
+                - warehouse_transfer_line_id: 87499
+                  quantity: 150
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: transfer
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Warehouse transfer ID (must be in open status)
+        example: '38207'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 38207,\n    \"warehouse_transfer_number\"\
+                : \"WH-38207\",\n    \"transfer_status\": \"open\",\n    \"shipment_status\"\
+                : \"shipped\",\n    \"from_warehouse\": {\n      \"id\": 7,\n    \
+                \  \"name\": \"Main Warehouse\"\n    },\n    \"to_warehouse\": {\n\
+                \      \"id\": 8,\n      \"name\": \"Overflow Warehouse\"\n    },\n\
+                \    \"transfer_date\": \"2026-06-12\",\n    \"shipments\": [\n  \
+                \    {\n        \"id\": 901,\n        \"tracking_number\": \"1Z999AA10123456784\"\
+                ,\n        \"shipped_at\": \"2026-06-12T16:00:00.000000Z\",\n    \
+                \    \"lines\": [\n          {\n            \"id\": 4001,\n      \
+                \      \"warehouse_transfer_line_id\": 87499,\n            \"quantity\"\
+                : 150\n          }\n        ]\n      }\n    ]\n  },\n  \"message\"\
+                : \"The warehouse transfer shipment created successfully\"\n}"
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"errors\": {\n    \"product\": [\n      {\n        \"\
+                message\": \"There is no quantity available for the product with SKU\
+                \ RC-SERUM-30ML\",\n        \"code\": \"ProductIsUnacceptable\",\n\
+                \        \"data\": {\n          \"product_id\": 812\n        }\n \
+                \     }\n    ]\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 422 — transfer not open
+                  value: "{\n  \"errors\": {\n    \"transfer_id\": [\n      {\n  \
+                    \      \"message\": \"Warehouse transfer #38207 is not in open\
+                    \ status\",\n        \"code\": \"WarehouseTransferIsNotOpen\"\
+                    ,\n        \"data\": {\n          \"transfer_id\": 38207\n   \
+                    \     }\n      }\n    ]\n  }\n}"
+                example-1:
+                  summary: 422 — transfer line not allocated
+                  value: "{\n  \"errors\": {\n    \"warehouse_transfer_line\": [\n\
+                    \      {\n        \"message\": \"Cannot ship 150 units of product\
+                    \ (RC-SERUM-30ML) \\u2014 only 0 units are allocated to this transfer\
+                    \ line. The transfer's inventory allocations are out of sync;\
+                    \ re-open the transfer or contact support.\",\n        \"code\"\
+                    : \"WarehouseTransferLineIsUnacceptable\",\n        \"data\":\
+                    \ {\n          \"warehouse_transfer_line_id\": 87499\n       \
+                    \ }\n      }\n    ]\n  }\n}"
+      operationId: post-domain-api-warehouses-transfers-transfer-shipments
   //{domain}/api/v2/warehouse-transfers/shipments/{shipment}:
     get:
       tags:
