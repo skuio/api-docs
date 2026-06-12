@@ -111185,7 +111185,9 @@ paths:
         empty `components: []` payload (which would otherwise wipe components). Returns
         a 422 validation error on the `components` field in these cases. Updates that
         don''t touch `components` on a bundle/kit which already has components are
-        unaffected.
+        unaffected. To convert a `standard` product that has no components yet, supply
+        `components[]` in the same request as the `type` change — the components are
+        saved as part of the same update, satisfying the requirement atomically.
 
 
         **Note (pricing tiers):** When sending `suppliers[].pricing[]` entries with
@@ -111981,7 +111983,9 @@ paths:
         empty `components: []` payload (which would otherwise wipe components). Returns
         a 422 validation error on the `components` field in these cases. Updates that
         don''t touch `components` on a bundle/kit which already has components are
-        unaffected.
+        unaffected. To convert a `standard` product that has no components yet, supply
+        `components[]` in the same request as the `type` change — the components are
+        saved as part of the same update, satisfying the requirement atomically.
 
 
         **Note (pricing tiers):** When sending `suppliers[].pricing[]` entries with
@@ -120533,7 +120537,10 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Returns products with detected_pattern, suggested_type, confidence, and has_inventory_movements.'
+        Returns products with detected_pattern, suggested_type, confidence, has_inventory_movements,
+        and components_count (number of components already configured on the product
+        — used by the conversion queue to know whether component configuration is
+        required before converting to bundle/kit).'
       parameters:
       - name: Accept
         in: header
@@ -120580,8 +120587,8 @@ paths:
                 Widget Bundle Kit\",\n      \"type\": \"standard\",\n      \"image_url\"\
                 : null,\n      \"detected_pattern\": \"bundle_suffix\",\n      \"\
                 suggested_type\": \"bundle\",\n      \"confidence\": \"high\",\n \
-                \     \"has_inventory_movements\": false\n    }\n  ],\n  \"total\"\
-                : 8,\n  \"per_page\": 20\n}"
+                \     \"has_inventory_movements\": false,\n      \"components_count\"\
+                : 0\n    }\n  ],\n  \"total\": 8,\n  \"per_page\": 20\n}"
       operationId: get-api-v2-products-bundle-workshop-auto-detect
   /api/v2/products/bundle-workshop/batch-convert:
     post:
@@ -120591,21 +120598,37 @@ paths:
       description: "Batch convert standard products to bundle/kit types.\n\nAuthentication:\
         \ Requires Bearer token.\n\nFields:\n- products (required, array, min 1):\
         \ Products to convert\n  - id (required, integer): Product ID\n  - type (required,\
-        \ string): Target type — bundle, kit, or standard\n\n**Skip rules — returned\
+        \ string): Target type — bundle, kit, or standard\n  - components (optional,\
+        \ array): Components to save on the product BEFORE converting. Only applies\
+        \ when type is bundle or kit. Allows converting a product that currently has\
+        \ zero components in a single atomic call.\n    - id (required, integer, must\
+        \ exist in products): Component product ID. Components must be standard or\
+        \ kit products (a bundle cannot be a component).\n    - quantity (required,\
+        \ numeric, min 1): Quantity of this component per parent unit.\n\n**Component\
+        \ handling:** When `components` is provided for a bundle/kit target, they\
+        \ are saved first (via the bundle/kit component setter for the target type),\
+        \ then the type conversion proceeds. If the component save fails (e.g. a component\
+        \ is itself a bundle, a kit component references itself, or a circular kit\
+        \ reference is detected), the item is skipped with the validation message\
+        \ as `reason` and the product type is left unchanged.\n\n**Skip rules — returned\
         \ in `data.skipped[]`:**\n- Converting to `bundle` when the source product\
         \ has prior sale/assembly inventory movements (cannot become a bundle once\
         \ it has movement history).\n- Converting to `bundle` or `kit` when the source\
-        \ product has zero components (you must add components before promoting it).\n\
-        \nThe response payload includes `data.converted_count` for successful conversions\
-        \ and `data.skipped[]` for entries that were silently skipped, each with `id`,\
-        \ `sku`, and a human-readable `reason`."
+        \ product has zero components AND no `components` were provided in the request\
+        \ (you must add components before promoting it).\n- Provided `components`\
+        \ failed validation (invalid component type, self/circular reference) — the\
+        \ validation message is returned as the skip reason.\n\nThe response payload\
+        \ includes `data.converted_count` for successful conversions and `data.skipped[]`\
+        \ for entries that were skipped, each with `id`, `sku`, and a human-readable\
+        \ `reason`."
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"products\": [\n    {\"id\": 100, \"type\": \"bundle\"},\n    {\"id\":
-                101, \"type\": \"kit\"}\n  ]\n}"'
+              example: '"{\n  \"products\": [\n    {\"id\": 100, \"type\": \"bundle\",
+                \"components\": [\n      {\"id\": 200, \"quantity\": 2},\n      {\"id\":
+                201, \"quantity\": 1}\n    ]},\n    {\"id\": 101, \"type\": \"kit\"}\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -120629,8 +120652,10 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"data\": {\n    \"converted\": 2,\n    \"failed\": 0\n\
-                \  }\n}"
+              example: "{\n  \"data\": {\n    \"converted_count\": 2,\n    \"skipped\"\
+                : [\n      {\n        \"id\": 102,\n        \"sku\": \"WIDGET-PACK\"\
+                ,\n        \"reason\": \"No components — add components before converting\
+                \ to bundle\"\n      }\n    ]\n  }\n}"
       operationId: post-api-v2-products-bundle-workshop-batch-convert
   /api/v2/products/bundle-workshop/check-restrictions:
     post:
@@ -120959,7 +120984,10 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Returns products with detected_pattern, suggested_type, confidence, and has_inventory_movements.'
+        Returns products with detected_pattern, suggested_type, confidence, has_inventory_movements,
+        and components_count (number of components already configured on the product
+        — used by the conversion queue to know whether component configuration is
+        required before converting to bundle/kit).'
       parameters:
       - name: Accept
         in: header
@@ -121011,8 +121039,8 @@ paths:
                 Widget Bundle Kit\",\n      \"type\": \"standard\",\n      \"image_url\"\
                 : null,\n      \"detected_pattern\": \"bundle_suffix\",\n      \"\
                 suggested_type\": \"bundle\",\n      \"confidence\": \"high\",\n \
-                \     \"has_inventory_movements\": false\n    }\n  ],\n  \"total\"\
-                : 8,\n  \"per_page\": 20\n}"
+                \     \"has_inventory_movements\": false,\n      \"components_count\"\
+                : 0\n    }\n  ],\n  \"total\": 8,\n  \"per_page\": 20\n}"
       operationId: get-domain-api-v2-products-bundle-workshop-auto-detect
   //{domain}/api/v2/products/bundle-workshop/batch-convert:
     post:
@@ -121022,21 +121050,37 @@ paths:
       description: "Batch convert standard products to bundle/kit types.\n\nAuthentication:\
         \ Requires Bearer token.\n\nFields:\n- products (required, array, min 1):\
         \ Products to convert\n  - id (required, integer): Product ID\n  - type (required,\
-        \ string): Target type — bundle, kit, or standard\n\n**Skip rules — returned\
+        \ string): Target type — bundle, kit, or standard\n  - components (optional,\
+        \ array): Components to save on the product BEFORE converting. Only applies\
+        \ when type is bundle or kit. Allows converting a product that currently has\
+        \ zero components in a single atomic call.\n    - id (required, integer, must\
+        \ exist in products): Component product ID. Components must be standard or\
+        \ kit products (a bundle cannot be a component).\n    - quantity (required,\
+        \ numeric, min 1): Quantity of this component per parent unit.\n\n**Component\
+        \ handling:** When `components` is provided for a bundle/kit target, they\
+        \ are saved first (via the bundle/kit component setter for the target type),\
+        \ then the type conversion proceeds. If the component save fails (e.g. a component\
+        \ is itself a bundle, a kit component references itself, or a circular kit\
+        \ reference is detected), the item is skipped with the validation message\
+        \ as `reason` and the product type is left unchanged.\n\n**Skip rules — returned\
         \ in `data.skipped[]`:**\n- Converting to `bundle` when the source product\
         \ has prior sale/assembly inventory movements (cannot become a bundle once\
         \ it has movement history).\n- Converting to `bundle` or `kit` when the source\
-        \ product has zero components (you must add components before promoting it).\n\
-        \nThe response payload includes `data.converted_count` for successful conversions\
-        \ and `data.skipped[]` for entries that were silently skipped, each with `id`,\
-        \ `sku`, and a human-readable `reason`."
+        \ product has zero components AND no `components` were provided in the request\
+        \ (you must add components before promoting it).\n- Provided `components`\
+        \ failed validation (invalid component type, self/circular reference) — the\
+        \ validation message is returned as the skip reason.\n\nThe response payload\
+        \ includes `data.converted_count` for successful conversions and `data.skipped[]`\
+        \ for entries that were skipped, each with `id`, `sku`, and a human-readable\
+        \ `reason`."
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"products\": [\n    {\"id\": 100, \"type\": \"bundle\"},\n    {\"id\":
-                101, \"type\": \"kit\"}\n  ]\n}"'
+              example: '"{\n  \"products\": [\n    {\"id\": 100, \"type\": \"bundle\",
+                \"components\": [\n      {\"id\": 200, \"quantity\": 2},\n      {\"id\":
+                201, \"quantity\": 1}\n    ]},\n    {\"id\": 101, \"type\": \"kit\"}\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -121065,8 +121109,10 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"data\": {\n    \"converted\": 2,\n    \"failed\": 0\n\
-                \  }\n}"
+              example: "{\n  \"data\": {\n    \"converted_count\": 2,\n    \"skipped\"\
+                : [\n      {\n        \"id\": 102,\n        \"sku\": \"WIDGET-PACK\"\
+                ,\n        \"reason\": \"No components — add components before converting\
+                \ to bundle\"\n      }\n    ]\n  }\n}"
       operationId: post-domain-api-v2-products-bundle-workshop-batch-convert
   //{domain}/api/v2/products/bundle-workshop/check-restrictions:
     post:
