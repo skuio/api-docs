@@ -176396,29 +176396,33 @@ paths:
       - Document Inbox
       summary: List Inbox Documents
       description: "Return a unified, paginated, descending-by-created_at list combining\
-        \ customer PO, supplier invoice, and vendor credit OCR extractions. Each item\
-        \ is normalized to the same shape so the frontend can render a single mixed-type\
-        \ table. Vendor credit extractions that are attached to an existing vendor\
-        \ credit (vendor_credit_attachment_id set) are excluded — they belong to that\
-        \ credit's documents tab, not the inbox.\n\nExample item:\n```json\n{\n  \"\
-        id\": 42,\n  \"type\": \"vendor_credit\",\n  \"status\": \"pending_review\"\
-        ,\n  \"source\": \"email\",\n  \"source_email_from\": \"billing@acme.com\"\
-        ,\n  \"source_email_subject\": \"Credit Memo CM-1009\",\n  \"customer_name\"\
-        : null,\n  \"supplier_name\": \"Acme Co.\",\n  \"document_type\": \"credit_memo\"\
-        ,\n  \"detection_signals\": [\"keyword:credit memo\", \"total:negative\"],\n\
-        \  \"auto_routed\": true,\n  \"confirmed_record\": null,\n  \"error_message\"\
-        : null,\n  \"created_at\": \"2026-06-10T10:30:00.000000Z\"\n}\n```\n\nClassification\
-        \ fields (new):\n- `document_type` — what the classifier decided the document\
-        \ is: `invoice` or `credit_memo`. Populated on supplier_invoice and vendor_credit\
-        \ items; always null for customer_po.\n- `detection_signals` — array of signal\
-        \ keys that drove the classification (e.g. `keyword:credit memo`, `doc_number:CM\
-        \ prefix`, `total:negative`). Null when no detection ran.\n- `auto_routed`\
-        \ — true when the document arrived in the supplier invoice pipeline but was\
-        \ automatically routed to the vendor credit queue by the classifier. Always\
-        \ false for customer_po and supplier_invoice items.\n\nWhen status is 'confirmed',\
-        \ `confirmed_record` is populated with `{ id, type, number }` of the created\
-        \ sales order, purchase invoice, or vendor credit (type: `vendor_credit`,\
-        \ number: the vendor_credit_number)."
+        \ customer PO, supplier invoice, vendor credit, and landed cost invoice OCR\
+        \ extractions. Each item is normalized to the same shape so the frontend can\
+        \ render a single mixed-type table. Vendor credit extractions that are attached\
+        \ to an existing vendor credit (vendor_credit_attachment_id set) are excluded\
+        \ — they belong to that credit's documents tab, not the inbox.\n\nExample\
+        \ item:\n```json\n{\n  \"id\": 42,\n  \"type\": \"vendor_credit\",\n  \"status\"\
+        : \"pending_review\",\n  \"source\": \"email\",\n  \"source_email_from\":\
+        \ \"billing@acme.com\",\n  \"source_email_subject\": \"Credit Memo CM-1009\"\
+        ,\n  \"customer_name\": null,\n  \"supplier_name\": \"Acme Co.\",\n  \"document_type\"\
+        : \"credit_memo\",\n  \"detection_signals\": [\"keyword:credit memo\", \"\
+        total:negative\"],\n  \"auto_routed\": true,\n  \"confirmed_record\": null,\n\
+        \  \"error_message\": null,\n  \"created_at\": \"2026-06-10T10:30:00.000000Z\"\
+        \n}\n```\n\nClassification fields (new):\n- `document_type` — what the classifier\
+        \ decided the document is: `invoice` or `credit_memo`. Populated on supplier_invoice\
+        \ and vendor_credit items; always null for customer_po and landed_cost_invoice.\n\
+        - `detection_signals` — array of signal keys that drove the classification\
+        \ (e.g. `keyword:credit memo`, `doc_number:CM prefix`, `total:negative`).\
+        \ Null when no detection ran.\n- `auto_routed` — true when the document arrived\
+        \ in the supplier invoice pipeline but was automatically routed to the vendor\
+        \ credit queue by the classifier. Always false for customer_po, supplier_invoice,\
+        \ and landed_cost_invoice items.\n\nWhen status is 'confirmed', `confirmed_record`\
+        \ is populated with `{ id, type, number }` of the created sales order, purchase\
+        \ invoice, vendor credit (type: `vendor_credit`, number: the vendor_credit_number),\
+        \ or landed cost bill (type: `landed_cost_invoice`).\n\nLanded cost invoice\
+        \ items (`type: \"landed_cost_invoice\"`) expose `supplier_id`/`supplier_name`\
+        \ (the matched supplier, when detected) and always have `customer_id`, `customer_name`,\
+        \ `document_type`, and `detection_signals` as null with `auto_routed` false."
       parameters:
       - name: Accept
         in: header
@@ -176437,10 +176441,10 @@ paths:
       - Document Inbox
       summary: Get Pending Count (Badge)
       description: 'Lightweight count of all extractions currently in ''pending_review''
-        status (sales + purchase + vendor credit). Vendor credit extractions that
-        belong to an existing credit (vendor_credit_attachment_id set) are excluded
-        from the count. Polled by the navigation drawer every 60 seconds to render
-        the inbox badge.
+        status (sales + purchase + vendor credit + landed cost invoice). Vendor credit
+        extractions that belong to an existing credit (vendor_credit_attachment_id
+        set) are excluded from the count. Polled by the navigation drawer every 60
+        seconds to render the inbox badge.
 
 
         Response:
@@ -176468,8 +176472,9 @@ paths:
       - Document Inbox
       summary: Retry Failed Extraction
       description: 'Re-dispatch OCR processing for a failed extraction. Path param
-        `type` must be one of `customer_po`, `supplier_invoice`, or `vendor_credit`
-        (regex-constrained); `id` is the matching extraction ID.
+        `type` must be one of `customer_po`, `supplier_invoice`, `vendor_credit`,
+        or `landed_cost_invoice` (regex-constrained); `id` is the matching extraction
+        ID.
 
 
         Validations (return 422):
@@ -176478,7 +176483,7 @@ paths:
 
         - Original file must still be present (file_path != null)
 
-        - type must be customer_po, supplier_invoice, or vendor_credit
+        - type must be customer_po, supplier_invoice, vendor_credit, or landed_cost_invoice
 
 
         On success for customer_po / supplier_invoice: resets the extraction status
@@ -176492,6 +176497,11 @@ paths:
         or dispatches the Scan Credit Memo job otherwise. Returns 422 with the manager''s
         error message if the credit''s documents are locked or a scan is already in
         progress.
+
+
+        For landed_cost_invoice: routes through `LandedCostInvoiceOcrManager::rescan()`,
+        which marks the extraction as processing and re-dispatches `ProcessLandedCostInvoiceOcrJob`.
+        Returns 422 with the manager''s error message on failure.
 
 
         Response 200:
@@ -176528,22 +176538,23 @@ paths:
       description: "Bulk-delete a polymorphic mix of OCR extractions from the unified\
         \ Document Inbox. Powers the bulk-actions toolbar shown when rows are selected\
         \ in the inbox UI.\n\nRequest body:\n- `items` (required, array, min:1) —\
-        \ list of extractions to delete\n- `items.*.type` (required, string, in:customer_po,supplier_invoice,vendor_credit)\
+        \ list of extractions to delete\n- `items.*.type` (required, string, in:customer_po,supplier_invoice,vendor_credit,landed_cost_invoice)\
         \ — which OCR extraction model the id belongs to\n- `items.*.id` (required,\
         \ integer) — extraction ID\n\nBehavior:\n- Validates the entire payload with\
         \ Laravel validation (returns 422 on shape errors)\n- Iterates each item;\
         \ routes `customer_po` to `CustomerPOOcrManager::deleteExtraction()`, `supplier_invoice`\
-        \ to `SupplierInvoiceOcrManager::deleteExtraction()`, and `vendor_credit`\
-        \ to `VendorCreditOcrManager::deleteExtraction()`\n- All managers delete the\
-        \ S3 file (if any) and the DB record (vendor credit deletes skip the S3 delete\
-        \ when the file belongs to an attachment on an existing credit)\n- **Confirmed\
-        \ extractions are SKIPPED** (cannot be deleted — same constraint as the single-record\
-        \ DELETE endpoints)\n- Missing IDs are reported in `not_found` rather than\
-        \ failing the whole request — partial success is allowed\n\nResponse 200:\n\
-        ```json\n{\n  \"deleted\": 2,\n  \"skipped\": [\n    { \"type\": \"customer_po\"\
-        , \"id\": 91, \"reason\": \"confirmed\" }\n  ],\n  \"not_found\": [],\n  \"\
-        message\": \"2 document(s) deleted successfully. 1 skipped (confirmed).\"\n\
-        }\n```"
+        \ to `SupplierInvoiceOcrManager::deleteExtraction()`, `vendor_credit` to `VendorCreditOcrManager::deleteExtraction()`,\
+        \ and `landed_cost_invoice` to `LandedCostInvoiceOcrManager::deleteExtraction()`\
+        \ (deletes the S3 file and soft-deletes the extraction row)\n- All managers\
+        \ delete the S3 file (if any) and the DB record (vendor credit deletes skip\
+        \ the S3 delete when the file belongs to an attachment on an existing credit)\n\
+        - **Confirmed extractions are SKIPPED** (cannot be deleted — same constraint\
+        \ as the single-record DELETE endpoints)\n- Missing IDs are reported in `not_found`\
+        \ rather than failing the whole request — partial success is allowed\n\nResponse\
+        \ 200:\n```json\n{\n  \"deleted\": 2,\n  \"skipped\": [\n    { \"type\": \"\
+        customer_po\", \"id\": 91, \"reason\": \"confirmed\" }\n  ],\n  \"not_found\"\
+        : [],\n  \"message\": \"2 document(s) deleted successfully. 1 skipped (confirmed).\"\
+        \n}\n```"
       requestBody:
         content:
           application/json:
@@ -176557,6 +176568,8 @@ paths:
                   id: 17
                 - type: vendor_credit
                   id: 9
+                - type: landed_cost_invoice
+                  id: 5
       parameters:
       - name: Accept
         in: header
@@ -176583,11 +176596,12 @@ paths:
         \ to the given extraction. Powers the prev/next pager on the OCR review pages\
         \ so the user can walk through the queue without bouncing back to the inbox\
         \ list.\n\nPath params:\n- `type` (required) — one of `customer_po`, `supplier_invoice`,\
-        \ or `vendor_credit` (regex-constrained at the route level; unknown values\
-        \ return 404)\n- `id` (required, integer) — extraction ID of the currently-viewed\
-        \ document\n\nBehavior:\n- Walks `sales_order_ocr_extractions`, `purchase_invoice_ocr_extractions`,\
-        \ and `vendor_credit_ocr_extractions` together (vendor credit rows tied to\
-        \ an existing credit's attachment are excluded, matching the inbox listing)\n\
+        \ `vendor_credit`, or `landed_cost_invoice` (regex-constrained at the route\
+        \ level; unknown values return 404)\n- `id` (required, integer) — extraction\
+        \ ID of the currently-viewed document\n\nBehavior:\n- Walks `sales_order_ocr_extractions`,\
+        \ `purchase_invoice_ocr_extractions`, `vendor_credit_ocr_extractions`, and\
+        \ `landed_cost_invoice_ocr_extractions` together (vendor credit rows tied\
+        \ to an existing credit's attachment are excluded, matching the inbox listing)\n\
         - Only `pending_review` extractions participate in the walk — confirmed/failed/processing\
         \ rows have no Review button in the inbox, so the OCR review page wouldn't\
         \ show anything actionable for them\n- The current item itself is ALWAYS included\
@@ -176595,15 +176609,16 @@ paths:
         \ but hasn't navigated yet) — keeps `position`/`total` correct on the open\
         \ page\n- Sort order matches the inbox listing: `created_at DESC, id DESC`\n\
         - `prev`/`next` cross table boundaries — the next document may be a customer\
-        \ PO or vendor credit even if the current one is a supplier invoice\n- `prev`/`next`\
-        \ are `null` at the boundaries of the list\n- Each sibling reference includes\
-        \ both `type` and `id` so the frontend can route to the correct OCR review\
-        \ page\n- `position` is 1-indexed (1 = newest); `null` if the current item\
-        \ is not found at all (e.g. just deleted)\n\nResponse 200:\n```json\n{\n \
-        \ \"data\": {\n    \"prev\": { \"type\": \"supplier_invoice\", \"id\": 17\
-        \ },\n    \"next\": { \"type\": \"vendor_credit\", \"id\": 9 },\n    \"position\"\
-        : 2,\n    \"total\": 47\n  }\n}\n```\n\nResponse 404: route constraint blocks\
-        \ `type` values other than `customer_po`, `supplier_invoice`, or `vendor_credit`."
+        \ PO, vendor credit, or landed cost invoice even if the current one is a supplier\
+        \ invoice\n- `prev`/`next` are `null` at the boundaries of the list\n- Each\
+        \ sibling reference includes both `type` and `id` so the frontend can route\
+        \ to the correct OCR review page\n- `position` is 1-indexed (1 = newest);\
+        \ `null` if the current item is not found at all (e.g. just deleted)\n\nResponse\
+        \ 200:\n```json\n{\n  \"data\": {\n    \"prev\": { \"type\": \"supplier_invoice\"\
+        , \"id\": 17 },\n    \"next\": { \"type\": \"vendor_credit\", \"id\": 9 },\n\
+        \    \"position\": 2,\n    \"total\": 47\n  }\n}\n```\n\nResponse 404: route\
+        \ constraint blocks `type` values other than `customer_po`, `supplier_invoice`,\
+        \ `vendor_credit`, or `landed_cost_invoice`."
       parameters:
       - name: Accept
         in: header
@@ -176621,6 +176636,76 @@ paths:
           content:
             application/json: {}
       operationId: get-api-document-inbox-customer-po-extraction-id-siblings
+  /api/document-inbox/customer_po/{extraction_id}/reclassify:
+    post:
+      tags:
+      - Document Inbox
+      summary: Reclassify Document Type
+      description: "Reclassify an inbox extraction as a different document type —\
+        \ the user-facing escape hatch when automatic type detection got it wrong.\
+        \ Copies the original file into the target pipeline, creates a new extraction\
+        \ there, and rejects the source extraction with a back-reference.\n\nPath\
+        \ params:\n- `type` (required) — current document type: one of `customer_po`,\
+        \ `supplier_invoice`, `vendor_credit`, or `landed_cost_invoice` (regex-constrained\
+        \ at the route level; unknown values return 404)\n- `id` (required, integer)\
+        \ — extraction ID\n\nRequest body:\n- `target_type` (required, string, in:customer_po,supplier_invoice,vendor_credit,landed_cost_invoice)\
+        \ — the type to reclassify the document as (returns 422 validation error otherwise)\n\
+        \nBehavior (`DocumentReclassificationManager::reclassify()`):\n- Source extraction\
+        \ must be in a reclassifiable status: `pending_review`, `duplicate_detected`,\
+        \ or `failed`\n- Three pairwise conversions are delegated to their existing\
+        \ dedicated flows (which can reuse the stored Azure `raw_response` to avoid\
+        \ a second OCR charge): customer_po → supplier_invoice (`CustomerPOOcrManager`),\
+        \ supplier_invoice → vendor_credit (`SupplierInvoiceOcrManager`), and vendor_credit\
+        \ → supplier_invoice (`VendorCreditOcrManager::reclassifyAsInvoice()`)\n-\
+        \ All other source/target pairs use the generic flow: the original file is\
+        \ copied from the source pipeline's storage into the target pipeline's staging\
+        \ directory, a new extraction row is created in the target table, and the\
+        \ target's OCR job is dispatched (ProcessCustomerPOOcrJob / ProcessSupplierInvoiceEmailOcrJob\
+        \ / ProcessVendorCreditOcrJob / ProcessLandedCostInvoiceOcrJob). When the\
+        \ source already has a stored `raw_response` and the target is supplier_invoice\
+        \ or vendor_credit, the result is parsed synchronously instead of dispatching\
+        \ a job\n- The source extraction is marked `rejected` with error_message \"\
+        Reclassified as {label} (extraction #{id}).\" inside the same transaction\n\
+        \nResponse 200:\n```json\n{\n  \"message\": \"Document reclassified.\",\n\
+        \  \"data\": { \"type\": \"supplier_invoice\", \"id\": 88 }\n}\n```\n`data.type`/`data.id`\
+        \ identify the NEW extraction so the frontend can route straight to the correct\
+        \ OCR review page.\n\nErrors (422, `{ \"error\": \"...\" }`):\n- \"The document\
+        \ is already classified as a {label}.\" — target_type equals the current type\n\
+        - \"Only extractions pending review can be reclassified.\" — source status\
+        \ not in pending_review/duplicate_detected/failed\n- \"Original OCR file is\
+        \ no longer available.\" — source file_path is empty\n- Standard Laravel validation\
+        \ error when `target_type` is missing or not one of the four allowed values\n\
+        \nResponse 404: route constraint blocks unknown `type` path values; unknown\
+        \ `id` returns 404 via findOrFail."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                target_type: supplier_invoice
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: extraction_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: post-api-document-inbox-customer-po-extraction-id-reclassify
   /api/sales-orders/{salesOrder}/fulfillment-orders:
     get:
       tags:
