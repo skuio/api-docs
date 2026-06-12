@@ -122,6 +122,7 @@ tags:
 - name: Assemblies
 - name: Initial Inventory
 - name: Costing
+- name: Product Pro Forma
 - name: Landed Cost Breakdown
 - name: BOMs
 - name: Manufacturing Orders
@@ -142397,6 +142398,863 @@ paths:
                 \ \"No FIFO layer changes found for this job\", \"code\": \"no_changes\"\
                 }]\n}"
       operationId: get-api-cogs-revaluation-export-fifo-changes-1234
+  /api/v2/pro-forma/context:
+    get:
+      tags:
+      - Product Pro Forma
+      summary: Get Analyzer Context
+      description: 'Full Pro Forma Analyzer bootstrap payload.
+
+
+        Returns one channel tab per connected sales-channel family (Amazon, Shopify,
+        eBay, ...) plus a `custom` tab. Each tab includes:
+
+        - `instances` — sync-active integration instances of that family
+
+        - `listing` (includes `product_listing_id`) — the product''s listing prefill
+        (price, is_fba, listing_sku, asin) when product_id is given
+
+        - `fee_defaults` — engine-resolved default fee lines (rate cards, instance
+        settings, listing overrides) with provenance `source`
+
+        - `supports_live_fees` — true for Amazon (use POST /amazon-fees)
+
+        - `fulfillment_options` — `["fba", "fbm"]` for Amazon, empty otherwise
+
+        - `history` — 12-month realized actuals on that channel including returns
+        economics (`avg_refund_pct`, `recovery_rate_pct`; both null when no returns);
+        null when no orders
+
+
+        Also returns the product''s per-unit `cogs_breakdown` from open FIFO layers
+        (falls back to a single average-cost line) and its saved `proforma_assumptions`.
+
+
+        Channel families with no sync-active instance are excluded unless the product
+        has order history there, in which case the tab is kept with an "(inactive)"
+        label.
+
+
+        Requires Bearer token (products scope).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  product:
+                    id: 1
+                    sku: GSS342
+                    name: Grow Light Panel GSS342
+                    average_cost: 70
+                  cogs_breakdown:
+                  - cost_category_id: 1
+                    name: Base Product
+                    amount: 70
+                    source: fifo
+                  - cost_category_id: 3
+                    name: Freight
+                    amount: 4.25
+                    source: fifo
+                  channels:
+                  - integration_type: amazon
+                    label: Amazon
+                    instances:
+                    - integration_instance_id: 4
+                      name: Amazon US
+                      sales_channel_id: 2
+                    listing:
+                      product_listing_id: 42
+                      price: 99.99
+                      is_fba: true
+                      listing_sku: GSS342-FBA
+                      asin: B08XYZ1234
+                    fee_defaults:
+                    - key: referral_fee
+                      label: Referral fee
+                      fee_basis: percent_of_price
+                      percent: 15
+                      fixed_amount: null
+                      source: rate_card
+                      rate_card_version: 2026-01
+                      metadata: null
+                    - key: fba_fulfillment
+                      label: FBA fulfillment fee
+                      fee_basis: fixed_per_unit
+                      percent: null
+                      fixed_amount: 6.92
+                      source: rate_card
+                      rate_card_version: 2026-01
+                      metadata:
+                        size_tiers: standard
+                    supports_live_fees: true
+                    fulfillment_options:
+                    - fba
+                    - fbm
+                    history:
+                      orders: 312
+                      units: 340
+                      avg_unit_revenue: 98.45
+                      avg_unit_cogs: 70
+                      avg_unit_shipping: 1.12
+                      avg_unit_fees: 21.6
+                      avg_margin_pct: 8.42
+                      return_rate_pct: 2.35
+                      avg_refund_pct: 96.5
+                      recovery_rate_pct: 41.2
+                      period: 12m
+                  - integration_type: custom
+                    label: Custom
+                    instances: []
+                    listing: null
+                    fee_defaults: []
+                    supports_live_fees: false
+                    fulfillment_options: []
+                    history: null
+                  proforma_assumptions:
+                    shipping_cost: 4.5
+                    landed_cost_percentage: 6
+                    marketplace_cost_percentage: null
+      operationId: get-api-v2-pro-forma-context
+  /api/v2/pro-forma/amazon-fees:
+    post:
+      tags:
+      - Product Pro Forma
+      summary: Get Amazon Fee Estimate (Live)
+      description: 'Live Amazon SP-API Product Fees v0 estimate for a price/fulfillment
+        combination.
+
+
+        Body fields:
+
+        - `integration_instance_id` (required, integer) — Amazon integration instance
+
+        - `id_type` (required, string) — `sku` (existing listing, seller SKU) or `asin`
+        (catalog item)
+
+        - `id_value` (required, string, max 255) — the seller SKU or ASIN
+
+        - `price` (required, numeric, min 0.01) — listing price to estimate fees at
+
+        - `is_amazon_fulfilled` (required, boolean) — true = FBA (sends OptionalFulfillmentProgram
+        FBA_CORE), false = FBM
+
+        - `refresh` (optional, boolean) — bypass the 24h cache and force a live SP-API
+        call
+
+
+        Results are cached for 24 hours on the exact parameter tuple; `cached` + `fetched_at`
+        in the response indicate provenance. Amazon SP-API rate limit is 1 rps — keep
+        `refresh` use sparing. The endpoint is throttled to 30 requests/minute (`throttle:30,1,pro-forma-amazon-fees`);
+        exceeding it returns 429 Too Many Requests.
+
+
+        When Amazon is unreachable or rejects the request, returns 422 with an `IntegrationApiError`
+        error so the client can fall back to rate-card defaults.
+
+
+        Requires Bearer token (products scope).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                integration_instance_id: 4
+                id_type: sku
+                id_value: GSS342-FBA
+                price: 99.99
+                is_amazon_fulfilled: true
+                refresh: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  integration_instance_id: 4
+                  id_type: sku
+                  id_value: GSS342-FBA
+                  price: 99.99
+                  is_amazon_fulfilled: true
+                  total_fees_estimate: 21.92
+                  fee_details:
+                  - fee_type: ReferralFee
+                    amount: 15
+                    included: []
+                  - fee_type: FBAFees
+                    amount: 6.92
+                    included:
+                    - fee_type: FBAPerUnitFulfillmentFee
+                      amount: 6.92
+                      included: []
+                  fetched_at: '2026-06-10T18:24:11.000000Z'
+                  cached: false
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 — Amazon unavailable
+                  value:
+                    message: null
+                    errors:
+                      amazon_fees:
+                      - message: 'Amazon fee estimate unavailable: Amazon fees estimate
+                          returned no estimate (status: ClientError): Invalid SellerSKU'
+                        code: IntegrationApiError
+                        data: []
+                example-1:
+                  summary: 422 — validation error
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      price:
+                      - message: The price must be greater than zero to estimate fees.
+                        code: InternalValidation
+                        data: []
+      operationId: post-api-v2-pro-forma-amazon-fees
+  /api/v2/pro-forma/history:
+    get:
+      tags:
+      - Product Pro Forma
+      summary: Get Channel History
+      description: 'Historical realized actuals for one product on a set of sales
+        channels — the "pro forma vs. actuals" comparison.
+
+
+        Metrics (per the period):
+
+        - `orders` — distinct order count (drafts and cancelled excluded)
+
+        - `units` — total units sold
+
+        - `avg_unit_revenue` / `avg_unit_cogs` / `avg_unit_fees` — per-unit averages
+        from sales order line financials (fees = allocated settlement/channel costs)
+
+        - `avg_unit_shipping` — fulfillment costs prorated to the product by quantity
+        share
+
+        - `avg_margin_pct` — profit / revenue * 100
+
+        - `return_rate_pct` — quantity-weighted share of lines with credits or returned
+        COGS
+
+        - `avg_refund_pct` — refund $ as % of gross revenue over returned lines (null
+        when the period has no returns)
+
+        - `recovery_rate_pct` — COGS recovered (restocked) as % of COGS over returned
+        lines (null when the period has no returns)
+
+
+        `data` is null when the product has no qualifying orders in the period.
+
+
+        Requires Bearer token (products scope).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: product_id
+        in: query
+        schema:
+          type: integer
+        description: Required. Product to aggregate actuals for.
+        example: '1'
+      - name: sales_channel_ids[]
+        in: query
+        schema:
+          type: integer
+        description: Required (min 1). Sales channel ids to scope to. Repeat for multiple.
+        example: '2'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — actuals
+                  value:
+                    data:
+                      orders: 312
+                      units: 340
+                      avg_unit_revenue: 98.45
+                      avg_unit_cogs: 70
+                      avg_unit_shipping: 1.12
+                      avg_unit_fees: 21.6
+                      avg_margin_pct: 8.42
+                      return_rate_pct: 2.35
+                      avg_refund_pct: 96.5
+                      recovery_rate_pct: 41.2
+                      period: 12m
+                example-1:
+                  summary: 200 OK — no history
+                  value:
+                    data: null
+      operationId: get-api-v2-pro-forma-history
+  /api/v2/pro-forma/rate-cards:
+    get:
+      tags:
+      - Product Pro Forma
+      summary: List Active Rate Cards
+      description: 'Active (latest effective) rate-card rows for every channel type,
+        keyed by channel_type. Default-category rows only — category-specific variants
+        are resolved server-side into the context fee defaults.
+
+
+        Used by the frontend calculator as offline fee defaults and for the "rates
+        as of" provenance chip (`version` / `effective_from`).
+
+
+        Requires Bearer token (products scope).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  amazon:
+                  - id: 1
+                    channel_type: amazon
+                    version: 2026-01
+                    effective_from: '2026-01-15'
+                    fee_key: referral_fee
+                    label: Referral fee
+                    fee_basis: percent_of_price
+                    category: default
+                    percent: 15
+                    fixed_amount: null
+                    metadata:
+                      minimum_per_item: 0.3
+                  - id: 2
+                    channel_type: amazon
+                    version: 2026-01
+                    effective_from: '2026-01-15'
+                    fee_key: fba_fulfillment
+                    label: FBA fulfillment fee
+                    fee_basis: fixed_per_unit
+                    category: default
+                    percent: null
+                    fixed_amount: 6.92
+                    metadata:
+                      size_tiers: standard
+                  ebay:
+                  - id: 5
+                    channel_type: ebay
+                    version: 2026-01
+                    effective_from: '2026-01-15'
+                    fee_key: final_value_fee
+                    label: Final value fee
+                    fee_basis: percent_of_price
+                    category: default
+                    percent: 13.6
+                    fixed_amount: null
+                    metadata: null
+      operationId: get-api-v2-pro-forma-rate-cards
+  /api/v2/pro-forma/scenarios:
+    get:
+      tags:
+      - Product Pro Forma
+      summary: List Scenarios
+      description: 'The authenticated user''s saved what-if scenarios, newest first.
+        Scenarios are strictly per-user — other users'' scenarios are never returned.
+
+
+        `product_id` null on a scenario = hypothetical product (manual profile stored
+        in `inputs.manual_profile`).
+
+
+        Requires Bearer token (products scope).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 3
+                  name: Amazon FBA at $99.99
+                  channel_type: amazon
+                  product_id: 1
+                  integration_instance_id: 4
+                  inputs:
+                    price: 99.99
+                    fulfillment: fba
+                    fee_overrides:
+                      referral_fee:
+                        percent: 15
+                    shipping_cost: 0
+                  outputs:
+                    net_profit: 8.29
+                    margin_pct: 8.29
+                    roi_pct: 11.84
+                    breakeven_price: 91.7
+                  rate_card_version: 2026-01
+                  created_at: '2026-06-10T18:24:11.000000Z'
+                  updated_at: '2026-06-10T18:24:11.000000Z'
+      operationId: get-api-v2-pro-forma-scenarios
+    post:
+      tags:
+      - Product Pro Forma
+      summary: Create Scenario
+      description: 'Save a what-if scenario snapshot for the authenticated user.
+
+
+        Body fields:
+
+        - `name` (required, string, max 255)
+
+        - `channel_type` (required, string, max 50) — e.g. amazon, shopify, ebay,
+        custom
+
+        - `product_id` (optional, nullable, integer, exists:products) — null for hypothetical
+        products (store the manual profile in `inputs.manual_profile`)
+
+        - `integration_instance_id` (optional, nullable, integer, exists:integration_instances)
+
+        - `inputs` (required, object) — full input snapshot: prices, fee overrides,
+        advanced levers, manual_profile
+
+        - `outputs` (required, object) — computed metrics snapshot: net_profit, margin_pct,
+        roi_pct, breakeven_price, ...
+
+        - `rate_card_version` (optional, nullable, string, max 50) — rate-card version
+        used, enables "superseded rates" prompts
+
+
+        Requires Bearer token (products scope).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Amazon FBA at $99.99
+                channel_type: amazon
+                product_id: 1
+                integration_instance_id: 4
+                inputs:
+                  price: 99.99
+                  fulfillment: fba
+                  fee_overrides:
+                    referral_fee:
+                      percent: 15
+                  shipping_cost: 0
+                outputs:
+                  net_profit: 8.29
+                  margin_pct: 8.29
+                  roi_pct: 11.84
+                  breakeven_price: 91.7
+                rate_card_version: 2026-01
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 3
+                  name: Amazon FBA at $99.99
+                  channel_type: amazon
+                  product_id: 1
+                  integration_instance_id: 4
+                  inputs:
+                    price: 99.99
+                    fulfillment: fba
+                    fee_overrides:
+                      referral_fee:
+                        percent: 15
+                    shipping_cost: 0
+                  outputs:
+                    net_profit: 8.29
+                    margin_pct: 8.29
+                    roi_pct: 11.84
+                    breakeven_price: 91.7
+                  rate_card_version: 2026-01
+                  created_at: '2026-06-10T18:24:11.000000Z'
+                  updated_at: '2026-06-10T18:24:11.000000Z'
+                message: Scenario saved
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The given data was invalid.
+                errors:
+                  name:
+                  - message: The name field is required.
+                    code: InternalValidation
+                    data: []
+      operationId: post-api-v2-pro-forma-scenarios
+  /api/v2/pro-forma/scenarios/{scenarioId}:
+    patch:
+      tags:
+      - Product Pro Forma
+      summary: Update Scenario
+      description: 'Partially update a saved scenario. All fields optional (`sometimes`):
+        name, channel_type, product_id, integration_instance_id, inputs, outputs,
+        rate_card_version.
+
+
+        `inputs` and `outputs`, when present, are FULL snapshots — last write wins,
+        no deep merge.
+
+
+        Returns 404 when the scenario does not exist or belongs to another user.
+
+
+        Requires Bearer token (products scope).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Amazon FBA at $109.99
+                inputs:
+                  price: 109.99
+                  fulfillment: fba
+                outputs:
+                  net_profit: 14.8
+                  margin_pct: 13.46
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: scenarioId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Scenario id (must belong to the authenticated user)
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 3
+                  name: Amazon FBA at $109.99
+                  channel_type: amazon
+                  product_id: 1
+                  integration_instance_id: 4
+                  inputs:
+                    price: 109.99
+                    fulfillment: fba
+                  outputs:
+                    net_profit: 14.8
+                    margin_pct: 13.46
+                  rate_card_version: 2026-01
+                  created_at: '2026-06-10T18:24:11.000000Z'
+                  updated_at: '2026-06-10T18:24:11.000000Z'
+                message: Scenario updated
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: patch-api-v2-pro-forma-scenarios-scenarioid
+    delete:
+      tags:
+      - Product Pro Forma
+      summary: Delete Scenario
+      description: 'Delete a saved scenario. Returns 404 when the scenario does not
+        exist or belongs to another user.
+
+
+        Requires Bearer token (products scope).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: scenarioId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Scenario id (must belong to the authenticated user)
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Scenario deleted
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: delete-api-v2-pro-forma-scenarios-scenarioid
+  /api/v2/pro-forma/products/{productId}/assumptions:
+    patch:
+      tags:
+      - Product Pro Forma
+      summary: Update Product Assumptions
+      description: 'Persist product-level pro forma assumptions used as analyzer defaults,
+        plus optional per-listing marketplace fee overrides.
+
+
+        Body fields (all optional/nullable):
+
+        - `proforma_shipping_cost` (numeric, min 0) — default outbound shipping cost
+        per unit
+
+        - `proforma_landed_cost_percentage` (numeric, 0-100) — landed cost uplift
+        percent
+
+        - `proforma_marketplace_cost_percentage` (numeric, 0-100) — marketplace fee
+        override percent (beats rate cards; listing-level value beats this)
+
+        - `listings` (array, optional) — per-listing marketplace fee overrides
+
+        - `listings.*.product_listing_id` (integer, required with listings, must exist)
+        — listing to override; silently ignored if the listing does not belong to
+        this product
+
+        - `listings.*.proforma_marketplace_cost_percentage` (numeric|null, 0-100)
+        — listing-level marketplace fee override percent (null clears the override)
+
+
+        Requires Bearer token (products scope).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                proforma_shipping_cost: 4.5
+                proforma_landed_cost_percentage: 6
+                proforma_marketplace_cost_percentage: 14
+                listings:
+                - product_listing_id: 42
+                  proforma_marketplace_cost_percentage: 14.5
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: productId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product id
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  shipping_cost: 4.5
+                  landed_cost_percentage: 6
+                  marketplace_cost_percentage: 14
+                message: Pro forma assumptions updated
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The given data was invalid.
+                errors:
+                  proforma_landed_cost_percentage:
+                  - message: The landed cost percentage must be between 0 and 100.
+                    code: InternalValidation
+                    data: []
+      operationId: patch-api-v2-pro-forma-products-productid-assumptions
   /api/reporting/landed-cost-breakdown:
     get:
       tags:
@@ -186419,6 +187277,7 @@ x-tagGroups:
   - Assemblies
   - Initial Inventory
   - Costing
+  - Product Pro Forma
   - Landed Cost Breakdown
   - BOMs
   - Manufacturing Orders
