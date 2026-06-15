@@ -167,6 +167,7 @@ tags:
 - name: Invoice & Accounting
 - name: Attachments
 - name: OCR
+- name: Import & Export
 - name: Vendor Deposits
 - name: Payments & Refunds
 - name: Applications
@@ -158877,6 +158878,320 @@ paths:
               example: "{\n  \"data\": {\n    \"path\": \"https://sku2.test/storage/reports/sales-credit-55-invoice.pdf\"\
                 \n  }\n}"
       operationId: get-api-sales-credits-sales-credit-invoice-preview
+  /api/sales-credits/list/export:
+    get:
+      tags:
+      - Sales Credits
+      summary: Export Sales Credits
+      description: 'Download an Excel/CSV export of sales credits.
+
+
+        Authentication: Requires Bearer token (scope.rw:orders).
+
+
+        Response: a binary file download (xlsx or csv), NOT JSON. Columns: ID, Credit
+        #, Sales Order #, Store, Customer, Customer Email, Credit Date, Status, Payment
+        Status, Currency, Tax Total, Total Credit, Refunded, Note, Created At.
+
+
+        Query params:
+
+        - format: xlsx (default) or csv
+
+        - scope: ''filtered'' (default) or ''selected''
+
+        - ids: comma-separated IDs (only when scope=selected)'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-sales-credits-list-export
+  /api/sales-credits/import/template:
+    get:
+      tags:
+      - Sales Credits
+      summary: Download Import Template
+      description: 'Download a multi-sheet XLSX import template pre-filled with sample
+        rows, a field guide, and reference data (stores, currencies, warehouses, tax
+        rates, nominal codes) from your account.
+
+
+        Authentication: Requires Bearer token (scope.rw:orders).
+
+
+        Response: a binary XLSX file download, NOT JSON. Fill the ''Import Here''
+        sheet, then upload it in the import wizard.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-sales-credits-import-template
+  /api/sales-credits/import/validate:
+    post:
+      tags:
+      - Sales Credits
+      summary: Validate Import
+      description: 'Validate and preview mapped import rows BEFORE importing. No database
+        writes occur — safe to call repeatedly.
+
+
+        Authentication: Requires Bearer token (scope.rw:orders).
+
+
+        Resolves customer / sales order / store / currency / warehouse / SKU / nominal
+        code / tax rate names to IDs, groups flat rows into credits (by id, then sales_credit_number,
+        then sales_order_number), and computes an upsert action per credit (create
+        / update / blocked). Customers that don''t exist are auto-created on import.
+
+
+        Each row accepts all template columns: id, sales_credit_number, credit_date,
+        sales_order_number, customer_email, customer_id, customer_name, customer_company,
+        customer_phone, store_name, currency_code, to_warehouse_name, sales_credit_note,
+        sku, sales_order_line_id, description, quantity, amount, unit_cost, nominal_code,
+        tax_rate, is_product.
+
+
+        Max 50000 rows per call.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                rows:
+                - id: ''
+                  sales_credit_number: SC-001
+                  credit_date: '2026-04-01'
+                  sales_order_number: ''
+                  customer_email: jane@example.com
+                  customer_id: ''
+                  customer_name: Jane Doe
+                  customer_company: ''
+                  customer_phone: ''
+                  store_name: ''
+                  currency_code: USD
+                  to_warehouse_name: Main Warehouse
+                  sales_credit_note: Returned item
+                  sku: WIDGET-001
+                  sales_order_line_id: ''
+                  description: Blue Widget - Large
+                  quantity: '1'
+                  amount: '19.99'
+                  unit_cost: ''
+                  nominal_code: ''
+                  tax_rate: ''
+                  is_product: 'true'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                sales_credits:
+                - group_key: scn:sc-001
+                  id: null
+                  sales_credit_number: SC-001
+                  credit_date: '2026-04-01'
+                  sales_credit_note: Returned item
+                  action: create
+                  match_reason: null
+                  block_reason: null
+                  existing_sales_credit: null
+                  sales_order: null
+                  customer:
+                    id: null
+                    email: jane@example.com
+                    name: Jane Doe
+                    will_create: true
+                  store: null
+                  currency:
+                    id: 1
+                    code: USD
+                  warehouse:
+                    id: 3
+                    name: Main Warehouse
+                  errors: []
+                  lines:
+                  - sku: WIDGET-001
+                    product_id: 845
+                    product_name: Blue Widget - Large
+                    sales_order_line_id: null
+                    description: Blue Widget - Large
+                    quantity: 1
+                    amount: 19.99
+                    unit_cost: null
+                    nominal_code_id: null
+                    tax_rate_id: null
+                    is_product: true
+                    line_total: 19.99
+                    errors: []
+                  total_quantity: 1
+                  total_amount: 19.99
+                summary:
+                  total_sales_credits: 1
+                  total_line_items: 1
+                  total_errors: 0
+                  total_will_create: 1
+                  total_will_update: 0
+                  total_blocked: 0
+                  customers_created: 1
+      operationId: post-api-sales-credits-import-validate
+  /api/sales-credits/import:
+    post:
+      tags:
+      - Sales Credits
+      summary: Import Sales Credits
+      description: 'Execute the import — upsert sales credits from validated data
+        (typically the output of the Validate Import endpoint).
+
+
+        Authentication: Requires Bearer token (scope.rw:orders).
+
+
+        Upsert behavior:
+
+        - Rows with no matched existing credit are CREATED (customers are auto-created
+        when needed).
+
+        - Rows matching an existing editable credit are UPDATED.
+
+        - Rows with action=blocked are rejected (paid / allocated / closed / Shopify-origin
+        credits cannot be updated via import).
+
+
+        continue_on_error (default false): when true, each credit is imported in its
+        own transaction and failures are collected into ''skipped''. When false, the
+        entire import runs in one transaction.
+
+
+        Returns 201 when any credit was created, otherwise 200.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                continue_on_error: false
+                sales_credits:
+                - group_key: scn:sc-001
+                  id: null
+                  action: create
+                  match_reason: null
+                  block_reason: null
+                  existing_sales_credit: null
+                  sales_credit_number: SC-001
+                  credit_date: '2026-04-01'
+                  sales_credit_note: Returned item
+                  sales_order: null
+                  customer:
+                    id: null
+                    email: jane@example.com
+                    name: Jane Doe
+                  store: null
+                  currency:
+                    id: 1
+                    code: USD
+                  warehouse:
+                    id: 3
+                    name: Main Warehouse
+                  lines:
+                  - sku: WIDGET-001
+                    product_id: 845
+                    product_name: Blue Widget - Large
+                    sales_order_line_id: null
+                    description: Blue Widget - Large
+                    quantity: 1
+                    amount: 19.99
+                    unit_cost: null
+                    nominal_code_id: null
+                    tax_rate_id: null
+                    is_product: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                created:
+                - id: 301
+                  sales_credit_number: SC-001
+                updated: []
+                skipped: []
+                customers_created:
+                - id: 99
+                  name: Jane Doe
+                  email: jane@example.com
+                summary:
+                  total: 1
+                  created: 1
+                  updated: 0
+                  skipped: 0
+                  customers_created: 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Import failed: Sales credit #SC-009 is paid and cannot be
+                  updated via import.'
+      operationId: post-api-sales-credits-import
   /api/rmas:
     get:
       tags:
@@ -191518,6 +191833,332 @@ paths:
                   value:
                     data: null
       operationId: get-api-vendor-credits-vendorcredit-attachments-attachment-ocr
+  /api/vendor-credits/list/export:
+    get:
+      tags:
+      - Import & Export
+      summary: Export Vendor Credits
+      description: 'Download an Excel/CSV export of vendor credits.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response: a binary file download (xlsx or csv), NOT JSON. Columns: ID, Credit
+        #, Supplier Ref, Supplier, PO #, Credit Date, Status, Payment Status, Warehouse,
+        Currency, Tax Total, Total Credit, Allocated, Refunded, Remaining, Settled,
+        Note, Created At.
+
+
+        Query params:
+
+        - format: xlsx (default) or csv
+
+        - scope: ''filtered'' (default — respects the same filters as the list endpoint)
+        or ''selected''
+
+        - ids: comma-separated IDs (only when scope=selected)'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-vendor-credits-list-export
+  /api/vendor-credits/import/template:
+    get:
+      tags:
+      - Import & Export
+      summary: Download Import Template
+      description: 'Download a multi-sheet XLSX import template pre-filled with sample
+        rows, a field guide, and reference data (stores, currencies, warehouses, tax
+        rates, nominal codes, suppliers) from your account.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response: a binary XLSX file download, NOT JSON. Use this template as the
+        starting point for the import — fill the ''Import Here'' sheet, then upload
+        it in the import wizard.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-vendor-credits-import-template
+  /api/vendor-credits/import/validate:
+    post:
+      tags:
+      - Import & Export
+      summary: Validate Import
+      description: 'Validate and preview mapped import rows BEFORE importing. No database
+        writes occur — safe to call repeatedly.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Resolves supplier / purchase order / store / currency / warehouse / SKU /
+        nominal code / tax rate names to IDs, groups flat rows into credits (by id,
+        then vendor_credit_number, then purchase_order_number), and computes an upsert
+        action per credit:
+
+        - create: no existing credit matched
+
+        - update: matched an existing DRAFT credit
+
+        - blocked: matched a credit that cannot be updated (archived, voided, closed,
+        refunded, allocated, or already authorized/open). The block_reason is returned
+        for display.
+
+
+        Each row accepts all template columns: id, vendor_credit_number, credit_date,
+        purchase_order_number, supplier_name, supplier_email, supplier_id, warehouse_name,
+        currency_code, store_name, supplier_reference, vendor_credit_note, sku, purchase_order_line_id,
+        description, quantity, amount, unit_cost, nominal_code, tax_rate, is_product,
+        restock_inventory.
+
+
+        Max 50000 rows per call.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                rows:
+                - id: ''
+                  vendor_credit_number: VC-001
+                  credit_date: '2026-04-01'
+                  purchase_order_number: ''
+                  supplier_name: Acme Supplies
+                  supplier_email: ''
+                  supplier_id: ''
+                  warehouse_name: Main Warehouse
+                  currency_code: USD
+                  store_name: ''
+                  supplier_reference: CN-55321
+                  vendor_credit_note: Damaged on arrival
+                  sku: WIDGET-001
+                  purchase_order_line_id: ''
+                  description: Blue Widget - Large
+                  quantity: '2'
+                  amount: '19.99'
+                  unit_cost: ''
+                  nominal_code: ''
+                  tax_rate: ''
+                  is_product: 'true'
+                  restock_inventory: 'false'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                vendor_credits:
+                - group_key: vcn:vc-001
+                  id: null
+                  vendor_credit_number: VC-001
+                  credit_date: '2026-04-01'
+                  supplier_reference: CN-55321
+                  vendor_credit_note: Damaged on arrival
+                  action: create
+                  match_reason: null
+                  block_reason: null
+                  existing_vendor_credit: null
+                  purchase_order: null
+                  supplier:
+                    id: 12
+                    name: Acme Supplies
+                    email: orders@acme.com
+                  store: null
+                  currency:
+                    id: 1
+                    code: USD
+                  warehouse:
+                    id: 3
+                    name: Main Warehouse
+                  errors: []
+                  lines:
+                  - sku: WIDGET-001
+                    product_id: 845
+                    product_name: Blue Widget - Large
+                    purchase_order_line_id: null
+                    description: Blue Widget - Large
+                    quantity: 2
+                    amount: 19.99
+                    unit_cost: null
+                    nominal_code_id: null
+                    tax_rate_id: null
+                    is_product: true
+                    restock_inventory: false
+                    line_total: 39.98
+                    errors: []
+                  total_quantity: 2
+                  total_amount: 39.98
+                summary:
+                  total_vendor_credits: 1
+                  total_line_items: 1
+                  total_errors: 0
+                  total_will_create: 1
+                  total_will_update: 0
+                  total_blocked: 0
+      operationId: post-api-vendor-credits-import-validate
+  /api/vendor-credits/import:
+    post:
+      tags:
+      - Import & Export
+      summary: Import Vendor Credits
+      description: 'Execute the import — upsert vendor credits from validated data
+        (typically the output of the Validate Import endpoint).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Upsert behavior:
+
+        - Rows with no matched existing credit are CREATED in DRAFT status so you
+        can review and authorize them.
+
+        - Rows matching an existing DRAFT credit are UPDATED.
+
+        - Rows with action=blocked are rejected (archived / voided / closed / refunded
+        / allocated / already-authorized credits cannot be updated via import).
+
+
+        continue_on_error (default false): when true, each credit is imported in its
+        own transaction and failures are collected into ''skipped'' instead of aborting
+        the whole import. When false, the entire import runs in one transaction and
+        any failure rolls everything back.
+
+
+        A per-user lock serializes concurrent imports.
+
+
+        Returns 201 when any credit was created, otherwise 200.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                continue_on_error: false
+                vendor_credits:
+                - group_key: vcn:vc-001
+                  id: null
+                  action: create
+                  match_reason: null
+                  block_reason: null
+                  existing_vendor_credit: null
+                  vendor_credit_number: VC-001
+                  credit_date: '2026-04-01'
+                  supplier_reference: CN-55321
+                  vendor_credit_note: Damaged on arrival
+                  purchase_order: null
+                  supplier:
+                    id: 12
+                    name: Acme Supplies
+                    email: orders@acme.com
+                  store: null
+                  currency:
+                    id: 1
+                    code: USD
+                  warehouse:
+                    id: 3
+                    name: Main Warehouse
+                  lines:
+                  - sku: WIDGET-001
+                    product_id: 845
+                    product_name: Blue Widget - Large
+                    purchase_order_line_id: null
+                    description: Blue Widget - Large
+                    quantity: 2
+                    amount: 19.99
+                    unit_cost: null
+                    nominal_code_id: null
+                    tax_rate_id: null
+                    is_product: true
+                    restock_inventory: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                created:
+                - id: 501
+                  vendor_credit_number: VC-001
+                updated: []
+                skipped: []
+                summary:
+                  total: 1
+                  created: 1
+                  updated: 0
+                  skipped: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Import failed: Vendor credit #VC-009 is voided and cannot
+                  be updated via import.'
+      operationId: post-api-vendor-credits-import
   /api/vendor-deposits:
     get:
       tags:
@@ -193816,6 +194457,7 @@ x-tagGroups:
   - Invoice & Accounting
   - Attachments
   - OCR
+  - Import & Export
   - Vendor Deposits
   - Payments & Refunds
   - Applications
