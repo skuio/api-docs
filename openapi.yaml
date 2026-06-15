@@ -20166,7 +20166,15 @@ paths:
       description: 'Link a product listing to the subscription offering.
 
 
-        Authentication: Requires Bearer token.'
+        Clears any existing product mapping on the listing and sets the subscription
+        offering, keeping the product/offering XOR constraint satisfied (a listing
+        maps to EITHER a product OR an offering, never both).
+
+
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 if the subscription offering is not found or is archived.'
       requestBody:
         content: {}
       parameters:
@@ -20198,6 +20206,14 @@ paths:
                 type: object
               example:
                 message: Product listing linked to subscription offering successfully
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Cannot link to an archived subscription offering.
       operationId: post-api-subscription-offerings-subscription-offering-product-listings-product-listing-link
   /api/subscription-offerings/{subscription_offering}/product-listings/{product_listing}/unlink:
     post:
@@ -20207,10 +20223,18 @@ paths:
       description: 'Unlink a product listing from the subscription offering.
 
 
+        Offering-only listings carry no product mapping, so unlinking REMOVES the
+        listing entirely rather than leaving it in a both-null state that would violate
+        the product/offering XOR constraint. Deletion runs through the model so the
+        FBA delete guard and cache observer both fire.
+
+
         Authentication: Requires Bearer token.
 
 
-        Returns 400 if the listing is not linked to this offering.'
+        Returns 400 if the listing is not linked to this offering. Returns 422 if
+        the listing cannot be deleted because it has associated orders (FBA-protected
+        listing).'
       requestBody:
         content: {}
       parameters:
@@ -20242,6 +20266,23 @@ paths:
                 type: object
               example:
                 message: Product listing unlinked from subscription offering successfully
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Product listing is not linked to this subscription offering
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: This product listing cannot be unlinked because it has associated
+                  orders.
       operationId: post-api-subscription-offerings-subscription-offering-product-listings-product-listing-unlink
   /api/subscription-offerings/{subscription_offering}/report:
     get:
@@ -153588,6 +153629,15 @@ paths:
         lines expanded before this feature (those were price-based).
 
 
+        Each line item also carries immutable order-line provenance (SKU-8094): `channel_product_external_id`
+        (string|null) is the sales-channel listing identifier the line came in as,
+        snapshotted the first time the line is mapped to a product listing — it is
+        never overwritten by a later remap, and survives deletion of the convenience
+        `listing` pointer. `sales_channel_product_id` (int|null) is reserved for the
+        forthcoming sales_channel_products supertype and is null until that phase
+        ships. Lines that have not yet been mapped report both as null.
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
@@ -153613,6 +153663,8 @@ paths:
                 data:
                 - id: 3001
                   product_id: 42
+                  channel_product_external_id: JGR-JAPANESE-GO_2PK
+                  sales_channel_product_id: null
                   quantity: 3
                   amount: '29.99'
                   description: Premium Widget
@@ -153632,6 +153684,8 @@ paths:
                   sales_credit_lines_count: 0
                 - id: 3002
                   product_id: null
+                  channel_product_external_id: null
+                  sales_channel_product_id: null
                   quantity: 2
                   amount: '19.99'
                   description: JGR Japanese Go 2-Pack
