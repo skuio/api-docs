@@ -49877,8 +49877,10 @@ paths:
                     request_date: '2026-05-12T14:35:00.000000Z'
                     shipped_quantity: 10
                     qty_discarded: 0
+                    qty_reconciled_pretracking: 0
                     received_quantity: 4
                     pending_quantity: 6
+                    is_pre_tracking: false
                     receipt_status: partially_received
                     removal_order_type: Return
                     receipts:
@@ -49890,6 +49892,35 @@ paths:
                       warehouse_id: 4
                       warehouse_name: Main WH
                       created_at: '2026-05-14T08:21:55.000000Z'
+                  - id: 9012
+                    uniqueId: shipment_1
+                    fnsku: X001ABC123
+                    fnsku_product_id: 7
+                    fnsku_product:
+                      id: 7
+                      fnsku: X001ABC123
+                      product:
+                        id: 333
+                        sku: PARENT-001
+                        name: Parent Product
+                    sku: ABC-001
+                    product_sku: PARENT-001
+                    product_id: 333
+                    product_name: Parent Product
+                    disposition: Sellable
+                    tracking_number: 1Z999AA10123456785
+                    carrier: UPS
+                    shipment_date: '2024-11-20T00:00:00.000000Z'
+                    request_date: '2024-11-18T14:35:00.000000Z'
+                    shipped_quantity: 8
+                    qty_discarded: 0
+                    qty_reconciled_pretracking: 8
+                    received_quantity: 0
+                    pending_quantity: 0
+                    is_pre_tracking: true
+                    receipt_status: reconciled_at_go_live
+                    removal_order_type: Return
+                    receipts: []
                 status: success
       operationId: get-domain-api-amazon-integrationinstance-removal-orders-orderid
   //{domain}/api/amazon/{integrationInstance}/removal-orders/order-details:
@@ -50636,6 +50667,78 @@ paths:
                   date: '2026-05-10'
                 status: success
       operationId: get-domain-api-amazon-integrationinstance-removal-orders-unlinked
+  //{domain}/api/amazon/{integrationInstance}/removal-orders/backfill-straddle:
+    post:
+      tags:
+      - Sales Channels
+      summary: Backfill Straddle Removals (One-Time Repair)
+      description: 'Dispatch a one-time tracked job that repairs removal orders straddling
+        the FBA inventory tracking start date for this integration: re-creates dropped
+        pre-tracking shipment rows from stored report payloads (idempotent) and re-evaluates
+        each straddle order''s receipt status so the ReconciledAtGoLive precedence
+        + ledger quarantine take effect.
+
+
+        Returns a `tracked_job_log_id` — poll the job tray for progress. Job name:
+        `Backfill FBA Removal Straddle: {instance name}` (with ` (Dry Run)` suffix
+        when dry_run is true).
+
+
+        Validation:
+
+        - `dry_run` — nullable, boolean (default false). When true, computes/records
+        the same counts (with a `dry_run_note` caveat) without writing anything.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"dry_run\": true\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 9876
+                message: Backfill started
+      operationId: post-domain-api-amazon-integrationinstance-removal-orders-backfill-straddle
   //{domain}/api/amazon/{integrationInstance}/removal-shipments:
     get:
       tags:
@@ -51422,6 +51525,203 @@ paths:
               example: "{\n  \"message\": \"Removal order UNKNOWN not found or does\
                 \ not belong to integration instance 1\"\n}"
       operationId: delete-domain-api-amazon-integrationinstance-removal-orders-orderid-undo-all-receipts
+  //{domain}/api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/reconcile-pretracking:
+    post:
+      tags:
+      - Sales Channels
+      summary: Reconcile Pre-Tracking Units (Straddle)
+      description: 'Quarantine pre-tracking units on a STRADDLE removal shipment (one
+        that shipped before the integration''s FBA inventory tracking start date).
+        These units were already counted in opening inventory at go-live, so they
+        are closed out into the `qty_reconciled_pretracking` bucket instead of being
+        received into inventory — no stock, no COGS, no FBA ledger impact. Capped
+        at the shipment''s remaining pending quantity.
+
+
+        The shipment must belong to the supplied integration instance (404 otherwise).
+
+
+        Validation:
+
+        - `quantity` — required, integer, min:1
+
+        - `notes` — nullable, string
+
+
+        Errors:
+
+        - 404 — shipment does not belong to the integration instance
+
+        - 422 — shipment is not a straddle (post-go-live) shipment, or quantity exceeds
+        remaining pending'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"quantity\": 5,\n  \"notes\": \"Counted in opening
+                inventory at go-live\"\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '1'
+      - name: removalShipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: AmazonFbaReportRemovalShipment ID (must be a straddle/pre-tracking
+          shipment)
+        example: '12345'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  removal_shipment_id: 12345
+                  qty_reconciled_pretracking: 5
+                  pending_quantity: 5
+                  order_receipt_status: reconciled_at_go_live
+                  message: Pre-tracking units reconciled successfully
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Cannot reconcile 7 units — only 6 pending units remain on
+                  this shipment.
+      operationId: post-domain-api-amazon-integrationinstance-removal-shipments-removalshipment-reconcile-pretracking
+    delete:
+      tags:
+      - Sales Channels
+      summary: Undo Reconcile Pre-Tracking (Straddle)
+      description: 'Undo a pre-tracking reconciliation: resets the shipment''s `qty_reconciled_pretracking`
+        bucket back to zero and returns those units to pending. The shipment must
+        belong to the supplied integration instance (404 otherwise).
+
+
+        No request body.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '1'
+      - name: removalShipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: AmazonFbaReportRemovalShipment ID
+        example: '12345'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  removal_shipment_id: 12345
+                  qty_reconciled_pretracking: 0
+                  pending_quantity: 10
+                  order_receipt_status: pending
+                  message: Pre-tracking reconciliation undone successfully
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Not Found
+      operationId: delete-domain-api-amazon-integrationinstance-removal-shipments-removalshipment-reconcile-pretracking
   //{domain}/api/amazon/{integrationInstance}/inbound/shipments:
     get:
       tags:
@@ -68684,9 +68984,15 @@ paths:
       tags:
       - Sales Channels
       summary: List Removal Orders (Grouped Across Instances)
-      description: Returns paginated removal orders grouped by (order_id, integration_instance_id).
+      description: 'Returns paginated removal orders grouped by (order_id, integration_instance_id).
         Each row is a SUMMARY with aggregated quantities, a representative status/type/disposition,
         line_count, and a lines array containing line-level rows for expandable UI.
+
+
+        Each row also carries is_straddle (the order''s shipment predates the FBA
+        inventory tracking start date) and has_pending_straddle (a straddle line still
+        has pending quantity to reconcile). Use filter[needs_attention]=true to list
+        only orders with pending straddle quantity.'
       parameters:
       - name: Accept
         in: header
@@ -68727,20 +69033,22 @@ paths:
                 ,\n      \"is_unknown_item\": false,\n      \"archived_at\": null,\n\
                 \      \"created_at\": \"2026-04-12T14:30:00.000000Z\",\n      \"\
                 updated_at\": \"2026-04-14T08:15:00.000000Z\",\n      \"line_count\"\
-                : 3,\n      \"integration_instance\": { \"id\": 1, \"name\": \"Amazon\
-                \ US\" },\n      \"integration_instance_id\": 1,\n      \"integration_instance_name\"\
-                : \"Amazon US\",\n      \"receiving_status\": \"pending\",\n     \
-                \ \"sku_links\": [],\n      \"fnsku_product\": {\n        \"id\":\
-                \ 42,\n        \"fnsku\": \"X001ABCD12\",\n        \"location\": \"\
-                BIN-A1\",\n        \"disposition\": \"Sellable\",\n        \"product\"\
-                : { \"id\": 99, \"sku\": \"SKU-100\", \"name\": \"Sample Widget\"\
-                \ }\n      },\n      \"lines\": [\n        {\n          \"id\": 1234,\n\
-                \          \"order_id\": \"D-1234567\",\n          \"sku\": \"SKU-100\"\
-                ,\n          \"fnsku\": \"X001ABCD12\",\n          \"disposition\"\
-                : \"Sellable\",\n          \"requested_quantity\": 20,\n         \
-                \ \"shipped_quantity\": 20\n        }\n      ]\n    }\n  ],\n  \"\
-                current_page\": 1,\n  \"last_page\": 5,\n  \"per_page\": 10,\n  \"\
-                total\": 47,\n  \"from\": 1,\n  \"to\": 10,\n  \"first_page_url\"\
+                : 3,\n      \"integration_instance\": {\n        \"id\": 1,\n    \
+                \    \"name\": \"Amazon US\"\n      },\n      \"integration_instance_id\"\
+                : 1,\n      \"integration_instance_name\": \"Amazon US\",\n      \"\
+                receiving_status\": \"pending\",\n      \"is_straddle\": false,\n\
+                \      \"has_pending_straddle\": false,\n      \"sku_links\": [],\n\
+                \      \"fnsku_product\": {\n        \"id\": 42,\n        \"fnsku\"\
+                : \"X001ABCD12\",\n        \"location\": \"BIN-A1\",\n        \"disposition\"\
+                : \"Sellable\",\n        \"product\": {\n          \"id\": 99,\n \
+                \         \"sku\": \"SKU-100\",\n          \"name\": \"Sample Widget\"\
+                \n        }\n      },\n      \"lines\": [\n        {\n          \"\
+                id\": 1234,\n          \"order_id\": \"D-1234567\",\n          \"\
+                sku\": \"SKU-100\",\n          \"fnsku\": \"X001ABCD12\",\n      \
+                \    \"disposition\": \"Sellable\",\n          \"requested_quantity\"\
+                : 20,\n          \"shipped_quantity\": 20\n        }\n      ]\n  \
+                \  }\n  ],\n  \"current_page\": 1,\n  \"last_page\": 5,\n  \"per_page\"\
+                : 10,\n  \"total\": 47,\n  \"from\": 1,\n  \"to\": 10,\n  \"first_page_url\"\
                 : \"https://app.example.com/api/amazon/unified/removal-orders?page=1\"\
                 ,\n  \"last_page_url\": \"https://app.example.com/api/amazon/unified/removal-orders?page=5\"\
                 ,\n  \"next_page_url\": \"https://app.example.com/api/amazon/unified/removal-orders?page=2\"\
@@ -69037,12 +69345,14 @@ paths:
                 \ \"removal_fee\": \"2.50\",\n    \"currency\": \"USD\",\n    \"is_unknown_item\"\
                 : false,\n    \"archived_at\": null,\n    \"created_at\": \"2026-04-12T14:30:00.000000Z\"\
                 ,\n    \"updated_at\": \"2026-04-14T08:15:00.000000Z\",\n    \"integration_instance\"\
-                : { \"id\": 1, \"name\": \"Amazon US\" },\n    \"integration_instance_id\"\
-                : 1,\n    \"integration_instance_name\": \"Amazon US\",\n    \"fnsku_product\"\
-                : {\n      \"id\": 42,\n      \"fnsku\": \"X001ABCD12\",\n      \"\
-                location\": \"BIN-A1\",\n      \"disposition\": \"Sellable\",\n  \
-                \    \"product\": { \"id\": 99, \"sku\": \"SKU-100\", \"name\": \"\
-                Sample Widget\" }\n    }\n  }\n}"
+                : {\n      \"id\": 1,\n      \"name\": \"Amazon US\"\n    },\n   \
+                \ \"integration_instance_id\": 1,\n    \"integration_instance_name\"\
+                : \"Amazon US\",\n    \"is_straddle\": false,\n    \"has_pending_straddle\"\
+                : false,\n    \"fnsku_product\": {\n      \"id\": 42,\n      \"fnsku\"\
+                : \"X001ABCD12\",\n      \"location\": \"BIN-A1\",\n      \"disposition\"\
+                : \"Sellable\",\n      \"product\": {\n        \"id\": 99,\n     \
+                \   \"sku\": \"SKU-100\",\n        \"name\": \"Sample Widget\"\n \
+                \     }\n    }\n  }\n}"
       operationId: get-domain-api-amazon-unified-removal-orders-removalorder
   //{domain}/api/amazon/unified/removal-shipments:
     get:
