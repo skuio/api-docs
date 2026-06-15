@@ -10125,6 +10125,78 @@ paths:
                 type: string
               example: (HTML page with log viewer interface)
       operationId: get-log-viewer
+  /api/integrations:
+    get:
+      tags:
+      - Integration Instances
+      summary: List Integrations (Picker)
+      description: 'List all available integrations and their connected instances.
+        Powers the integration picker in the UI.
+
+
+        Authentication: Requires Bearer token + Power User access.
+
+
+        Each integration includes a `deprecated` boolean. **Deprecated integrations
+        (e.g. ShipMyOrders) are hidden from this list unless the tenant still has
+        at least one connected instance**, in which case the integration is returned
+        so its existing instances can be shown read-only. Deprecated integrations
+        can no longer be connected (see `POST /api/integration-instances`).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: include_sku_io
+        in: query
+        schema:
+          type: integer
+        description: Optional (0/1). When 1, prepends the internal SKU.io integration
+          to the list.
+        example: '0'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  name: Shopify
+                  integration_settings_template: {}
+                  image_url: https://cdn.sku.io/integrations/shopify.png
+                  country: null
+                  supports_multiple_instances: true
+                  integration_type: sales_channel
+                  integration_sub_type: null
+                  deprecated: false
+                  last_sync: '2026-06-15T08:30:00.000000Z'
+                  integration_instances: []
+                - id: 12
+                  name: ShipMyOrders
+                  integration_settings_template: {}
+                  image_url: https://cdn.sku.io/integrations/shipmyorders.png
+                  country: null
+                  supports_multiple_instances: false
+                  integration_type: shipping_provider
+                  integration_sub_type: null
+                  deprecated: true
+                  last_sync: null
+                  integration_instances:
+                  - id: 44
+                    integration_id: 12
+                    name: ShipMyOrders
+                automated_warehouses: []
+                status: success
+      operationId: get-api-integrations
   /api/integration-instances:
     post:
       tags:
@@ -10158,7 +10230,13 @@ paths:
         Note: name must be unique across all integration instances.
 
 
-        **Requires permission:** `integrations.create`'
+        **Requires permission:** `integrations.create`
+
+
+        **Deprecated integrations:** If the supplied `integration_id` belongs to a
+        permanently deprecated integration (e.g. ShipMyOrders), the request is rejected
+        with `400 Bad Request` and code `IsUnacceptable`. Existing instances and their
+        historical data are retained read-only, but no new instance can be connected.'
       requestBody:
         content:
           '*/*':
@@ -10211,6 +10289,22 @@ paths:
                   connection_status: connected
                   is_automatic_sync_enabled: true
                 automated_warehouses: []
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                status: failure
+                message: ShipMyOrders is a deprecated integration and can no longer
+                  be connected.
+                errors:
+                  integration_id:
+                  - message: ShipMyOrders is a deprecated integration and can no longer
+                      be connected.
+                    code: IsUnacceptable
+                    data: []
         '422':
           description: Unprocessable Entity
           content:
@@ -57858,6 +57952,100 @@ paths:
                 : 3,\n        \"discrepancy_status\": \"OVER\",\n        \"discrepancy_resolved_at\"\
                 : null,\n        \"resolution_note\": null\n      }\n    }\n  ]\n}"
       operationId: get-domain-api-amazon-integrationinstance-fba-inbound-discrepancies
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/refresh-amazon-plan:
+    post:
+      tags:
+      - Sales Channels
+      summary: Refresh from Amazon
+      description: 'Refresh a submitted plan from Amazon. Pulls the latest plan +
+        shipment state from Amazon''s Fulfillment Inbound API (`getInboundPlan`, `getShipment`,
+        `listShipmentItems`) and mirrors it onto the linked `AmazonNewFbaInboundPlan`
+        (status, shipments, accepted items). Use this to reconcile the in-app plan
+        with Seller Central after submission.
+
+
+        Returns the updated `DraftAmazonFbaInboundPlanResource` with the refreshed
+        `amazon_new_fba_inbound_plan` relationship loaded.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: draft_inbound_plan
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  portal_access_hash: eyJpdiI6Ii4uLiI...
+                  integration_instance_id: 1
+                  warehouse_id: 5
+                  warehouse_country_code: US
+                  name: Q2 Restock
+                  status: submitted_to_amazon
+                  workflow_step: 7
+                  source_mode: warehouse_transfer
+                  source_warehouse_id: 8
+                  source_warehouse_name: Main Warehouse
+                  source_type: warehouse
+                  source_supplier_name: null
+                  warehouse_type: standard
+                  warehouse_transfer_id: 17
+                  amazon_new_fba_inbound_plan:
+                    id: 33
+                    inboundPlanId: wf52bdb8a9-d197-4d95-9f60-07d2293b587d
+                    status: ACTIVE
+                    items_fetched: true
+                    sent_count: 2
+                    accepted_count: 2
+                    excluded_items: []
+                    shipments:
+                    - id: 91
+                      shipmentConfirmationId: FBA15ABCDEFG
+                      sku_link_type: warehouse_transfer
+                      sku_link_id: 17
+                  items:
+                  - id: 501
+                    product_id: 42
+                    msku: SKU-1
+                    quantity: 30
+                  - id: 502
+                    product_id: 77
+                    msku: SKU-2
+                    quantity: 20
+                  inventory_inquiry_last_processed_at: null
+                  created_at: '2026-06-10T22:00:00.000000Z'
+                  updated_at: '2026-06-14T10:05:00.000000Z'
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-refresh-amazon-plan
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/add-item:
     post:
       tags:
@@ -104418,7 +104606,14 @@ paths:
       description: 'Create a new ShipMyOrders integration instance.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Deprecated — cannot connect.** ShipMyOrders is permanently deprecated (the
+        upstream service no longer exists). This endpoint always returns `400 Bad
+        Request` with code `IsUnacceptable`; no new instance is created. Existing
+        instances and their historical invoice/inventory data are retained read-only
+        and remain viewable, editable, and deletable.'
       requestBody:
         content:
           '*/*':
@@ -104445,10 +104640,22 @@ paths:
           type: string
         required: true
       responses:
-        '200':
-          description: Successful response
+        '400':
+          description: Bad Request
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                status: failure
+                message: ShipMyOrders is a deprecated integration and can no longer
+                  be connected.
+                errors:
+                  integration:
+                  - message: ShipMyOrders is a deprecated integration and can no longer
+                      be connected.
+                    code: IsUnacceptable
+                    data: []
       operationId: post-domain-api-shipmyorders-integration-instances
   //{domain}/api/shipmyorders/integration-instances/{integration_instance}:
     get:
@@ -104563,10 +104770,17 @@ paths:
       tags:
       - Shipping Providers
       summary: Refresh Inventory
-      description: 'Trigger a full inventory sync from ShipMyOrders API.
+      description: 'Trigger a full inventory sync from the ShipMyOrders API.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Deprecated — 410 Gone.** ShipMyOrders is permanently deprecated; the upstream
+        service (shipmyorders.net) no longer exists and will never respond. This endpoint
+        always returns `410 Gone` with code `IsUnacceptable` and never calls the provider.
+        Inventory data already synced is retained read-only and can still be read
+        via the discrepancies / without-sku-products / without-smo-inventory endpoints.'
       requestBody:
         content: {}
       parameters:
@@ -104581,10 +104795,22 @@ paths:
           type: string
         required: true
       responses:
-        '200':
-          description: Successful response
+        '410':
+          description: Gone
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                status: failure
+                message: ShipMyOrders is a deprecated integration and can no longer
+                  refresh inventory from the provider.
+                errors:
+                  shipmyorders:
+                  - message: ShipMyOrders is a deprecated integration and can no longer
+                      refresh inventory from the provider.
+                    code: IsUnacceptable
+                    data: []
       operationId: post-domain-api-shipmyorders-inventory-refresh
   //{domain}/api/shipmyorders/inventory/discrepancies:
     get:
