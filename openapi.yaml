@@ -139597,6 +139597,173 @@ paths:
               example: "{\n  \"error\": \"Purchase order line 5567 is for a different\
                 \ product.\"\n}"
       operationId: post-domain-api-v2-inventory-allocations-allocation-reassign-coverage
+  //{domain}/api/v2/inventory-allocations/{allocation}/move-targets:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Get Move Targets
+      description: 'Lists the candidate destination sales order lines that on-hand
+        (`allocated`) stock from this allocation can be moved to.
+
+
+        Returns the backordered lines (status `planned` / `awaiting_receipt`) waiting
+        on the **same product and warehouse pool** as the source allocation, excluding
+        the source''s own line. Each entry includes how much of that line is still
+        backordered, so the caller can cap the move quantity.
+
+
+        Returns an empty list when the allocation is not `allocated`, is not linked
+        to a sales order line, or there are no other backordered lines in the pool.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: allocation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Allocation ID (must be an on-hand `allocated` allocation linked
+          to a sales order line)
+        example: '10045'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"sales_order_line_id\": 55512,\n\
+                \      \"sales_order_id\": 33099,\n      \"sales_order_number\": \"\
+                SO-033099\",\n      \"customer_name\": \"Acme Retail\",\n      \"\
+                order_date\": \"2026-05-12\",\n      \"backordered_quantity\": 4\n\
+                \    },\n    {\n      \"sales_order_line_id\": 55540,\n      \"sales_order_id\"\
+                : 33104,\n      \"sales_order_number\": \"SO-033104\",\n      \"customer_name\"\
+                : \"Blue Mountain Co\",\n      \"order_date\": \"2026-05-13\",\n \
+                \     \"backordered_quantity\": 2\n    }\n  ]\n}"
+      operationId: get-domain-api-v2-inventory-allocations-allocation-move-targets
+  //{domain}/api/v2/inventory-allocations/{allocation}/move:
+    post:
+      tags:
+      - Adjustments & Transfers
+      summary: Move To Line
+      description: 'Moves on-hand (`allocated`) stock from this allocation to a backordered
+        line in the same product + warehouse pool — a **conserved swap**.
+
+
+        The moved quantity releases the destination line''s backorder (`planned` /
+        `awaiting_receipt` → `allocated`), carrying the source allocation''s FIFO
+        `release_source` reference. The source''s `allocated` row is reduced by the
+        same quantity (or cancelled if fully consumed), and the source''s demand is
+        recreated as a `planned` backorder. Total on-hand commitment, total demand,
+        and FIFO cost layering are all preserved.
+
+
+        **Body**:
+
+        - `destination_sales_order_line_id` (required, integer) — the backordered
+        sales order line to move stock to. Must exist and be in the same product +
+        warehouse pool. Get valid targets from `GET /move-targets`.
+
+        - `quantity` (required, numeric, > 0) — how much on-hand stock to move. Must
+        not exceed the source''s movable on-hand quantity (allocated minus any stock
+        committed to open fulfillments) nor the destination line''s backordered quantity.
+
+
+        Returns `422` when the source is not `allocated`, the destination is a different
+        product/warehouse or the same line, the quantity exceeds the movable on-hand
+        stock (e.g. committed to an open fulfillment) or the destination''s backorder,
+        or the destination has no matching backorder to release.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"destination_sales_order_line_id\": 55512,\n  \"quantity\":
+                4\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{bearer-token}}
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: allocation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Source allocation ID (must be an on-hand `allocated` allocation
+          linked to a sales order line)
+        example: '10045'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 10072,\n    \"priority\": 2,\n\
+                \    \"backorder_date\": null,\n    \"backordered_quantity\": 0,\n\
+                \    \"quantity\": 4,\n    \"status\": \"allocated\",\n    \"status_label\"\
+                : \"Allocated\",\n    \"is_tight_coverage\": false,\n    \"sales_order\"\
+                : {\n      \"id\": 33099,\n      \"number\": \"SO-033099\",\n    \
+                \  \"order_date\": \"2026-05-12\"\n    },\n    \"sku\": {\n      \"\
+                id\": 812,\n      \"sku\": \"WIDGET-BLU\",\n      \"name\": \"Blue\
+                \ Widget\"\n    },\n    \"supplier\": {\n      \"id\": 47,\n     \
+                \ \"name\": \"Acme Supplies\"\n    },\n    \"coverage\": null,\n \
+                \   \"scheduled_at\": null,\n    \"created_at\": \"2026-06-15T09:14:00.000000Z\"\
+                \n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"error\": \"Cannot move more than the available on-hand\
+                \ quantity. 3 units are committed to an open fulfillment.\"\n}"
+      operationId: post-domain-api-v2-inventory-allocations-allocation-move
   //{domain}/api/v2/inventory-allocations/backorders:
     get:
       tags:
