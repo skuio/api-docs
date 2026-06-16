@@ -52730,6 +52730,187 @@ paths:
                 type: string
               example: '{"data": {"shipment_id": "FBA15N123456", "status": "SHIPPED"}}'
       operationId: post-domain-api-amazon-integrationinstance-inbound-shipments-get-shipment
+  //{domain}/api/amazon/{integrationInstance}/inbound/shipments/{shipment}/process-preview:
+    get:
+      tags:
+      - Sales Channels
+      summary: Preview Process with Stock Take
+      description: 'Preview the covering stock take that the "Process with Stock Take"
+        action would create for this legacy FBA inbound (SKU-8100). Resolves the source
+        warehouse (from the ship-from mapping) and destination FBA warehouse, aggregates
+        the inbound''s items per product, and computes each product''s source-warehouse
+        shortfall (max(0, needed − on-hand available).
+
+
+        Returns:
+
+        - `can_process` (bool) — false when any hard blocker is present
+
+        - `source_warehouse` / `destination_warehouse` — {id, name} or null when unresolved
+
+        - `lines[]` — per-product {line_id, sku, product_id, needed_qty, current_available,
+        shortfall}
+
+        - `skipped_lines[]` — unmapped inbound lines that will be ignored {line_id,
+        sku, reason}
+
+        - `blockers[]` — hard blockers as {code, message}; codes: NoSourceWarehouse,
+        IneligibleStatus, AlreadyProcessed, AwdSource, PoRouted, NoMappedLines
+
+        - `totals` — {units, shortfall}
+
+
+        This is a read-only computation — it does not create a stock take or mutate
+        inventory. Use it to populate the confirm dialog and to disable the confirm
+        button (with the blocker message as the tooltip reason) when `can_process`
+        is false.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  can_process: true
+                  source_warehouse:
+                    id: 3
+                    name: Main Warehouse
+                  destination_warehouse:
+                    id: 8
+                    name: Amazon FBA (US)
+                  lines:
+                  - line_id: 4471
+                    sku: ACME-HOODIE-MD-BLU
+                    product_id: 1024
+                    needed_qty: 100
+                    current_available: 60
+                    shortfall: 40
+                  - line_id: 4472
+                    sku: ACME-TEE-LG-RED
+                    product_id: 1025
+                    needed_qty: 50
+                    current_available: 50
+                    shortfall: 0
+                  skipped_lines:
+                  - line_id: 4473
+                    sku: UNMAPPED-SKU-XYZ
+                    reason: No matching product found for this line
+                  blockers: []
+                  totals:
+                    units: 150
+                    shortfall: 40
+      operationId: get-domain-api-amazon-integrationinstance-inbound-shipments-shipment-process-preview
+  //{domain}/api/amazon/{integrationInstance}/inbound/shipments/{shipment}/process-with-stock-take:
+    post:
+      tags:
+      - Sales Channels
+      summary: Process Inbound with Stock Take
+      description: 'Dispatch the tracked job that injects each product''s source-warehouse
+        shortfall via a covering stock take and then processes the legacy FBA inbound
+        into its warehouse transfer (source warehouse → FBA warehouse) (SKU-8100).
+
+
+        The covering stock take runs in adjustment mode with backorder auto-release
+        SUPPRESSED, and the source inventory pool lock is held across inject→process
+        so the injected units flow into the transfer''s own Allocated reservation
+        and are never stolen by a pending backorder. No InventoryHold is used.
+
+
+        Request body (both optional):
+
+        - `notes` (string, max 1000) — appended to the covering stock take''s note
+
+        - `source_warehouse_id` (integer, exists:warehouses) — overrides the resolved
+        source warehouse
+
+
+        Returns the tracked job log ID so the frontend can follow progress in the
+        global job tray (job name: "Process FBA Inbound with Stock Take: {ShipmentConfirmationId}").
+        The operation is idempotent — a shipment already linked to a transfer returns
+        early without creating a second stock take.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"notes\": \"Covering stock take for FBA15XYZABC\",\n  \"source_warehouse_id\":
+                3\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 123
+                message: Processing inbound with stock take — track progress in the
+                  job tray
+      operationId: post-domain-api-amazon-integrationinstance-inbound-shipments-shipment-process-with-stock-take
   //{domain}/api/amazon/{integrationInstance}/new-inbound/shipments:
     get:
       tags:
