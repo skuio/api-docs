@@ -105423,7 +105423,23 @@ paths:
       tags:
       - Shipping Providers
       summary: Get Inventory Discrepancies
-      description: 'Get inventory discrepancies between SKU.io and ShipMyOrders.
+      description: 'Get inventory discrepancies between SKU.io on-hand quantities
+        and the last stored ShipMyOrders inventory snapshot.
+
+
+        ShipMyOrders is a deprecated integration: this endpoint is read-only and reflects
+        the last snapshot synced before deprecation — it never calls the provider.
+        Live inventory refresh has been retired (see POST /inventory/refresh, which
+        returns 410).
+
+
+        The active ShipMyOrders instance is resolved server-side (no path/query params).
+
+
+        Response: `data` is the list of SKUs whose SKU.io and ShipMyOrders quantities
+        differ. The additional `warehouse_id` field is the linked 3PL warehouse id,
+        or `null` when no warehouse is linked (or no active ShipMyOrders instance
+        remains).
 
 
         Authentication: Requires Bearer token.'
@@ -105440,9 +105456,46 @@ paths:
         required: true
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - SKU: 2CHSP
+                  id: 328
+                  sku: 2CHSP
+                  unit_cost: '15.84'
+                  type: standard
+                  sku_inventory: 0
+                  smo_inventory: 10
+                  component_count: null
+                  discrepancy: 10
+                  discrepancy_value: 158.4
+                  related: []
+                - SKU: 352-XLF
+                  id: 307
+                  sku: 352-XLF
+                  unit_cost: '79.20'
+                  type: kit
+                  sku_inventory: 12
+                  smo_inventory: 4
+                  component_count: 3
+                  discrepancy: -8
+                  discrepancy_value: -633.6
+                  related:
+                  - type: component
+                    id: 410
+                    sku: 352-COMP-A
+                    pivot_quantity: 1
+                    discrepancy: -8
+                warehouse_id: 29
       operationId: get-domain-api-shipmyorders-inventory-discrepancies
   //{domain}/api/shipmyorders/inventory/without-sku-products:
     get:
@@ -105616,6 +105669,116 @@ paths:
           content:
             application/json: {}
       operationId: delete-domain-api-shipmyorders-invoices
+  //{domain}/api/shipmyorders/v2/invoices:
+    get:
+      tags:
+      - Shipping Providers
+      summary: List Invoices (Vue 3)
+      description: 'Paginated invoice index for the Vue 3 UI, built on Spatie QueryBuilder.
+        Returns a flat, slim invoice shape (no nested lines) suitable for the Vue
+        3 list view.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Filters:
+
+        - filter[search] — invoice number, line reference/description, or linked sales
+        order number (partial match)
+
+        - filter[processed] — 1 (processed) / 0 (unprocessed)
+
+        - filter[archived] — 1 (archived only); defaults to active only when omitted
+
+        - filter[date_from], filter[date_to] — invoice_date range, format m/d/Y
+
+
+        Sorts (sort=): id, date (maps to invoice_date), total, processed_at. Prefix
+        with - for DESC. Default: -id.
+
+
+        Pagination: page, per_page (default 10).
+
+
+        Unregistered filters/sorts return 400 (InvalidFilterQuery / InvalidSortQuery).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1842
+                  invoice_number: SIBER10495
+                  date: '2024-12-31'
+                  total: 360.99
+                  processed_at: '2024-12-31T10:15:00+00:00'
+                  is_processed: true
+                  is_archived: false
+                  lines_count: 6
+                - id: 1841
+                  invoice_number: SIBER10480
+                  date: '2024-12-18'
+                  total: 94.14
+                  processed_at: null
+                  is_processed: false
+                  is_archived: false
+                  lines_count: 2
+                current_page: 1
+                first_page_url: '{{protocol}}://{{domain}}/api/shipmyorders/v2/invoices?page=1'
+                from: 1
+                last_page: 1
+                last_page_url: '{{protocol}}://{{domain}}/api/shipmyorders/v2/invoices?page=1'
+                links:
+                - url: null
+                  label: '&laquo; Previous'
+                  active: false
+                - url: '{{protocol}}://{{domain}}/api/shipmyorders/v2/invoices?page=1'
+                  label: '1'
+                  active: true
+                - url: null
+                  label: Next &raquo;
+                  active: false
+                next_page_url: null
+                path: '{{protocol}}://{{domain}}/api/shipmyorders/v2/invoices'
+                per_page: 10
+                prev_page_url: null
+                to: 2
+                total: 2
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Requested filter(s) `unknown` are not allowed. Allowed filter(s)
+                  are `search, processed, archived, date_from, date_to`.
+      operationId: get-domain-api-shipmyorders-v2-invoices
   //{domain}/api/shipmyorders/invoices/{id}:
     get:
       tags:
