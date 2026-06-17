@@ -157329,7 +157329,9 @@ paths:
 
         - `filters` (object, required without `ids`): Filter set that resolves to
         a list of sales order IDs (same shape used by the V2 sales-orders listing
-        endpoint).
+        endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
+        \"<base64 JSON>\" }`, same as the V2 list) as well as the legacy JSON-string
+        filter set.
 
         - `archived` (integer, optional, default 0): Used with `filters` — set to
         1 to include archived orders when resolving IDs.
@@ -157405,6 +157407,108 @@ paths:
                 type: string
               example: "{\n  \"message\": \"No sales orders found to close.\"\n}"
       operationId: post-api-sales-orders-close
+  /api/sales-orders/tracked:
+    delete:
+      tags:
+      - Sales Orders
+      summary: Bulk Delete Sales Orders (Tracked)
+      description: "Bulk deletes sales orders with progress tracking. Dispatches a\
+        \ `BulkDeleteSalesOrdersTrackedJob` and returns a `tracked_job_log_id` to\
+        \ poll via the global job progress tray.\n\nAuthentication: Requires Bearer\
+        \ token.\n\nRequest body (scope: one of `ids` or `filters` is required):\n\
+        - `ids` (array of int, required without `filters`): Explicit sales order IDs\
+        \ to delete.\n- `filters` (object, required without `ids`): Resolves to a\
+        \ list of sales order IDs via the same Spatie QueryBuilder pipeline the V2\
+        \ sales-orders list/export use. Two shapes are accepted:\n  - Grouped filters\
+        \ (current Vue 3 list): `{ \\\"filter_groups\\\": \\\"<base64-encoded JSON\
+        \ tree>\\\" }`. The decoded tree looks like `{\\\"conjunction\\\":\\\"and\\\
+        \",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\",\\\"condition\\\":{\\\
+        \"column\\\":\\\"order_status\\\",\\\"operator\\\":\\\"is\\\",\\\"value\\\"\
+        :\\\"open\\\"}}]}`.\n  - Legacy datatable filter set (JSON string) for older\
+        \ clients.\n- `apply_to_all` (bool, optional): When true the action targets\
+        \ every order matching the active `filters` rather than an explicit `ids`\
+        \ list.\n\nBehavior:\n- Returns the tracked job log ID immediately; deletion\
+        \ runs asynchronously.\n- Sending `filters` as the grouped `filter_groups`\
+        \ object is fully supported (previously returned a 500).\n\n**Requires permission:**\
+        \ `sales_orders.delete`"
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 84213\n  },\n\
+                \  \"message\": \"Bulk delete started. Track progress using the returned\
+                \ ID.\"\n}"
+      operationId: delete-api-sales-orders-tracked
+  /api/sales-orders:
+    delete:
+      tags:
+      - Sales Orders
+      summary: Bulk Delete Sales Orders
+      description: "Bulk deletes sales orders in the background. IDs are resolved\
+        \ either from an explicit `ids` array or from a `filters` payload, then chunked\
+        \ (1000 per job) and dispatched as a job batch. Orders without return receipts\
+        \ are deleted first; orders with return receipts are deleted in a second batch.\n\
+        \nAuthentication: Requires Bearer token.\n\nRequest body (scope: one of `ids`\
+        \ or `filters` is required):\n- `ids` (array of int, required without `filters`):\
+        \ Explicit sales order IDs to delete.\n- `filters` (object, required without\
+        \ `ids`): Resolves to a list of sales order IDs via the same Spatie QueryBuilder\
+        \ pipeline the V2 sales-orders list/export use. Two shapes are accepted:\n\
+        \  - Grouped filters (current Vue 3 list): `{ \\\"filter_groups\\\": \\\"\
+        <base64-encoded JSON tree>\\\" }`. The decoded tree looks like `{\\\"conjunction\\\
+        \":\\\"and\\\",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\",\\\"condition\\\
+        \":{\\\"column\\\":\\\"order_status\\\",\\\"operator\\\":\\\"is\\\",\\\"value\\\
+        \":\\\"open\\\"}}]}`.\n  - Legacy datatable filter set (JSON string) for older\
+        \ clients.\n- `apply_to_all` (bool, optional): When true the action targets\
+        \ every order matching the active `filters` rather than an explicit `ids`\
+        \ list.\n\nBehavior:\n- Returns 200 immediately; deletion runs asynchronously\
+        \ via `BulkDeleteSalesOrdersJob` batches.\n- Sending `filters` as the grouped\
+        \ `filter_groups` object is fully supported (previously returned a 500).\n\
+        \n**Requires permission:** `sales_orders.delete`"
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Sales orders are being deleted in the\
+                \ background.\"\n}"
+      operationId: delete-api-sales-orders
   /api/sales-orders/bulk-email:
     post:
       tags:
@@ -157430,7 +157534,9 @@ paths:
 
         - `filters` (object, required without `ids`): Filter set that resolves to
         a list of sales order IDs (same shape used by the V2 sales-orders listing
-        endpoint). Combine with `apply_to_all`.
+        endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
+        \"<base64 JSON>\" }`, same as the V2 list) as well as the legacy JSON-string
+        filter set. Combine with `apply_to_all`.
 
         - `apply_to_all` (bool, optional): When true, the action targets every order
         matching the active `filters` rather than an explicit `ids` list.
