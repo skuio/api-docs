@@ -42886,16 +42886,16 @@ paths:
       tags:
       - Export
       summary: Export Profitability Drilldown
-      description: 'Exports all profitability drilldown orders for a specific dimension
-        as a CSV file. Columns include Order #, Date, Sales Channel, Product Revenue,
-        Total Revenue, COGS, Total Cost, Profit, Margin % and any financial line types
-        specified.
+      description: 'Dispatch an asynchronous CSV export of all profitability drilldown
+        orders for a dimension. The drilldown materialises every order and builds
+        the whole file, which can exceed a ~100s edge-proxy limit (Cloudflare 524)
+        — so it runs as a tracked export job. Returns a tracked_job_log_id; progress
+        and the download link surface in the job tray. The finished file is fetched
+        from GET /api/export/download?file={filename}.
 
 
-        Authentication: Requires Bearer token
-
-
-        Response: text/csv file download'
+        Query params: dimension (brand|sku|supplier|sales_channel|product_type|sub_sales_channel),
+        dimension_value, flt_ids[] (financial line type ids for extra columns).'
       parameters:
       - name: Accept
         in: header
@@ -42917,9 +42917,21 @@ paths:
         example: Nike
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5123
+                  queued: true
+                message: Export started — track progress in the job tray
       operationId: get-api-export-v2-profitability-drilldown
   /api/export/integration-instances/{integration_instance}/listings/export/csv:
     get:
@@ -130673,26 +130685,11 @@ paths:
       tags:
       - Product Import
       summary: Execute Import
-      description: "Executes the import — creates new products or updates existing\
-        \ ones (matched by existing_product_id or id) inside a single DB transaction.\n\
-        \nRoute: v2.products.import.import\n\nRequired body field:\n- products: array\
-        \ (min 1) of validated product objects produced by the validate endpoint.\n\
-        \nSKU-8009 added the _image_urls field to each product object:\n- _image_urls:\
-        \ `array<{ url: string, is_primary: bool, sort_order: int, download: bool\
-        \ }>` | null\n  - When non-null and non-empty, the import calls CreateUpdateProductService::addImages()\
-        \ which REPLACES the product's existing images with the supplied set.\n  -\
-        \ When null or empty, existing product images are LEFT UNCHANGED (allowing\
-        \ partial column mapping without wiping image data).\n  - Exactly one entry\
-        \ should have is_primary=true (the validate endpoint guarantees this; if not,\
-        \ the first entry is auto-promoted).\n  - download=true causes the server\
-        \ to fetch and store the image bytes from the URL.\n\nResponse: 201 Created\
-        \ on success, 422 Unprocessable Entity on failure.\n\nSuccess shape: { created:\
-        \ [{id, sku, name}], updated: [{id, sku, name}], errors: [] }\nFailure shape:\
-        \ { message: \"Import failed: ...\" } (transaction is rolled back).\n\n**Stock\
-        \ UoM (added 2026-05-30):** `stock_uom_code` is now a supported field. Provide\
-        \ a value matching an existing UoM code (e.g. EACH, KG, BOX). On create, it\
-        \ sets the product's initial stock UoM; on update, it flips the stock UoM\
-        \ to the matching uom_id."
+      description: Imports run as a tracked job — a bulk import can exceed a ~100s
+        edge-proxy limit (Cloudflare 524), so the rows are processed off the request
+        cycle. Returns a tracked_job_log_id; progress and the created/updated/failed
+        counts surface in the job tray. The request body is the validated rows from
+        the import preview.
       requestBody:
         content:
           '*/*':
@@ -130729,10 +130726,21 @@ paths:
           type: string
         example: application/json
       responses:
-        '200':
-          description: Successful response
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5123
+                message: Import queued — track progress in the job tray.
       operationId: post-api-v2-products-import
   /api/v2/products/import-supplier-links/template:
     get:
@@ -130808,12 +130816,10 @@ paths:
       tags:
       - Products
       summary: Import Supplier Links
-      description: "Import validated supplier links to create/update supplier-product\
-        \ associations.\n\nAuthentication: Requires Bearer token.\n\nFields:\n- links\
-        \ (required, array, min 1): Supplier links to import\n  - product_id (required,\
-        \ integer): Product ID\n  - supplier_id (required, integer): Supplier ID\n\
-        \  - supplier_product_id (nullable, integer): Existing SupplierProduct ID\
-        \ to update"
+      description: Imports run as a tracked job — a bulk import can exceed a ~100s
+        edge-proxy limit (Cloudflare 524), so the rows are processed off the request
+        cycle. Returns a tracked_job_log_id; progress and the created/updated/failed
+        counts surface in the job tray.
       requestBody:
         content:
           '*/*':
@@ -130833,19 +130839,21 @@ paths:
           type: string
         example: application/json
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Accepted
           headers:
             Content-Type:
               schema:
                 type: string
                 example: application/json
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: "{\n  \"created\": 1,\n  \"updated\": 0,\n  \"failed\": 0\n\
-                }"
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5123
+                message: Import queued — track progress in the job tray.
       operationId: post-api-v2-products-import-supplier-links
   //{domain}/api/v2/products/import/fields:
     get:
@@ -130985,18 +130993,10 @@ paths:
       tags:
       - Products
       summary: Import Products
-      description: 'Execute the import — create products from validated data.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Fields:
-
-        - products (required, array, min 1): Validated product rows to import
-
-
-        **Requires permission:** `products.import`'
+      description: Imports run as a tracked job — a bulk import can exceed a ~100s
+        edge-proxy limit (Cloudflare 524), so the rows are processed off the request
+        cycle. Returns a tracked_job_log_id; progress and the created/updated/failed
+        counts surface in the job tray.
       requestBody:
         content:
           '*/*':
@@ -131021,32 +131021,21 @@ paths:
           type: string
         required: true
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Accepted
           headers:
             Content-Type:
               schema:
                 type: string
                 example: application/json
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: "{\n  \"created\": 1,\n  \"updated\": 0,\n  \"failed\": 0\n\
-                }"
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"message\": \"Import failed: Duplicate SKU detected.\"\
-                \n}"
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5123
+                message: Import queued — track progress in the job tray.
       operationId: post-domain-api-v2-products-import
   //{domain}/api/v2/products/import-supplier-links/template:
     get:
@@ -131133,12 +131122,10 @@ paths:
       tags:
       - Products
       summary: Import Supplier Links
-      description: "Import validated supplier links to create/update supplier-product\
-        \ associations.\n\nAuthentication: Requires Bearer token.\n\nFields:\n- links\
-        \ (required, array, min 1): Supplier links to import\n  - product_id (required,\
-        \ integer): Product ID\n  - supplier_id (required, integer): Supplier ID\n\
-        \  - supplier_product_id (nullable, integer): Existing SupplierProduct ID\
-        \ to update"
+      description: Imports run as a tracked job — a bulk import can exceed a ~100s
+        edge-proxy limit (Cloudflare 524), so the rows are processed off the request
+        cycle. Returns a tracked_job_log_id; progress and the created/updated/failed
+        counts surface in the job tray.
       requestBody:
         content:
           '*/*':
@@ -131163,19 +131150,21 @@ paths:
           type: string
         required: true
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Accepted
           headers:
             Content-Type:
               schema:
                 type: string
                 example: application/json
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: "{\n  \"created\": 1,\n  \"updated\": 0,\n  \"failed\": 0\n\
-                }"
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 5123
+                message: Import queued — track progress in the job tray.
       operationId: post-domain-api-v2-products-import-supplier-links
   /api/v2/products/list/export:
     get:
@@ -152202,83 +152191,234 @@ paths:
                     data: []
       operationId: patch-api-v2-pro-forma-products-productid-assumptions
   /api/reporting/landed-cost-breakdown:
-    get:
+    post:
       tags:
       - Landed Cost Breakdown
-      summary: Get Report with Multiple Filters
-      description: 'Get a filtered landed cost breakdown with multiple groupings.
+      summary: Generate Report with Multiple Filters
+      description: 'Dispatch a filtered, hierarchically-grouped report (brand > product)
+        restricted to a specific sales channel and warehouse. Returns a `tracked_job_log_id`;
+        fetch the payload from the result endpoint once the job completes.
 
 
-        This example shows:
-
-        - Hierarchical grouping (brand > product)
-
-        - Filtering by sales channel AND warehouse
-
-
-        Perfect for drilling down into specific segments of your business.'
+        Demonstrates hierarchical grouping combined with filtering — useful for drilling
+        into specific segments of the business.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                date_from: '2025-01-01'
+                date_to: '2025-12-31'
+                group_by:
+                - brand
+                - product
+                sales_channel_ids:
+                - 1
+                warehouse_ids:
+                - 1
       parameters:
       - name: Accept
         in: header
         schema:
           type: string
         example: application/json
-      - name: date_from
-        in: query
+      - name: Content-Type
+        in: header
         schema:
           type: string
-        description: Start date for the report
-        example: '2025-01-01'
-      - name: date_to
-        in: query
-        schema:
-          type: string
-        description: End date for the report
-        example: '2025-12-31'
-      - name: group_by[]
-        in: query
-        schema:
-          type: string
-        description: First grouping level
-        example: brand
-      - name: sales_channel_ids[]
-        in: query
-        schema:
-          type: integer
-        description: Filter to specific sales channel
-        example: '1'
-      - name: warehouse_ids[]
-        in: query
-        schema:
-          type: integer
-        description: Filter to specific warehouse
-        example: '1'
+        example: application/json
       responses:
         '200':
           description: Successful response
           content:
             application/json: {}
-      operationId: get-api-reporting-landed-cost-breakdown
+      operationId: post-api-reporting-landed-cost-breakdown
+  /api/reporting/landed-cost-breakdown/result/{trackedJobLog}:
+    get:
+      tags:
+      - Landed Cost Breakdown
+      summary: Get Generated Report Result
+      description: 'Fetch the generated landed cost breakdown payload for a completed
+        generation job. Call this once the tracked job (from the generate endpoint)
+        reaches `completed`.
+
+
+        **Response structure:**
+
+        - `group_by` — the grouping dimensions used.
+
+        - `date_range` — `{ from, to }` for the report.
+
+        - `categories` — the cost categories present in the report (`id`, `name`,
+        `is_system`).
+
+        - `groups` — hierarchical breakdown by the grouping dimensions, each with
+        `totals` and nested `children`.
+
+        - `grand_totals` — aggregate totals across all groups.
+
+
+        **Status codes:**
+
+        - `200` — payload returned.
+
+        - `403` — the authenticated user did not generate this report.
+
+        - `404` — the report is not ready yet (job still running) or the cached payload
+        has expired (~1 hour TTL). Regenerate.
+
+
+        **Authentication:** Requires a bearer token. Scoped to the user who generated
+        the report.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: trackedJobLog
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The tracked_job_log_id returned by the generate endpoint.
+        example: '4821'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Success Response
+                  value:
+                    group_by:
+                    - sales_channel
+                    date_range:
+                      from: '2025-01-01'
+                      to: '2025-12-31'
+                    categories:
+                    - id: 1
+                      name: Base Product Cost
+                      is_system: true
+                    - id: 2
+                      name: Freight
+                      is_system: true
+                    - id: 3
+                      name: Customs Duty
+                      is_system: true
+                    groups:
+                    - key: Amazon US
+                      totals:
+                        quantity_sold: 1250
+                        base_product: 45230
+                        freight: 8540.25
+                        customs_duty: 2150
+                        brokerage: 425
+                        insurance: 312.5
+                        handling: 625
+                        taxes: 4523
+                        other_costs: 180.75
+                        total_landed_cost: 61986.5
+                      children: []
+                    - key: Shopify
+                      totals:
+                        quantity_sold: 850
+                        base_product: 28750
+                        freight: 4250
+                        customs_duty: 0
+                        brokerage: 0
+                        insurance: 187.5
+                        handling: 425
+                        taxes: 2875
+                        other_costs: 95.25
+                        total_landed_cost: 36582.75
+                      children: []
+                    grand_totals:
+                      quantity_sold: 2100
+                      base_product: 73980
+                      freight: 12790.25
+                      customs_duty: 2150
+                      brokerage: 425
+                      insurance: 500
+                      handling: 1050
+                      taxes: 7398
+                      other_costs: 276
+                      total_landed_cost: 98569.25
+                example-1:
+                  summary: Hierarchical Grouping Response
+                  value:
+                    group_by:
+                    - sales_channel
+                    - brand
+                    date_range:
+                      from: '2025-01-01'
+                      to: '2025-12-31'
+                    categories:
+                    - id: 1
+                      name: Base Product Cost
+                      is_system: true
+                    - id: 2
+                      name: Freight
+                      is_system: true
+                    groups:
+                    - key: Amazon US
+                      totals:
+                        quantity_sold: 1250
+                        base_product: 45230
+                        freight: 8540.25
+                        total_landed_cost: 61986.5
+                      children:
+                      - key: Brand A
+                        totals:
+                          quantity_sold: 750
+                          base_product: 28000
+                          freight: 5200
+                          total_landed_cost: 38395
+                        children: []
+                      - key: Brand B
+                        totals:
+                          quantity_sold: 500
+                          base_product: 17230
+                          freight: 3340.25
+                          total_landed_cost: 23591.5
+                        children: []
+                    grand_totals:
+                      quantity_sold: 1250
+                      base_product: 45230
+                      freight: 8540.25
+                      total_landed_cost: 61986.5
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Report is not ready or has expired. Please regenerate.
+      operationId: get-api-reporting-landed-cost-breakdown-result-trackedjoblog
   /api/reporting/landed-cost-breakdown/export:
     get:
       tags:
       - Landed Cost Breakdown
       summary: Export with Multi-level Grouping
-      description: 'Export a detailed breakdown with multiple grouping levels.
-
-
-        CSV will include columns for each grouping dimension:
-
-        - Sales Channel
-
-        - Brand
-
-        - Product
-
-        - All cost breakdown columns
-
-
-        Perfect for detailed analysis in Excel with pivot tables.'
+      description: Export a detailed breakdown with multiple grouping levels as CSV.
+        The CSV includes a column for each grouping dimension (Sales Channel, Brand,
+        Product) followed by all cost breakdown columns. Ideal for pivot-table analysis
+        in a spreadsheet.
       parameters:
       - name: Accept
         in: header
@@ -177750,264 +177890,6 @@ paths:
                 type: string
               example: "{\n  \"message\": \"Import failed: Supplier not found\"\n}"
       operationId: post-domain-api-purchase-orders-import
-  /api/purchase-orders/build:
-    post:
-      tags:
-      - Purchase Orders
-      summary: Build PO (Forecast)
-      description: "Build a suggested purchase order based on sales history or other\
-        \ forecast types.\n\nAuthentication: Requires Bearer token.\n\nRequired fields:\n\
-        - supplier_id (required, exists:suppliers)\n- destination_warehouse_id (required\
-        \ unless forecast_type=sales_history, exists:warehouses)\n- forecast_type\
-        \ (required): in:sales_history,target_stock_level,backorder\n- options (required,\
-        \ array):\n  - quantity (required when forecast_type=target_stock_level, numeric,\
-        \ min:0)\n  - sales_start_date (required when forecast_type=sales_history,\
-        \ date, before:tomorrow)\n  - sales_end_date (required when forecast_type=sales_history,\
-        \ date, after_or_equal sales_start_date)\n  - target_stock_days (required\
-        \ when forecast_type=sales_history, integer, min:1)\n  - rounding_method (optional):\
-        \ none, ceil, floor, round\n  - use_leadtime (optional, boolean)\n  - use_moq\
-        \ (optional, boolean)\n  - product_filters (optional, array)\n  - sales_history_filters\
-        \ (optional, array)\n\nNote: Max 500 products per build request.\n\n**Requires\
-        \ permission:** `purchase_orders.create`"
-      requestBody:
-        content:
-          '*/*':
-            schema:
-              type: string
-              example: '"{\n  \"supplier_id\": 5,\n  \"destination_warehouse_id\":
-                2,\n  \"forecast_type\": \"sales_history\",\n  \"options\": {\n    \"sales_start_date\":
-                \"2023-10-01\",\n    \"sales_end_date\": \"2023-12-31\",\n    \"target_stock_days\":
-                60,\n    \"rounding_method\": \"ceil\",\n    \"use_leadtime\": true,\n    \"use_moq\":
-                true,\n    \"product_filters\": {},\n    \"sales_history_filters\":
-                {}\n  }\n}"'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"data\": [\n    {\n      \"product_id\": 10,\n     \
-                \ \"sku\": \"SKU-001\",\n      \"name\": \"Widget A\",\n      \"suggested_quantity\"\
-                : 300,\n      \"current_stock\": 50,\n      \"supplier_cost\": 15.00\n\
-                \    }\n  ]\n}"
-        '400':
-          description: Bad Request
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"errors\": [{\"message\": \"Purchase order involves\
-                \ 520 product(s) which exceeds the allowable limit of 500. Please\
-                \ filter down results.\", \"code\": \"unacceptable\", \"key\": \"\
-                PurchaseOrderBuilder\"}]\n}"
-      operationId: post-api-purchase-orders-build
-  /api/purchase-orders/build-export:
-    post:
-      tags:
-      - Purchase Orders
-      summary: Export Builder Results
-      description: 'Build a suggested purchase order and export the result as a CSV
-        file.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Same body as Build PO endpoint. Returns a download URL for the CSV file.
-
-
-        **Requires permission:** `purchase_orders.create`'
-      requestBody:
-        content:
-          '*/*':
-            schema:
-              type: string
-              example: '"{\n  \"supplier_id\": 5,\n  \"destination_warehouse_id\":
-                2,\n  \"forecast_type\": \"sales_history\",\n  \"options\": {\n    \"sales_start_date\":
-                \"2023-10-01\",\n    \"sales_end_date\": \"2023-12-31\",\n    \"target_stock_days\":
-                60\n  }\n}"'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"data\": \"https://sku2.test/export/download?file=po-builder-export-2024-01-15.csv\"\
-                \n}"
-      operationId: post-api-purchase-orders-build-export
-  //{domain}/api/purchase-orders/build:
-    post:
-      tags:
-      - Purchase Orders
-      summary: Build PO (Forecast)
-      description: "Build a suggested purchase order based on sales history or other\
-        \ forecast types.\n\nAuthentication: Requires Bearer token.\n\nRequired fields:\n\
-        - supplier_id (required, exists:suppliers)\n- destination_warehouse_id (required\
-        \ unless forecast_type=sales_history, exists:warehouses)\n- forecast_type\
-        \ (required): in:sales_history,target_stock_level,backorder\n- options (required,\
-        \ array):\n  - quantity (required when forecast_type=target_stock_level, numeric,\
-        \ min:0)\n  - sales_start_date (required when forecast_type=sales_history,\
-        \ date, before:tomorrow)\n  - sales_end_date (required when forecast_type=sales_history,\
-        \ date, after_or_equal sales_start_date)\n  - target_stock_days (required\
-        \ when forecast_type=sales_history, integer, min:1)\n  - rounding_method (optional):\
-        \ none, ceil, floor, round\n  - use_leadtime (optional, boolean)\n  - use_moq\
-        \ (optional, boolean)\n  - product_filters (optional, array)\n  - sales_history_filters\
-        \ (optional, array)\n\nNote: Max 500 products per build request.\n\n**Requires\
-        \ permission:** `purchase_orders.create`"
-      requestBody:
-        content:
-          '*/*':
-            schema:
-              type: string
-              example: '"{\n  \"supplier_id\": 5,\n  \"destination_warehouse_id\":
-                2,\n  \"forecast_type\": \"sales_history\",\n  \"options\": {\n    \"sales_start_date\":
-                \"2023-10-01\",\n    \"sales_end_date\": \"2023-12-31\",\n    \"target_stock_days\":
-                60,\n    \"rounding_method\": \"ceil\",\n    \"use_leadtime\": true,\n    \"use_moq\":
-                true,\n    \"product_filters\": {},\n    \"sales_history_filters\":
-                {}\n  }\n}"'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: domain
-        in: path
-        schema:
-          type: string
-        required: true
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"data\": [\n    {\n      \"product_id\": 10,\n     \
-                \ \"sku\": \"SKU-001\",\n      \"name\": \"Widget A\",\n      \"suggested_quantity\"\
-                : 300,\n      \"current_stock\": 50,\n      \"supplier_cost\": 15.00\n\
-                \    }\n  ]\n}"
-        '400':
-          description: Bad Request
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"errors\": [{\"message\": \"Purchase order involves\
-                \ 520 product(s) which exceeds the allowable limit of 500. Please\
-                \ filter down results.\", \"code\": \"unacceptable\", \"key\": \"\
-                PurchaseOrderBuilder\"}]\n}"
-      operationId: post-domain-api-purchase-orders-build
-  //{domain}/api/purchase-orders/build-export:
-    post:
-      tags:
-      - Purchase Orders
-      summary: Export Builder Results
-      description: 'Build a suggested purchase order and export the result as a CSV
-        file.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Same body as Build PO endpoint. Returns a download URL for the CSV file.
-
-
-        **Requires permission:** `purchase_orders.create`'
-      requestBody:
-        content:
-          '*/*':
-            schema:
-              type: string
-              example: '"{\n  \"supplier_id\": 5,\n  \"destination_warehouse_id\":
-                2,\n  \"forecast_type\": \"sales_history\",\n  \"options\": {\n    \"sales_start_date\":
-                \"2023-10-01\",\n    \"sales_end_date\": \"2023-12-31\",\n    \"target_stock_days\":
-                60\n  }\n}"'
-      parameters:
-      - name: Accept
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: Content-Type
-        in: header
-        schema:
-          type: string
-        example: application/json
-      - name: domain
-        in: path
-        schema:
-          type: string
-        required: true
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            text/plain:
-              schema:
-                type: string
-              example: "{\n  \"data\": \"https://sku2.test/export/download?file=po-builder-export-2024-01-15.csv\"\
-                \n}"
-      operationId: post-domain-api-purchase-orders-build-export
   /api/purchase-orders/{purchase_order}/asn:
     post:
       tags:
