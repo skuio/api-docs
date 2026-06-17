@@ -100864,49 +100864,23 @@ paths:
       tags:
       - Shipping Providers
       summary: Update Integration Instance
-      description: "Updates a ShipStation integration instance. All fields are optional\
-        \ — only the keys present in the request are changed; connection_settings\
-        \ and integration_settings are shallow-merged into the existing stored values.\n\
-        \nBody fields (all optional):\n- name (string): must remain unique across\
-        \ integration instances (current instance ignored)\n- integration_id (int):\
-        \ must exist in the integrations table\n- connection_settings (object): merged\
-        \ into existing settings — apiKey (string), apiSecret (string), timezone (string,\
-        \ IANA; defaults to America/Los_Angeles)\n- integration_settings (object):\
-        \ merged into existing settings\n  - integration_settings.connection_name\
-        \ (string)\n  - integration_settings.enable_fulfillment (boolean): enable\
-        \ pushing SKU fulfillments to ShipStation\n  - integration_settings.order_start_date\
-        \ (date string or null): earliest order date to sync; null clears it. When\
-        \ not set, syncs fall back to the Inventory Start Date, then a fixed 30-day\
-        \ window\n  - integration_settings.auto_submit_fulfillments (boolean): submit\
-        \ fulfillments automatically without manual review (default true)\n  - integration_settings.settings\
-        \ (object): legacy ShipStation options — productFieldToPass, gift_card_note_sales_order_custom_field_id,\
-        \ saturday_delivery_sales_order_custom_field_id, send_sales_order_tags_as_notes\n\
-        \  - integration_settings.fulfillment_cost_financial_line_type_id (int|string|null):\
-        \ financial line type used for fulfillment costs\n- is_automatic_sync_enabled\
-        \ (boolean): toggle the hourly scheduled syncs for this instance\n\nResponse:\
-        \ the full updated instance (same shape as Get Integration Instance).\n\n\
-        Authentication: Requires Bearer token."
+      description: "Update an existing ShipStation integration instance. All fields\
+        \ are optional. Requires Bearer token.\n\nRequest body fields:\n- name (optional,\
+        \ string)\n- connection_settings (optional, object): API credentials\n- integration_settings\
+        \ (optional, object). Includes:\n  - fulfillment_cost_financial_line_type_id\
+        \ (optional, int|null): COST financial line type used for ShipStation shipping\
+        \ cost lines. null = auto (default \"Shipping Cost\"). Must be a cost type\
+        \ or returns 422.\n- is_automatic_sync_enabled (optional, boolean)\n\nWhen\
+        \ the effective cost-line type changes, a reconcile tracked job is dispatched\
+        \ and the response includes reconcile_tracked_job_log_id."
       requestBody:
         content:
-          application/json:
+          '*/*':
             schema:
-              type: object
-              example:
-                name: ShipStation US
-                connection_settings:
-                  apiKey: ss_live_a1b2c3d4e5f6
-                  apiSecret: ss_secret_f6e5d4c3b2a1
-                  timezone: America/Los_Angeles
-                integration_settings:
-                  connection_name: ShipStation US
-                  enable_fulfillment: true
-                  order_start_date: '2026-01-01'
-                  auto_submit_fulfillments: true
-                  settings:
-                    productFieldToPass: sku
-                    send_sales_order_tags_as_notes: false
-                  fulfillment_cost_financial_line_type_id: 4
-                is_automatic_sync_enabled: true
+              type: string
+              example: '"{\n  \"name\": \"US ShipStation\",\n  \"integration_settings\":
+                {\n    \"fulfillment_cost_financial_line_type_id\": 29\n  },\n  \"is_automatic_sync_enabled\":
+                true\n}"'
       parameters:
       - name: Accept
         in: header
@@ -101328,6 +101302,71 @@ paths:
                 message: Connection test failed. Please verify your API Key and API
                   Secret.
       operationId: post-domain-api-shipstation-integration-instances-integration-instance-test-connection
+  //{domain}/api/shipstation/integration-instances/{integrationInstance}/cost-line-type/preview:
+    post:
+      tags:
+      - Shipping Providers
+      summary: Preview Cost Line Type Impact
+      description: 'Preview how many ShipStation cost financial lines and sales orders
+        would be touched if the fulfillment-cost financial line type changed to new_type_id.
+        Read-only. Requires Bearer token.
+
+
+        Request body:
+
+        - new_type_id (optional, int|null): Proposed cost financial line type id.
+        null = auto default. Must exist.
+
+
+        Drives the confirmation modal before saving the setting.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"new_type_id\": 29\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ShipStation integration instance ID
+        example: '6'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  rewire_lines: 12
+                  backfill_lines: 340
+                  sales_orders_impacted: 351
+                  is_noop: false
+      operationId: post-domain-api-shipstation-integration-instances-integrationinstance-cost-line-type-preview
   //{domain}/api/shipstation/integration-instances/{integration_instance}/fulfillment-routing:
     put:
       tags:
