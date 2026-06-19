@@ -89,9 +89,9 @@ tags:
 - name: Sales Channels
 - name: Store Email Templates
 - name: Sales Channel Product Templates
+- name: Sub Sales Channels
 - name: Sales Reps
 - name: Channel Partners
-- name: Sub Sales Channels
 - name: Report Builder (Metadata & Ad-Hoc Run)
 - name: Custom Reports (CRUD)
 - name: Run Saved Report
@@ -27603,37 +27603,53 @@ paths:
       tags:
       - Store Email Templates
       summary: Send Email
-      description: 'Sends a customized email for a record (manual send) to its customer/supplier.
+      description: 'Send an email to the customer (sales order) or supplier (purchase
+        order, vendor credit) using a store email template.
 
 
         Authentication: Requires Bearer token.
 
 
-        Fields:
+        Body fields:
 
         - order_type (required): SalesOrder | PurchaseOrder | VendorCredit
 
-        - order_id (required): the record ID
+        - order_id (required): ID of the record to email
 
-        - subject (required)
+        - subject (required): rendered subject line
 
-        - html_body (required)
+        - html_body (required): rendered HTML email body
 
-        - cc (optional): array of email addresses
+        - cc (optional): array of CC email addresses (null/blank entries are dropped)
 
-        - attachments (optional): array of document keys to attach, resolved via the
-        record''s attachable-document registry (e.g. po_pdf, po_csv, po_xlsx for PurchaseOrder;
-        invoice_pdf for SalesOrder; vendor_credit_pdf for VendorCredit). Unknown keys
-        are ignored; generation failures are skipped so the email still sends.'
+        - attachments (optional): array of document keys to attach (resolved per the
+        entity''s attachable-documents registry)
+
+        - store_id (optional): ID of the store whose email address is used as the
+        sender ("from"). When omitted, falls back to the record''s own store, then
+        the tenant''s default (oldest active) store.
+
+
+        Errors:
+
+        - 422 store_sender_missing: no store with a sender email address is configured.
+        The error payload includes errors.store[0].data.configure_route pointing to
+        where stores are managed.'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n  \"order_type\": \"PurchaseOrder\",\n  \"order_id\":
-                1042,\n  \"subject\": \"Order PO-1042\",\n  \"html_body\": \"<html><body><p>Please
-                find your order attached.</p></body></html>\",\n  \"cc\": [\n    \"buyer@example.com\"\n  ],\n  \"attachments\":
-                [\n    \"po_pdf\"\n  ]\n}"'
+              type: object
+              example:
+                order_type: VendorCredit
+                order_id: 11
+                subject: Message regarding vendor credit VC-00009
+                html_body: <html><body><p>Please find the credit attached.</p></body></html>
+                cc:
+                - buyer@example.com
+                attachments:
+                - vendor_credit_pdf
+                store_id: 1
       parameters:
       - name: Accept
         in: header
@@ -27686,6 +27702,21 @@ paths:
               example: "{\n  \"message\": \"The order type field is required.\",\n\
                 \  \"errors\": {\n    \"order_type\": [\"The order type field is required.\"\
                 ],\n    \"subject\": [\"The subject field is required.\"]\n  }\n}"
+            application/json:
+              schema:
+                type: object
+              example:
+                message: This email can't be sent because no store has a sender email
+                  address set up. Add an email address to a store, then choose it
+                  as the sender and try again.
+                errors:
+                  store:
+                  - message: This email can't be sent because no store has a sender
+                      email address set up. Add an email address to a store, then
+                      choose it as the sender and try again.
+                    code: store_sender_missing
+                    data:
+                      configure_route: /settings/general/stores
       operationId: post-api-store-email-templates-send
   /api/sales-channel-product-templates:
     get:
@@ -27902,6 +27933,161 @@ paths:
               example:
                 data: null
       operationId: delete-api-sales-channel-product-templates-sales-channel-product-template
+  //{domain}/api/sub-sales-channels:
+    get:
+      tags:
+      - Sub Sales Channels
+      summary: List Sub Sales Channels
+      description: 'Returns a paginated list of sub sales channels. Each row carries
+        its classified `source_type` (online, point_of_sale, marketplace, draft, other),
+        a human `source_type_label`, an `is_point_of_sale` convenience flag, and `source_type_locked`
+        (true once an operator has manually reclassified it). Authenticate with a
+        Personal Access Token.
+
+
+        Allowed sorts: id, name, created_at, updated_at.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 12
+                  sales_channel_id: 3
+                  name: POS
+                  external_identifier: pos
+                  source_type: point_of_sale
+                  source_type_label: Point of Sale
+                  source_type_locked: false
+                  is_point_of_sale: true
+                  sales_nominal_code_id: null
+                  cogs_nominal_code_id: null
+                  shipping_revenue_nominal_code_id: null
+                  shipping_refund_nominal_code_id: null
+                  sales_returns_allowances_nominal_code_id: null
+                  created_at: '2026-06-17T09:15:00.000000Z'
+                  updated_at: '2026-06-17T09:15:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+                from: 1
+                to: 1
+                path: '{{protocol}}{{domain}}/api/sub-sales-channels'
+      operationId: get-domain-api-sub-sales-channels
+  //{domain}/api/sub-sales-channels/{subSalesChannel}/source-type:
+    patch:
+      tags:
+      - Sub Sales Channels
+      summary: Reclassify Source Type
+      description: 'Manually reclassify a sub sales channel''s source type (e.g. mark
+        an in-store source as Point of Sale). Sets `source_type_locked = true` so
+        future integration syncs never revert the operator''s choice.
+
+
+        Request body:
+
+        - `source_type` (required) — one of: online, point_of_sale, marketplace, draft,
+        other.
+
+
+        Returns the updated sub sales channel.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                source_type: point_of_sale
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: subSalesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sub sales channel ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  sales_channel_id: 3
+                  name: POS
+                  external_identifier: pos
+                  source_type: point_of_sale
+                  source_type_label: Point of Sale
+                  source_type_locked: true
+                  is_point_of_sale: true
+                  sales_nominal_code_id: null
+                  cogs_nominal_code_id: null
+                  shipping_revenue_nominal_code_id: null
+                  shipping_refund_nominal_code_id: null
+                  sales_returns_allowances_nominal_code_id: null
+                  created_at: '2026-06-17T09:15:00.000000Z'
+                  updated_at: '2026-06-17T09:15:00.000000Z'
+                message: Sub Sales Channel POS updated successfully.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The selected source type is invalid.
+                errors:
+                  source_type:
+                  - The selected source type is invalid.
+      operationId: patch-domain-api-sub-sales-channels-subsaleschannel-source-type
   /api/customers:
     get:
       tags:
@@ -200487,9 +200673,9 @@ x-tagGroups:
   - Webhook Configuration
   - Webhook Events
   - Inbound Webhooks (BigCommerce -> SKU.io)
+  - Sub Sales Channels
   - Sales Reps
   - Channel Partners
-  - Sub Sales Channels
   - Report Builder (Metadata & Ad-Hoc Run)
   - Custom Reports (CRUD)
   - Run Saved Report
