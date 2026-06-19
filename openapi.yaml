@@ -187217,6 +187217,7 @@ paths:
                   status: open
                   request_status: unsubmitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -187256,6 +187257,7 @@ paths:
                   status: open
                   request_status: rejected
                   is_stuck_submitting: false
+                  is_pickup: false
                   rejection_reason: Invalid postal code for service
                   created_at: '2026-05-31T10:20:00+00:00'
                   updated_at: '2026-05-31T10:21:00+00:00'
@@ -187627,6 +187629,7 @@ paths:
                   status: open
                   request_status: unsubmitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -187741,6 +187744,7 @@ paths:
                   status: open
                   request_status: unsubmitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -187848,6 +187852,7 @@ paths:
                   status: open
                   request_status: rejected
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -187973,6 +187978,7 @@ paths:
                   status: open
                   request_status: unsubmitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -188172,8 +188178,24 @@ paths:
         Omit/null to auto-assign the next sequence at submit. The current default
         is exposed on the FulfillmentOrderResource as `next_fulfillment_sequence`.
 
+        - `requested_integration_instance_id` (nullable, integer, must exist in `integration_instances`
+        AND be a SHIPPING_PROVIDER instance) — per-FO shipping-provider override;
+        null = use the warehouse default.
 
-        Returns the updated FulfillmentOrderResource (which includes `next_fulfillment_sequence`).'
+        - `requested_fulfillment_type` (nullable, string, in: `manual`) — per-FO "force
+        Manual" override.
+
+
+        **Click & Collect (pickup) lock.** When the order''s effective shipping method
+        is a pickup method (`is_pickup`), it is collected in person and is never dispatched
+        — so a `requested_integration_instance_id` (carrier) or `requested_fulfillment_type=manual`
+        override is **rejected with 422**. The lock is keyed on the RESULTING method:
+        passing a non-pickup `requested_shipping_method_id` in the SAME request releases
+        the lock (the resource then reports `is_pickup=false`).
+
+
+        Returns the updated FulfillmentOrderResource (which includes `next_fulfillment_sequence`
+        and `is_pickup`).'
       requestBody:
         content:
           '*/*':
@@ -188225,6 +188247,7 @@ paths:
                   status: open
                   request_status: unsubmitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -188278,11 +188301,25 @@ paths:
             application/json:
               schema:
                 type: object
-              example:
-                message: The selected requested shipping method id is invalid.
-                errors:
-                  requested_shipping_method_id:
-                  - The selected requested shipping method id is invalid.
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The selected requested shipping method id is invalid.
+                    errors:
+                      requested_shipping_method_id:
+                      - The selected requested shipping method id is invalid.
+                example-1:
+                  summary: 422 Click & Collect Lock
+                  value:
+                    message: This is a Click & Collect (pickup) order and cannot be
+                      fulfilled manually. Change the shipping method to a delivery
+                      method first.
+                    errors:
+                      requested_fulfillment_type:
+                      - This is a Click & Collect (pickup) order and cannot be fulfilled
+                        manually. Change the shipping method to a delivery method
+                        first.
       operationId: patch-api-fulfillment-orders-fulfillmentorder-shipping
   /api/fulfillment-orders/{fulfillmentOrder}/record-shipment:
     post:
@@ -188376,6 +188413,7 @@ paths:
                   status_label: Partially shipped
                   request_status: submitted
                   is_stuck_submitting: false
+                  is_pickup: false
                   requested_shipping_method: UPS Ground
                   requested_shipping_method_id: 12
                   requested_ship_date: null
@@ -188488,6 +188526,7 @@ paths:
                   request_status: unsubmitted
                   status_label: Open
                   is_stuck_submitting: false
+                  is_pickup: false
                   external_id: null
                   external_type: null
                   integration_instance_id: null
@@ -188602,6 +188641,17 @@ paths:
         lets an operator override it per FO. ANY configured shipping provider is selectable
         AND submittable — `is_mapped` merely reflects whether an explicit ShippingProviderWarehouse
         mapping exists and never gates submission (the mapping only informs the default).
+
+
+        **Click & Collect (pickup) lock.** When the FO''s effective shipping method
+        is a pickup method, the response collapses to a single locked option (`default_fulfillment_type
+        = pickup`, one option named "Pickup (Click & Collect)") — a pickup order is
+        collected in person and is never dispatched to a carrier. Pass `shipping_method_id`
+        to preview the options against a not-yet-saved method so the lock engages/releases
+        live.
+
+
+        **Optional query param:** `shipping_method_id` — see above.
 
 
         Authenticate with a Personal Access Token.'
