@@ -166000,6 +166000,225 @@ paths:
                   code: DeleteShippingProviderOrder422
                   field: id
       operationId: delete-api-sales-order-fulfillments-salesorderfulfillment
+    put:
+      tags:
+      - Fulfillments
+      summary: Fulfill / Update Shipment (with optional lot allocation)
+      description: 'Create or update a shipment (fulfillment) for a sales order. Uses
+        FulfillSalesOrderRequest. Authenticate with a Bearer Personal Access Token.\n\nPUT
+        updates the bound fulfillment; the same body shape is used when creating via
+        POST /api/sales-orders/{salesOrder}/fulfillments.\n\nBody fields:\n- fulfillment_type
+        (required): one of the SalesOrderFulfillment::TYPES (e.g. manual, fba, pickup).\n-
+        warehouse_id (nullable on PUT; required on POST when the order spans multiple
+        warehouses — auto-selected when single).\n- requested_shipping_method_id /
+        requested_shipping_method (nullable).\n- fulfilled_shipping_method_id / manual_fulfilled_shipping_method
+        (nullable — for manual fulfillment).\n- fulfilled_at (required when fulfillment_type=manual;
+        date).\n- cost (nullable, numeric < 100000).\n- tracking_number (nullable,
+        max 255).\n- fulfillment_sequence (nullable, integer, unique per sales order).\n-
+        fulfillment_lines (array, min 1): each line has\n    - sales_order_line_id
+        (required, exists)\n    - quantity (required, numeric, 0..<100000)\n    -
+        id (PUT only — required_without sales_order_line_id; the SOFL id)\n    - metadata.fba_seller_sku
+        (optional string)\n    - lot_allocation (optional, array): user-chosen lot
+        allocation (FEFO override) for a lot-tracked product. Each entry { fifo_layer_id
+        (exists), quantity (>0) }. The entries MUST sum to the line''s quantity, reference
+        active FIFO layers of the line''s product + warehouse with enough available
+        quantity, and respect the tenant lot override policy (under ''enforce'', consuming
+        expired stock or a later-expiry lot for FEFO products is rejected). Omit it
+        to consume by automatic FEFO/FIFO.\n- metadata.* (optional shipment-level
+        flags: signature_required, saturday_delivery, shipping_speed, comments, veracore_*).\n-
+        submit_to_shipping_provider / submit_to_sales_channel (optional bool).\n\nPer-line
+        422 lot validation errors are keyed fulfillment_lines.{index}.lot_allocation
+        and fulfillment_lines.{index}.lot_allocation.{i}.{field}.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                fulfillment_type: manual
+                warehouse_id: 7
+                requested_shipping_method_id: 12
+                fulfilled_shipping_method_id: 12
+                manual_fulfilled_shipping_method: UPS Ground
+                fulfilled_at: '2026-06-20 14:30:00'
+                cost: 8.5
+                tracking_number: 1Z999AA10123456784
+                fulfillment_sequence: 1
+                fulfillment_lines:
+                - sales_order_line_id: 55347
+                  quantity: 3
+                  metadata:
+                    fba_seller_sku: WIDGET-LOT-001
+                  lot_allocation:
+                  - fifo_layer_id: 90211
+                    quantity: 2
+                  - fifo_layer_id: 90217
+                    quantity: 1
+                - sales_order_line_id: 55348
+                  quantity: 1
+                metadata:
+                  signature_required: true
+                  saturday_delivery: false
+                  shipping_speed: standard
+                  comments: Leave at front door
+                submit_to_shipping_provider: true
+                submit_to_sales_channel: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderFulfillment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order fulfillment (shipment) id
+        example: '7781'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 7781
+                  fulfillment_number: SO-1042.1
+                  sales_order_id: 1042
+                  fulfillment_order_id: 451
+                  fulfillment_type: manual
+                  fulfillment_status: fulfilled
+                  shipping_method_id: 12
+                  requested_shipping_method: null
+                  requested_shipping_method_id: 12
+                  fulfilled_shipping_method: UPS Ground
+                  fulfilled_shipping_method_id: 12
+                  fulfilled_date: '2026-06-20T14:30:00+00:00'
+                  tracking_number: 1Z999AA10123456784
+                  tracking_url: null
+                  tracking_link: null
+                  warehouse:
+                    id: 7
+                    name: Main Warehouse
+                    type: standard
+                    supplier_id: null
+                    is_dropship: false
+                  warehouse_id: 7
+                  fulfilled_by:
+                    id: 3
+                    name: Warehouse Operator
+                  fulfilled_quantity: 4
+                  fulfillment_lines:
+                  - id: 99001
+                    sales_order_line_id: 55347
+                    sales_order_fulfillment_id: 7781
+                    quantity: 3
+                    unit_cost: 5
+                    metadata:
+                      lot_allocation:
+                      - fifo_layer_id: 90211
+                        quantity: 2
+                      - fifo_layer_id: 90217
+                        quantity: 1
+                    item_inventory: {}
+                    sales_order_line:
+                      id: 55347
+                      product_id: 8842
+                      quantity: 3
+                      amount: 19.99
+                      description: Lot-Tracked Widget
+                      warehouse_id: 7
+                      product:
+                        id: 8842
+                        sku: WIDGET-LOT-001
+                        name: Lot-Tracked Widget
+                        weight: 0.5
+                        weight_unit: kg
+                        height: null
+                        width: null
+                        length: null
+                        dimension_unit: null
+                        is_lot_tracked: true
+                        lot_tracking_method: fefo
+                        shelf_life_days: 365
+                        near_expiry_threshold_days: 30
+                        min_remaining_shelf_life_days: 60
+                  - id: 99002
+                    sales_order_line_id: 55348
+                    sales_order_fulfillment_id: 7781
+                    quantity: 1
+                    unit_cost: 3
+                    metadata: null
+                    item_inventory: {}
+                    sales_order_line:
+                      id: 55348
+                      product_id: 8843
+                      quantity: 1
+                      amount: 9.99
+                      description: Standard Gadget
+                      warehouse_id: 7
+                      product:
+                        id: 8843
+                        sku: GADGET-200
+                        name: Standard Gadget
+                        weight: 0.2
+                        weight_unit: kg
+                        height: null
+                        width: null
+                        length: null
+                        dimension_unit: null
+                        is_lot_tracked: false
+                        lot_tracking_method: null
+                        shelf_life_days: null
+                        near_expiry_threshold_days: null
+                        min_remaining_shelf_life_days: null
+                  cost: 8.5
+                  status: fulfilled
+                  voided_at: null
+                  void_reason: null
+                  voided_by: null
+                  fulfilled_at: '2026-06-20T14:30:00+00:00'
+                  fulfillment_sequence: 1
+                  is_parent: false
+                  parent_id: null
+                  created_at: '2026-06-20T14:30:00+00:00'
+                  provider_order_id: null
+                  metadata:
+                    signature_required: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                errors:
+                  fulfillment_lines.0.lot_allocation:
+                  - The lot allocation must sum to the quantity (3).
+                  fulfillment_lines.0.lot_allocation.1.fifo_layer_id:
+                  - Your lot policy requires consuming the earliest-expiry lot first
+                    (FEFO).
+                  fulfillment_lines.0.lot_allocation.0.quantity:
+                  - Cannot allocate more than the lot's available quantity (2).
+      operationId: put-api-sales-order-fulfillments-salesorderfulfillment
   /api/sales-order-fulfillments:
     delete:
       tags:
@@ -192844,18 +193063,30 @@ paths:
       tags:
       - Fulfillment Orders
       summary: Move Fulfillment Order to Different Warehouse
-      description: 'Pre-submit warehouse re-route. Updates the FO''s `warehouse_id`
-        only.
+      description: 'Pre-submit warehouse re-route. Relocates the WHOLE fulfillment
+        order to a new warehouse: every line on the FO has its sales-order-line warehouse
+        moved and its committed stock re-allocated at the target, and the FO itself
+        is re-pointed there (the shipping provider follows the warehouse). It is the
+        FO-level equivalent of moving each line individually. To move a single line
+        instead, use the per-line move on the sales order.
 
 
-        **Mutability gate.** This action is allowed ONLY when the FO is `status=open`
-        AND `request_status=unsubmitted`. Once we hand the FO off to a provider (anything
-        beyond unsubmitted) the warehouse decision is frozen. Violations return 409.
+        **Mutability gate.** Allowed ONLY when the FO is `status=open` AND `request_status=unsubmitted`.
+        Once the FO is handed to a provider (anything beyond unsubmitted) the warehouse
+        decision is frozen — returns 409.
+
+
+        **Stock gate.** The target warehouse must have enough on-hand stock to fulfill
+        every line; otherwise the order would backorder there with nothing to ship
+        — returns 409 and the move is rolled back (the FO is left untouched at its
+        original warehouse).
 
 
         **Body fields:**
 
-        - `warehouse_id` (required, integer, must exist) — new destination warehouse.'
+        - `warehouse_id` (required, integer, must exist) — new destination warehouse.
+
+        - `reason` (optional, string) — free-text note for the audit trail.'
       requestBody:
         content:
           '*/*':
@@ -192932,10 +193163,21 @@ paths:
             application/json:
               schema:
                 type: object
-              example:
-                error: 'Cannot move fulfillment_order 451: warehouse is locked once
-                  status=in_progress or request_status has left unsubmitted (currently
-                  status=in_progress, request_status=submitted).'
+              examples:
+                example-0:
+                  summary: 409 Not Mutable
+                  value:
+                    error: 'Cannot move fulfillment_order 451: warehouse is locked
+                      once status=in_progress or request_status has left unsubmitted
+                      (currently status=in_progress, request_status=submitted).'
+                example-1:
+                  summary: 409 Insufficient Stock
+                  value:
+                    error: 'FulfillmentOrder #451 cannot be moved to warehouse #9:
+                      that warehouse does not have enough on-hand stock to fulfill
+                      this order, so the order would backorder there with nothing
+                      to ship. Restock the target warehouse, or move to one that has
+                      stock.'
       operationId: patch-api-fulfillment-orders-fulfillmentorder-move
   /api/fulfillment-orders/{fulfillmentOrder}/submit:
     post:
