@@ -6,7 +6,7 @@ tags: [major-feature, new, fulfillment, integrations, inventory]
 date: 2026-06-22
 ---
 
-Sending an FBA replenishment through a 3PL or supplier has always meant a scramble of emails — FNSKU labels in one attachment, box-content rules in another, prep instructions pasted into a note, and a separate back-and-forth just to confirm anything actually shipped. **FBA Inbound for 3PLs & Suppliers** replaces all of that with one clean handoff. When an inbound plan is sourced from a 3PL warehouse or a supplier, SKU.io packages everything the recipient needs into a single branded portal and emails them the link. And when a line is a **kit your 3PL still has to assemble**, SKU.io spells out exactly what to build and reserves the components so you can't oversell them.
+Sending an FBA replenishment through a 3PL or supplier has always meant a scramble of emails — FNSKU labels in one attachment, box-content rules in another, prep instructions pasted into a note, and a separate back-and-forth just to confirm anything actually shipped. **FBA Inbound for 3PLs & Suppliers** replaces all of that with one clean handoff. When an inbound plan is sourced from a 3PL warehouse or a supplier, SKU.io packages everything the recipient needs into a single branded portal and emails them the link. And when a line is a **kit your 3PL still has to assemble**, SKU.io spells out exactly what to build and allocates the components so you can't oversell them.
 
 <!-- truncate -->
 
@@ -14,7 +14,7 @@ Sending an FBA replenishment through a 3PL or supplier has always meant a scramb
 
 - **One secure link instead of a pile of attachments.** Your 3PL or supplier gets a single portal with everything for the shipment — no more chasing labels and instructions across email threads.
 - **Documents show up as they're ready.** FNSKU labels, prep instructions, box-content and pallet forms, and the Bill of Lading appear in the portal automatically the moment you generate them.
-- **Kits that must be built are unmistakable.** The portal tells the 3PL exactly which kits to assemble and from which components — and SKU.io reserves the component stock so it can't be sold out from under the build.
+- **Kits that must be built are unmistakable.** The portal tells the 3PL exactly which kits to assemble and from which components — and SKU.io allocates the component stock so it can't be sold out from under the build.
 - **A real confirmation comes back.** The recipient confirms the shipment is ready to ship, and that status flows straight back to you — no guessing whether it went out.
 
 ## Set it up from the inbound plan
@@ -33,7 +33,7 @@ The link opens a clean, focused portal — no SKU.io login required. The recipie
 
 ## Kits your 3PL builds — handled
 
-If a kit isn't already assembled at the 3PL, it has to be built before it can ship to Amazon. SKU.io now handles that end to end. When you choose to source a kit from its components, SKU.io **reserves the components** the moment the plan is verified — so they can't be oversold while the inbound is in flight — and the portal shows the 3PL a clear **Build Kits First** checklist: how many to build and exactly which components go into each one. When the 3PL marks the kits as built, SKU.io converts the reserved components into finished kit stock automatically. If the kit is already in stock at the 3PL, it simply ships as-is — no extra steps.
+If a kit isn't already assembled at the 3PL, it has to be built before it can ship to Amazon. SKU.io now handles that end to end. When you choose to source a kit from its components, SKU.io **allocates the components** the moment the plan is verified — so they can't be oversold while the inbound is in flight — and the portal shows the 3PL a clear **Build Kits First** checklist: how many to build and exactly which components go into each one. When the 3PL marks the kits as built, SKU.io converts the allocated components into finished kit stock automatically. If the kit is already in stock at the 3PL, it simply ships as-is — no extra steps.
 
 ## Where to find it
 
