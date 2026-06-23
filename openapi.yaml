@@ -172,6 +172,7 @@ tags:
 - name: Payments & Refunds
 - name: Applications
 - name: Returns
+- name: WFS
 - name: Event Catalog
 - name: Reports
 - name: Refunds
@@ -201896,6 +201897,956 @@ paths:
           content:
             application/json: {}
       operationId: get-api-walmart-1-returns
+  /api/walmart/{integrationInstance}/returns/refresh-tracked:
+    post:
+      tags:
+      - Returns
+      summary: Refresh Returns
+      description: Queue a tracked job that pulls the latest returns from the Walmart
+        Marketplace Returns API (seller- and WFS-fulfilled). Read-only against Walmart.
+        Track progress via the returned tracked_job_log_id in the global job tray.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 1234\n  },\n\
+                \  \"message\": \"Walmart returns refresh started\"\n}"
+      operationId: post-api-walmart-integrationinstance-returns-refresh-tracked
+  /api/walmart/1/wfs/settings:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Settings
+      description: Get the WFS settings (enabled flag, sync cadence, default source
+        warehouse, MCF flag, MCF order channel id) for an integration instance, plus
+        the per-instance `webhook_url` the seller registers with Walmart so WFS inbound/inventory/return
+        status changes are pushed in real time. Returns defaults when WFS is not yet
+        configured. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  enabled: true
+                  default_source_warehouse_id: null
+                  mcf_enabled: false
+                  mcf_order_channel_id: null
+                webhook_url: https://app.sku.io/webhooks/walmart/wh_aB3xY7zKqLmN0pQrStUvWxYz12345678
+      operationId: get-api-walmart-1-wfs-settings
+    put:
+      tags:
+      - WFS
+      summary: Update WFS Settings
+      description: 'Update WFS settings. Toggling `enabled` creates (true) or archives
+        (false) the dedicated WFS warehouse. Disabling while the WFS warehouse holds
+        stock or inbound shipments are in flight returns 409 requires_confirmation;
+        resend with `force: true` to proceed. Requires a Bearer token.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"enabled\": false,\n  \"force\": true\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  enabled: true
+                  default_source_warehouse_id: null
+                  mcf_enabled: false
+                  mcf_order_channel_id: null
+                message: WFS settings saved
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: There are 2 open WFS inbound shipment(s) in flight. Confirm
+                  to proceed.
+                requires_confirmation: true
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The WFS inventory sync interval must be at least 5 minutes.
+                errors: {}
+      operationId: put-api-walmart-1-wfs-settings
+  /api/walmart/1/wfs/inventory:
+    get:
+      tags:
+      - WFS
+      summary: List WFS Inventory
+      description: Paginated WFS inventory snapshot for a Walmart integration instance.
+        Quantities are pulled from Walmart per SKU + ship node and are read-only (Walmart
+        owns the stock). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 41
+                  sku: ABC-001
+                  product_id: 1
+                  ship_node: '10002506668'
+                  available_quantity: 320
+                  reserved_quantity: 12
+                  inbound_quantity: 100
+                  unfulfillable_quantity: 2
+                  total_quantity: 320
+                  last_synced_at: '2026-06-17T14:32:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+      operationId: get-api-walmart-1-wfs-inventory
+  /api/walmart/1/wfs/inventory/refresh-tracked:
+    post:
+      tags:
+      - WFS
+      summary: Refresh WFS Inventory
+      description: Queue a tracked job that re-syncs WFS inventory from Walmart for
+        every WFS SKU (listings flagged WFS plus SKUs with existing WFS snapshots).
+        Returns the tracked job log id. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 12346
+                message: WFS inventory refresh started
+      operationId: post-api-walmart-1-wfs-inventory-refresh-tracked
+  /api/walmart/1/wfs/inbound-shipments:
+    get:
+      tags:
+      - WFS
+      summary: List WFS Inbound Shipments
+      description: Paginated WFS inbound shipments (stock sent to Walmart fulfillment
+        centers) for a Walmart integration instance. `has_shortage` is true when received_units
+        < shipment_units on a terminal shipment. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 7
+                  inbound_order_id: WMTIO-99201
+                  shipment_id: 0066618GDM
+                  status: RECEIVING
+                  ship_node: NJ3
+                  shipment_units: 480
+                  received_units: 300
+                  has_shortage: false
+                  expected_delivery_date: '2026-06-22'
+                  updated_expected_delivery_date: null
+                  carrier_name: WFS-FEDEX
+                  tracking_numbers:
+                  - '787439195645'
+                  walmart_created_at: '2026-06-10T19:02:30.000000Z'
+                  created_at: '2026-06-10T19:05:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+      operationId: get-api-walmart-1-wfs-inbound-shipments
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments:
+    post:
+      tags:
+      - WFS
+      summary: Create WFS Inbound Shipment
+      description: 'Create a WFS inbound shipment from SKU.io — send the chosen SKUs/quantities
+        into Walmart Fulfillment Services from a **warehouse OR a supplier** (exactly
+        one). SKU.io enriches each SKU with the GTIN/UPC + description Walmart requires,
+        generates a unique inboundOrderId, builds Walmart''s Create-Inbound-Shipment-Order
+        payload (returnAddress from the chosen warehouse''s or supplier''s address
+        + orderItems), POSTs it to Walmart (POST /v3/fulfillment/inbound-shipments),
+        and persists the shipment(s) Walmart returns — Walmart may split one inbound
+        order across fulfillment centers, so `data` is an array. Typically driven
+        from the WFS Replenishment grid''s cart ("Send to WFS").
+
+
+        Request body:
+
+        - source_warehouse_id (integer) — the warehouse the stock ships from. Required
+        unless source_supplier_id is given.
+
+        - source_supplier_id (integer) — the supplier the stock ships from (drop-ship
+        into WFS). Required unless source_warehouse_id is given. Send exactly one
+        of the two.
+
+        - items (required, array, min 1) — each: { sku (required string), quantity
+        (required integer >= 1) }.
+
+
+        Each SKU must have a GTIN/UPC; a SKU without one is rejected (422) before
+        any call to Walmart. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                source_warehouse_id: 12
+                items:
+                - sku: ABC-001
+                  quantity: 20
+                - sku: ABC-002
+                  quantity: 10
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 42
+                  inbound_order_id: IO-NEW-1
+                  shipment_id: 0066618GDM
+                  status: CREATED
+                  ship_node: NJ3
+                  shipment_units: 30
+                  received_units: 0
+                  has_shortage: false
+                  expected_delivery_date: null
+                  updated_expected_delivery_date: null
+                  carrier_name: WFS-FEDEX
+                  tracking_numbers: null
+                  walmart_created_at: '2026-06-18T19:02:30.000000Z'
+                  created_at: '2026-06-18T19:05:00.000000Z'
+                message: WFS inbound shipment created
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: Choose where this stock ships from — a warehouse or a
+                      supplier.
+                    errors:
+                      source_warehouse_id:
+                      - Choose where this stock ships from — a warehouse or a supplier.
+                      items:
+                      - Add at least one product to send to WFS.
+                example-1:
+                  summary: 422 Walmart Rejected
+                  value:
+                    message: 'Failed to create WFS inbound shipment: SKU ABC-009 is
+                      missing a GTIN/UPC, which Walmart requires to create a WFS inbound
+                      shipment.'
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments
+  /api/walmart/1/wfs/inbound-shipments/7:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Shipment
+      description: Fetch a single WFS inbound shipment by id, scoped to the integration
+        instance (404 if it belongs to another instance). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 7
+                  inbound_order_id: WMTIO-99201
+                  shipment_id: 0066618GDM
+                  status: RECEIVED
+                  ship_node: NJ3
+                  shipment_units: 200
+                  received_units: 198
+                  has_shortage: true
+                  expected_delivery_date: '2026-06-20'
+                  carrier_name: WFS-FEDEX
+                  tracking_numbers:
+                  - '787439195645'
+                  created_at: '2026-06-10T19:05:00.000000Z'
+      operationId: get-api-walmart-1-wfs-inbound-shipments-7
+  /api/walmart/1/wfs/inbound-shipments/refresh-tracked:
+    post:
+      tags:
+      - WFS
+      summary: Refresh WFS Inbound Shipments
+      description: Queue a tracked job that pulls WFS inbound shipments from Walmart
+        (all pages) and upserts them. Returns the tracked job log id for the global
+        job progress tray. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 12345
+                message: WFS inbound shipment refresh started
+      operationId: post-api-walmart-1-wfs-inbound-shipments-refresh-tracked
+  /api/walmart/1/wfs/replenishment/settings:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Replenishment Settings
+      description: Instance-default WFS replenishment tunables (target days of supply,
+        buffer, lead time, case pack, velocity window). Returns defaults when not
+        configured. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  target_days_of_supply: 30
+                  buffer_days: 7
+                  lead_time_days: 14
+                  case_pack_qty: 1
+                  velocity_window_days: 30
+                  candidate_min_units: 30
+      operationId: get-api-walmart-1-wfs-replenishment-settings
+    put:
+      tags:
+      - WFS
+      summary: Update WFS Replenishment Settings
+      description: Update instance-default replenishment tunables. All fields required;
+        target_days_of_supply 1-365, buffer 0-180, lead_time 0-365, case_pack >=1,
+        velocity_window 7-365. Requires a Bearer token.
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"target_days_of_supply\": 45,\n  \"buffer_days\": 10,\n  \"lead_time_days\":
+                21,\n  \"case_pack_qty\": 24,\n  \"velocity_window_days\": 60\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  target_days_of_supply: 30
+                  buffer_days: 7
+                  lead_time_days: 14
+                  case_pack_qty: 1
+                  velocity_window_days: 30
+                  candidate_min_units: 30
+      operationId: put-api-walmart-1-wfs-replenishment-settings
+  /api/walmart/1/wfs/replenishment:
+    get:
+      tags:
+      - WFS
+      summary: WFS Replenishment Grid
+      description: 'Replenishment grid as a full-featured, server-side datatable:
+        one row per WFS SKU with its WFS position (available/inbound summed across
+        ship nodes), demand velocity (units/day from matched-product sales over the
+        velocity window), and the suggested quantity to send (velocity x coverage
+        horizon - net WFS position, case-pack rounded). Supports search, advanced
+        filter_groups, sorting, and pagination — all applied server-side over the
+        computed columns. Returns a Laravel LengthAwarePaginator. Requires a Bearer
+        token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: WFS-ABC-001
+                  product_id: 1
+                  wfs_available: 10
+                  wfs_inbound: 0
+                  velocity_per_day: 2
+                  target_days_of_supply: 30
+                  suggested_quantity: 92
+                current_page: 1
+                last_page: 1
+                per_page: 25
+                total: 1
+                from: 1
+                to: 1
+                first_page_url: '{{base_url}}/api/walmart/1/wfs/replenishment?page=1'
+                last_page_url: '{{base_url}}/api/walmart/1/wfs/replenishment?page=1'
+                next_page_url: null
+                prev_page_url: null
+                path: '{{base_url}}/api/walmart/1/wfs/replenishment'
+      operationId: get-api-walmart-1-wfs-replenishment
+  /api/walmart/{integrationInstance}/wfs/replenishment/candidates:
+    get:
+      tags:
+      - WFS
+      summary: WFS Candidate Grid
+      description: 'WFS candidate intelligence as a full-featured, server-side datatable:
+        seller-fulfilled Walmart listings NOT yet in WFS that sell enough on the Walmart
+        channel (>= candidate_min_units in the velocity window) to warrant sending
+        into WFS. Ranked by Walmart-channel volume by default, with a suggested initial
+        ship quantity (velocity x coverage, nothing on hand yet). Supports search,
+        advanced filter_groups, sorting, and pagination — all applied server-side
+        over the computed columns. Returns a Laravel LengthAwarePaginator. Empty when
+        the instance has no linked sales channel. Requires a Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: SELL-HOTTER
+                  product_id: 42
+                  product_name: Aurora LED Strip 5m
+                  units_in_window: 300
+                  velocity_per_day: 10
+                  window_days: 30
+                  suggested_initial_quantity: 510
+                current_page: 1
+                last_page: 1
+                per_page: 25
+                total: 1
+                from: 1
+                to: 1
+                first_page_url: '{{base_url}}/api/walmart/1/wfs/replenishment/candidates?page=1'
+                last_page_url: '{{base_url}}/api/walmart/1/wfs/replenishment/candidates?page=1'
+                next_page_url: null
+                prev_page_url: null
+                path: '{{base_url}}/api/walmart/1/wfs/replenishment/candidates'
+      operationId: get-api-walmart-integrationinstance-wfs-replenishment-candidates
+  /api/walmart/1/wfs/inbound-products:
+    get:
+      tags:
+      - WFS
+      summary: Search WFS Inbound Products
+      description: Product lookup for the WFS inbound builder. Returns seller-fulfilled
+        (non-WFS) Walmart listings for the instance that have a GTIN/UPC and a matching
+        non-archived SKU.io product, excluding SKUs already in WFS. Capped at 50 results,
+        ordered by product name. Each row is annotated with the product's available
+        stock at source_warehouse_id (null when omitted). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - product_id: 1423
+                  sku: GSL392
+                  name: Reusable Cleaning Cloth
+                  gtin: 06903148329986
+                  image: https://app.sku.io/images/products/gsl392.jpg
+                  source_quantity: 42
+                - product_id: 1190
+                  sku: GSL410
+                  name: Microfiber Towel 3-Pack
+                  gtin: 06903148321980
+                  image: null
+                  source_quantity: 0
+      operationId: get-api-walmart-1-wfs-inbound-products
+  /api/walmart/1/wfs/source-warehouses:
+    get:
+      tags:
+      - WFS
+      summary: WFS Source Warehouses
+      description: Warehouses eligible as a WFS inbound source for the Source step
+        of the inbound builder — the seller's own Direct + 3PL warehouses, each with
+        type + formatted address. Excludes integration-destination warehouses (Amazon
+        FBA/AWD, the WFS warehouse, virtual). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 4
+                  name: ShipMyOrders Warehouse
+                  type: 3pl
+                  address: 6185 Beesley Dr, Las Vegas, NV
+                - id: 1
+                  name: HQ Warehouse
+                  type: direct
+                  address: 1 Market St, Newark, NJ
+      operationId: get-api-walmart-1-wfs-source-warehouses
+  /api/walmart/1/wfs/inbound-products/resolve:
+    post:
+      tags:
+      - WFS
+      summary: Resolve WFS Inbound Identifiers
+      description: Bulk-import resolver for the inbound builder. Resolves a list of
+        identifiers (max 500) of identifier_type auto|sku|upc|gtin to WFS-eligible
+        products (seller-fulfilled, GTIN-bearing, matching SKU.io product, not already
+        in WFS). Returns matched (identifier -> 1 product), multiple (identifier ->
+        many, for the picker; arises for UPC/GTIN/auto shared across listings), and
+        not_found. source_warehouse_id annotates source stock. Requires a Bearer token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                identifiers:
+                - GSL392
+                - 012345678905
+                identifier_type: auto
+                source_warehouse_id: 4
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  matched:
+                  - identifier: GSL392
+                    product:
+                      product_id: 1423
+                      sku: GSL392
+                      name: Walbro GSL392 Fuel Pump
+                      gtin: 00689107230963
+                      image: null
+                      source_quantity: 997
+                  multiple:
+                  - identifier: 012345678905
+                    products:
+                    - product_id: 11
+                      sku: ACME-RED
+                      name: Acme Red
+                      gtin: 012345678905
+                      image: null
+                      source_quantity: 10
+                    - product_id: 12
+                      sku: ACME-BLU
+                      name: Acme Blue
+                      gtin: 012345678905
+                      image: null
+                      source_quantity: 4
+                  not_found:
+                  - BAD-SKU-XYZ
+      operationId: post-api-walmart-1-wfs-inbound-products-resolve
+  /webhooks/walmart/{webhook_token}:
+    post:
+      tags:
+      - Webhooks
+      summary: Receive Walmart Webhook
+      description: Receive a Walmart WFS webhook delivery. No Bearer auth — the secret
+        path token is the credential. The body shape is whatever Walmart sends; the
+        receiver classifies the delivery into a coarse bucket (inbound / inventory
+        / return / order / unknown) by keyword-matching the `eventType` (or `topic`/`type`)
+        field, persists it, and dispatches a resync. An unrecognised event type triggers
+        a full WFS resync so nothing is missed. Always acks 2xx on success so Walmart
+        does not retry; unknown tokens return 404.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                eventType: WFS_INBOUND_SHIPMENT_STATUS
+                shipmentId: IB-123456
+                status: RECEIVED
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: webhook_token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Opaque per-instance secret token (format wh_[A-Za-z0-9]+) from
+          Get WFS Settings → webhook_url. Unknown tokens 404.
+        example: wh_aB3xY7zKqLmN0pQrStUvWxYz12345678
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                received: true
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Could not resolve a Walmart integration instance for this webhook.
+      operationId: post-webhooks-walmart-webhook-token
   /api/webhook-events:
     get:
       tags:
@@ -203641,6 +204592,7 @@ x-tagGroups:
   - Payments & Refunds
   - Applications
   - Returns
+  - WFS
   - Event Catalog
   - Reports
   - Refunds
