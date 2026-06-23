@@ -187891,6 +187891,82 @@ paths:
                     supplier_id: null
                     supplier_name: null
       operationId: get-api-fulfillment-orders
+  /api/fulfillment-orders/{fulfillmentOrder}/move-preview:
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: Preview Fulfillment Order Move (Coverage)
+      description: 'Read-only coverage check for a prospective whole-FO move. Reports,
+        per line that would move, whether the target warehouse can ship it from on-hand
+        stock or would backorder it — so the UI can warn before committing. Mutates
+        nothing.
+
+
+        Use this to drive the move dialog''s warning, then call `PATCH .../move` with
+        `acknowledge_backorder: true` to commit.
+
+
+        **Query params:**
+
+        - `warehouse_id` (required, integer, must exist) — the prospective destination.
+
+
+        **Per-line `outcome` values:** `covered` (ships in full), `partial` (some
+        ships, the rest backorders), `backorder` (whole line backorders), `blemished_shortfall`
+        (blemished line short on stock — can''t backorder).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: warehouse_id
+        in: query
+        schema:
+          type: integer
+        description: Prospective destination warehouse (required, must exist).
+        example: '9'
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: FulfillmentOrder ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  warehouse_id: 9
+                  warehouse_name: 3PL Atlanta
+                  tracks_inventory: true
+                  lines:
+                  - sales_order_line_id: 55347
+                    fulfillment_order_line_id: 901
+                    product_id: 1088
+                    sku: SHAVE-FIG
+                    product_name: Shave Soap Bar - Mediterranean Fig
+                    requested_quantity: 3
+                    coverable_quantity: 1
+                    backorder_quantity: 2
+                    is_blemished: false
+                    outcome: partial
+                  moving_line_count: 1
+                  shortfall_line_count: 1
+                  has_shortfall: true
+                  has_blemished_shortfall: false
+                  will_empty_fo: false
+      operationId: get-api-fulfillment-orders-fulfillmentorder-move-preview
   /api/fulfillment-orders/{fulfillmentOrder}/move:
     patch:
       tags:
@@ -187909,23 +187985,31 @@ paths:
         decision is frozen — returns 409.
 
 
-        **Stock gate.** The target warehouse must have enough on-hand stock to fulfill
-        every line; otherwise the order would backorder there with nothing to ship
-        — returns 409 and the move is rolled back (the FO is left untouched at its
-        original warehouse).
+        **Backorder, warn-first.** A target short on stock does NOT block the move:
+        the shortfall backorders (Planned) and is evicted off the FO so it holds only
+        shippable lines (a wholly-uncovered FO is deleted). Because that quietly backorders,
+        an un-acknowledged move that would backorder returns **409 with `requires_acknowledgement:
+        true` and a `coverage` object** instead of committing — call `GET .../move-preview`
+        (or read that coverage) to warn the user, then resend with `acknowledge_backorder:
+        true`. Blemished products can''t backorder; their shortfall is flagged as
+        `blemished_shortfall` in the coverage.
 
 
         **Body fields:**
 
         - `warehouse_id` (required, integer, must exist) — new destination warehouse.
 
-        - `reason` (optional, string) — free-text note for the audit trail.'
+        - `acknowledge_backorder` (optional, boolean, default false) — set true to
+        proceed when the move would backorder one or more lines.
+
+        - `reason` (optional, string, max 1000) — free-text note for the audit trail.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"warehouse_id\": 9\n}"'
+              example: '"{\n  \"warehouse_id\": 9,\n  \"acknowledge_backorder\": false,\n  \"reason\":
+                \"Out of stock at original location\"\n}"'
       parameters:
       - name: Accept
         in: header
@@ -188004,13 +188088,32 @@ paths:
                       once status=in_progress or request_status has left unsubmitted
                       (currently status=in_progress, request_status=submitted).'
                 example-1:
-                  summary: 409 Insufficient Stock
+                  summary: 409 Backorder Acknowledgement Required
                   value:
-                    error: 'FulfillmentOrder #451 cannot be moved to warehouse #9:
-                      that warehouse does not have enough on-hand stock to fulfill
-                      this order, so the order would backorder there with nothing
-                      to ship. Restock the target warehouse, or move to one that has
-                      stock.'
+                    error: Moving this fulfillment order to 3PL Atlanta would backorder
+                      1 of 1 line(s). Confirm to move what is in stock and backorder
+                      the rest.
+                    requires_acknowledgement: true
+                    coverage:
+                      warehouse_id: 9
+                      warehouse_name: 3PL Atlanta
+                      tracks_inventory: true
+                      lines:
+                      - sales_order_line_id: 55347
+                        fulfillment_order_line_id: 901
+                        product_id: 1088
+                        sku: SHAVE-FIG
+                        product_name: Shave Soap Bar - Mediterranean Fig
+                        requested_quantity: 3
+                        coverable_quantity: 1
+                        backorder_quantity: 2
+                        is_blemished: false
+                        outcome: partial
+                      moving_line_count: 1
+                      shortfall_line_count: 1
+                      has_shortfall: true
+                      has_blemished_shortfall: false
+                      will_empty_fo: false
       operationId: patch-api-fulfillment-orders-fulfillmentorder-move
   /api/fulfillment-orders/{fulfillmentOrder}/submit:
     post:
@@ -191381,6 +191484,68 @@ paths:
                   created_at: '2026-06-18T10:00:00.000000Z'
                   updated_at: '2026-06-18T10:00:00.000000Z'
       operationId: delete-api-quotes-quote-lines-line
+    put:
+      tags:
+      - Quotes
+      summary: Update Quote Line
+      description: 'Update a single quote line. All fields optional — send only what
+        changed. Editing quantity/unit_price/discount recalculates the quote totals.
+
+
+        Fields: quantity (numeric), unit_price (numeric), description (string|null),
+        warehouse_id (int|null), discount_type (none|percentage|fixed_amount), discount_value
+        (numeric|null), tax_rate_id (int|null, exists:tax_rates — per-line tax override).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                quantity: 5
+                unit_price: 20
+                description: Optional line description
+                warehouse_id: 3
+                discount_type: percentage
+                discount_value: 10
+                tax_rate_id: 2
+                nominal_code_id: 8
+                financial_line_type_id: 3
+                proration_strategy: revenue_based
+                allocate_to_products: false
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      - name: line
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote line ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: put-api-quotes-quote-lines-line
   /api/quotes/{quote}/send:
     post:
       tags:
@@ -191992,6 +192157,581 @@ paths:
                 sales_order_id: 7788
                 sales_order_number: SO-7788
       operationId: post-api-quotes-quote-create-order
+  /api/quotes/{quote}/lines/bulk-warehouse:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Set Line Warehouse
+      description: 'Set the allocation warehouse on many product lines at once — the
+        "send the whole order from one warehouse" convenience for large quotes.
+
+
+        Body:
+
+        - `warehouse_id` (int|null, exists:warehouses) — the target warehouse (null
+        to clear).
+
+        - `line_ids` (int[], optional) — the lines to update. **Omit `line_ids` to
+        apply to every product line on the quote.** Revenue (product-less) lines are
+        never affected.
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                warehouse_id: 3
+                line_ids:
+                - 101
+                - 102
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 12,\n    \"quote_number\": \"\
+                Q-000012\",\n    \"lines\": [],\n    \"sales_orders\": [\n      {\n\
+                \        \"id\": 20,\n        \"sales_order_number\": \"SO-0002\"\n\
+                \      }\n    ]\n  }\n}"
+      operationId: post-api-quotes-quote-lines-bulk-warehouse
+  /api/quotes/{quote}/allocation:
+    post:
+      tags:
+      - Quotes
+      summary: Set Quote Inventory Allocation
+      description: 'Toggle whether the quote holds inventory, applying the side effect
+        immediately so this is the single control for allocation:
+
+        - `allocate=false` always RELEASES any stock the quote is currently holding.
+
+        - `allocate=true` re-allocates now if the quote is already issued (sent/viewed);
+        for a draft it only records intent, since allocation otherwise happens on
+        send.
+
+
+        Returns 422 (InvalidQuoteTransition) when the quote is in a terminal state
+        (ordered/declined/expired).
+
+
+        Body: `allocate` (boolean, required).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                allocate: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 12,\n    \"quote_number\": \"\
+                Q-000012\",\n    \"status\": \"sent\",\n    \"allocate_inventory\"\
+                : false,\n    \"lines\": [],\n    \"sales_orders\": [\n      {\n \
+                \       \"id\": 20,\n        \"sales_order_number\": \"SO-0002\"\n\
+                \      }\n    ]\n  }\n}"
+      operationId: post-api-quotes-quote-allocation
+  /api/quotes/bulk-archive:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Archive Quotes
+      description: 'Archives multiple quotes (sets `archived_at`). Archived quotes
+        are hidden from the default list and reappear under `?archived=only`.
+
+
+        Targets either an explicit list of quote IDs or every quote matching the current
+        filters.
+
+
+        **Two request-body modes:**
+
+        - `{ "ids": [12, 13, 14] }` — act on these specific quotes.
+
+        - `{ "apply_to_all": true, "filters": { "status": "draft" } }` — act on every
+        quote matching the given filters (same filter keys as `GET /api/quotes`: `search`,
+        `status`, `origin`, `customer_id`, `archived`, `filter_groups`, etc.).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Archived 3 quote(s).\"\n}"
+      operationId: post-api-quotes-bulk-archive
+  /api/quotes/bulk-unarchive:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Unarchive Quotes
+      description: 'Restores multiple archived quotes (clears `archived_at`).
+
+
+        Targets either an explicit list of quote IDs or every quote matching the current
+        filters.
+
+
+        **Two request-body modes:**
+
+        - `{ "ids": [12, 13, 14] }` — act on these specific quotes.
+
+        - `{ "apply_to_all": true, "filters": { "status": "draft" } }` — act on every
+        quote matching the given filters (same filter keys as `GET /api/quotes`: `search`,
+        `status`, `origin`, `customer_id`, `archived`, `filter_groups`, etc.).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Unarchived 3 quote(s).\"\n}"
+      operationId: post-api-quotes-bulk-unarchive
+  /api/quotes/bulk-delete:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Delete Quotes
+      description: 'Soft-deletes multiple quotes. Releases any allocated inventory
+        for quotes that opted into allocation.
+
+
+        Targets either an explicit list of quote IDs or every quote matching the current
+        filters.
+
+
+        **Two request-body modes:**
+
+        - `{ "ids": [12, 13, 14] }` — act on these specific quotes.
+
+        - `{ "apply_to_all": true, "filters": { "status": "draft" } }` — act on every
+        quote matching the given filters (same filter keys as `GET /api/quotes`: `search`,
+        `status`, `origin`, `customer_id`, `archived`, `filter_groups`, etc.).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.delete`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Deleted 3 quote(s).\"\n}"
+      operationId: post-api-quotes-bulk-delete
+  /api/quotes/bulk-send:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Send Quotes
+      description: 'Sends multiple quotes to their customers. Only quotes in a sendable
+        (draft/revised) state are sent; the rest are skipped. Inventory is allocated
+        for quotes that opted in. The response reports how many were sent vs. skipped.
+
+
+        Targets either an explicit list of quote IDs or every quote matching the current
+        filters.
+
+
+        **Two request-body modes:**
+
+        - `{ "ids": [12, 13, 14] }` — act on these specific quotes.
+
+        - `{ "apply_to_all": true, "filters": { "status": "draft" } }` — act on every
+        quote matching the given filters (same filter keys as `GET /api/quotes`: `search`,
+        `status`, `origin`, `customer_id`, `archived`, `filter_groups`, etc.).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.send`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Sent 2 quote(s), skipped 1.\",\n  \"data\"\
+                : {\n    \"sent\": 2,\n    \"skipped\": 1\n  }\n}"
+      operationId: post-api-quotes-bulk-send
+  /api/quotes/bulk-expire:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Expire Quotes
+      description: 'Expires multiple quotes. Only issued (sent/viewed) quotes are
+        expired; the rest are skipped. Allocated inventory is released. The response
+        reports how many were expired vs. skipped.
+
+
+        Targets either an explicit list of quote IDs or every quote matching the current
+        filters.
+
+
+        **Two request-body modes:**
+
+        - `{ "ids": [12, 13, 14] }` — act on these specific quotes.
+
+        - `{ "apply_to_all": true, "filters": { "status": "draft" } }` — act on every
+        quote matching the given filters (same filter keys as `GET /api/quotes`: `search`,
+        `status`, `origin`, `customer_id`, `archived`, `filter_groups`, etc.).
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"Expired 2 quote(s), skipped 1.\",\n  \"\
+                data\": {\n    \"expired\": 2,\n    \"skipped\": 1\n  }\n}"
+      operationId: post-api-quotes-bulk-expire
+  /api/quotes/{quote}/lines/bulk-update:
+    post:
+      tags:
+      - Quotes
+      summary: Bulk Update Lines
+      description: 'Apply the same field changes to many lines at once (bulk-edit).
+        Body: line_ids (int[], required) and any of discount_type (none|percentage|fixed_amount),
+        discount_value (numeric|null), tax_rate_id (int|null). Recalculates totals.
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                line_ids:
+                - 101
+                - 102
+                discount_type: percentage
+                discount_value: 10
+                tax_rate_id: 2
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": { \"id\": 12, \"lines\": [] }\n}"
+      operationId: post-api-quotes-quote-lines-bulk-update
+  /api/quotes/{quote}/lines/{line}/convert-to-revenue:
+    post:
+      tags:
+      - Quotes
+      summary: Convert Line to Revenue
+      description: 'Strip the product from a line so it becomes a revenue (product-less)
+        line, releasing any inventory it held. Description, quantity and price are
+        preserved.
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '12'
+      - name: line
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": { \"id\": 12, \"lines\": [] }\n}"
+      operationId: post-api-quotes-quote-lines-line-convert-to-revenue
+  /api/quotes/{quote}/lines/reorder:
+    post:
+      tags:
+      - Quotes
+      summary: Reorder Lines
+      description: 'Persist a new line ordering. Body: ordered_ids (int[], required)
+        — line ids in the desired order. Lines not listed keep their relative order
+        after the listed set.
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.update`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ordered_ids:
+                - 103
+                - 101
+                - 102
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": { \"id\": 12, \"lines\": [] }\n}"
+      operationId: post-api-quotes-quote-lines-reorder
   /api/pos/register-session/current:
     get:
       tags:
