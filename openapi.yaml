@@ -199211,6 +199211,88 @@ paths:
               example: "{\n  \"data\": {\n    \"tracked_job_log_id\": 1234\n  },\n\
                 \  \"message\": \"Walmart returns refresh started\"\n}"
       operationId: post-api-walmart-integrationinstance-returns-refresh-tracked
+  /api/walmart/{integrationInstance}/returns/{return}/refund:
+    post:
+      tags:
+      - Returns
+      summary: Refund Return
+      description: 'Issue a refund against a Walmart Marketplace return order. Refunds
+        every return line on the order via the Walmart Returns API and reflects the
+        refund status locally. No request body — the return is identified by the path
+        id.
+
+
+        WFS-fulfilled returns are settled by Walmart and cannot be refunded here;
+        attempting to refund one (or any Walmart-side failure) returns a 422 with
+        the failure reason. The return must belong to the integration instance in
+        the path (404 otherwise).
+
+
+        Route name: walmart.returns.refund
+
+
+        Requires a Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: return
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local Walmart return ID (numeric)
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Refund issued
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to issue refund: This return is fulfilled by WFS
+                  and is refunded by Walmart — it cannot be refunded here.'
+      operationId: post-api-walmart-integrationinstance-returns-return-refund
   /api/walmart/1/wfs/settings:
     get:
       tags:
@@ -199454,15 +199536,27 @@ paths:
                   inbound_order_id: WMTIO-99201
                   shipment_id: 0066618GDM
                   status: RECEIVING
+                  can_cancel: false
+                  cancel_blocked_reason: This shipment can no longer be cancelled.
                   ship_node: NJ3
                   shipment_units: 480
                   received_units: 300
+                  line_count: 12
                   has_shortage: false
                   expected_delivery_date: '2026-06-22'
                   updated_expected_delivery_date: null
                   carrier_name: WFS-FEDEX
                   tracking_numbers:
                   - '787439195645'
+                  ship_from_address: null
+                  ship_to_address:
+                    name: NJ3
+                    line1: 120 Velocity Way
+                    line2: null
+                    city: Pedricktown
+                    state: NJ
+                    postal_code: 08067
+                    country: US
                   walmart_created_at: '2026-06-10T19:02:30.000000Z'
                   created_at: '2026-06-10T19:05:00.000000Z'
                 current_page: 1
@@ -199511,20 +199605,26 @@ paths:
 
 
         Each SKU must have a GTIN/UPC; a SKU without one is rejected (422) before
-        any call to Walmart. Requires a Bearer token.'
+        any call to Walmart. Requires a Bearer token.
+
+
+        items[].kit_fulfillment_mode (optional): for kit/bundle SKUs — ''kit_stock''
+        (ship pre-built) or ''components'' (assemble from components at the source;
+        the build is deferred until the 3PL confirms ''Kits Built'').'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                source_warehouse_id: 12
-                expected_delivery_date: '2026-06-30'
+                source_warehouse_id: 8
                 items:
                 - sku: ABC-001
                   quantity: 20
-                - sku: ABC-002
-                  quantity: 10
+                - sku: KIT-1
+                  quantity: 4
+                  kit_fulfillment_mode: components
+                expected_delivery_date: 06/30/2026
       parameters:
       - name: Accept
         in: header
@@ -199566,6 +199666,8 @@ paths:
                   inbound_order_id: IO-NEW-1
                   shipment_id: 0066618GDM
                   status: CREATED
+                  can_cancel: true
+                  cancel_blocked_reason: null
                   ship_node: NJ3
                   shipment_units: 30
                   received_units: 0
@@ -199642,16 +199744,103 @@ paths:
                   inbound_order_id: WMTIO-99201
                   shipment_id: 0066618GDM
                   status: RECEIVED
+                  can_cancel: false
+                  cancel_blocked_reason: This shipment can no longer be cancelled.
                   ship_node: NJ3
                   shipment_units: 200
                   received_units: 198
+                  line_count: 12
                   has_shortage: true
                   expected_delivery_date: '2026-06-20'
+                  updated_expected_delivery_date: '2026-06-21'
                   carrier_name: WFS-FEDEX
                   tracking_numbers:
                   - '787439195645'
+                  ship_from_address:
+                    name: Main DC
+                    line1: 6185 Beesley Dr
+                    line2: null
+                    city: Las Vegas
+                    state: NV
+                    postal_code: '89115'
+                    country: US
+                  ship_to_address:
+                    name: NJ3
+                    line1: 120 Velocity Way
+                    line2: null
+                    city: Shepherdsville
+                    state: KY
+                    postal_code: '40165'
+                    country: US
+                  walmart_created_at: '2026-06-10T19:05:00.000000Z'
                   created_at: '2026-06-10T19:05:00.000000Z'
       operationId: get-api-walmart-1-wfs-inbound-shipments-7
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}:
+    delete:
+      tags:
+      - WFS
+      summary: Cancel WFS Inbound Shipment
+      description: Cancel a WFS inbound shipment. SKU.io calls Walmart's cancel-inbound-order
+        API (DELETE /v3/fulfillment/inbound-shipments/{inboundOrderId}) using the
+        shipment's inboundOrderId, then marks every local shipment under that order
+        CANCELLED — Walmart cancels the entire inbound order, not individual shipments.
+        Walmart (and SKU.io) reject the cancel once the shipment is receiving, closed,
+        or already cancelled; the response's `can_cancel` flag indicates whether cancel
+        is allowed. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: WFS inbound shipment cancelled
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to cancel WFS inbound shipment: A shipment in status
+                  RECEIVING can no longer be cancelled.'
+      operationId: delete-api-walmart-integrationinstance-wfs-inbound-shipments-shipment
   /api/walmart/1/wfs/inbound-shipments/refresh-tracked:
     post:
       tags:
@@ -200067,6 +200256,2413 @@ paths:
                   not_found:
                   - BAD-SKU-XYZ
       operationId: post-api-walmart-1-wfs-inbound-products-resolve
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/items:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Shipment Items
+      description: The per-SKU items Walmart holds for an inbound shipment (sent vs.
+        received quantities), pulled live from Walmart. Scoped to the integration
+        instance (404 if the shipment belongs to another instance). A Walmart-side
+        failure returns a 422. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: ABC-001
+                  gtin: 00689107230963
+                  description: Blue Jeans
+                  shipped_qty: 20
+                  received_qty: 18
+                  product_id: 4412
+                - sku: ABC-002
+                  gtin: 00689107231984
+                  description: Red Shirt
+                  shipped_qty: 10
+                  received_qty: 10
+                  product_id: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to load shipment items: Walmart returned an error
+                  for inbound order WMTIO-99201.'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-items
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/allocations:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Allocations
+      description: Paginated source-stock reservations (inventory allocations) for
+        this inbound shipment's order. These are the source-warehouse reservations
+        created when the inbound was made so the earmarked stock can't be oversold
+        while committed. Scoped to all shipments sharing the inbound order (404 if
+        the shipment belongs to another instance). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 3312
+                  product_id: 4412
+                  product:
+                    id: 4412
+                    sku: ABC-001
+                    name: Blue Jeans
+                  warehouse_id: 8
+                  warehouse:
+                    id: 8
+                    name: Main Warehouse
+                  link_id: 7
+                  link_type: Modules\Walmart\Entities\WalmartWfsInboundShipment
+                  link_type_label: WFS Inbound Shipment
+                  link_route: null
+                  link_reference: null
+                  quantity: 12
+                  status: allocated
+                  status_label: Allocated
+                  priority: null
+                  is_tight_coverage: false
+                  fulfilled_at: null
+                  cancelled_at: null
+                  created_at: '2026-06-23T07:44:00.000000Z'
+                  updated_at: '2026-06-23T07:44:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-allocations
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/placement-preview:
+    get:
+      tags:
+      - WFS
+      summary: Estimate WFS Inbound Placement Charges
+      description: Re-run Walmart's inbound preview for an already-created shipment,
+        from its current items + source, to ESTIMATE the destination-FC placement
+        and WFS transfer charges. This is an estimate — it re-decides placement as
+        if the order were new, and Walmart exposes no billed charges per existing
+        order; the actual charges live in Walmart Seller Center. 404 if the shipment
+        belongs to another instance; 422 if Walmart hasn't reported items yet or the
+        preview fails. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  total_charge: 9.75
+                  currency: USD
+                  placements:
+                  - fc_name: 'Walmart FC #7045'
+                    ship_node: '10000037'
+                    node_type: FC
+                    charge: 9.75
+                    currency: USD
+                    items:
+                    - sku: ABC-001
+                      quantity: 5
+                      charge: 1.95
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to estimate charges: <reason>'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-placement-preview
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/activity-log:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Activity Log
+      description: Paginated activity log for this inbound shipment — the audit trail
+        of changes (status, units, carrier, tracking, etc.). Supports filter[event],
+        filter[source], filter[search] and per_page. 404 if the shipment belongs to
+        another instance. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 99812
+                  description: updated
+                  event: updated
+                  subject_type: WalmartWfsInboundShipment
+                  subject_id: 7
+                  properties:
+                    attributes:
+                      shipment_units: 9
+                    old:
+                      shipment_units: 14
+                    metadata:
+                      id: 7
+                      shipment_id: 8973354WFA
+                      inbound_order_id: 01KVV71P30GJ95KMT429EY76AK
+                  causer_name: Dev User
+                  created_at: '2026-06-23T08:01:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 15
+                total: 1
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-activity-log
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/reconciliation:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Reconciliation
+      description: 'Sent-vs-received reconciliation for this inbound: per-SKU variance
+        + status (matched / short / over), the local ''investigated'' flag, and a
+        roll-up summary. Backs the detail page''s Reconciliation tab. A shortfall
+        is only declared once the shipment is received/closed — before that, low received
+        counts are ''pending'' (awaiting receipt), not short.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  summary:
+                    total_skus: 3
+                    matched: 1
+                    pending_skus: 0
+                    short_skus: 1
+                    over_skus: 1
+                    short_units: 2
+                    over_units: 2
+                    unresolved: 2
+                    receipt_complete: true
+                  rows:
+                  - sku: ABC-001
+                    description: Blue Jeans
+                    product_id: 4412
+                    sent: 20
+                    received: 18
+                    variance: -2
+                    status: short
+                    resolved: false
+                  - sku: ABC-002
+                    description: Red Shirt
+                    product_id: null
+                    sent: 10
+                    received: 10
+                    variance: 0
+                    status: matched
+                    resolved: false
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-reconciliation
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/reconciliation/resolve:
+    post:
+      tags:
+      - WFS
+      summary: Resolve WFS Inbound Discrepancy
+      description: 'Mark a SKU''s receive discrepancy as investigated/resolved (resolved=true)
+        or reopen it (false). Body: { sku, resolved }.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                sku: ABC-001
+                resolved: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Discrepancy resolved
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-reconciliation-resolve
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/fulfillment:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Fulfilment Packet
+      description: The 3PL/supplier fulfilment packet for this inbound (if built)
+        plus whether a packet applies to the shipment's source (only 3PL- or supplier-sourced
+        inbounds qualify). Operator side. 404 if the shipment belongs to another instance.
+        Includes default_instructions — the auto-generated prep instructions used
+        to pre-fill the editable override field.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  availability:
+                    available: true
+                    source_type: 3pl
+                    reason: null
+                  packet:
+                    id: 12
+                    walmart_wfs_inbound_shipment_id: 7
+                    source_type: 3pl
+                    source_type_label: 3PL Warehouse
+                    channels:
+                    - email
+                    - portal
+                    status: draft
+                    status_label: Draft
+                    build_required: false
+                    instruction_override: null
+                    portal_token: g7Hk...48chars
+                    portal_accessible: true
+                    portal_token_expires_at: '2026-07-24T00:00:00.000000Z'
+                    sent_at: null
+                    acknowledged_at: null
+                    box_contents_submission: null
+                    documents:
+                    - id: 1
+                      type: receiving_label
+                      type_label: WFS Receiving Label
+                      stage: initial
+                      stage_label: Initial
+                      status: ready
+                      status_label: Ready
+                      downloadable: true
+                    - id: 2
+                      type: instructions
+                      type_label: Prep Instructions
+                      stage: initial
+                      stage_label: Initial
+                      status: ready
+                      status_label: Ready
+                      downloadable: true
+                    - id: 3
+                      type: box_contents
+                      type_label: Box Contents
+                      stage: mid
+                      stage_label: After box contents
+                      status: ready
+                      status_label: Ready
+                      downloadable: true
+                    - id: 4
+                      type: asn
+                      type_label: Advanced Shipment Notice
+                      stage: initial
+                      stage_label: Initial
+                      status: ready
+                      status_label: Ready
+                      downloadable: false
+                    created_at: '2026-06-24T08:00:00.000000Z'
+                  portal_url: https://yourstore.test/v2/integrations/walmart/wfs/inbound-shipments/fulfillment-portal/g7Hk...?integration=1
+                  default_instructions: 'WALMART WFS INBOUND — PREP INSTRUCTIONS
+
+                    Shipment: 8973354WFA (Order 01KVV...)
+
+                    ...'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-fulfillment
+    post:
+      tags:
+      - WFS
+      summary: Build WFS Inbound Fulfilment Packet
+      description: 'Build (or refresh) the fulfilment packet — scaffolds the staged
+        documents (receiving label, prep instructions, box contents, PO/ASN, kitting
+        work order if build_kits) and mints a revocable portal token. 422 if the inbound
+        is direct-warehouse sourced (no packet applies). Body: channels (email|portal),
+        build_kits (bool), instruction_override (string, optional).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                channels:
+                - email
+                - portal
+                build_kits: false
+                instruction_override: null
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  walmart_wfs_inbound_shipment_id: 7
+                  source_type: 3pl
+                  source_type_label: 3PL Warehouse
+                  channels:
+                  - email
+                  - portal
+                  status: draft
+                  status_label: Draft
+                  build_required: false
+                  instruction_override: null
+                  portal_token: g7Hk...48chars
+                  portal_accessible: true
+                  portal_token_expires_at: '2026-07-24T00:00:00.000000Z'
+                  sent_at: null
+                  acknowledged_at: null
+                  box_contents_submission: null
+                  documents:
+                  - id: 1
+                    type: receiving_label
+                    type_label: WFS Receiving Label
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 2
+                    type: instructions
+                    type_label: Prep Instructions
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 3
+                    type: box_contents
+                    type_label: Box Contents
+                    stage: mid
+                    stage_label: After box contents
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 4
+                    type: asn
+                    type_label: Advanced Shipment Notice
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: false
+                  created_at: '2026-06-24T08:00:00.000000Z'
+                message: Fulfilment packet built
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-fulfillment
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/fulfillment/rotate-token:
+    post:
+      tags:
+      - WFS
+      summary: Rotate WFS Inbound Fulfilment Portal Token
+      description: Revoke the current portal token and issue a fresh one — the old
+        link stops working immediately. 404 if no packet has been built.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  walmart_wfs_inbound_shipment_id: 7
+                  source_type: 3pl
+                  source_type_label: 3PL Warehouse
+                  channels:
+                  - email
+                  - portal
+                  status: draft
+                  status_label: Draft
+                  build_required: false
+                  instruction_override: null
+                  portal_token: g7Hk...48chars
+                  portal_accessible: true
+                  portal_token_expires_at: '2026-07-24T00:00:00.000000Z'
+                  sent_at: null
+                  acknowledged_at: null
+                  box_contents_submission: null
+                  documents:
+                  - id: 1
+                    type: receiving_label
+                    type_label: WFS Receiving Label
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 2
+                    type: instructions
+                    type_label: Prep Instructions
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 3
+                    type: box_contents
+                    type_label: Box Contents
+                    stage: mid
+                    stage_label: After box contents
+                    status: ready
+                    status_label: Ready
+                    downloadable: true
+                  - id: 4
+                    type: asn
+                    type_label: Advanced Shipment Notice
+                    stage: initial
+                    stage_label: Initial
+                    status: ready
+                    status_label: Ready
+                    downloadable: false
+                  created_at: '2026-06-24T08:00:00.000000Z'
+                message: Portal link rotated
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-fulfillment-rotate-token
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}:
+    get:
+      tags:
+      - WFS
+      summary: Portal — Get WFS Fulfilment Order (public, token-gated)
+      description: PUBLIC, no auth. The 3PL/supplier opens this with the packet's
+        portal token to see the order summary, prep instructions, downloadable documents,
+        kit manifest, and line items. The token (revocable, expiring) is the credential.
+        404 if the link is revoked/expired.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The packet's revocable portal token
+        example: <portal-token>
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  reference: 8973354WFA
+                  inbound_order_id: 01KVV71P30GJ95KMT429EY76AK
+                  source_name: 3PL East
+                  source_type: 3pl
+                  destination_fc: KY1
+                  status: draft
+                  build_required: false
+                  kit_build_manifest: []
+                  instructions: 'WALMART WFS INBOUND — PREP INSTRUCTIONS
+
+                    ...'
+                  line_items:
+                  - sku: ABC-001
+                    name: Blue Jeans
+                    quantity: 12
+                  documents:
+                  - id: 2
+                    type: instructions
+                    type_label: Prep Instructions
+                    stage: initial
+                    status: ready
+                  box_contents_submission: null
+                  can_confirm: false
+                  confirm_blocked_reason: Submit your box contents before confirming
+                    the shipment is ready.
+                  acknowledged_at: null
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-fulfillment-portal-token
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}/documents/{document}/download:
+    get:
+      tags:
+      - WFS
+      summary: Portal — Download WFS Fulfilment Document (public)
+      description: 'PUBLIC. Streams a packet document: the WFS receiving label is
+        fetched live from Walmart as a PDF; instructions / box contents / work order
+        are rendered on demand as text. 422 if the document isn''t ready or can''t
+        be retrieved.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The packet's revocable portal token
+        example: <portal-token>
+      - name: document
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Document ID from the portal payload
+        example: '2'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-fulfillment-portal-token-documents-document-download
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}/box-contents:
+    post:
+      tags:
+      - WFS
+      summary: Portal — Submit WFS Box Contents (public)
+      description: 'PUBLIC. The 3PL/supplier reports what they packed in each box.
+        Body: boxes[] each { box_number (int), lines[] of { sku, quantity } }. Moves
+        the packet to In Progress and unlocks the ready-to-ship acknowledgement.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                boxes:
+                - box_number: 1
+                  lines:
+                  - sku: ABC-001
+                    quantity: 5
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The packet's revocable portal token
+        example: <portal-token>
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  reference: 8973354WFA
+                  inbound_order_id: 01KVV71P30GJ95KMT429EY76AK
+                  source_name: 3PL East
+                  source_type: 3pl
+                  destination_fc: KY1
+                  status: in_progress
+                  build_required: false
+                  kit_build_manifest: []
+                  instructions: 'WALMART WFS INBOUND — PREP INSTRUCTIONS
+
+                    ...'
+                  line_items:
+                  - sku: ABC-001
+                    name: Blue Jeans
+                    quantity: 12
+                  documents:
+                  - id: 2
+                    type: instructions
+                    type_label: Prep Instructions
+                    stage: initial
+                    status: ready
+                  box_contents_submission:
+                  - box_number: 1
+                    lines:
+                    - sku: ABC-001
+                      quantity: 5
+                  can_confirm: true
+                  confirm_blocked_reason: null
+                  acknowledged_at: null
+                message: Box contents submitted.
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-fulfillment-portal-token-box-contents
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}/kits-built:
+    post:
+      tags:
+      - WFS
+      summary: Portal — Mark Kits Built (public)
+      description: 'PUBLIC. The 3PL/supplier confirms they''ve assembled the component-sourced
+        kits. Realizes the build server-side: releases the reserved components, assembles
+        the kit (consume components → kit stock), and reserves the built kit against
+        the shipment. Idempotent. 422 if components are insufficient to assemble.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The packet's portal token
+        example: <portal-token>
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  kits_pending_build: false
+                  build_required: true
+                message: Thank you — the kits have been marked as built.
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-fulfillment-portal-token-kits-built
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}/acknowledge:
+    post:
+      tags:
+      - WFS
+      summary: Portal — Acknowledge Ready to Ship (public)
+      description: PUBLIC. The 3PL/supplier confirms the shipment is packed and ready.
+        422 until box contents have been submitted.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The packet's revocable portal token
+        example: <portal-token>
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  reference: 8973354WFA
+                  inbound_order_id: 01KVV71P30GJ95KMT429EY76AK
+                  source_name: 3PL East
+                  source_type: 3pl
+                  destination_fc: KY1
+                  status: acknowledged
+                  build_required: false
+                  kit_build_manifest: []
+                  instructions: 'WALMART WFS INBOUND — PREP INSTRUCTIONS
+
+                    ...'
+                  line_items:
+                  - sku: ABC-001
+                    name: Blue Jeans
+                    quantity: 12
+                  documents:
+                  - id: 2
+                    type: instructions
+                    type_label: Prep Instructions
+                    stage: initial
+                    status: ready
+                  box_contents_submission: null
+                  can_confirm: false
+                  confirm_blocked_reason: Submit your box contents before confirming
+                    the shipment is ready.
+                  acknowledged_at: '2026-06-24T09:00:00.000000Z'
+                message: Thank you — the shipment has been confirmed as ready.
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-fulfillment-portal-token-acknowledge
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/errors:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Shipment Errors
+      description: The errors Walmart recorded against an inbound shipment (why an
+        item or order was rejected), pulled live from Walmart. Scoped to the integration
+        instance (404 if the shipment belongs to another instance). A Walmart-side
+        failure returns a 422. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: ABC-009
+                  error_code: GTIN_MISSING
+                  description: Item is missing a GTIN/UPC required by WFS.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to load shipment errors: Walmart returned an error
+                  for inbound order WMTIO-99201.'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-errors
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/preview:
+    post:
+      tags:
+      - WFS
+      summary: Preview WFS Inbound Shipment
+      description: 'Preview an inbound order before creating it — returns Walmart''s
+        destination fulfillment-center placement plus estimated transfer charges,
+        without persisting anything. Takes the SAME request body as Create WFS Inbound
+        Shipment.
+
+
+        Request body:
+
+        - source_warehouse_id (integer) — the warehouse the stock ships from. Required
+        unless source_supplier_id is given.
+
+        - source_supplier_id (integer) — the supplier the stock ships from. Required
+        unless source_warehouse_id is given. Send exactly one of the two.
+
+        - items (required, array, min 1) — each: { sku (required string), quantity
+        (required integer >= 1) }.
+
+        - expected_delivery_date (optional, date Y-m-d, today or later).
+
+
+        Validation errors return 422; a Walmart-side rejection also returns 422 with
+        the failure reason. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                source_warehouse_id: 12
+                expected_delivery_date: '2026-06-30'
+                items:
+                - sku: ABC-001
+                  quantity: 20
+                - sku: ABC-002
+                  quantity: 10
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  shipments:
+                  - ship_node: NJ3
+                    items:
+                    - sku: ABC-001
+                      quantity: 20
+                  estimated_charges:
+                    currency: USD
+                    amount: 14.5
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Choose where this stock ships from — a warehouse or a supplier.
+                errors:
+                  source_warehouse_id:
+                  - Choose where this stock ships from — a warehouse or a supplier.
+                  items:
+                  - Add at least one product to send to WFS.
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-preview
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/tracking:
+    post:
+      tags:
+      - WFS
+      summary: Submit WFS Inbound Shipment Tracking
+      description: 'Submit the carrier and tracking numbers for an inbound shipment
+        to Walmart and persist them locally. Scoped to the integration instance (404
+        if the shipment belongs to another instance).
+
+
+        Request body:
+
+        - carrier_name (required, string, max 255).
+
+        - tracking_numbers (required, array, min 1) — each a required string (max
+        255).
+
+
+        Validation errors return 422; a Walmart-side failure also returns 422 with
+        the reason. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                carrier_name: FEDEX
+                tracking_numbers:
+                - '787439195645'
+                - '787439195646'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Tracking submitted to Walmart
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to submit tracking: Walmart rejected the tracking
+                  update for this shipment.'
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-tracking
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/quantities:
+    put:
+      tags:
+      - WFS
+      summary: Update WFS Inbound Shipment Quantities
+      description: 'Update the per-SKU quantities on a not-yet-received inbound shipment.
+        Scoped to the integration instance (404 if the shipment belongs to another
+        instance).
+
+
+        Request body:
+
+        - items (required, array, min 1) — each: { sku (required string, max 255),
+        quantity (required integer >= 0; 0 removes the line) }.
+
+
+        Validation errors return 422; a Walmart-side failure also returns 422 with
+        the reason. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                items:
+                - sku: ABC-001
+                  quantity: 15
+                - sku: ABC-002
+                  quantity: 0
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Shipment quantities updated
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to update quantities: This shipment is already receiving
+                  and can no longer be edited.'
+      operationId: put-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-quantities
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/label:
+    get:
+      tags:
+      - WFS
+      summary: Download WFS Inbound Shipment Label
+      description: Download the WFS inbound receiving label as a PDF. Returns the
+        raw PDF bytes with Content-Type application/pdf and Content-Disposition attachment
+        (filename wfs-inbound-{shipmentId}.pdf) — not a JSON envelope. Scoped to the
+        integration instance (404 if the shipment belongs to another instance). Requires
+        a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/pdf
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/pdf
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="wfs-inbound-0066618GDM.pdf"
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '%PDF-1.4 ... (binary PDF stream)'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-label
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/suggested-package:
+    get:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Suggested Package
+      description: 'Best-guess a single shipping package (weight + dimensions) for
+        an inbound shipment, derived from the shipment items'' product records. Used
+        to pre-fill the carrier-rate-quote form so the dimensions don''t have to be
+        typed by hand.
+
+
+        Weight is summed across all items (converted to LB); the box is approximated
+        as a cube of the combined item volume (converted to IN). Items whose product
+        has no dimensions are skipped. Values are returned in Walmart units (LB /
+        IN).
+
+
+        Scoped to the integration instance (404 if the shipment belongs to another
+        instance). A Walmart-side or estimation failure returns 422. Requires a Bearer
+        token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  weight: 28
+                  length: 16.49
+                  width: 16.49
+                  height: 16.49
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to estimate package: <reason>'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-suggested-package
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/carrier-rate-quotes:
+    post:
+      tags:
+      - WFS
+      summary: Get WFS Inbound Carrier Rate Quotes
+      description: 'Request WFS Preferred-Carrier rate quotes for an inbound shipment
+        (carton dimensions + weight). Scoped to the integration instance (404 if the
+        shipment belongs to another instance).
+
+
+        Request body:
+
+        - packages (required, array, min 1) — each: { weight (required numeric >=
+        0), length (required numeric >= 0), width (required numeric >= 0), height
+        (required numeric >= 0), count (optional integer >= 1) }.
+
+        - pickup_date (optional, date).
+
+
+        Validation errors return 422; a Walmart-side failure also returns 422 with
+        the reason. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                pickup_date: '2026-06-28'
+                packages:
+                - weight: 12.5
+                  length: 18
+                  width: 12
+                  height: 10
+                  count: 2
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - quote_id: RQ-88213
+                  carrier_name: WFS-FEDEX
+                  service_level: GROUND
+                  currency: USD
+                  amount: 42.75
+                  pickup_date: '2026-06-28'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to get carrier rate quotes: Walmart could not rate
+                  this shipment for the supplied packages.'
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-carrier-rate-quotes
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/carrier-rate-quote/confirm:
+    post:
+      tags:
+      - WFS
+      summary: Confirm WFS Inbound Carrier Rate Quote
+      description: Confirm (book) the previously requested WFS Preferred-Carrier rate
+        quote for an inbound shipment. No request body. Scoped to the integration
+        instance (404 if the shipment belongs to another instance). A Walmart-side
+        failure returns a 422. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Carrier rate quote confirmed
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to confirm carrier rate quote: No active rate quote
+                  to confirm for this shipment.'
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-carrier-rate-quote-confirm
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/carrier-rate-quote:
+    delete:
+      tags:
+      - WFS
+      summary: Void WFS Inbound Carrier Rate Quote
+      description: Void the carrier rate quote / booking for an inbound shipment.
+        No request body. Scoped to the integration instance (404 if the shipment belongs
+        to another instance). A Walmart-side failure returns a 422. Requires a Bearer
+        token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Carrier rate quote voided
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to void carrier rate quote: No active rate quote
+                  to void for this shipment.'
+      operationId: delete-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-carrier-rate-quote
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/carrier-label:
+    post:
+      tags:
+      - WFS
+      summary: Print WFS Inbound Carrier Label
+      description: 'Print the carrier label for a booked inbound shipment — returned
+        inside Walmart''s response payload as JSON (base64 / URL), not a raw file
+        download. Scoped to the integration instance (404 if the shipment belongs
+        to another instance).
+
+
+        Request body:
+
+        - ship_date (optional, date).
+
+
+        A Walmart-side failure returns a 422. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                ship_date: '2026-06-28'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS inbound shipment ID
+        example: '7'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  label_format: PDF
+                  label_data: JVBERi0xLjQKJ... (base64)
+                  tracking_number: '787439195645'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to print carrier label: The carrier booking has not
+                  been confirmed for this shipment.'
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-carrier-label
+  /api/walmart/{integrationInstance}/wfs/inventory/log:
+    get:
+      tags:
+      - WFS
+      summary: WFS Inventory Log
+      description: The WFS inventory transaction log for a single SKU (resolved to
+        its GTIN), pulled live from Walmart and capped at 50 rows. `sku` is required;
+        `transaction_type` optionally narrows to one transaction type. A missing/unresolvable
+        SKU or Walmart-side failure returns a 422. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: sku
+        in: query
+        schema:
+          type: string
+        description: Required. Seller SKU; resolved to its GTIN before querying Walmart.
+        example: ABC-001
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - transaction_type: Inbound
+                  quantity: 100
+                  reason: Inbound receipt
+                  ship_node: NJ3
+                  event_time: '2026-06-15T14:32:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The sku field is required.
+                errors:
+                  sku:
+                  - The sku field is required.
+      operationId: get-api-walmart-integrationinstance-wfs-inventory-log
+  /api/walmart/{integrationInstance}/wfs/inventory/health-report:
+    get:
+      tags:
+      - WFS
+      summary: WFS Inventory Health Report
+      description: Download the WFS Inventory Health report (aged / long-term-storage
+        exposure) Walmart generates. Returns the raw file as a download (Content-Disposition
+        attachment) — CSV when Walmart returns CSV, or ZIP when Walmart returns a
+        zipped report (filename wfs-inventory-health.csv or .zip accordingly). Not
+        a JSON envelope. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/octet-stream
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="wfs-inventory-health.csv"
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: 'sku,gtin,available_qty,aged_90_plus,long_term_storage_fee
+
+                ABC-001,00689107230963,320,40,12.50'
+      operationId: get-api-walmart-integrationinstance-wfs-inventory-health-report
+  /api/walmart/{integrationInstance}/wfs/inventory/compliance-holds:
+    get:
+      tags:
+      - WFS
+      summary: WFS Compliance Holds
+      description: Search items on a WFS compliance hold (WERCS / hazmat) so they
+        can be excluded from replenishment, pulled live from Walmart. `search` is
+        optional and matched against `field` (sku or gtin, default sku). A Walmart-side
+        failure returns a 422. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: ABC-001
+                  gtin: 00689107230963
+                  hold_type: WERCS
+                  reason: Awaiting hazmat classification.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to search compliance holds: Walmart returned an error
+                  for the compliance-hold query.'
+      operationId: get-api-walmart-integrationinstance-wfs-inventory-compliance-holds
+  /api/walmart/{integrationInstance}/wfs/mcf-orders:
+    get:
+      tags:
+      - WFS
+      summary: List MCF Orders
+      description: Paginated WFS MCF orders for an integration instance. `can_cancel`
+        is true while the order still has items and is not yet CANCELLED/SHIPPED/DELIVERED.
+        Returns a Laravel LengthAwarePaginator. Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 5
+                  customer_order_no: CO-1001
+                  customer_order_id: '118123456789012'
+                  request_id: req-abc-123
+                  status: CREATED
+                  can_cancel: true
+                  cancel_blocked_reason: null
+                  item_count: 2
+                  destination_address:
+                    name: Jane Doe
+                    address1: 1 Market St
+                    city: Newark
+                    state: NJ
+                    postal_code: '07102'
+                    country: US
+                  fulfillment_order_id: FO-77001
+                  created_at: '2026-06-18T19:05:00.000000Z'
+                  updated_at: '2026-06-18T19:05:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+      operationId: get-api-walmart-integrationinstance-wfs-mcf-orders
+  /api/walmart/{integrationInstance}/wfs/mcf-orders/{mcfOrder}:
+    get:
+      tags:
+      - WFS
+      summary: Get MCF Order
+      description: Fetch a single WFS MCF order by id, scoped to the integration instance
+        (404 if it belongs to another instance). Requires a Bearer token.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: mcfOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS MCF order ID (numeric)
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 5
+                  customer_order_no: CO-1001
+                  customer_order_id: '118123456789012'
+                  request_id: req-abc-123
+                  status: SHIPPED
+                  can_cancel: false
+                  cancel_blocked_reason: This shipment can no longer be cancelled.
+                  item_count: 2
+                  destination_address:
+                    name: Jane Doe
+                    address1: 1 Market St
+                    city: Newark
+                    state: NJ
+                    postal_code: '07102'
+                    country: US
+                  fulfillment_order_id: FO-77001
+                  created_at: '2026-06-18T19:05:00.000000Z'
+                  updated_at: '2026-06-19T09:12:00.000000Z'
+      operationId: get-api-walmart-integrationinstance-wfs-mcf-orders-mcforder
+  /api/walmart/{integrationInstance}/wfs/mcf-orders/{mcfOrder}/cancel:
+    post:
+      tags:
+      - WFS
+      summary: Cancel MCF Order
+      description: Cancel an MCF order on Walmart and reflect the cancellation locally.
+        No request body. Scoped to the integration instance (404 if it belongs to
+        another instance). Walmart rejects the cancel once the order has shipped/delivered/already-cancelled
+        — that returns a 422. Returns the updated order resource. Requires a Bearer
+        token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: mcfOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS MCF order ID (numeric)
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 5
+                  customer_order_no: CO-1001
+                  customer_order_id: '118123456789012'
+                  request_id: req-abc-123
+                  status: CANCELLED
+                  can_cancel: false
+                  cancel_blocked_reason: This shipment can no longer be cancelled.
+                  item_count: 2
+                  destination_address: null
+                  fulfillment_order_id: FO-77001
+                  created_at: '2026-06-18T19:05:00.000000Z'
+                  updated_at: '2026-06-20T08:00:00.000000Z'
+                message: MCF order cancelled
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to cancel MCF order: This order has already shipped
+                  and can no longer be cancelled.'
+      operationId: post-api-walmart-integrationinstance-wfs-mcf-orders-mcforder-cancel
+  /api/walmart/{integrationInstance}/wfs/mcf-orders/{mcfOrder}/sync-status:
+    post:
+      tags:
+      - WFS
+      summary: Sync MCF Order Status
+      description: Pull the latest status for an MCF order from Walmart and update
+        the local record. No request body. Scoped to the integration instance (404
+        if it belongs to another instance). A Walmart-side failure returns a 422.
+        Returns the updated order resource. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: mcfOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS MCF order ID (numeric)
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 5
+                  customer_order_no: CO-1001
+                  customer_order_id: '118123456789012'
+                  request_id: req-abc-123
+                  status: DELIVERED
+                  can_cancel: false
+                  cancel_blocked_reason: This shipment can no longer be cancelled.
+                  item_count: 2
+                  destination_address: null
+                  fulfillment_order_id: FO-77001
+                  created_at: '2026-06-18T19:05:00.000000Z'
+                  updated_at: '2026-06-21T11:30:00.000000Z'
+                message: MCF order status synced
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to sync MCF order status: Walmart could not locate
+                  fulfillment order FO-77001.'
+      operationId: post-api-walmart-integrationinstance-wfs-mcf-orders-mcforder-sync-status
+  /api/walmart/{integrationInstance}/wfs/mcf-orders/{mcfOrder}/promise-options:
+    post:
+      tags:
+      - WFS
+      summary: MCF Order Promise Options
+      description: Re-check Walmart's delivery-promise / fulfillability options for
+        an MCF order (which shipping speeds Walmart can still honour from WFS stock).
+        No request body. Scoped to the integration instance (404 if it belongs to
+        another instance). A Walmart-side failure returns a 422. Requires a Bearer
+        token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: mcfOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Local WFS MCF order ID (numeric)
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - shipping_speed: STANDARD
+                  available: true
+                  promised_delivery_date: '2026-06-26'
+                - shipping_speed: EXPEDITED
+                  available: false
+                  promised_delivery_date: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to fetch promise options: Walmart could not compute
+                  promise options for this order.'
+      operationId: post-api-walmart-integrationinstance-wfs-mcf-orders-mcforder-promise-options
   /webhooks/walmart/{webhook_token}:
     post:
       tags:
