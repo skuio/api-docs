@@ -158,6 +158,8 @@ tags:
 - name: Quotes
 - name: POS / Register
 - name: Report Templates
+- name: 17track apis
+- name: 17track sku.io apis
 - name: Product Import
 - name: Vendor Credits
 - name: Lifecycle
@@ -182,36 +184,29 @@ paths:
   /api/integrations/17track/test:
     post:
       tags:
-      - Integration Instances
-      summary: Test Connection
-      description: 'Validate a 17TRACK API key WITHOUT persisting an instance — powers
-        the connect-modal `Test Connection` button.
+      - 17track sku.io apis
+      summary: Test connection
+      description: 'Validate an API key against 17TRACK''s `/getquota` without persisting
+        an instance. Powers the connect modal''s **Test Connection** button.
 
 
-        Under the hood the supplied key is sent to 17TRACK''s `/getquota` endpoint;
-        the response reports the quota so the UI can warn before connecting.
+        **Body fields:**
+
+        - `api_key` (string, required, 8-255 chars)
 
 
-        **Required Fields:**
+        **Error codes returned (422):**
 
-        - `api_key` — 17TRACK API key (string, 8–255 chars)
+        - `invalid_key` — 17TRACK rejected the key
 
-
-        **Responses:**
-
-        - `200 OK` — key is valid, returns the live quota
-
-        - `422 Unprocessable Entity` with `code: invalid_key` — 17TRACK rejected the
-        key (auth error)
-
-        - `422 Unprocessable Entity` with `code: api_error` — 17TRACK API returned
-        a non-auth error (rate-limited, upstream failure, etc.)'
+        - `api_error` — any other 17TRACK failure (network, unexpected response)'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"api_key\": \"sk_17track_live_xxxxxxxxxxxxxxxxxxxx\"\n}"'
+              type: object
+              example:
+                api_key: YOUR_17TRACK_API_KEY
       parameters:
       - name: Accept
         in: header
@@ -226,11 +221,6 @@ paths:
       responses:
         '200':
           description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
@@ -238,64 +228,47 @@ paths:
               example:
                 data:
                   quota:
-                    used: 142
-                    total: 1000
-                    remaining: 858
+                    used: 487
+                    total: 2000
+                    remaining: 1513
                 message: Connection successful
         '422':
           description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
-              examples:
-                example-0:
-                  summary: 422 Invalid API Key
-                  value:
-                    message: Invalid API key
-                    code: invalid_key
-                example-1:
-                  summary: 422 Validation Error
-                  value:
-                    message: The api key field must be at least 8 characters.
-                    errors:
-                      api_key:
-                      - The api key field must be at least 8 characters.
+              example:
+                message: Invalid API key
+                code: invalid_key
       operationId: post-api-integrations-17track-test
   /api/integrations/17track/instances:
     post:
       tags:
-      - Integration Instances
-      summary: Create 17TRACK Instance
-      description: "Persist the singleton 17TRACK instance for this tenant. The `WebhookRoutable`\
-        \ trait mints a unique `wh_*` token as part of the create flow — the resulting\
-        \ webhook URL is returned in the response so it can be copied into the tenant's\
-        \ 17TRACK dashboard.\n\n**Required Fields:**\n- `name` — Display name (string,\
-        \ max 255 chars)\n- `api_key` — 17TRACK API key (string, 8–255 chars)\n\n\
-        **Optional Fields:**\n- `auto_track` — Per-entity auto-track flags (object).\
-        \ When omitted or partial, every missing key defaults to `true` (\"all on\"\
-        \ happy path):\n  - `auto_track.sales_order_fulfillments` (boolean)\n  - `auto_track.inbound_shipments`\
-        \ (boolean)\n  - `auto_track.warehouse_transfer_shipments` (boolean)\n  -\
-        \ `auto_track.rmas` (boolean)\n  - `auto_track.vendor_credit_shipments` (boolean)\n\
-        \n**Responses:**\n- `201 Created` — Instance persisted; payload includes the\
-        \ freshly minted `webhook_url`.\n- `422 Unprocessable Entity` — Validation\
-        \ failure OR a 17TRACK instance already exists for this tenant (the integration\
-        \ is a singleton)."
+      - 17track sku.io apis
+      summary: Create instance
+      description: "Persist the singleton 17TRACK instance for this tenant. The webhook\
+        \ token row is minted automatically (via `WebhookRoutable`).\n\n**Body fields:**\n\
+        - `name` (string, required, max 255)\n- `api_key` (string, required, 8-255\
+        \ chars)\n- `auto_track` (object, optional) — per-entity-type toggles; missing\
+        \ keys default to `true`\n  - `sales_order_fulfillments` (bool)\n  - `inbound_shipments`\
+        \ (bool)\n  - `warehouse_transfer_shipments` (bool)\n  - `rmas` (bool)\n \
+        \ - `vendor_credit_shipments` (bool)\n\n**Activity log:** writes `connected`\
+        \ event."
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"name\": \"17TRACK Production\",\n    \"api_key\":
-                \"sk_17track_live_xxxxxxxxxxxxxxxxxxxx\",\n    \"auto_track\": {\n        \"sales_order_fulfillments\":
-                true,\n        \"inbound_shipments\": true,\n        \"warehouse_transfer_shipments\":
-                true,\n        \"rmas\": true,\n        \"vendor_credit_shipments\":
-                true\n    }\n}"'
+              type: object
+              example:
+                name: 17TRACK
+                api_key: YOUR_17TRACK_API_KEY
+                auto_track:
+                  sales_order_fulfillments: true
+                  inbound_shipments: true
+                  warehouse_transfer_shipments: true
+                  rmas: true
+                  vendor_credit_shipments: true
       parameters:
       - name: Accept
         in: header
@@ -310,19 +283,14 @@ paths:
       responses:
         '201':
           description: Created
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
               example:
                 data:
-                  id: 1
-                  name: 17TRACK Production
+                  id: 47
+                  name: 17TRACK
                   is_automatic_sync_enabled: true
                   auto_track:
                     sales_order_fulfillments: true
@@ -330,13 +298,22 @@ paths:
                     warehouse_transfer_shipments: true
                     rmas: true
                     vendor_credit_shipments: true
-                  webhook_url: https://acme.sku.io/webhooks/seventeentrack/wh_aB3cD4eF5gH6iJ7kL8mN9oP
-                  quota: null
-                  status_counts: null
-                  last_webhook_at: null
-                  last_event_at: null
-                  created_at: '2026-06-18T14:32:00+00:00'
-                  updated_at: '2026-06-18T14:32:00+00:00'
+                  dashboard_summary:
+                    quota:
+                      used: 487
+                      total: 2000
+                      remaining: 1513
+                    status_counts:
+                      pending: 0
+                      in_transit: 0
+                      delivered: 0
+                    pending_registration_count: 0
+                    last_webhook_at: null
+                    last_polled_at: null
+                    webhook_url: https://siber.sku.io/webhooks/seventeentrack/wh_abc123
+                    is_connected: true
+                  created_at: '2026-06-25T10:15:39Z'
+                  updated_at: '2026-06-25T10:15:39Z'
       operationId: post-api-integrations-17track-instances
   /api/integrations/17track/instances/{instance}:
     get:
@@ -426,6 +403,14 @@ paths:
                     exception: 9
                     expired: 3
                     not_found: 1
+                  pending_registration_count: 14
+                  registration_errors:
+                  - message: Sorry, but due to the policy of carrier 'USPS' (code
+                      '21051'), registration is temporarily unavailable. Please complete
+                      the quota purchase and configure the 'Special Carriers' before
+                      proceeding.
+                    count: 14
+                    last_failed_at: '2026-06-27T08:55:16+00:00'
                   last_webhook_at: '2026-06-18T14:28:11+00:00'
                   last_event_at: '2026-06-18T14:27:55+00:00'
                   created_at: '2026-06-01T09:00:00+00:00'
@@ -653,9 +638,36 @@ paths:
                   last_event_at: '2026-06-09T13:14:00+00:00'
                   estimated_delivery_at: '2026-06-11T00:00:00+00:00'
                   delivered_at: null
+                  picked_up_at: '2026-06-08T20:30:00+00:00'
                   registered_at: '2026-06-08T19:55:00+00:00'
+                  registration_error: null
                   stopped_at: null
                   created_at: '2026-06-08T19:55:00+00:00'
+                - id: 43
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 1802
+                  trackable_label: SO-1235 / FUL-1802
+                  trackable_url: /v2/orders/sales-orders/1235
+                  tracking_number: '9405550105799029763087'
+                  carrier_code: null
+                  carrier_name: null
+                  delivery_status: pending
+                  delivery_status_label: Pending
+                  delivery_status_color: grey
+                  sub_status: null
+                  latest_event_description: null
+                  latest_event_location: null
+                  last_event_at: null
+                  estimated_delivery_at: null
+                  delivered_at: null
+                  picked_up_at: null
+                  registered_at: null
+                  registration_error: Sorry, but due to the policy of carrier 'USPS'
+                    (code '21051'), registration is temporarily unavailable. Please
+                    complete the quota purchase and configure the 'Special Carriers'
+                    before proceeding.
+                  stopped_at: null
+                  created_at: '2026-06-25T15:18:32+00:00'
                 links:
                   first: https://example.test/api/integrations/17track/instances/1/trackings?page=1
                   last: https://example.test/api/integrations/17track/instances/1/trackings?page=10
@@ -893,52 +905,15 @@ paths:
   /api/shipment-trackings:
     get:
       tags:
-      - Shipment Trackings
-      summary: List Shipment Trackings
-      description: 'Paginated cross-entity listing of shipment tracking rows. Powers
-        the Delivery Exceptions view, the global Trackings table, and per-entity filtered
-        subsets.
+      - 17track sku.io apis
+      summary: List trackings (cross-entity)
+      description: 'Cross-entity paginated listing of `shipment_trackings`. Powers
+        the global **Delivery Exceptions** view (not scoped to a single integration
+        instance).
 
 
-        Filters / sorts / `per_page` are read directly from the request by the repository
-        per the Spatie QueryBuilder pagination idiom.
-
-
-        **Allowed filters (`filter[...]`):**
-
-        - `delivery_status` — comma-separated `DeliveryStatusEnum` values
-
-        - `trackable_type` — comma-separated friendly slugs (see query param description
-        for the full alias list)
-
-        - `search` — substring match on `tracking_number`
-
-        - `date_from` / `date_to` — `m/d/Y` bounds on `last_event_at` (app timezone)
-
-        - `stalled` — `1` for `in_transit` rows whose last event is >7 days old
-
-        - `integration_instance_id` — exact match
-
-
-        **Allowed sorts:** `id`, `created_at`, `last_event_at`, `delivery_status`.
-        Prefix with `-` for DESC.
-
-
-        **The canonical Delivery Exceptions query:**
-
-        ```
-
-        ?filter[delivery_status]=exception,delivery_failure,expired&filter[stalled]=1
-
-        ```
-
-        These statuses are the ones flagged by `DeliveryStatusEnum::isException()`;
-        `stalled=1` adds in_transit rows that have stopped moving.
-
-
-        **Response shape:** Standard Laravel `LengthAwarePaginator` JSON with `data[]`,
-        `current_page`, `last_page`, `per_page`, `total`, `from`, `to`, `*_page_url`,
-        `path`, `links`. Each row in `data[]` is shaped by `ShipmentTrackingResource`.'
+        Delegated directly to `ShipmentTrackingRepository::getPaginatedAcrossEntities()`
+        (the controller-best-practices ''thin read'' exception).'
       parameters:
       - name: Accept
         in: header
@@ -948,101 +923,23 @@ paths:
       responses:
         '200':
           description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
               example:
                 data:
-                - id: 4821
-                  trackable_type: sales_order_fulfillment
-                  trackable_id: 9132
-                  trackable_label: SO-7411 / FUL-9132
-                  trackable_url: /v2/orders/sales-orders/7411
+                - id: 1
                   tracking_number: 1Z999AA10123456784
-                  carrier_code: 100002
-                  carrier_name: UPS
-                  delivery_status: exception
-                  delivery_status_label: Exception
-                  delivery_status_color: error
-                  sub_status: Exception_Other
-                  latest_event_description: Customs clearance delayed — documentation
-                    required
-                  latest_event_location: Cincinnati, OH, US
-                  last_event_at: '2026-06-15T08:12:00+00:00'
-                  estimated_delivery_at: null
-                  delivered_at: null
-                  registered_at: '2026-06-12T16:04:21+00:00'
-                  stopped_at: null
-                  created_at: '2026-06-12T15:58:00+00:00'
-                - id: 4819
-                  trackable_type: inbound_shipment
-                  trackable_id: 312
-                  trackable_label: INB-2026-0312
-                  trackable_url: /v2/inbound-shipments/312
-                  tracking_number: '9400111899223345678901'
-                  carrier_code: 21051
-                  carrier_name: USPS
-                  delivery_status: delivery_failure
-                  delivery_status_label: Delivery Failure
-                  delivery_status_color: orange
-                  sub_status: DeliveryFailure_NoBody
-                  latest_event_description: Delivery attempted — no one available
-                    to sign
-                  latest_event_location: San Francisco, CA, US
-                  last_event_at: '2026-06-17T19:44:00+00:00'
-                  estimated_delivery_at: '2026-06-18T00:00:00+00:00'
-                  delivered_at: null
-                  registered_at: '2026-06-10T11:02:00+00:00'
-                  stopped_at: null
-                  created_at: '2026-06-10T11:00:00+00:00'
-                - id: 4775
+                  delivery_status: in_transit
                   trackable_type: sales_order_fulfillment
-                  trackable_id: 9001
-                  trackable_label: SO-7388 / FUL-9001
-                  trackable_url: /v2/orders/sales-orders/7388
-                  tracking_number: LX123456789CN
-                  carrier_code: 3011
-                  carrier_name: China Post
-                  delivery_status: expired
-                  delivery_status_label: Expired
-                  delivery_status_color: grey-darken-2
-                  sub_status: null
-                  latest_event_description: No tracking events in 60+ days — tracking
-                    expired
-                  latest_event_location: null
-                  last_event_at: '2026-04-10T03:21:00+00:00'
-                  estimated_delivery_at: null
-                  delivered_at: null
-                  registered_at: '2026-04-08T09:14:00+00:00'
-                  stopped_at: '2026-06-09T03:21:00+00:00'
-                  created_at: '2026-04-08T09:12:00+00:00'
+                  trackable_id: 5512
+                  last_event_at: '2026-06-26T13:14:00Z'
+                  created_at: '2026-06-24T17:22:19Z'
                 current_page: 1
-                last_page: 1
+                last_page: 4
                 per_page: 15
-                total: 3
-                from: 1
-                to: 3
-                first_page_url: https://acme.sku.io/api/shipment-trackings?page=1
-                last_page_url: https://acme.sku.io/api/shipment-trackings?page=1
-                next_page_url: null
-                prev_page_url: null
-                path: https://acme.sku.io/api/shipment-trackings
-                links:
-                - url: null
-                  label: '&laquo; Previous'
-                  active: false
-                - url: https://acme.sku.io/api/shipment-trackings?page=1
-                  label: '1'
-                  active: true
-                - url: null
-                  label: Next &raquo;
-                  active: false
+                total: 53
       operationId: get-api-shipment-trackings
   /api/shipment-trackings/{tracking}:
     get:
@@ -1245,41 +1142,35 @@ paths:
   /api/shipment-trackings/register:
     post:
       tags:
-      - Shipment Trackings
-      summary: Register Shipment Tracking
-      description: 'Manual `Track this shipment` trigger from an entity detail page.
-        Resolves the entity, creates a pending `shipment_trackings` row via the manager,
-        and kicks off the batched `RegisterSeventeenTrackTrackingsJob` so the row
-        gets pushed to 17TRACK promptly.
+      - 17track sku.io apis
+      summary: Register tracking — manual
+      description: 'Manual **Track this shipment** trigger from an entity''s detail
+        page. Resolves the entity, creates a pending row, and dispatches the debounced
+        batch register job.
 
 
-        **Required Fields:**
+        **Body fields:**
 
-        - `trackable_type` — friendly slug. One of: `sales_order_fulfillment`, `inbound_shipment`,
-        `warehouse_transfer_shipment`, `rma`, `vendor_credit_shipment`
+        - `trackable_type` (string, required) — friendly slug. Allowed: `sales_order_fulfillment`,
+        `inbound_shipment`, `warehouse_transfer_shipment`, `rma`, `vendor_credit_shipment`
 
-        - `trackable_id` — integer, min 1. The PK of the trackable entity.
+        - `trackable_id` (integer, required, ≥ 1)
 
 
-        **Responses:**
+        **Error codes (422):**
 
-        - `201 Created` — pending tracking row created (carrier event data not yet
-        hydrated; the register job will fill it on the next tick)
+        - `not_connected` — no active 17TRACK instance for the tenant
 
-        - `404 Not Found` — trackable entity does not exist
-
-        - `422 Unprocessable Entity` with `code: not_connected` — no active 17TRACK
-        instance
-
-        - `422 Unprocessable Entity` with `code: register_skipped` — entity has an
-        empty tracking number, OR auto-track is disabled for this entity type'
+        - `register_skipped` — tracking number is empty OR auto-track is disabled
+        for this entity type'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"trackable_type\": \"sales_order_fulfillment\",\n    \"trackable_id\":
-                9132\n}"'
+              type: object
+              example:
+                trackable_type: sales_order_fulfillment
+                trackable_id: 5512
       parameters:
       - name: Accept
         in: header
@@ -1294,97 +1185,70 @@ paths:
       responses:
         '201':
           description: Created
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
               example:
                 data:
-                  id: 4822
-                  trackable_type: sales_order_fulfillment
-                  trackable_id: 9132
-                  trackable_label: SO-7411 / FUL-9132
-                  trackable_url: /v2/orders/sales-orders/7411
-                  tracking_number: 1Z999AA10123456999
-                  carrier_code: null
-                  carrier_name: null
+                  id: 64
+                  tracking_number: 1Z999AA10123456790
                   delivery_status: pending
-                  delivery_status_label: Pending
-                  delivery_status_color: grey
-                  sub_status: null
-                  latest_event_description: null
-                  latest_event_location: null
-                  last_event_at: null
-                  estimated_delivery_at: null
-                  delivered_at: null
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 5512
                   registered_at: null
-                  stopped_at: null
-                  created_at: '2026-06-18T14:40:00+00:00'
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
+                  created_at: '2026-06-27T01:55:00Z'
+        '404':
+          description: Not Found
           content:
             application/json:
               schema:
                 type: object
-              examples:
-                example-0:
-                  summary: 422 Not Connected
-                  value:
-                    message: 17TRACK is not connected.
-                    code: not_connected
-                example-1:
-                  summary: 422 Register Skipped
-                  value:
-                    message: Could not register — tracking number is empty or auto-track
-                      is disabled for this entity type.
-                    code: register_skipped
+              example:
+                message: Trackable entity not found.
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 17TRACK is not connected.
+                code: not_connected
       operationId: post-api-shipment-trackings-register
   /api/shipment-trackings/backfill:
     post:
       tags:
-      - Shipment Trackings
-      summary: Backfill Shipment Trackings
-      description: 'Kick off a `BulkBackfillTrackingsJob` that scans recent rows of
-        the selected entity types and registers any that have a `tracking_number`
-        but no `shipment_trackings` row yet.
+      - 17track sku.io apis
+      summary: Backfill — bulk historical register
+      description: 'Dispatch `BulkBackfillTrackingsJob` — scans recent rows of the
+        selected entity types and registers any that have a `tracking_number` but
+        no `shipment_trackings` row yet. Tracked via `TrackedJobLog`.
 
 
-        Returns the `tracked_job_log_id` so the frontend can deep-link into the global
-        Job Progress Tray (see CLAUDE.md → Tracked Job Progress Pattern).
+        **Body fields (all optional, defaults applied):**
+
+        - `entity_types` (string[], optional, default all 5) — allowed values: `sales_order_fulfillments`,
+        `inbound_shipments`, `warehouse_transfer_shipments`, `rmas`, `vendor_credit_shipments`
+
+        - `since_days` (int, optional, default 30, range 1-365)
 
 
-        **Optional Fields:**
-
-        - `entity_types` — array of strings. Defaults to all five. Each value must
-        be one of: `sales_order_fulfillments`, `inbound_shipments`, `warehouse_transfer_shipments`,
-        `rmas`, `vendor_credit_shipments`.
-
-        - `since_days` — integer, 1–365. Defaults to 30. Look-back window in days.
-
-
-        **Responses:**
-
-        - `200 OK` — backfill dispatched; payload contains `tracked_job_log_id`
-
-        - `422 Unprocessable Entity` with `code: not_connected` — no active 17TRACK
-        instance'
+        **Activity log:** writes `backfill_started` immediately + `backfill_completed`
+        when done.'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"entity_types\": [\n        \"sales_order_fulfillments\",\n        \"inbound_shipments\",\n        \"warehouse_transfer_shipments\",\n        \"rmas\",\n        \"vendor_credit_shipments\"\n    ],\n    \"since_days\":
-                30\n}"'
+              type: object
+              example:
+                entity_types:
+                - sales_order_fulfillments
+                - inbound_shipments
+                - warehouse_transfer_shipments
+                - rmas
+                - vendor_credit_shipments
+                since_days: 30
       parameters:
       - name: Accept
         in: header
@@ -1399,87 +1263,79 @@ paths:
       responses:
         '200':
           description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
               example:
                 data:
-                  tracked_job_log_id: 81244
+                  tracked_job_log_id: 446400
                 message: Backfill started — track progress in the job tray.
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-              example:
-                message: 17TRACK is not connected.
-                code: not_connected
       operationId: post-api-shipment-trackings-backfill
   /webhooks/seventeentrack/{webhook_token}:
     post:
       tags:
-      - Webhooks (Incoming — Documentation Only)
-      summary: 17TRACK Webhook (TRACKING_UPDATED)
-      description: "**This endpoint is INCOMING — it is called by 17TRACK, not by\
-        \ SKU.io clients. Documented here for reference only.**\n\nFull URL shape:\
-        \ `POST /webhooks/seventeentrack/{webhook_token}`. The token in the URL identifies\
-        \ the tenant + instance; the `sign` field at the top of the JSON body is an\
-        \ HMAC-SHA256 over the request body computed with the instance's API key as\
-        \ the HMAC secret — verified by `VerifySeventeenTrackWebhook` middleware before\
-        \ the controller runs.\n\n**Envelope (v2.4):**\n```\n{\n  \"event\": \"TRACKING_UPDATED\"\
-        \ | \"TRACKING_STOPPED\",\n  \"data\": { ... carrier-event payload ... },\n\
-        \  \"sign\": \"<sha256-hex>\"\n}\n```\n\n**Behavior:**\n- Empty body → `200\
-        \ { status: 'acknowledged' }` (avoids 17TRACK retry storm).\n- Missing `event`\
-        \ key → `200 { status: 'ignored' }`.\n- Valid payload → `200 { status: 'success'\
-        \ }` and `HandleSeventeenTrackWebhookJob` is dispatched for async ingest.\
-        \ Out-of-order events (older `last_event_at` than what's already stored) are\
-        \ dropped inside the repository.\n\n**Why always 200?** 17TRACK retries non-2xx\
-        \ responses for several hours. Any non-actionable scenario still acks with\
-        \ 200 to avoid bogus retry storms."
+      - 17track sku.io apis
+      summary: Webhook ingress (from 17TRACK)
+      description: '**Public, signature-verified webhook ingress.** 17TRACK posts
+        here when a tracking status changes.
+
+
+        **Auth:** the `sign` header carries `SHA256(event + ''/'' + json(data) + ''/''
+        + api_key)`. The middleware (`VerifySeventeenTrackWebhook`) tries TWO signing
+        candidates for byte-equality:
+
+        1. **Raw-body slice** — the exact byte substring of the top-level `data` field.
+        This matches what 17TRACK actually signed.
+
+        2. **Re-encoded** — `json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)`.
+        Matches our own test helpers.
+
+
+        Either match is sufficient.
+
+
+        **Routing:** the `webhook_token` path segment (format `wh_<base64>`) maps
+        to a tenant + 17TRACK instance via the central `tenant_integration_routes`
+        table. Unknown tokens return 404. Missing/invalid signature returns 401.
+
+
+        **Side effects on success:**
+
+        - 200 returned immediately (the request body is `{}`)
+
+        - `HandleSeventeenTrackWebhookJob` queued on `webhooks` for async processing
+
+        - `seventeen_track_webhook_events` audit row persisted
+
+        - `instance.last_webhook_received_at` stamped
+
+        - Affected `shipment_trackings` rows are updated; `DeliveryStatusUpdated`
+        event fires on Delivered transitions'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"event\": \"TRACKING_UPDATED\",\n    \"data\": {\n        \"number\":
-                \"1Z999AA10123456784\",\n        \"carrier\": 100002,\n        \"track_info\":
-                {\n            \"latest_status\": {\n                \"status\": \"InTransit\",\n                \"sub_status\":
-                \"InTransit_Other\",\n                \"sub_status_descr\": null\n            },\n            \"latest_event\":
-                {\n                \"time_iso\": \"2026-06-18T11:02:00+00:00\",\n                \"description\":
-                \"Departed customs facility — documentation accepted\",\n                \"location\":
-                \"Cincinnati, OH, US\",\n                \"stage\": \"InTransit\",\n                \"sub_status\":
-                null\n            },\n            \"time_metrics\": {\n                \"estimated_delivery_date\":
-                {\n                    \"source\": \"Carrier\",\n                    \"from\":
-                \"2026-06-19\",\n                    \"to\": \"2026-06-20\"\n                }\n            },\n            \"tracking\":
-                {\n                \"providers\": [\n                    {\n                        \"events\":
-                [\n                            {\n                                \"time_iso\":
-                \"2026-06-18T11:02:00+00:00\",\n                                \"location\":
-                \"Cincinnati, OH, US\",\n                                \"description\":
-                \"Departed customs facility — documentation accepted\",\n                                \"stage\":
-                \"InTransit\"\n                            },\n                            {\n                                \"time_iso\":
-                \"2026-06-15T08:12:00+00:00\",\n                                \"location\":
-                \"Cincinnati, OH, US\",\n                                \"description\":
-                \"Customs clearance delayed — documentation required\",\n                                \"stage\":
-                \"Exception\"\n                            }\n                        ]\n                    }\n                ]\n            }\n        }\n    },\n    \"sign\":
-                \"7a3f1c9b4e2d8f0a6c5e9b1d4f7a2c0e8b5d3f1a9c7e4b2d6f0a8c3e5b1d4f7a\"\n}"'
+              type: object
+              example:
+                event: TRACKING_UPDATED
+                data:
+                  number: 1Z999AA10123456784
+                  carrier: 100002
+                  track_info:
+                    latest_status:
+                      status: InTransit
+                      sub_status: InTransit_PickedUp
+                    latest_event:
+                      time_utc: '2026-06-26T13:14:00Z'
+                      description: Status updated by carrier
+                      location: Memphis, TN
       parameters:
-      - name: Accept
+      - name: sign
         in: header
         schema:
           type: string
-        example: application/json
+        example: <sha256(event + '/' + json(data) + '/' + api_key)>
       - name: Content-Type
         in: header
         schema:
@@ -1490,34 +1346,30 @@ paths:
         schema:
           type: string
         required: true
-        description: 'Opaque per-instance token minted by the `WebhookRoutable` trait.
-          Globally unique across all tenants. Pattern: `wh_[A-Za-z0-9]+`.'
-        example: wh_aB3cD4eF5gH6iJ7kL8mN9oP
       responses:
         '200':
           description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
           content:
             application/json:
               schema:
                 type: object
-              examples:
-                example-0:
-                  summary: 200 Success
-                  value:
-                    status: success
-                example-1:
-                  summary: 200 Ignored (no event)
-                  value:
-                    status: ignored
-                example-2:
-                  summary: 200 Acknowledged (no instance)
-                  value:
-                    status: acknowledged
+              example: {}
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Invalid signature
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: No instance
       operationId: post-webhooks-seventeentrack-webhook-token
   /api/accounting/v3/transactions:
     get:
@@ -195898,6 +195750,955 @@ paths:
               example:
                 data: null
       operationId: delete-api-report-templates-report-template
+  /register:
+    post:
+      tags:
+      - 17track apis
+      summary: Register tracking numbers
+      description: 'Register up to **40 tracking numbers per call** for auto-tracking.
+
+
+        **Per-item fields:**
+
+        - `number` (string, required) — the tracking number
+
+        - `carrier` (int, optional) — 17TRACK carrier code; omit + set `auto_detection:
+        true` to let 17TRACK guess
+
+        - `auto_detection` (bool, optional) — fall back to auto-detect when carrier
+        is unknown/wrong
+
+        - `lang`, `order_no`, `order_time`, `tag`, `destination_country`, `destination_postal_code`,
+        `shipper`, `consignee`, `phone_number_last_4`, `phone_number`, `email`, `remark`
+        — optional enrichment fields
+
+
+        **Response envelope:** `{code, data: {accepted, rejected}}`. Per-row rejections
+        (already-registered, carrier not detected, …) come back in `data.rejected[]`
+        with the error code — they''re NOT envelope errors.
+
+
+        **Common envelope error codes:**
+
+        - `-18010002` invalid API key
+
+        - `-18010014` rate limit exceeded (also HTTP 429)
+
+        - `-18019907` daily tracking limit reached
+
+        - `-18019908` monthly quota exhausted'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+              - number: RR123456789CN
+                carrier: 3011
+                auto_detection: true
+                lang: en
+                order_no: ORDER-1234
+                order_time: '2026-06-25'
+                tag: sku.io
+                destination_country: US
+                destination_postal_code: '94110'
+                shipper: Acme Shipper
+                consignee: Customer Name
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    code: 0
+                    data:
+                      accepted:
+                      - origin: 1
+                        number: RR123456789CN
+                        carrier: 3011
+                      rejected: []
+                example-1:
+                  summary: 200 Success — partial rejection (already registered)
+                  value:
+                    code: 0
+                    data:
+                      accepted: []
+                      rejected:
+                      - number: RR123456789CN
+                        error:
+                          code: -18019901
+                          message: Tracking number is already registered.
+                example-2:
+                  summary: 200 — Quota exhausted
+                  value:
+                    code: -18019908
+                    data:
+                      errors:
+                      - code: -18019908
+                        message: Quotas have run out.
+      operationId: post-register
+  /gettrackinfo:
+    post:
+      tags:
+      - 17track apis
+      summary: Get tracking info
+      description: 'Read current tracking state for up to **40 numbers per call**.
+        **Free of quota cost** (unlike /register, which consumes monthly quota).
+
+
+        The `track_info.latest_status` carries the high-level `status` (e.g. `InTransit`,
+        `Delivered`, `NotFound`) and `sub_status`. `track_info.tracking.providers[].events[]`
+        is the full event timeline. `track_info.time_metrics.estimated_delivery_date.{from,to}`
+        is the EDD when 17TRACK has one.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+              - number: RR123456789CN
+                carrier: 3011
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                code: 0
+                data:
+                  accepted:
+                  - number: RR123456789CN
+                    carrier: 3011
+                    track_info:
+                      latest_status:
+                        status: InTransit
+                        sub_status: InTransit_CustomsProcessing
+                      latest_event:
+                        time_iso: '2026-06-09T08:14:00-05:00'
+                        time_utc: '2026-06-09T13:14:00Z'
+                        description: Departed UPS facility
+                        location: Memphis, TN
+                        stage: InTransit
+                      time_metrics:
+                        estimated_delivery_date:
+                          from: '2026-06-11'
+                          to: '2026-06-11'
+                      tracking:
+                        providers:
+                        - provider:
+                            key: 100002
+                            name: UPS
+                            alias: ups
+                          events:
+                          - time_utc: '2026-06-09T13:14:00Z'
+                            description: Departed UPS facility
+                            location: Memphis, TN
+                            stage: InTransit
+                  rejected: []
+      operationId: post-gettrackinfo
+  /stoptrack:
+    post:
+      tags:
+      - 17track apis
+      summary: Stop tracking
+      description: Stop auto-tracking for up to **40 numbers per call**. Stopped numbers
+        no longer receive updates or count against quota; they can be resumed via
+        `/retrack` (one resume per number, ref code -18019905).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+              - number: RR123456789CN
+                carrier: 3011
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                code: 0
+                data:
+                  accepted:
+                  - number: RR123456789CN
+                    carrier: 3011
+                  rejected: []
+      operationId: post-stoptrack
+  /retrack:
+    post:
+      tags:
+      - 17track apis
+      summary: Retrack
+      description: Resume auto-tracking for previously stopped numbers. **Each number
+        can only be retracked once** (error code -18019905). Only numbers currently
+        in the stopped state can be retracked (error code -18019904 otherwise).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+              - number: RR123456789CN
+                carrier: 3011
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                code: 0
+                data:
+                  accepted:
+                  - number: RR123456789CN
+                    carrier: 3011
+                  rejected: []
+      operationId: post-retrack
+  /changecarrier:
+    post:
+      tags:
+      - 17track apis
+      summary: Change carrier
+      description: 'Reassign a tracking number to a different carrier. **Capped at
+        5 changes per number** (error code -18019807).
+
+
+        **Field names (v2.4):** `carrier_old` / `carrier_new` (NOT `carrier_from`
+        / `carrier_to`).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+              - number: RR123456789CN
+                carrier_old: 3013
+                carrier_new: 3011
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                code: 0
+                data:
+                  accepted:
+                  - number: RR123456789CN
+                    carrier: 3011
+                  rejected: []
+      operationId: post-changecarrier
+  /getquota:
+    post:
+      tags:
+      - 17track apis
+      summary: Get quota
+      description: 'Return the API account''s quota snapshot.
+
+
+        **Response fields:** `quota_total`, `quota_used`, `quota_remain`, `today_used`,
+        `max_track_daily`, `free_email_quota`, `free_email_quotaused`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example: {}
+      parameters:
+      - name: 17token
+        in: header
+        schema:
+          type: string
+        example: '{{17track_api_key}}'
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                code: 0
+                data:
+                  quota_total: 2000
+                  quota_used: 487
+                  quota_remain: 1513
+                  today_used: 12
+                  max_track_daily: 1000
+                  free_email_quota: 300
+                  free_email_quotaused: 0
+      operationId: post-getquota
+  /api/integrations/17track/instances/{instance_id}:
+    get:
+      tags:
+      - 17track sku.io apis
+      summary: Show instance
+      description: 'Return the 17TRACK instance enriched with the live dashboard summary
+        (quota, status counts, webhook URL, last-poll/webhook timestamps, carrier
+        breakdown, stalled-shipments count).
+
+
+        **Note on quota:** the connector call is wrapped — a 17TRACK outage returns
+        `quota = {used: null, total: null, error: "…"}` instead of breaking the whole
+        dashboard.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 47
+                  name: 17TRACK
+                  is_automatic_sync_enabled: true
+                  auto_track:
+                    sales_order_fulfillments: true
+                    inbound_shipments: true
+                    warehouse_transfer_shipments: true
+                    rmas: true
+                    vendor_credit_shipments: true
+                  dashboard_summary:
+                    quota:
+                      used: 487
+                      total: 2000
+                      remaining: 1513
+                    status_counts:
+                      pending: 12
+                      in_transit: 80
+                      delivered: 142
+                      expired: 3
+                    untracked_count: 0
+                    stalled_count: 2
+                    stalled_since: '2026-06-20T08:00:00Z'
+                    pending_registration_count: 0
+                    carriers:
+                    - name: USPS
+                      count: 132
+                      delivered: 110
+                      delivery_rate: 83.3
+                    last_webhook_at: '2026-06-26T22:51:00Z'
+                    last_event_at: '2026-06-26T22:48:00Z'
+                    last_polled_at: '2026-06-26T18:00:00Z'
+                    next_polled_at: '2026-06-27T00:00:00Z'
+                    webhook_url: https://siber.sku.io/webhooks/seventeentrack/wh_abc123
+                    is_connected: true
+                  created_at: '2026-06-24T10:15:39Z'
+                  updated_at: '2026-06-26T22:51:00Z'
+      operationId: get-api-integrations-17track-instances-instance-id
+    patch:
+      tags:
+      - 17track sku.io apis
+      summary: Update instance
+      description: 'Patch any combination of name, api_key, auto_track toggles, or
+        `is_automatic_sync_enabled`. All fields optional.
+
+
+        **Body fields:**
+
+        - `name` (string, optional, max 255)
+
+        - `api_key` (string, optional, 8-255 chars)
+
+        - `auto_track.{sales_order_fulfillments,inbound_shipments,warehouse_transfer_shipments,rmas,vendor_credit_shipments}`
+        (bool, optional)
+
+        - `is_automatic_sync_enabled` (bool, optional)
+
+
+        **Activity log:** writes `updated` event with `changed_keys`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: 17TRACK (production)
+                auto_track:
+                  sales_order_fulfillments: true
+                  inbound_shipments: false
+                  warehouse_transfer_shipments: true
+                  rmas: false
+                  vendor_credit_shipments: false
+                is_automatic_sync_enabled: true
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 47
+                  name: 17TRACK (production)
+                  is_automatic_sync_enabled: true
+                  auto_track:
+                    sales_order_fulfillments: true
+                    inbound_shipments: false
+                    warehouse_transfer_shipments: true
+                    rmas: false
+                    vendor_credit_shipments: false
+                  dashboard_summary:
+                    quota:
+                      used: 487
+                      total: 2000
+                      remaining: 1513
+      operationId: patch-api-integrations-17track-instances-instance-id
+    delete:
+      tags:
+      - 17track sku.io apis
+      summary: Delete instance
+      description: 'Disconnect 17TRACK.
+
+
+        **Behaviour (PRD edge case #12):**
+
+        - Historical tracking rows are KEPT (chips remain visible with a ''tracking
+        stopped'' tooltip)
+
+        - Active rows are stamped `stopped_at` and a best-effort `/stoptrack` call
+        is sent to 17TRACK
+
+        - Webhook token + central route row are removed
+
+        - Instance itself is deleted
+
+
+        **Activity log:** writes `disconnected` event BEFORE the delete (so the audit
+        trail survives).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '204':
+          description: No Content
+          content:
+            application/json:
+              schema:
+                type: object
+              example: {}
+      operationId: delete-api-integrations-17track-instances-instance-id
+  /api/integrations/17track/instances/{instance_id}/refresh:
+    post:
+      tags:
+      - 17track sku.io apis
+      summary: Sync FROM 17TRACK — manual poll
+      description: 'Dispatch an immediate `PollSeventeenTrackTrackingsJob` — pulls
+        the latest status from 17TRACK for non-terminal trackings whose last event
+        is older than `instance.last_polled_at`.
+
+
+        Fires the same code path as the scheduled 6-hour poll. Tracked via `TrackedJobLog`
+        so the global job progress tray surfaces it.
+
+
+        **Activity log:** writes `manual_refresh_triggered` (with causer = acting
+        user).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 446215
+                message: Sync started — track progress in the job tray.
+      operationId: post-api-integrations-17track-instances-instance-id-refresh
+  /api/integrations/17track/instances/{instance_id}/push-pending:
+    post:
+      tags:
+      - 17track sku.io apis
+      summary: Sync TO 17TRACK — push pending
+      description: 'Push every pending or previously-failed tracking row to 17TRACK
+        in one shot — manual recovery path for the **Sync to 17TRACK** button.
+
+
+        **Pending = `registered_at IS NULL AND stopped_at IS NULL`** — covers (a)
+        freshly-created rows the observer flow hasn''t dispatched for yet, (b) rows
+        whose previous register call failed with `quota_exceeded`, and (c) orphans
+        from a transient API error.
+
+
+        **Response branches:**
+
+        - `tracked_job_log_id` set when a fresh job is queued
+
+        - `tracked_job_log_id: null` when a push is already in flight (existing job
+        will pick up the new rows)
+
+        - `pending_count: 0` early-exit when nothing is pending (no wasted queue slot)
+
+
+        **Activity log:** writes `manual_push_triggered` (with causer = acting user).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 — job queued
+                  value:
+                    data:
+                      tracked_job_log_id: 446299
+                      pending_count: 13
+                    message: Pushing 13 tracking(s) to 17TRACK — track progress in
+                      the job tray.
+                example-1:
+                  summary: 200 — nothing to push
+                  value:
+                    data:
+                      tracked_job_log_id: null
+                      pending_count: 0
+                    message: No trackings are waiting to be registered with 17TRACK.
+                example-2:
+                  summary: 200 — already running (coalesced)
+                  value:
+                    data:
+                      tracked_job_log_id: null
+                      pending_count: 13
+                    message: A push is already running — watch the job tray for progress.
+      operationId: post-api-integrations-17track-instances-instance-id-push-pending
+  /api/integrations/17track/instances/{instance_id}/trackings:
+    get:
+      tags:
+      - 17track sku.io apis
+      summary: List trackings (instance-scoped)
+      description: 'Paginated trackings for one 17TRACK instance. Powers the **Trackings**
+        sub-page.
+
+
+        Filters are registered via `ShipmentTrackingRepository::getInstanceTrackingsAllowedFilters()`
+        and exposed through the `AdvancedFilterBuilder` operator family (`is`, `contains`,
+        `is_one_of`, `between`, `starts_with`, `ends_with`, `is_empty`, `is_not_empty`,
+        `greater_than`, `less_than`, …).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  tracking_number: 1Z999AA10123456784
+                  carrier_code: 100002
+                  carrier_name: UPS
+                  delivery_status: in_transit
+                  sub_status: InTransit_CustomsProcessing
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 5512
+                  registered_at: '2026-06-24T17:22:19Z'
+                  last_event_at: '2026-06-26T13:14:00Z'
+                  last_event_description: Departed UPS facility
+                  last_event_location: Memphis, TN
+                  estimated_delivery_at: '2026-06-28T00:00:00Z'
+                  delivered_at: null
+                  stopped_at: null
+                  registration_error: null
+                  created_at: '2026-06-24T17:22:19Z'
+                  updated_at: '2026-06-26T13:14:00Z'
+                current_page: 1
+                last_page: 5
+                per_page: 15
+                total: 64
+                from: 1
+                to: 15
+      operationId: get-api-integrations-17track-instances-instance-id-trackings
+  /api/shipment-trackings/{shipment_tracking_id}:
+    get:
+      tags:
+      - 17track sku.io apis
+      summary: Show tracking
+      description: Single tracking row with its full event timeline + integration
+        instance descriptor. Powers the per-row **timeline drawer** opened from any
+        trackings list.
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: shipment_tracking_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  tracking_number: 1Z999AA10123456784
+                  carrier_code: 100002
+                  carrier_name: UPS
+                  delivery_status: in_transit
+                  sub_status: InTransit_CustomsProcessing
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 5512
+                  registered_at: '2026-06-24T17:22:19Z'
+                  last_event_at: '2026-06-26T13:14:00Z'
+                  estimated_delivery_at: '2026-06-28T00:00:00Z'
+                  delivered_at: null
+                  events:
+                  - time_utc: '2026-06-26T13:14:00Z'
+                    description: Departed UPS facility
+                    location: Memphis, TN
+                    stage: InTransit
+                  - time_utc: '2026-06-26T02:02:00Z'
+                    description: Arrived at UPS facility
+                    location: Memphis, TN
+                    stage: InTransit
+                  integration_instance:
+                    id: 47
+                    name: 17TRACK
+      operationId: get-api-shipment-trackings-shipment-tracking-id
+  /api/shipment-trackings/{shipment_tracking_id}/refresh:
+    post:
+      tags:
+      - 17track sku.io apis
+      summary: Refresh tracking
+      description: 'On-demand refresh — hits 17TRACK''s `/gettrackinfo` and re-hydrates
+        the row. Used by the **Refresh** button in the per-row timeline drawer.
+
+
+        **Errors:** 17TRACK API failures are translated to **422 with `code: refresh_failed`**
+        so the drawer can surface a friendly error toast.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: shipment_tracking_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  tracking_number: 1Z999AA10123456784
+                  delivery_status: in_transit
+                  last_event_at: '2026-06-26T13:14:00Z'
+                  events:
+                  - time_utc: '2026-06-26T13:14:00Z'
+                    description: Departed UPS facility
+                    location: Memphis, TN
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: '17TRACK API error (-18019902): Tracking number not registered
+                  yet.'
+                code: refresh_failed
+      operationId: post-api-shipment-trackings-shipment-tracking-id-refresh
+  /api/integrations/17track/instances/{instance_id}/webhooks:
+    get:
+      tags:
+      - 17track sku.io apis
+      summary: Webhook events (audit listing)
+      description: 'Paginated audit listing of every webhook 17TRACK has sent for
+        this instance. Powers the **Webhooks** sub-page.
+
+
+        Each row records the event type, tracking number, result (processed / failed),
+        status transition (`status_from` → `status_to`), processing duration in ms,
+        and any error message.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 482
+                  event_type: TRACKING_UPDATED
+                  tracking_number: 1Z999AA10123456784
+                  result: processed
+                  status_from: pending
+                  status_to: in_transit
+                  processing_duration_ms: 42
+                  error_message: null
+                  created_at: '2026-06-26T22:51:00Z'
+                current_page: 1
+                last_page: 8
+                per_page: 15
+                total: 113
+      operationId: get-api-integrations-17track-instances-instance-id-webhooks
+  /api/integrations/17track/instances/{instance_id}/activity:
+    get:
+      tags:
+      - 17track sku.io apis
+      summary: List activity entries
+      description: 'Paginated activity log for the 17TRACK instance. Powers `/v2/integrations/seventeen-track/{id}/activity-log`.
+
+
+        **Event types emitted:** `connected`, `updated`, `disconnected`, `register_completed`,
+        `register_failed`, `register_rate_limited`, `poll_completed`, `poll_rate_limited`,
+        `poll_quota_exceeded`, `stop_completed`, `stop_failed`, `manual_push_triggered`,
+        `manual_refresh_triggered`, `tracking_renumbered`, `backfill_started`, `backfill_completed`,
+        `webhook_processed`, `webhook_failed`, `quota_exceeded`.
+
+
+        System-emitted entries (queue jobs, scheduled polls) have a null `causer`.
+        User-triggered actions carry the acting user.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: instance_id
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 9012
+                  event: register_completed
+                  description: Registered 13 tracking number(s) with 17TRACK
+                  causer: null
+                  properties:
+                    requested_count: 13
+                    accepted_count: 13
+                    already_registered_count: 0
+                    rejected_count: 0
+                  created_at: '2026-06-27T01:55:00Z'
+                  occurred_at_human: 5 minutes ago
+                - id: 9011
+                  event: manual_push_triggered
+                  description: Manual push to 17TRACK triggered for 13 pending tracking(s)
+                  causer:
+                    id: 12
+                    name: Gurpreet Kait
+                    email: gurpreet@sku.io
+                  properties:
+                    pending_count: 13
+                    coalesced: false
+                  created_at: '2026-06-27T01:54:32Z'
+                  occurred_at_human: 5 minutes ago
+                - id: 9010
+                  event: webhook_processed
+                  description: Webhook processed
+                  causer: null
+                  properties:
+                    event_type: TRACKING_UPDATED
+                    tracking_number: 1Z999AA10123456784
+                    updated: 1
+                    status_from: pending
+                    status_to: in_transit
+                  created_at: '2026-06-26T22:51:00Z'
+                  occurred_at_human: 3 hours ago
+                current_page: 1
+                last_page: 4
+                per_page: 30
+                total: 119
+      operationId: get-api-integrations-17track-instances-instance-id-activity
   /api/vendor-credits:
     get:
       tags:
@@ -205124,6 +205925,8 @@ x-tagGroups:
   - Decoration Cost Rules
   - Quotes
   - POS / Register
+  - 17track apis
+  - 17track sku.io apis
   - Product Import
   - Vendor Credits
   - Lifecycle
