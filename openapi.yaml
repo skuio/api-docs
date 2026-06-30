@@ -172100,6 +172100,10 @@ paths:
 
         - `orphan_importable` — unattached and no matching FO/SOF (import candidate)
 
+        - `orphan_duplicate` — unattached, but its products are already fulfilled
+        by an FO that has an active provider order (a duplicate at the carrier; resolve
+        by voiding it there and recording a voided FO)
+
 
         `snapshots[]` are attached to an FO/SOF (see `attached_to`); `orphans[]` are
         unattached provider records; `summary` carries per-state counts.
@@ -172111,7 +172115,12 @@ paths:
         reflects staleness.
 
         Gated by the `fulfillment.provider_snapshots_enabled` flag — returns 404 when
-        disabled so the UI degrades gracefully.'
+        disabled so the UI degrades gracefully.
+
+
+        Each orphan carries a `suggested_action`: `link`, `import_fo`, `import_fo_and_sof`,
+        `void_and_import` (live duplicate), or `import_voided_fo` (already-cancelled
+        duplicate). `summary` includes per-state counts, including `orphan_duplicate`.'
       parameters:
       - name: Accept
         in: header
@@ -172293,7 +172302,11 @@ paths:
       description: 'Link an orphan shipping-provider order (link_state `orphan_linkable`,
         suggested_action `link`) to an existing FulfillmentOrder / SalesOrderFulfillment
         already on this sales order whose lines cover the same products (SKU-8130
-        Phase 2). Use the `provider`, `integration_instance_id`, and `external_order_id`
+        Phase 2). Only links to an FO/SOF that does NOT already have an active (non-cancelled)
+        provider order — two active provider orders on one FO is invalid. An orphan
+        whose only match is already taken is classified `orphan_duplicate` (use Import)
+        instead of `orphan_linkable`, and a repair attempt against it is rejected
+        with 422. Use the `provider`, `integration_instance_id`, and `external_order_id`
         from the orphan returned by GET provider-fulfillment-snapshots.
 
 
@@ -172446,6 +172459,14 @@ paths:
         `import_fo_and_sof`) a FulfillmentOrder plus a SalesOrderFulfillment ship
         event with tracking is created. Provider item SKUs are matched against the
         sales order''s unfulfilled lines.
+
+
+        Import also resolves an `orphan_duplicate` (its products already fulfilled
+        by an FO that has an active provider order). If the duplicate is still live
+        at the carrier (suggested_action `void_and_import`) it is first voided there;
+        then — or if it was already cancelled (suggested_action `import_voided_fo`)
+        — it is recorded as a terminal voided "mirror" FulfillmentOrder linked to
+        it, reserving no stock, so SKU mirrors the carrier 1:1.
 
 
         Returns the refreshed reconciliation bundle (`snapshots`, `orphans`, `summary`)
