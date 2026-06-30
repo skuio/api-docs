@@ -10063,6 +10063,151 @@ paths:
                     message: No new transaction was created — the source document
                       is cancelled or not accounting-ready.
       operationId: post-api-ledger-entries-entry-recreate
+  /api/ledger/entries/{entry}/fetch-remote:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Fetch Latest From Provider
+      description: 'The inbound mirror of "Sync Now" (PRD SKU-8084, Feature 3 — two-way
+        sync, on demand): instead of PUSHING local changes out, it re-reads this entry''s
+        remote document(s) FROM the accounting provider (Xero / QuickBooks) and re-grades
+        the sync link RIGHT NOW. For each supported, still-linked connection it fetches
+        the current remote truth via the same InboundChangeProcessor funnel the webhook
+        + nightly sweep use — picking up drift (→ linked_conflict), a void/delete
+        (→ remote_gone), or a settled/paid lock (→ remote_locked) — and refreshes
+        `last_remote_seen_at`. A 404 at the provider degrades to a synthetic-deleted
+        snapshot so the link still parks remote_gone rather than silently staying
+        Synced.
+
+
+        Runs **synchronously** (the response reflects the re-read); the bulk equivalent
+        is the `fetch_remote` action on POST /api/ledger/entries/bulk, which runs
+        the same per-entry work as a tracked job.
+
+
+        **Deferral:** if a push for this entry is in flight, the funnel writes NOTHING
+        (touching the link would erase the drift signals reconciliation needs) and
+        the response carries `data.fetch.deferred: true` with a "try again once the
+        in-flight sync settles" message — still HTTP 200.
+
+
+        **Authentication:** Requires Bearer token + `accounting.sync` permission (403
+        without it).
+
+
+        **Request body:** none.
+
+
+        **Response:** 200 with `data.fetch` ({ checked, not_linked, deferred, primary,
+        outcomes }) and `data.entry` (the refreshed LedgerEntryResource so the new
+        link state renders without a second round-trip). `data.fetch.primary` is the
+        most-notable settled outcome across the re-read links by severity (`remote_gone`
+        > `remote_locked` > `conflict` > `current`), or null when nothing was re-read.
+        `message` explains the outcome. Returns **502 Bad Gateway** when the provider
+        read itself fails (e.g. expired auth / network) — no link state is changed.
+        Returns 404 when the entry does not exist.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '1842'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — refreshed, up to date
+                  value:
+                    data:
+                      fetch:
+                        checked: 1
+                        not_linked: false
+                        deferred: false
+                        primary: current
+                        outcomes:
+                          current: 1
+                      entry:
+                        id: 1842
+                        type:
+                          value: bill
+                          label: Bill
+                        status: posted
+                        display_status:
+                          key: synced
+                          label: Synced
+                          reason: null
+                        reference: 5cKTkaXNDpXqmNv0MzaOHAMppp6CsZOYXrgMbDv4UDg
+                        currency_code: USD
+                        total_debit: '1305.86'
+                        total_credit: '1305.86'
+                        document_total: '842.67'
+                        sync_provider: Xero
+                        sync_links:
+                        - connection_id: 7
+                          remote_type: xero_bill
+                          remote_id: 57406763-6b49-4be8-98b5-16750c106f6e
+                          link_state: linked_current
+                          last_remote_seen_at: '2026-06-30T01:41:05Z'
+                    message: Refreshed from the provider — the entry is up to date.
+                example-1:
+                  summary: 200 OK — remote document deleted
+                  value:
+                    data:
+                      fetch:
+                        checked: 1
+                        not_linked: false
+                        deferred: false
+                        primary: remote_gone
+                        outcomes:
+                          remote_gone: 1
+                      entry:
+                        id: 1842
+                        display_status:
+                          key: removed_in_provider
+                          label: Synced, Deleted
+                          reason: null
+                        sync_links:
+                        - connection_id: 7
+                          remote_type: xero_bill
+                          remote_id: 57406763-6b49-4be8-98b5-16750c106f6e
+                          link_state: remote_gone
+                    message: The provider document was voided or deleted — the entry
+                      is now marked accordingly.
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Could not reach the provider to fetch the latest — please
+                  try again. (The access token has expired)
+      operationId: post-api-ledger-entries-entry-fetch-remote
   /api/ledger/entries/{entry}/sync-override:
     post:
       tags:
@@ -10380,10 +10525,12 @@ paths:
         from source; posted entries corrected via reversal + replacement), `unlink`
         (sever the provider sync link so SKU stops tracking the remote doc — a later
         sync CREATES a new doc), `clear_errors` (dismiss parked needs_action / failed_retryable
-        operations WITHOUT retrying), `delete` (HARD-delete the entry — permanently
-        removes the journal entry, its GL lines, provider sync links and operation
-        history, and nulls any sibling reversal pointer; IRREVERSIBLE; unlike the
-        other actions it runs even when ledger generation is disabled).
+        operations WITHOUT retrying), `fetch_remote` (the INBOUND mirror of sync_now
+        — re-read the remote document(s) and re-grade the link state: drift / void
+        / settled-lock; runs as a tracked job), `delete` (HARD-delete the entry —
+        permanently removes the journal entry, its GL lines, provider sync links and
+        operation history, and nulls any sibling reversal pointer; IRREVERSIBLE; unlike
+        the other actions it runs even when ledger generation is disabled).
 
         - `scope` (optional, `selected` default | `all`) — `all` targets every entry
         matching the CURRENT filters (send the same `filter[...]` / `filter_groups`
@@ -10399,8 +10546,9 @@ paths:
 
         **Eligibility (excluded from the action, counted in `excluded_count`):** `sync_now`
         → entries eligible on at least one connection; `rebuild` → source still exists;
-        `unlink` → entry currently has a remote link; `clear_errors` → entry carries
-        a clearable parked error; `set_override` and `delete` → always applicable.
+        `unlink` and `fetch_remote` → entry currently has a live remote link; `clear_errors`
+        → entry carries a clearable parked error; `set_override` and `delete` → always
+        applicable.
 
 
         **Note:** when ledger generation is disabled (kill switch) no job dispatches
@@ -10822,7 +10970,13 @@ paths:
 
 
         Returns data: an array of { id, type, reference, total }. Empty array when
-        the source has no live entries.'
+        the source has no live entries.
+
+
+        **`total`** is the NET document total (the provider-booked face value — net
+        control-account movement), not the gross debit total. For an Amazon settlement
+        bill with internal reserve contra legs the two differ (e.g. 842.67 net vs
+        1,305.86 gross).'
       parameters:
       - name: Accept
         in: header
