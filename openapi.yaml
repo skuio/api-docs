@@ -123,6 +123,7 @@ tags:
 - name: Initial Inventory
 - name: Costing
 - name: Product Pro Forma
+- name: Merchandise Planning
 - name: Landed Cost Breakdown
 - name: BOMs
 - name: Manufacturing Orders
@@ -127763,7 +127764,13 @@ paths:
         one), mirroring how Amazon MCF fulfils from the destination''s marketplace.\n\nNote:
         Amazon MCF only fulfills New-condition inventory — listings with a non-New
         `condition` cannot be fulfilled via createFulfillmentOrder even when `available`
-        is greater than 0.\n\nAuthentication: Requires Bearer token.'
+        is greater than 0.\n\nAuthentication: Requires Bearer token. Rows come from
+        two sources: (1) Amazon listings mapped to this product via product_listings,
+        and (2) the FNSKU mapper — the seller SKU (MSKU) behind each SELLABLE FNSKU
+        mapped to this product in the warehouse marketplace, with its FBA report stock.
+        Source 2 lets a product whose marketplace listing is mapped to a different
+        SKU.io product (a per-market "-CA-O" shadow listing) still surface its shippable
+        seller SKU, so Amazon MCF submission resolves correctly. Mirrors ResolveFbaSellerSku.'
       parameters:
       - name: Accept
         in: header
@@ -128169,7 +128176,13 @@ paths:
         one), mirroring how Amazon MCF fulfils from the destination''s marketplace.\n\nNote:
         Amazon MCF only fulfills New-condition inventory — listings with a non-New
         `condition` cannot be fulfilled via createFulfillmentOrder even when `available`
-        is greater than 0.\n\nAuthentication: Requires Bearer token.'
+        is greater than 0.\n\nAuthentication: Requires Bearer token. Rows come from
+        two sources: (1) Amazon listings mapped to this product via product_listings,
+        and (2) the FNSKU mapper — the seller SKU (MSKU) behind each SELLABLE FNSKU
+        mapped to this product in the warehouse marketplace, with its FBA report stock.
+        Source 2 lets a product whose marketplace listing is mapped to a different
+        SKU.io product (a per-market "-CA-O" shadow listing) still surface its shippable
+        seller SKU, so Amazon MCF submission resolves correctly. Mirrors ResolveFbaSellerSku.'
       parameters:
       - name: Accept
         in: header
@@ -158813,6 +158826,539 @@ paths:
                     code: InternalValidation
                     data: []
       operationId: patch-api-v2-pro-forma-products-productid-assumptions
+  //{domain}/api/open-to-buy/merchandise-plans:
+    get:
+      tags:
+      - Merchandise Planning
+      summary: List Merchandise Plans
+      description: 'Paginated Open-to-Buy plan grid. Each row carries its live OTB
+        breakdown (otb_value, committed_value, effective_otb_value, otb_remaining_value,
+        status) computed on read.
+
+
+        Effective budget = min(computed OTB, budget_cap_value) when a manual cash
+        cap is set; otb_remaining_value = effective budget − committed.
+
+
+        Requires a Bearer token with the `inventory` read/write scope (middleware:
+        scope.rw:inventory).'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  retail_period_id: 5
+                  node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                  bop_value: 25000
+                  bop_units: 500
+                  otb_value: 87000
+                  otb_units: 1700
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+                  budget_enforced: false
+                  retail_period:
+                    id: 5
+                    name: Fall 2026
+                    type: season
+                    start_date: '2026-08-01'
+                    end_date: '2026-10-31'
+                  created_at: '2026-06-22T14:03:11.000000Z'
+                  updated_at: '2026-06-22T14:09:52.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 10
+                total: 1
+                from: 1
+                to: 1
+      operationId: get-domain-api-open-to-buy-merchandise-plans
+    post:
+      tags:
+      - Merchandise Planning
+      summary: Create Merchandise Plan
+      description: 'Create a plan row for a node/period and compute its initial OTB.
+
+
+        Fields:
+
+        - retail_period_id (required, integer, exists)
+
+        - node_type (required, enum: category | brand | department | product)
+
+        - node_id (required, integer >= 0)
+
+        - planned_sales_value (optional, numeric >= 0)
+
+        - planned_sales_units (optional, integer >= 0)
+
+        - planned_markdown_value (optional, numeric >= 0)
+
+        - planned_eop_value (optional, numeric >= 0)
+
+        - planned_eop_units (optional, integer >= 0)
+
+        - budget_enforced (optional, boolean) — enforce the OTB guardrail on forecast
+        buys
+
+        - budget_cap_value (optional, nullable, numeric >= 0) — manual cash ceiling;
+        effective budget = min(computed OTB, this)
+
+
+        Requires the `inventory` read/write scope.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                retail_period_id: 5
+                node_type: category
+                node_id: 1
+                planned_sales_value: 80000
+                planned_sales_units: 1600
+                planned_markdown_value: 2000
+                planned_eop_value: 30000
+                planned_eop_units: 600
+                budget_enforced: false
+                budget_cap_value: 30000
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  retail_period_id: 5
+                  node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                  bop_value: 25000
+                  bop_units: 500
+                  otb_value: 87000
+                  otb_units: 1700
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+                  budget_enforced: false
+                  retail_period:
+                    id: 5
+                    name: Fall 2026
+                    type: season
+                    start_date: '2026-08-01'
+                    end_date: '2026-10-31'
+                  created_at: '2026-06-22T14:03:11.000000Z'
+                  updated_at: '2026-06-22T14:09:52.000000Z'
+      operationId: post-domain-api-open-to-buy-merchandise-plans
+  //{domain}/api/open-to-buy/merchandise-plans/seed:
+    post:
+      tags:
+      - Merchandise Planning
+      summary: Seed Plan From Forecast / Last Year
+      description: "Seed a period's grid in bulk from a forecast or last-year actuals.\
+        \ Each incoming node row upserts a plan and gets its OTB computed.\n\nFields:\n\
+        - retail_period_id (required, integer, exists)\n- source (required, one of:\
+        \ forecast, last_year)\n- rows (required, array, min 1)\n  - rows.*.node_type\
+        \ (required, enum: category | brand | department | product)\n  - rows.*.node_id\
+        \ (required, integer >= 0)\n  - rows.*.planned_sales_value (optional, numeric\
+        \ >= 0)\n  - rows.*.planned_sales_units (optional, integer >= 0)\n  - rows.*.planned_markdown_value\
+        \ (optional, numeric >= 0)\n  - rows.*.planned_eop_value (optional, numeric\
+        \ >= 0)\n  - rows.*.planned_eop_units (optional, integer >= 0)\n\nRequires\
+        \ the `inventory` read/write scope."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                retail_period_id: 5
+                source: forecast
+                rows:
+                - node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                - node_type: category
+                  node_id: 2
+                  planned_sales_value: 45000
+                  planned_sales_units: 900
+                  planned_markdown_value: 1000
+                  planned_eop_value: 18000
+                  planned_eop_units: 360
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  retail_period_id: 5
+                  node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                  bop_value: 25000
+                  bop_units: 500
+                  otb_value: 87000
+                  otb_units: 1700
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+                  budget_enforced: false
+                  retail_period:
+                    id: 5
+                    name: Fall 2026
+                    type: season
+                    start_date: '2026-08-01'
+                    end_date: '2026-10-31'
+                  created_at: '2026-06-22T14:03:11.000000Z'
+                  updated_at: '2026-06-22T14:09:52.000000Z'
+      operationId: post-domain-api-open-to-buy-merchandise-plans-seed
+  //{domain}/api/open-to-buy/merchandise-plans/{merchandisePlan}:
+    get:
+      tags:
+      - Merchandise Planning
+      summary: Get Merchandise Plan
+      description: 'Show a single plan row with its live OTB breakdown (including
+        budget_cap_value, effective_otb_value, otb_remaining_value).
+
+
+        Requires the `inventory` read/write scope.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: merchandisePlan
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Merchandise plan id.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  retail_period_id: 5
+                  node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                  bop_value: 25000
+                  bop_units: 500
+                  otb_value: 87000
+                  otb_units: 1700
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+                  budget_enforced: false
+                  retail_period:
+                    id: 5
+                    name: Fall 2026
+                    type: season
+                    start_date: '2026-08-01'
+                    end_date: '2026-10-31'
+                  created_at: '2026-06-22T14:03:11.000000Z'
+                  updated_at: '2026-06-22T14:09:52.000000Z'
+      operationId: get-domain-api-open-to-buy-merchandise-plans-merchandiseplan
+    patch:
+      tags:
+      - Merchandise Planning
+      summary: Update Merchandise Plan (cell save / cash cap)
+      description: 'Update editable plan cell(s) — a debounced save — and recompute
+        OTB. PATCH only the changed fields.
+
+
+        Fields (all optional / ''sometimes''):
+
+        - planned_sales_value (numeric >= 0)
+
+        - planned_sales_units (integer >= 0)
+
+        - planned_markdown_value (numeric >= 0)
+
+        - planned_eop_value (numeric >= 0)
+
+        - planned_eop_units (integer >= 0)
+
+        - budget_enforced (boolean)
+
+        - budget_cap_value (nullable, numeric >= 0) — set a manual cash ceiling; pass
+        null to clear it (back to the full computed OTB)
+
+
+        When a cash cap below the computed OTB is set, effective_otb_value and otb_remaining_value
+        drop to the cap.
+
+
+        Requires the `inventory` read/write scope.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                planned_sales_value: 80000
+                planned_eop_value: 30000
+                budget_enforced: false
+                budget_cap_value: 30000
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: merchandisePlan
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Merchandise plan id.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                  retail_period_id: 5
+                  node_type: category
+                  node_id: 1
+                  planned_sales_value: 80000
+                  planned_sales_units: 1600
+                  planned_markdown_value: 2000
+                  planned_eop_value: 30000
+                  planned_eop_units: 600
+                  bop_value: 25000
+                  bop_units: 500
+                  otb_value: 87000
+                  otb_units: 1700
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+                  budget_enforced: false
+                  retail_period:
+                    id: 5
+                    name: Fall 2026
+                    type: season
+                    start_date: '2026-08-01'
+                    end_date: '2026-10-31'
+                  created_at: '2026-06-22T14:03:11.000000Z'
+                  updated_at: '2026-06-22T14:09:52.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The cash cap cannot be negative.
+                errors:
+                  budget_cap_value:
+                  - The cash cap cannot be negative.
+      operationId: patch-domain-api-open-to-buy-merchandise-plans-merchandiseplan
+  //{domain}/api/open-to-buy/merchandise-plans/{merchandisePlan}/otb:
+    get:
+      tags:
+      - Merchandise Planning
+      summary: Get OTB Breakdown
+      description: 'Live OTB + remaining + committed breakdown for a plan row.
+
+
+        Returns: otb_value, otb_units, bop_value, bop_units, on_order_value, committed_value,
+        budget_cap_value (nullable), effective_otb_value (= min(otb_value, cap)),
+        otb_remaining_value (= effective − committed), and status (under_budget |
+        near_budget | over_budget).
+
+
+        Requires the `inventory` read/write scope.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: merchandisePlan
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Merchandise plan id.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  otb_value: 87000
+                  otb_units: 1700
+                  bop_value: 25000
+                  bop_units: 500
+                  on_order_value: 0
+                  committed_value: 0
+                  budget_cap_value: 30000
+                  effective_otb_value: 30000
+                  otb_remaining_value: 30000
+                  status: under_budget
+      operationId: get-domain-api-open-to-buy-merchandise-plans-merchandiseplan-otb
   /api/reporting/landed-cost-breakdown:
     post:
       tags:
@@ -214673,6 +215219,7 @@ x-tagGroups:
   - Initial Inventory
   - Costing
   - Product Pro Forma
+  - Merchandise Planning
   - Landed Cost Breakdown
   - BOMs
   - Manufacturing Orders
