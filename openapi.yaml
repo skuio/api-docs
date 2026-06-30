@@ -15270,7 +15270,14 @@ paths:
 
         **Body:** `entry_ids` (required array of ledger_journal_entry ids).
 
-        **Authentication:** Requires Bearer token.'
+        **Authentication:** Requires Bearer token.
+
+
+        **`sync_block`** (on each line): pre-push sync verdict for the line''s matched
+        document(s) — `null` when every document will sync, otherwise `{ blocked:
+        true, enableable: bool, reasons: string[], blocked_entry_ids: int[], enableable_entry_ids:
+        int[] }`. Surfaced so the UI can warn (and offer Enable sync) BEFORE a push
+        that would otherwise silently not reach Xero.'
       requestBody:
         content:
           application/json:
@@ -15322,6 +15329,7 @@ paths:
                   direction: spent
                   match_status: matched
                   sort_order: 0
+                  sync_block: null
                   matches:
                   - id: 1
                     ledger_journal_entry_id: 10
@@ -15587,6 +15595,84 @@ paths:
                     lines:
                     - …
       operationId: post-api-ledger-reconciliation-bank-statements-bankstatementimport-push-to-xero
+  /api/ledger/reconciliation/bank-statements/{bankStatementImport}/enable-sync:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Enable Sync on Matched Lines
+      description: 'Force-enable sync on the matched line(s)'' document(s) whose sync
+        is currently **disabled-but-enableable** — a settings opt-out (e.g. this entry
+        type isn''t synced, or it''s before the sync start date) or a per-entry `force_disabled`
+        override. Writes a `force_enabled` override on each such entry (via the same
+        path as the per-entry override endpoint) so a subsequent **Push to Xero**
+        actually reaches the provider instead of silently no-opping.
+
+
+        Structurally-blocked documents — a batch member, an open batch, an inactive
+        connection, or internal-only entries — are **left untouched** (they can''t
+        be force-enabled). Optional body `line_ids` scopes it to a single line''s
+        Enable or a bulk selection; omit to enable across every matched line.
+
+
+        Returns: `entries_enabled` (documents flipped to force_enabled), `lines_affected`
+        (matched lines touched), and the refreshed import (lines + their matches,
+        with cleared `sync_block`s).
+
+
+        Guarded by the `accounting.sync` permission.
+
+
+        **Authentication:** Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                line_ids:
+                - 479
+                - 480
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: bankStatementImport
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Import id.
+        example: '23'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  entries_enabled: 4
+                  lines_affected: 1
+                  import:
+                    id: 23
+                    status: ready
+                    line_count: 38
+                    lines:
+                    - …
+      operationId: post-api-ledger-reconciliation-bank-statements-bankstatementimport-enable-sync
   /api/ledger/reconciliation/inventory/resume-journals:
     post:
       tags:
