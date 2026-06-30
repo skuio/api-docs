@@ -172916,20 +172916,41 @@ paths:
       tags:
       - Returns & RMAs
       summary: Cancel RMA
-      description: 'Cancel an RMA. Only RMAs in non-terminal statuses can be canceled.
+      description: 'Cancel an RMA and keep it on record (the RMA is not deleted).
+        Only RMAs in a cancellable status (draft, approved, in_transit) with zero
+        return receipts can be canceled — `can_be_canceled` on the resource reflects
+        this.
 
 
-        Authentication: Requires Bearer token.
+        Authentication: Requires Bearer token. **Requires permission:** `returns.cancel`.
 
 
-        Status transition: any non-terminal → canceled
+        Status transition: draft / approved / in_transit → canceled
 
 
-        **Requires permission:** `returns.cancel`'
+        **Request body (optional):**
+
+        - `cancellation_reason` (string, nullable, max 500) — audit note recorded
+        alongside `canceled_at` and `canceled_by_user_id`.
+
+
+        The response resource exposes the cancellation audit fields (`canceled_at`,
+        `canceled_by_user_id`, `canceled_by`, `cancellation_reason`) and the capability
+        flags (`can_be_canceled`, `can_be_deleted`).'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                cancellation_reason: Customer decided to keep the item
       parameters:
       - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
         in: header
         schema:
           type: string
@@ -172953,9 +172974,28 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"data\": {\"id\": 1, \"rma_number\": \"RMA-0001\", \"\
-                status\": \"canceled\"},\n  \"message\": \"RMA canceled successfully.\"\
-                \n}"
+              example: "{\n  \"data\": {\n    \"id\": 1,\n    \"rma_number\": \"RMA-0001\"\
+                ,\n    \"status\": \"canceled\",\n    \"canceled_at\": \"2026-06-29T14:32:00.000000Z\"\
+                ,\n    \"canceled_by_user_id\": 7,\n    \"canceled_by\": {\n     \
+                \ \"id\": 7,\n      \"name\": \"Jane Operator\"\n    },\n    \"cancellation_reason\"\
+                : \"Customer decided to keep the item\",\n    \"can_be_canceled\"\
+                : false,\n    \"can_be_deleted\": true\n  },\n  \"message\": \"RMA\
+                \ canceled successfully.\"\n}"
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"message\": \"The cancellation reason must not be greater\
+                \ than 500 characters.\",\n  \"errors\": {\n    \"cancellation_reason\"\
+                : [\n      \"The cancellation reason must not be greater than 500\
+                \ characters.\"\n    ]\n  }\n}"
       operationId: post-api-rmas-rma-cancel
   /api/rmas/{rma}/close:
     post:
