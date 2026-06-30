@@ -170131,6 +170131,121 @@ paths:
                 : \"open\",\n      \"order_date\": \"2024-03-10\",\n      \"quantity\"\
                 : 2.0,\n      \"amount\": 29.99\n    }\n  ]\n}"
       operationId: get-api-sales-order-lines-salesorderline-matching-unmapped
+  /api/sales-order-lines/{salesOrderLine}/replace:
+    post:
+      tags:
+      - Sales Order Lines
+      summary: Replace Line Product(s)
+      description: "Replace a single sales order line with one or more SKUs, preserving\
+        \ the line's total amount and the order ↔ sales-channel tie.\n\nAuthentication:\
+        \ Requires Bearer token.\n\nPath params:\n- `salesOrderLine` (required): id\
+        \ of the sales order line to replace.\n\nBody:\n- `replacements` (required,\
+        \ array, min 1): the target SKUs. Each item:\n    - `product_id` (required,\
+        \ int, must exist in products)\n    - `quantity` (required, number > 0)\n\
+        \    - `amount` (optional, number >= 0): per-unit price. When omitted on ALL\
+        \ items, the original line total is prorated across the replacements by catalog\
+        \ price; when provided, the explicit amounts must reconcile to the original\
+        \ total (else 422).\n- `mapping_mode` (optional, `one_time` | `permanent`,\
+        \ default `one_time`): only meaningful for a SINGLE-SKU replacement at the\
+        \ original quantity that resolves to a channel listing. `permanent` remaps\
+        \ the channel listing so every FUTURE order maps to the new SKU (sets product_mapping_overridden\
+        \ so the line survives a channel resync); `one_time` changes only this order.\
+        \ Multi-SKU replacements are always one-time.\n\nReturns the refreshed sales\
+        \ order (SalesOrderResource).\n\nErrors:\n- 409: the line is committed to\
+        \ fulfillment (has a fulfillment line or an in-flight/submitted fulfillment\
+        \ order) — void/cancel the fulfillment first.\n- 422: explicit replacement\
+        \ amounts don't reconcile to the line total, or validation failed (unknown\
+        \ product, quantity <= 0, missing replacements)."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                replacements:
+                - product_id: 4567
+                  quantity: 2
+                  amount: 19.99
+                - product_id: 8901
+                  quantity: 1
+                mapping_mode: one_time
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: salesOrderLine
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order line id to replace
+        example: '33421'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 33188
+                  sales_order_number: '#63676'
+                  order_status: open
+                  fulfillment_status: unfulfilled
+                  item_info:
+                  - id: 99001
+                    product_id: 4567
+                    sku: REPL-A
+                    quantity: 2
+                    amount: 19.99
+                    product_mapping_overridden: false
+                  - id: 99002
+                    product_id: 8901
+                    sku: REPL-B
+                    quantity: 1
+                    amount: 9.62
+                    product_mapping_overridden: false
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: This line is committed to fulfillment. Void the fulfillment
+                  before replacing it.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Replacement amounts must add up to the original line total.
+      operationId: post-api-sales-order-lines-salesorderline-replace
   /api/sales-order-lines/reservations:
     post:
       tags:
