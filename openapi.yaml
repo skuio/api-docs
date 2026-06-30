@@ -101420,8 +101420,20 @@ paths:
       tags:
       - Shipping Providers
       summary: Get Order Detail (JSON)
-      description: 'Get the full raw JSON detail for a Shipfusion order as returned
-        by the Shipfusion API.
+      description: 'Get full detail for a single Shipfusion order. Returns the resource
+        fields the standalone order detail page renders (id, integration_instance_id,
+        shipfusion_id, order_number, shipment_status, warehouse, order_date, tracking_number,
+        carrier, shipped_at, has_detailed_data, details_last_updated, timestamps),
+        the linked `sku_fulfillment` card (resolved FulfillmentOrder-first so a deferred-FO
+        order still links — a Sales Order Fulfillment, or the Fulfillment Order itself
+        when the SOF has not been minted yet), AND the raw Shipfusion `json_object`
+        (recipient address, shipmentItems, tracking packages) used by the detail page''s
+        expandable sections.
+
+
+        The `:order` path variable is the SKU primary key (route-model binding), matching
+        the Fulfillment Order → provider-order cross-link route. Returns 404 if the
+        order does not belong to the given integration instance.
 
 
         Authentication: Requires Bearer token.'
@@ -101449,9 +101461,96 @@ paths:
         example: '101'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              example:
+                status: success
+                data:
+                  id: 101
+                  integration_instance_id: 7
+                  shipfusion_id: SF-12345
+                  order_number: ORD-100245
+                  shipment_status: shipped
+                  warehouse: PA
+                  order_date: '2026-06-20'
+                  sku_fulfillment_id: 5582
+                  sku_fulfillment_order_id: 12460
+                  sku_fulfillment:
+                    id: 5582
+                    link_reference: 5582
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 5582
+                    link_route: /orders/sales-orders/fulfillments/5582
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?tracknum=1Z999AA10123456784
+                    fulfilled_at: '2026-06-21T14:32:00+00:00'
+                    created_at: '2026-06-20T09:15:00+00:00'
+                    sales_order_id: 32861
+                    sales_order_number: SO-32861
+                    fulfillment_order_id: 12460
+                    warehouse:
+                      id: 3
+                      name: Main Warehouse
+                  tracking_number: 1Z999AA10123456784
+                  carrier: UPS Ground
+                  shipped_at: '2026-06-21T14:32:00.000000Z'
+                  has_detailed_data: true
+                  details_last_updated: '2026-06-21T15:00:00.000000Z'
+                  created_at: '2026-06-20T09:15:00.000000Z'
+                  updated_at: '2026-06-21T15:00:00.000000Z'
+                  json_object:
+                    id: 987654
+                    shipmentId: 987654
+                    orderNumber: ORD-100245
+                    orderReferenceNumber: REF-100245
+                    shipmentStatus: shipped
+                    warehouse: PA
+                    orderDate: '20260620'
+                    shipDate: '20260621'
+                    salesChannelTitle: Shopify
+                    shipmentInstructions: Leave at front door
+                    address:
+                      firstName: Jane
+                      lastName: Doe
+                      address1: 123 Market St
+                      address2: Suite 400
+                      city: Philadelphia
+                      state: PA
+                      zip: '19103'
+                      country: US
+                      phoneNumber: +1 215-555-0142
+                      emailAddress: jane.doe@example.com
+                    shipmentItems:
+                    - shipmentItemId: 5511
+                      SKU: WIDGET-BLK-01
+                      qty: 2
+                      itemStatus: shipped
+                      lotInformation:
+                      - lotNumber: LOT-2026-0420
+                    tracking:
+                      totalPackages: 1
+                      packages:
+                      - trackingStatus: Delivered
+                        shippingCarrier: UPS
+                        shippingService: Ground
+                        trackingNumber: 1Z999AA10123456784
+                        trackingUrl: https://www.ups.com/track?tracknum=1Z999AA10123456784
+                        shipDate: '20260621'
+                        dimensions:
+                          lengthIn: 12
+                          widthIn: 9
+                          heightIn: 4
+                          weightLb: 2
+                          weightOz: 6
       operationId: get-domain-api-shipfusion-integration-instances-integration-instance-orders-order-detail
   //{domain}/api/shipfusion/integration-instances/{integration_instance}/orders/{order}/sync-detail:
     post:
@@ -196724,7 +196823,16 @@ paths:
         Distinct from the accounting figure `quantity - remaining_quantity`; when
         the two disagree the line carries a masked shortfall (e.g. a bundle line grown
         to its component quantity with `remaining_quantity = 0` though fewer component
-        units actually shipped).'
+        units actually shipped).
+
+
+        **`provider_order_link`** (object|null): INTERNAL cross-link to this FO''s
+        registered shipping-provider order detail page inside SKU — `{ link_reference,
+        link_type_label, link_id, link_route }`. Distinct from the EXTERNAL `provider_order_url`.
+        Populated for providers with an in-app per-order page (ShipStation, ShipHero,
+        Starshipit, Trackstar, VeraCore, Shipfusion); `null` for providers with no
+        detail page (ShipMyOrders), for pre-submit FOs, and for FBA/Manual FOs with
+        no provider order. `link_route` is a Vue 3 path, e.g. `/integrations/shipstation/4/orders/92532`.'
       parameters:
       - name: Accept
         in: header
@@ -196762,6 +196870,7 @@ paths:
                   integration_instance_id: null
                   effective_fulfillment_provider: manual
                   effective_integration_instance_name: null
+                  provider_order_link: null
                   submitted_at: null
                   accepted_at: null
                   closed_at: null
@@ -196800,6 +196909,11 @@ paths:
                   integration_instance_id: 4
                   effective_fulfillment_provider: shipfusion
                   effective_integration_instance_name: Shipfusion — Atlanta
+                  provider_order_link:
+                    link_reference: ORD-100245
+                    link_type_label: Shipfusion Order
+                    link_id: 101
+                    link_route: /integrations/shipfusion/4/orders/101
                   submitted_at: '2026-05-26T09:45:00+00:00'
                   accepted_at: '2026-05-26T09:46:00+00:00'
                   closed_at: null
@@ -196867,7 +196981,16 @@ paths:
         Distinct from the accounting figure `quantity - remaining_quantity`; when
         the two disagree the line carries a masked shortfall (e.g. a bundle line grown
         to its component quantity with `remaining_quantity = 0` though fewer component
-        units actually shipped).'
+        units actually shipped).
+
+
+        **`provider_order_link`** (object|null): INTERNAL cross-link to this FO''s
+        registered shipping-provider order detail page inside SKU — `{ link_reference,
+        link_type_label, link_id, link_route }`. Distinct from the EXTERNAL `provider_order_url`.
+        Populated for providers with an in-app per-order page (ShipStation, ShipHero,
+        Starshipit, Trackstar, VeraCore, Shipfusion); `null` for providers with no
+        detail page (ShipMyOrders), for pre-submit FOs, and for FBA/Manual FOs with
+        no provider order. `link_route` is a Vue 3 path, e.g. `/integrations/shipstation/4/orders/92532`.'
       parameters:
       - name: Accept
         in: header
@@ -196893,61 +197016,128 @@ paths:
             application/json:
               schema:
                 type: object
-              example:
-                data:
-                  id: 451
-                  sales_order_id: 123
-                  warehouse_id: 7
-                  status: open
-                  request_status: unsubmitted
-                  external_id: null
-                  external_type: null
-                  integration_instance_id: null
-                  effective_fulfillment_provider: manual
-                  effective_integration_instance_name: null
-                  submitted_at: null
-                  accepted_at: null
-                  closed_at: null
-                  cancelled_at: null
-                  rejection_reason: null
-                  created_at: '2026-05-26T10:15:00+00:00'
-                  updated_at: '2026-05-26T10:15:00+00:00'
-                  lines:
-                  - id: 901
-                    fulfillment_order_id: 451
-                    sales_order_line_id: 55347
-                    quantity: 3
-                    remaining_quantity: 3
-                    fulfillable_quantity: 3
-                    unfulfillable_quantity: 0
-                    executed_quantity: 0
-                    lot_allocation: null
-                    sku: WIDGET-01
-                    name: Blue Widget
-                    product_id: 88
-                    warehouse_id: 7
-                    created_at: '2026-05-26T10:15:00+00:00'
-                    updated_at: '2026-05-26T10:15:00+00:00'
-                  - id: 902
-                    fulfillment_order_id: 451
-                    sales_order_line_id: 55348
-                    quantity: 2
-                    remaining_quantity: 1
-                    fulfillable_quantity: 1
-                    unfulfillable_quantity: 0
-                    executed_quantity: 0
-                    lot_allocation: null
-                    sku: WIDGET-02
-                    name: Red Widget
-                    product_id: 89
-                    warehouse_id: 7
-                    created_at: '2026-05-26T10:15:00+00:00'
-                    updated_at: '2026-05-26T10:32:00+00:00'
-                  warehouse:
-                    id: 7
-                    name: Main Warehouse
-                    type: standard
-                    tracks_inventory: true
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    data:
+                      id: 451
+                      sales_order_id: 123
+                      warehouse_id: 7
+                      status: open
+                      request_status: unsubmitted
+                      external_id: null
+                      external_type: null
+                      integration_instance_id: null
+                      effective_fulfillment_provider: manual
+                      effective_integration_instance_name: null
+                      provider_order_link: null
+                      submitted_at: null
+                      accepted_at: null
+                      closed_at: null
+                      cancelled_at: null
+                      rejection_reason: null
+                      created_at: '2026-05-26T10:15:00+00:00'
+                      updated_at: '2026-05-26T10:15:00+00:00'
+                      lines:
+                      - id: 901
+                        fulfillment_order_id: 451
+                        sales_order_line_id: 55347
+                        quantity: 3
+                        remaining_quantity: 3
+                        fulfillable_quantity: 3
+                        unfulfillable_quantity: 0
+                        executed_quantity: 0
+                        lot_allocation: null
+                        sku: WIDGET-01
+                        name: Blue Widget
+                        product_id: 88
+                        warehouse_id: 7
+                        created_at: '2026-05-26T10:15:00+00:00'
+                        updated_at: '2026-05-26T10:15:00+00:00'
+                      - id: 902
+                        fulfillment_order_id: 451
+                        sales_order_line_id: 55348
+                        quantity: 2
+                        remaining_quantity: 1
+                        fulfillable_quantity: 1
+                        unfulfillable_quantity: 0
+                        executed_quantity: 0
+                        lot_allocation: null
+                        sku: WIDGET-02
+                        name: Red Widget
+                        product_id: 89
+                        warehouse_id: 7
+                        created_at: '2026-05-26T10:15:00+00:00'
+                        updated_at: '2026-05-26T10:32:00+00:00'
+                      warehouse:
+                        id: 7
+                        name: Main Warehouse
+                        type: standard
+                        tracks_inventory: true
+                example-1:
+                  summary: 200 OK — Submitted to ShipStation (provider_order_link
+                    populated)
+                  value:
+                    data:
+                      id: 451
+                      sales_order_id: 123
+                      warehouse_id: 7
+                      status: open
+                      request_status: accepted
+                      external_id: '92532'
+                      external_type: shipstation_order
+                      integration_instance_id: 4
+                      effective_fulfillment_provider: shipstation
+                      effective_integration_instance_name: ShipStation
+                      provider_order_link:
+                        link_reference: O260613JZ3ECM.1
+                        link_type_label: ShipStation Order
+                        link_id: 92532
+                        link_route: /integrations/shipstation/4/orders/92532
+                      submitted_at: '2026-06-13T14:22:05.000000Z'
+                      accepted_at: '2026-06-13T14:22:09.000000Z'
+                      closed_at: null
+                      cancelled_at: null
+                      rejection_reason: null
+                      created_at: '2026-05-26T10:15:00+00:00'
+                      updated_at: '2026-05-26T10:15:00+00:00'
+                      lines:
+                      - id: 901
+                        fulfillment_order_id: 451
+                        sales_order_line_id: 55347
+                        quantity: 3
+                        remaining_quantity: 3
+                        fulfillable_quantity: 3
+                        unfulfillable_quantity: 0
+                        executed_quantity: 0
+                        lot_allocation: null
+                        sku: WIDGET-01
+                        name: Blue Widget
+                        product_id: 88
+                        warehouse_id: 7
+                        created_at: '2026-05-26T10:15:00+00:00'
+                        updated_at: '2026-05-26T10:15:00+00:00'
+                      - id: 902
+                        fulfillment_order_id: 451
+                        sales_order_line_id: 55348
+                        quantity: 2
+                        remaining_quantity: 1
+                        fulfillable_quantity: 1
+                        unfulfillable_quantity: 0
+                        executed_quantity: 0
+                        lot_allocation: null
+                        sku: WIDGET-02
+                        name: Red Widget
+                        product_id: 89
+                        warehouse_id: 7
+                        created_at: '2026-05-26T10:15:00+00:00'
+                        updated_at: '2026-05-26T10:32:00+00:00'
+                      warehouse:
+                        id: 7
+                        name: Main Warehouse
+                        type: standard
+                        tracks_inventory: true
       operationId: get-api-fulfillment-orders-fulfillmentorder
   /api/fulfillment-orders:
     post:
@@ -198765,6 +198955,7 @@ paths:
                   status: open
                   status_label: Open
                   request_status: submitted
+                  provider_order_link: null
                   is_stuck_submitting: false
                   is_pickup: false
                   requested_shipping_method: UPS Ground
