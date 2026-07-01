@@ -3,7 +3,7 @@ title: "Custom Report Builder — answer any data question without a developer"
 description: "Build your own reports from any data in SKU — sales, inventory, purchasing, and more — with a drag-and-drop builder, live charts, formulas, and scheduled delivery."
 authors: [product-team]
 tags: [major-feature, new, reporting]
-date: 2026-05-25
+date: 2026-07-01
 ---
 
 Every business has that one question the standard reports can't quite answer — "on-hand value by product this month", "revenue by channel and brand", "which SKUs are moving and what are they worth". Until now, answering it meant exporting to a spreadsheet or asking someone to build a report for you. The new **Custom Report Builder** lets you answer those questions yourself: pick the data, drag the fields you care about, and get a live table, chart, or pivot in seconds — no spreadsheets, no waiting.
