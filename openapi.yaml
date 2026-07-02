@@ -15727,7 +15727,22 @@ paths:
         id — links to /integrations/amazon/finance/bank-transaction/{id}), `settlement_reference`
         (the FinancialEventGroupId shown as the settlement #), and `entries[]` (each
         linked ledger entry: id, reference, entry_type_label, is_landed_cost) so the
-        UI can deep-link every document.'
+        UI can deep-link every document.
+
+
+        **Per-suggestion `dismissed_count`** (integer): how many candidates the user
+        has declared “not a match” on this line (via Dismiss Line Match Suggestion).
+        Dismissed candidates are excluded from `candidates` and restorable as a set
+        via Restore Dismissed Suggestions.
+
+
+        **Group candidates** (`match_kind=group`): several of one supplier''s documents
+        that together settle a money-out payment. When the line''s memo names the
+        supplier, combinations may also NET vendor credits against the invoices (payment
+        = invoices − credits) — the label reads e.g. ''2 invoices − 1 credit'' and
+        `amount` is the net. Each `entries[]` element carries its own `entry_type`,
+        `amount`, `counterparty_name` and `effective_at` so the UI renders a signed
+        calculation.'
       parameters:
       - name: Accept
         in: header
@@ -15954,6 +15969,136 @@ paths:
                   sort_order: 0
                   matches: []
       operationId: delete-api-ledger-reconciliation-bank-statements-lines-bankstatementline-match
+  /api/ledger/reconciliation/bank-statements/lines/{bankStatementLine}/dismiss-match:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Dismiss Line Match Suggestion
+      description: 'Declare a suggested candidate "not a match" for this line. The
+        candidate''s identity is pinned to the line (order-independent fingerprint),
+        so the same document/combination is never re-offered by Line Match Suggestions
+        or confirmed by Auto-match — and a dismissed group combination''s per-supplier
+        slot frees up for the next-best combination on the next refresh. Undone by
+        the Restore Dismissed Suggestions endpoint.
+
+
+        **Body:**
+
+        - `match_kind` (required, ''entry'' | ''settlement'' | ''group'') — the candidate''s
+        kind exactly as the suggestions endpoint returned it.
+
+        - `entry_ids` (required unless match_kind=settlement, array of integers) —
+        the candidate''s ledger entry id(s); order does not matter.
+
+        - `settlement_id` (required when match_kind=settlement, integer) — the Amazon
+        settlement id.
+
+
+        **Authentication:** Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                match_kind: group
+                entry_ids:
+                - 338
+                - 5348
+                - 5623
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: bankStatementLine
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Statement line id.
+        example: '93'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Dismissed — that combination will not be suggested again.
+                data: []
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The entry ids field is required unless match kind is in settlement.
+                errors:
+                  entry_ids:
+                  - The entry ids field is required unless match kind is in settlement.
+      operationId: post-api-ledger-reconciliation-bank-statements-lines-bankstatementline-dismiss-match
+  /api/ledger/reconciliation/bank-statements/lines/{bankStatementLine}/dismissals:
+    delete:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Restore Dismissed Suggestions
+      description: 'Clear every "not a match" verdict on the line, putting all dismissed
+        candidates back into circulation — they reappear on the next Line Match Suggestions
+        call. Returns how many dismissals were removed.
+
+
+        **Authentication:** Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: bankStatementLine
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Statement line id.
+        example: '93'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                success: true
+                message: Dismissed suggestions restored.
+                data:
+                  restored: 2
+      operationId: delete-api-ledger-reconciliation-bank-statements-lines-bankstatementline-dismissals
   /api/ledger/reconciliation/bank-statements/{bankStatementImport}/auto-match:
     post:
       tags:
