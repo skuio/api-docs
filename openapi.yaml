@@ -51677,9 +51677,16 @@ paths:
       tags:
       - Sales Channels
       summary: Update Draft Inbound Plan
-      description: Update a draft FBA inbound plan. Advancing the plan to a verified
+      description: 'Update a draft FBA inbound plan. Advancing the plan to a verified
         state reserves source-warehouse stock; if the warehouse lacks enough on-hand
         quantity the request returns 400 with a product error.
+
+
+        **Kit lines:** a kit line in `kit_stock` mode that lacks pre-built stock —
+        but whose components could assemble the requested quantity — returns a dedicated
+        400 error including `buildable_from_components`, hinting that the line should
+        be switched to `components` mode (PATCH the item with `kit_fulfillment_mode:
+        components`) so verification can allocate the component stock instead.'
       requestBody:
         content:
           '*/*':
@@ -51738,10 +51745,24 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: "{\n  \"errors\": {\n    \"product\": [\n      {\n        \"\
-                message\": \"Not enough quantity of product (ABC-123) \",\n      \
-                \  \"code\": \"ProductIsUnacceptable\",\n        \"data\": {\n   \
-                \       \"product_id\": 456\n        }\n      }\n    ]\n  }\n}"
+              examples:
+                example-0:
+                  summary: 400 Insufficient Stock
+                  value: "{\n  \"errors\": {\n    \"product\": [\n      {\n      \
+                    \  \"message\": \"Not enough quantity of product (ABC-123) \"\
+                    ,\n        \"code\": \"ProductIsUnacceptable\",\n        \"data\"\
+                    : {\n          \"product_id\": 456\n        }\n      }\n    ]\n\
+                    \  }\n}"
+                example-1:
+                  summary: 400 Kit Assembly Available
+                  value: "{\n  \"errors\": {\n    \"product\": [\n      {\n      \
+                    \  \"message\": \"Kit (GSL392-KIT) has no pre-built stock at the\
+                    \ source, but its components can assemble 40. Switch the line\
+                    \ to \\\"Assemble from Components\\\" to plan the build at the\
+                    \ source.\",\n        \"code\": \"ProductIsUnacceptable\",\n \
+                    \       \"data\": {\n          \"product_id\": 42,\n         \
+                    \ \"buildable_from_components\": 40\n        }\n      }\n    ]\n\
+                    \  }\n}"
       operationId: put-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan
     delete:
       tags:
@@ -56537,13 +56558,38 @@ paths:
       tags:
       - Sales Channels
       summary: Add Item to Draft Plan
-      description: Add an item to a draft FBA inbound plan.
+      description: 'Add an item to a draft FBA inbound plan.
+
+
+        **Fields:**
+
+        - `product_id` (integer, required) — SKU product id
+
+        - `msku` (string, required) — Amazon merchant SKU
+
+        - `quantity` (integer, required) — units to send
+
+        - `kit_fulfillment_mode` (string, optional) — for kit products only: `kit_stock`
+        (ship pre-built kit stock) or `components` (the source assembles the kit from
+        component stock; components are allocated at verify and convert to the kit
+        when the source confirms the build).
+
+
+        **Smart default:** when `kit_fulfillment_mode` is omitted and the product
+        is a kit sourced from a non-supplier warehouse, the mode defaults to `components`
+        if pre-built kit stock cannot cover the quantity but component stock can assemble
+        it. Pass the field explicitly to override.
+
+
+        The response includes `is_kit`, `kit_fulfillment_mode`, and `kit_availability`
+        (kit stock on hand, max buildable from components, bottleneck component).'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"product_id\": 42,\n  \"quantity\": 100\n}"'
+              example: '"{\n  \"product_id\": 42,\n  \"msku\": \"GSL392-KIT\",\n  \"quantity\":
+                30,\n  \"kit_fulfillment_mode\": \"components\"\n}"'
       parameters:
       - name: Accept
         in: header
@@ -56591,7 +56637,16 @@ paths:
       tags:
       - Sales Channels
       summary: Bulk Add Items to Draft Plan
-      description: Bulk add items to a draft FBA inbound plan.
+      description: 'Bulk add items to a draft FBA inbound plan. Items already on the
+        plan (matched by MSKU) are skipped unless `replace_existing` is true, in which
+        case their quantity is updated.
+
+
+        **Kit smart default:** each added kit product sourced from a non-supplier
+        warehouse defaults `kit_fulfillment_mode` to `components` when pre-built kit
+        stock cannot cover the requested quantity but component stock can assemble
+        it (the source builds the kits; components are allocated at verify). Other
+        lines default to shipping stock as-is.'
       requestBody:
         content:
           '*/*':
@@ -75328,6 +75383,7 @@ paths:
                     blackout_dates: null
                     created_at: '2026-06-10T09:00:00.000000Z'
                     updated_at: '2026-06-10T09:00:00.000000Z'
+                    case_pack_rounding: always_round_down
                   overrides:
                   - id: 2
                     integration_instance_id: 1
@@ -75340,6 +75396,7 @@ paths:
                     blackout_dates: null
                     created_at: '2026-06-11T10:00:00.000000Z'
                     updated_at: '2026-06-11T10:00:00.000000Z'
+                    case_pack_rounding: always_round_down
                   restock_report_generated_at: '2026-06-12T03:15:42+00:00'
       operationId: get-domain-api-amazon-integrationinstance-replenishment-settings
     put:
@@ -75371,7 +75428,13 @@ paths:
         - blackout_dates: optional array of dates
 
 
-        Authentication: Bearer token.'
+        Authentication: Bearer token.
+
+
+        **`case_pack_rounding`** (string, optional) — how suggested quantities round
+        to full cases for products with a `case_pack_qty`: `always_round_down` (default
+        — never exceed the target/cap), `always_round_up` (ship full cases; may overshoot
+        the coverage target but never the origin/supplier stock cap), or `round_nearest`.'
       requestBody:
         content:
           application/json:
@@ -75387,6 +75450,7 @@ paths:
                 blackout_dates:
                 - '2026-11-26'
                 - '2026-12-25'
+                case_pack_rounding: always_round_up
       parameters:
       - name: Accept
         in: header
