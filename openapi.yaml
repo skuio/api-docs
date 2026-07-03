@@ -10263,6 +10263,128 @@ paths:
                     message: The provider rejected this entry — see the sync error
                       for details.
       operationId: post-api-ledger-entries-entry-sync
+  /api/ledger/entries/{entry}/clear-errors:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Clear Sync Errors (synchronous)
+      description: 'Dismiss THIS single entry''s parked sync errors (needs_action
+        / failed_retryable) SYNCHRONOUSLY by superseding its open sync operations
+        across every connection, then return the refreshed entry so the detail page
+        drops the error banner without a page refresh. This powers the entry detail
+        page''s "Clear errors" button.
+
+
+        It clears the error WITHOUT auto-retrying — the user runs Resync Now afterwards
+        to re-attempt the push. The bulk equivalent — `POST /api/ledger/entries/bulk`
+        with action `clear_errors` — stays an async tracked job for multi-entry selections.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Request body:** none.
+
+
+        **Behaviour:** transitions the entry''s open operations (except InFlight)
+        to `Superseded` per connection, then recomputes and refreshes the entry''s
+        display status. A no-op (`cleared: false`) when the entry has no open sync
+        errors.
+
+
+        **Response:** 200 with `data.cleared` (bool — whether any open ops were superseded)
+        and `data.entry` (the refreshed LedgerEntryResource, whose `display_status`
+        no longer reports needs_attention). `message` summarises the outcome.
+
+
+        Permission: requires `accounting.sync` (SKU-5069 granular permissions; admins
+        bypass; unenforced when the tenant''s granular_permissions feature flag is
+        off). Returns 403 without it; 404 when the entry does not exist.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '8114'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — errors cleared
+                  value:
+                    data:
+                      cleared: true
+                      entry:
+                        id: 8114
+                        type:
+                          value: bill
+                          label: Bill
+                        status: posted
+                        display_status:
+                          key: not_synced
+                          label: Not Synced
+                          color: grey
+                          reason: null
+                        can_sync_now: true
+                        locked_update_pending: false
+                        counterparty_name: Amazon
+                        currency_code: USD
+                        total_debit: '842.6700'
+                        total_credit: '842.6700'
+                        document_number: BILL-8114
+                        reference: 5cKTkaXNDpXqmNv0MzaOHAMppp6CsZOYXrgMbDv4UDg
+                        sync_provider: Xero
+                        operations:
+                        - id: 90244
+                          state: superseded
+                          operation: create
+                          direction: push
+                          error_class: null
+                          error_payload: null
+                          attempts: 2
+                          finished_at: '2026-06-30T01:41:05+00:00'
+                    message: Sync errors cleared — run Sync now to re-attempt.
+                example-1:
+                  summary: 200 OK — nothing to clear (no-op)
+                  value:
+                    data:
+                      cleared: false
+                      entry:
+                        id: 8114
+                        type:
+                          value: bill
+                          label: Bill
+                        status: posted
+                        display_status:
+                          key: synced
+                          label: Synced
+                          color: success
+                          reason: null
+                        can_sync_now: true
+                        document_number: BILL-8114
+                        sync_provider: Xero
+                    message: No sync errors to clear on this entry.
+      operationId: post-api-ledger-entries-entry-clear-errors
   /api/ledger/entries/{entry}/recreate:
     post:
       tags:
