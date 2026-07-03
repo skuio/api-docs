@@ -202818,6 +202818,16 @@ paths:
         lines + warehouse. Powers the Pending sub-tab in the Vue3 SO detail page.
 
 
+        **Channel double-fulfillment coverage (SKU-8019 F6):** each FO carries a transient
+        boolean `has_channel_covered_units` — true when an still-open sales-channel
+        (Shopify) fulfillment order may yet ship some of this FO''s units. When present,
+        every line carries `channel_covered`: `true` for a line the channel may still
+        ship ("awaiting channel"), `false` for a line safe to dispatch natively ("dispatchable").
+        Both fields are stamped only by this list endpoint (not the single-FO detail
+        endpoint) and omitted on FOs whose lines are not loaded. They drive the per-line
+        awaiting-channel vs dispatchable badges and the submit-time guardrail.
+
+
         Returns 404 if the feature flag is off.
 
 
@@ -202901,6 +202911,7 @@ paths:
                   rejection_reason: null
                   created_at: '2026-05-26T10:15:00+00:00'
                   updated_at: '2026-05-26T10:15:00+00:00'
+                  has_channel_covered_units: true
                   sales_channel_fulfillment_link:
                     channel: shopify
                     fulfillment: null
@@ -202937,6 +202948,7 @@ paths:
                     executed_quantity: 0
                     sales_order_fulfillment_lines: []
                     lot_allocation: null
+                    channel_covered: true
                     sku: WIDGET-01
                     name: Blue Widget
                     product_id: 88
@@ -202970,6 +202982,7 @@ paths:
                   rejection_reason: null
                   created_at: '2026-05-26T09:40:00+00:00'
                   updated_at: '2026-05-26T09:46:00+00:00'
+                  has_channel_covered_units: false
                   lines:
                   - id: 905
                     fulfillment_order_id: 452
@@ -202981,6 +202994,7 @@ paths:
                     executed_quantity: 0
                     sales_order_fulfillment_lines: []
                     lot_allocation: null
+                    channel_covered: false
                     sku: FBA-SKU
                     name: FBA Item
                     product_id: 90
@@ -203689,9 +203703,39 @@ paths:
         Violations return 409.
 
 
-        No request body.'
+        **Request body (all fields optional).** Submission acts on the WHOLE FO —
+        there are no per-line quantities (split the FO first to dispatch part of it).
+
+
+        - `acknowledge_open_channel_fulfillment` (boolean, default false) — double-fulfillment
+        guardrail (SKU-8019 F4a). When an still-open sales-channel (Shopify) fulfillment
+        order may yet ship some of this FO''s units, an omitted/false submit is refused
+        with **409** carrying `requires_acknowledgement: true` and a `coverage` preview.
+        Resubmit with this `true` to dispatch natively anyway.
+
+        - `requested_integration_instance_id` (integer|null) — per-FO shipping-provider
+        override; must be a SHIPPING_PROVIDER instance.
+
+        - `requested_fulfillment_type` (string|null, only `manual`) — force Manual
+        dispatch (no integration instance).
+
+        - `requested_shipping_method_id` (integer|null) / `requested_shipping_method`
+        (string|null) — requested carrier service.
+
+        - `requested_ship_date` (date|null), `requested_metadata` (object|null) —
+        optional ship intent bridged onto the SalesOrderFulfillment (`notes`, `fulfillment_sequence`,
+        `signature_required`, `veracore_*`, `isInsured`, `instructionsForWarehouse`).
+
+        - `lot_allocations` (array|null) — per-line FEFO override for lot-tracked
+        lines: `[{ sales_order_line_id, lots: [{ fifo_layer_id, quantity }] }]`. Re-validated
+        at dispatch; stale picks fall back to FEFO. Omit for automatic FEFO/FIFO.'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                acknowledge_open_channel_fulfillment: false
       parameters:
       - name: Accept
         in: header
@@ -203759,9 +203803,34 @@ paths:
             application/json:
               schema:
                 type: object
-              example:
-                error: 'Cannot submit fulfillment_order 451: only open + unsubmitted
-                  FOs can be submitted (currently status=open, request_status=submitting).'
+              examples:
+                example-0:
+                  summary: 409 Not Mutable
+                  value:
+                    error: 'Cannot submit fulfillment_order 451: only open + unsubmitted
+                      FOs can be submitted (currently status=open, request_status=submitting).'
+                example-1:
+                  summary: 409 Requires Channel Acknowledgement
+                  value:
+                    error: An open sales-channel fulfillment may still ship some of
+                      these units. Resubmit with acknowledge_open_channel_fulfillment=true
+                      to dispatch natively anyway.
+                    requires_acknowledgement: true
+                    coverage:
+                      fulfillment_order_id: 451
+                      sales_order_id: 123
+                      sales_order_number: C632930
+                      covered_line_count: 1
+                      has_open_channel_coverage: true
+                      lines:
+                      - sales_order_line_id: 55347
+                        fulfillment_order_line_id: 901
+                        product_id: 88
+                        sku: WIDGET-01
+                        product_name: Blue Widget
+                        requested_quantity: 3
+                        channel_open_quantity: 1
+                        channel_covered: true
       operationId: post-api-fulfillment-orders-fulfillmentorder-submit
   /api/fulfillment-orders/{fulfillmentOrder}/cancel:
     post:
