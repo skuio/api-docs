@@ -51908,6 +51908,82 @@ paths:
               example:
                 message: Unarchived 2 inbound shipments
       operationId: post-domain-api-amazon-integrationinstance-new-inbound-shipments-unarchive
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/list:
+    get:
+      tags:
+      - Sales Channels
+      summary: List Draft Plans (Drafts Tab)
+      description: 'Paginated Drafts-tab listing for the Vue 3 datatable.
+
+
+        **Scope:** in-progress drafts that have NOT yet been submitted to Amazon (no
+        linked Amazon plan) — plus ABORTED drafts regardless of submission, so a plan
+        voided on Amazon (e.g. via Cancel & Create Draft) stays visible as history.
+        Live submitted drafts appear on the Inbound Plans tab instead.
+
+
+        Response includes `unfiltered_total` (for the export modal) and `status_counts`
+        (total / in_progress / finalized / aborted, powering the metric cards).
+
+
+        Requires Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '2'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 58
+                  name: QA Aborted After Submit
+                  status: aborted
+                  workflow_step: 5
+                  source_mode: warehouse_transfer
+                  source_type: warehouse
+                  source_warehouse_name: ShipMyOrders Warehouse
+                  supplier_name: null
+                  destination_warehouse_name: FBA US (AMZ partusa)
+                  item_count: 22
+                  created_at: '2026-07-02T23:56:00.000000Z'
+                  updated_at: '2026-07-02T23:56:00.000000Z'
+                current_page: 1
+                last_page: 3
+                per_page: 15
+                total: 35
+                from: 1
+                to: 15
+                unfiltered_total: 35
+                status_counts:
+                  total: 35
+                  in_progress: 3
+                  finalized: 0
+                  aborted: 32
+      operationId: get-domain-api-amazon-integrationinstance-draft-inbound-plans-list
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans:
     get:
       tags:
@@ -52273,7 +52349,13 @@ paths:
       tags:
       - Sales Channels
       summary: Submit Plan to Amazon
-      description: Submit a draft inbound plan to Amazon's API for processing.
+      description: 'Submit a draft inbound plan to Amazon''s API for processing.
+
+
+        **Pre-flight validation:** every plan item must carry an Amazon listing (MSKU).
+        Items without one (e.g. a bulk-add identifier that matched a local product
+        SKU only) fail with a 422 `items` error naming the offending product SKUs
+        — nothing is sent to Amazon.'
       requestBody:
         content: {}
       parameters:
@@ -52313,13 +52395,52 @@ paths:
                 type: string
               example: '{"data": {"id": 1, "status": "submitted", "amazon_plan_id":
                 "PLAN-123456"}}'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: O-13 has no Amazon listing (MSKU) on this integration. Remove
+                  it from the plan, or create the listing in Seller Central and re-add
+                  it.
+                errors:
+                  items:
+                  - O-13 has no Amazon listing (MSKU) on this integration. Remove
+                    it from the plan, or create the listing in Seller Central and
+                    re-add it.
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-submit-to-amazon
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/cancel-amazon-plan:
     post:
       tags:
       - Sales Channels
       summary: Cancel Amazon Plan
-      description: Cancel the associated Amazon FBA inbound plan.
+      description: 'Cancel a draft inbound plan.
+
+
+        **Never-submitted plans** are simply marked ABORTED locally and their reserved
+        inventory is released.
+
+
+        **Submitted plans** are voided on Amazon; the original draft stays bound to
+        its now-VOIDED Amazon plan as ABORTED history and remains visible on the Drafts
+        tab. With `create_draft=true` (default) a fresh duplicate draft is returned
+        for resubmission.
+
+
+        **Flagged-SKU exclusion:** any MSKUs Amazon named in the plan''s rejection
+        problems (e.g. FBA_INB_0465 manufacturer-barcode errors) are automatically
+        left out of the duplicate — resubmitting them verbatim would fail identically.
+        The dropped MSKUs are returned in `excluded_flagged_mskus` on the new draft.
+
+
+        Requires Bearer token.'
       requestBody:
         content: {}
       parameters:
@@ -52354,10 +52475,26 @@ paths:
                 type: string
                 example: application/json
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-              example: '{"message": "Amazon plan cancelled successfully"}'
+                type: object
+              example:
+                data:
+                  id: 58
+                  integration_instance_id: 2
+                  name: SMO Inbound Order 20260702 (Resubmit)
+                  status: source_selected
+                  workflow_step: 1
+                  source_mode: warehouse_transfer
+                  source_warehouse_id: 12
+                  warehouse_transfer_id: null
+                  amazon_new_fba_inbound_plan: null
+                  items: []
+                  excluded_flagged_mskus:
+                  - 1727570-FBA
+                  - 1726527-FBA
+                  created_at: '2026-07-02T23:10:00.000000Z'
+                  updated_at: '2026-07-02T23:10:00.000000Z'
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-cancel-amazon-plan
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/packing-options/generate:
     post:
@@ -56919,7 +57056,7 @@ paths:
                 type: string
               example: '{"data": {"id": 10, "status": "pending", "reference": "WT-2024-010"}}'
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-create-warehouse-transfer
-  /api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}:
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}:
     get:
       tags:
       - Sales Channels
@@ -56943,6 +57080,11 @@ paths:
         schema:
           type: string
         example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
       - name: integrationInstance
         in: path
         schema:
@@ -56998,8 +57140,8 @@ paths:
                     is_kit: false
                     assemble_at_source: false
                     components: []
-      operationId: get-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid
-  /api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/verify-product:
+      operationId: get-domain-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/verify-product:
     post:
       tags:
       - Sales Channels
@@ -57026,6 +57168,11 @@ paths:
         schema:
           type: string
         example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
       - name: integrationInstance
         in: path
         schema:
@@ -57046,8 +57193,8 @@ paths:
               example:
                 status: success
                 message: Product verified
-      operationId: post-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-verify-product
-  /api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/verify-all-products:
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-verify-product
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/verify-all-products:
     post:
       tags:
       - Sales Channels
@@ -57064,6 +57211,11 @@ paths:
         schema:
           type: string
         example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
       - name: integrationInstance
         in: path
         schema:
@@ -57084,8 +57236,8 @@ paths:
               example:
                 status: success
                 message: All products successfully verified
-      operationId: post-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-verify-all-products
-  /api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/submit-verification:
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-verify-all-products
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/submit-verification:
     post:
       tags:
       - Sales Channels
@@ -57103,6 +57255,11 @@ paths:
         schema:
           type: string
         example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
       - name: integrationInstance
         in: path
         schema:
@@ -57124,7 +57281,7 @@ paths:
                 errors:
                   cant_submit_verification_unless_all_items_verified:
                   - message: Cannot submit verification unless all items are verified.
-      operationId: post-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-submit-verification
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-submit-verification
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/add-item:
     post:
       tags:
@@ -57146,6 +57303,13 @@ paths:
         component stock; components are allocated at verify and convert to the kit
         when the source confirms the build).
 
+        - `case_pack_qty` (integer, optional, nullable) — case pack size to snapshot
+        onto this line. Defaults to the product''s current case pack size when omitted.
+
+        - `case_pack_rounding` (string, optional, nullable) — rounding strategy snapshot
+        for this line: `always_round_up`, `always_round_down`, or `round_nearest`.
+        Defaults to the product''s current case pack rounding setting when omitted.
+
 
         **Smart default:** when `kit_fulfillment_mode` is omitted and the product
         is a kit sourced from a non-supplier warehouse, the mode defaults to `components`
@@ -57153,15 +57317,17 @@ paths:
         it. Pass the field explicitly to override.
 
 
-        The response includes `is_kit`, `kit_fulfillment_mode`, and `kit_availability`
-        (kit stock on hand, max buildable from components, bottleneck component).'
+        The response includes `is_kit`, `kit_fulfillment_mode`, `kit_availability`
+        (kit stock on hand, max buildable from components, bottleneck component),
+        and the snapshotted `case_pack_qty` / `case_pack_rounding`.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
               example: '"{\n  \"product_id\": 42,\n  \"msku\": \"GSL392-KIT\",\n  \"quantity\":
-                30,\n  \"kit_fulfillment_mode\": \"components\"\n}"'
+                30,\n  \"kit_fulfillment_mode\": \"components\",\n  \"case_pack_qty\":
+                12,\n  \"case_pack_rounding\": \"always_round_up\"\n}"'
       parameters:
       - name: Accept
         in: header
@@ -57202,7 +57368,8 @@ paths:
             text/plain:
               schema:
                 type: string
-              example: '{"data": {"id": 5, "product_id": 42, "quantity": 100}}'
+              example: '{"data": {"id": 5, "product_id": 42, "quantity": 100, "case_pack_qty":
+                12, "case_pack_rounding": "always_round_up"}}'
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-items-draft-inbound-plan-add-item
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/bulk-add:
     post:
@@ -57212,6 +57379,12 @@ paths:
       description: 'Bulk add items to a draft FBA inbound plan. Items already on the
         plan (matched by MSKU) are skipped unless `replace_existing` is true, in which
         case their quantity is updated.
+
+
+        Each item accepts the same fields as **Add Item to Draft Plan** (`product_id`,
+        `msku`, `quantity`, `kit_fulfillment_mode`, `case_pack_qty`, `case_pack_rounding`)
+        — `case_pack_qty`/`case_pack_rounding` are optional per-item overrides; when
+        omitted they default to the product''s current case pack settings.
 
 
         **Kit smart default:** each added kit product sourced from a non-supplier
@@ -57225,7 +57398,8 @@ paths:
             schema:
               type: string
               example: '"{\n  \"items\": [\n    {\"product_id\": 42, \"quantity\":
-                100},\n    {\"product_id\": 43, \"quantity\": 50}\n  ]\n}"'
+                100, \"case_pack_qty\": 12, \"case_pack_rounding\": \"always_round_up\"},\n    {\"product_id\":
+                43, \"quantity\": 50}\n  ]\n}"'
       parameters:
       - name: Accept
         in: header
@@ -57267,7 +57441,9 @@ paths:
               schema:
                 type: string
               example: '{"message": "2 items added", "data": [{"id": 5, "product_id":
-                42}, {"id": 6, "product_id": 43}]}'
+                42, "case_pack_qty": 12, "case_pack_rounding": "always_round_up"},
+                {"id": 6, "product_id": 43, "case_pack_qty": null, "case_pack_rounding":
+                null}]}'
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-items-draft-inbound-plan-bulk-add
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan_item}:
     patch:
@@ -57302,16 +57478,23 @@ paths:
         when the plan is verified/allocated). Only meaningful for kit products with
         a non-supplier (3PL/direct) source; ignored otherwise.
 
+        - case_pack_qty (int|null): case pack size snapshot for this line.
+
+        - case_pack_rounding (string|null): rounding strategy snapshot for this line
+        — `always_round_up`, `always_round_down`, or `round_nearest`.
+
 
         Returns the updated item, including `product_id`, `is_kit`, `kit_fulfillment_mode`,
-        and `kit_availability` (live kit-on-hand vs buildable-from-components, with
-        the bottleneck component) for kit lines.'
+        `kit_availability` (live kit-on-hand vs buildable-from-components, with the
+        bottleneck component), and `case_pack_qty` / `case_pack_rounding` for kit
+        lines.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"quantity\": 150,\n  \"kit_fulfillment_mode\": \"components\"\n}"'
+              example: '"{\n  \"quantity\": 150,\n  \"kit_fulfillment_mode\": \"components\",\n  \"case_pack_qty\":
+                12,\n  \"case_pack_rounding\": \"always_round_up\"\n}"'
       parameters:
       - name: Accept
         in: header
@@ -57368,7 +57551,8 @@ paths:
                 null, "source_quantity": "120", "warehouse_quantity": 120, "fulfillable_quantity":
                 100, "unsellable_quantity": 0, "reserved_quantity": 5, "inbound_quantity":
                 30, "inbound_working_quantity": 10, "inbound_shipped_quantity": 15,
-                "inbound_receiving_quantity": 5}}'
+                "inbound_receiving_quantity": 5, "case_pack_qty": 12, "case_pack_rounding":
+                "always_round_up"}}'
       operationId: patch-domain-api-amazon-integrationinstance-draft-inbound-plans-items-draft-inbound-plan-item
     delete:
       tags:
@@ -59627,30 +59811,9 @@ paths:
       tags:
       - Sales Channels
       summary: List Consumptions across all FIFO Layers (paginated)
-      description: 'Cross-layer paginated consumption listing. Each item is transformed
+      description: Cross-layer paginated consumption listing. Each item is transformed
         via AmazonFifoConsumptionResource; the fifo_layer relation is included for
         cross-layer context.
-
-
-        **Sorting:** `sort` param — allowed fields: id, effective_at, quantity, cogs,
-        extended_cogs, fnsku, created_at, updated_at (prefix with `-` for DESC). Default:
-        `-effective_at,-id`.
-
-
-        **Advanced filters** (operator-suffixed, e.g. `filter[quantity.greater_than]=10`):
-
-        - `effective_at` (date): is, is_not, before, after, on_or_before, on_or_after,
-        between, is_empty, is_not_empty, today, yesterday, past_week, past_month,
-        past_year
-
-        - `quantity`, `cogs`, `extended_cogs` (numeric): is, is_not, greater_than,
-        less_than, greater_than_or_equal, less_than_or_equal, between, is_empty, is_not_empty
-
-        - `created_at`, `updated_at` (datetime): same operators as date filters
-
-
-        Also accepts `filter_groups` (base64-encoded AND/OR condition tree) and `filter[integration_instance_ids]`
-        (comma-separated).'
       parameters:
       - name: Accept
         in: header
@@ -68027,67 +68190,9 @@ paths:
         required: true
       responses:
         '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
+          description: Successful response
           content:
-            application/json:
-              schema:
-                type: object
-              example:
-                data:
-                - id: 48211
-                  date: '2026-06-30'
-                  fnsku: X001ABCDEF
-                  asin: B07XYZ1234
-                  msku: ACME-HOODIE-M-BLUE
-                  title: Acme Premium Cotton Hoodie, Medium, Blue
-                  disposition: SELLABLE
-                  starting_warehouse_balance: 120
-                  in_transit_between_warehouses: 4
-                  receipts: 50
-                  customer_shipments: -38
-                  customer_returns: 2
-                  vendor_returns: 0
-                  warehouse_transfer_in_out: -6
-                  found: 1
-                  lost: -1
-                  damaged: 0
-                  disposed: 0
-                  other_events: 0
-                  unknown_events: 0
-                  ending_warehouse_balance: 128
-                  reconciled_at: '2026-07-01T04:12:33.000000Z'
-                  status: reconciled
-                  created_at: '2026-07-01T03:58:02.000000Z'
-                  updated_at: '2026-07-01T04:12:33.000000Z'
-                  integration_instance:
-                    id: 3
-                    name: Acme US
-                  fnsku_product:
-                    id: 9912
-                    fnsku: X001ABCDEF
-                    location: US
-                    disposition: SELLABLE
-                    product:
-                      id: 5521
-                      sku: HOODIE-M-BLUE
-                      name: Acme Premium Cotton Hoodie, Medium, Blue
-                current_page: 1
-                first_page_url: https://sku11.test/api/amazon/unified/summary-ledgers?page=1
-                from: 1
-                last_page: 214
-                last_page_url: https://sku11.test/api/amazon/unified/summary-ledgers?page=214
-                links: []
-                next_page_url: https://sku11.test/api/amazon/unified/summary-ledgers?page=2
-                path: https://sku11.test/api/amazon/unified/summary-ledgers
-                per_page: 15
-                prev_page_url: null
-                to: 15
-                total: 3210
+            application/json: {}
       operationId: get-domain-api-amazon-unified-summary-ledgers
   //{domain}/api/amazon/unified/summary-ledgers/{id}:
     get:
@@ -68112,64 +68217,9 @@ paths:
         required: true
       responses:
         '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
+          description: Successful response
           content:
-            application/json:
-              schema:
-                type: object
-              example:
-                data:
-                  id: 48211
-                  date: '2026-06-30'
-                  fnsku: X001ABCDEF
-                  asin: B07XYZ1234
-                  msku: ACME-HOODIE-M-BLUE
-                  title: Acme Premium Cotton Hoodie, Medium, Blue
-                  disposition: SELLABLE
-                  starting_warehouse_balance: 120
-                  in_transit_between_warehouses: 4
-                  receipts: 50
-                  customer_shipments: -38
-                  customer_returns: 2
-                  vendor_returns: 0
-                  warehouse_transfer_in_out: -6
-                  found: 1
-                  lost: -1
-                  damaged: 0
-                  disposed: 0
-                  other_events: 0
-                  unknown_events: 0
-                  ending_warehouse_balance: 128
-                  reconciled_at: '2026-07-01T04:12:33.000000Z'
-                  status: reconciled
-                  created_at: '2026-07-01T03:58:02.000000Z'
-                  updated_at: '2026-07-01T04:12:33.000000Z'
-                  integration_instance:
-                    id: 3
-                    name: Acme US
-                  fnsku_product:
-                    id: 9912
-                    fnsku: X001ABCDEF
-                    location: US
-                    disposition: SELLABLE
-                    product:
-                      id: 5521
-                      sku: HOODIE-M-BLUE
-                      name: Acme Premium Cotton Hoodie, Medium, Blue
-                  amazon_report:
-                    id: 771
-                    report_id: '1234567890'
-                    report_type: GET_LEDGER_SUMMARY_VIEW_DATA
-                    data_start_time: '2026-06-30T00:00:00+00:00'
-                    data_end_time: '2026-06-30T23:59:59+00:00'
-                    processing_status: DONE
-                    processed_at: '2026-07-01T03:58:02.000000Z'
-                    created_at: '2026-07-01T03:40:11.000000Z'
+            application/json: {}
       operationId: get-domain-api-amazon-unified-summary-ledgers-id
   //{domain}/api/amazon/unified/summary-ledgers/current-summary:
     get:
@@ -75835,7 +75885,9 @@ paths:
         catalog and each row carries `is_default_supplier` (false = supplier carries
         the product but isn''t its default). Rows also include `amazon_fnsku_product_id`,
         `unit_weight_lb`, and `unit_volume_cuft` (for cart weight/volume/pallet estimates).
-        Rows also carry the product''s master-carton data — `units_per_case`, `case_weight_lb`,
+        Each row''s `case_pack_qty` / `case_pack_rounding` come from the product''s
+        replenishment settings override, falling back to the instance default. Rows
+        also carry the product''s master-carton data — `units_per_case`, `case_weight_lb`,
         `case_volume_cuft` (normalized from the product''s case-pack dimensions) —
         used to estimate cartons, pallet weight and pallet count in the cart.'
       parameters:
@@ -75915,6 +75967,7 @@ paths:
                   supplier_lead_time_days: null
                   minimum_order_quantity: null
                   case_pack_qty: 6
+                  case_pack_rounding: always_round_down
                   target_days_of_supply: 30
                   buffer_days: 7
                   lead_time_days: 0
@@ -76205,6 +76258,7 @@ paths:
                   - '2026-12-25'
                   created_at: '2026-06-11T10:00:00.000000Z'
                   updated_at: '2026-06-11T10:00:00.000000Z'
+                  case_pack_rounding: always_round_down
                 message: Replenishment settings saved
         '422':
           description: Unprocessable Entity
@@ -111874,14 +111928,7 @@ paths:
         payload.
 
 
-        Authentication: Requires Bearer token.
-
-
-        **Response field: `parcels`** — per-parcel array (one entry per tracking number
-        for split shipments). Each entry contains `tracking_number`, `carrier`, `service`,
-        `shipped_at`, and `freight`. Prefer this over parsing the comma-joined `tracking_number`
-        string; the array preserves tracking numbers verbatim even when they contain
-        commas.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
@@ -111918,14 +111965,7 @@ paths:
                 ,\n      \"sku_fulfillment_id\": 731,\n      \"sku_fulfillment_order_id\"\
                 : 642,\n      \"customer_name\": \"Jane Doe\",\n      \"customer_email\"\
                 : \"jane.doe@example.com\",\n      \"ship_date\": \"2024-06-03T14:00:00Z\"\
-                ,\n      \"tracking_number\": \"1Z999AA10123456784\",\n      \"parcels\"\
-                : [\n        {\n          \"tracking_number\": \"1Z9999AA0123456789\"\
-                ,\n          \"carrier\": \"UPS\",\n          \"service\": \"UPS Ground\"\
-                ,\n          \"shipped_at\": \"2024-06-03T14:00:00Z\",\n         \
-                \ \"freight\": 12.5\n        },\n        {\n          \"tracking_number\"\
-                : \"1Z9999AA0123456790\",\n          \"carrier\": \"UPS\",\n     \
-                \     \"service\": \"UPS Ground\",\n          \"shipped_at\": \"2024-06-03T14:05:00Z\"\
-                ,\n          \"freight\": 11.75\n        }\n      ],\n      \"carrier\"\
+                ,\n      \"tracking_number\": \"1Z999AA10123456784\",\n      \"carrier\"\
                 : \"UPS\",\n      \"carrier_description\": \"UPS Ground\",\n     \
                 \ \"requested_shipping\": \"Ground\",\n      \"ship_to\": {\n    \
                 \    \"name\": \"Jane Doe\",\n        \"company\": null,\n       \
@@ -111957,23 +111997,19 @@ paths:
                 : null,\n      \"sku_fulfillment_order_id\": null,\n      \"customer_name\"\
                 : \"John Smith\",\n      \"customer_email\": \"john.smith@example.com\"\
                 ,\n      \"ship_date\": null,\n      \"tracking_number\": null,\n\
-                \      \"parcels\": [\n        {\n          \"tracking_number\": \"\
-                1Z999AA10123456784\",\n          \"carrier\": \"UPS\",\n         \
-                \ \"service\": \"UPS Ground\",\n          \"shipped_at\": \"2024-06-03T14:00:00Z\"\
-                ,\n          \"freight\": 12.5\n        }\n      ],\n      \"carrier\"\
-                : null,\n      \"carrier_description\": null,\n      \"requested_shipping\"\
-                : \"Ground\",\n      \"ship_to\": {\n        \"name\": \"John Smith\"\
-                ,\n        \"company\": null,\n        \"address1\": \"500 Oak Ave\"\
-                ,\n        \"address2\": null,\n        \"city\": \"Austin\",\n  \
-                \      \"state\": \"TX\",\n        \"postal_code\": \"78701\",\n \
-                \       \"country\": \"US\",\n        \"phone\": null,\n        \"\
-                email\": \"john.smith@example.com\"\n      },\n      \"items\": [\n\
-                \        {\n          \"sku\": \"WIDGET-RED-S\",\n          \"description\"\
-                : \"Red Widget (Small)\",\n          \"quantity\": 1,\n          \"\
-                unit_price\": 9.99\n        }\n      ],\n      \"sku_fulfillment\"\
-                : null,\n      \"has_detailed_data\": false,\n      \"details_last_updated\"\
-                : null,\n      \"created_at\": \"2024-06-01T09:00:00+00:00\",\n  \
-                \    \"updated_at\": \"2024-06-01T09:00:00+00:00\"\n    }\n  ],\n\
+                \      \"carrier\": null,\n      \"carrier_description\": null,\n\
+                \      \"requested_shipping\": \"Ground\",\n      \"ship_to\": {\n\
+                \        \"name\": \"John Smith\",\n        \"company\": null,\n \
+                \       \"address1\": \"500 Oak Ave\",\n        \"address2\": null,\n\
+                \        \"city\": \"Austin\",\n        \"state\": \"TX\",\n     \
+                \   \"postal_code\": \"78701\",\n        \"country\": \"US\",\n  \
+                \      \"phone\": null,\n        \"email\": \"john.smith@example.com\"\
+                \n      },\n      \"items\": [\n        {\n          \"sku\": \"WIDGET-RED-S\"\
+                ,\n          \"description\": \"Red Widget (Small)\",\n          \"\
+                quantity\": 1,\n          \"unit_price\": 9.99\n        }\n      ],\n\
+                \      \"sku_fulfillment\": null,\n      \"has_detailed_data\": false,\n\
+                \      \"details_last_updated\": null,\n      \"created_at\": \"2024-06-01T09:00:00+00:00\"\
+                ,\n      \"updated_at\": \"2024-06-01T09:00:00+00:00\"\n    }\n  ],\n\
                 \  \"current_page\": 1,\n  \"last_page\": 9,\n  \"per_page\": 15,\n\
                 \  \"total\": 128,\n  \"from\": 1,\n  \"to\": 2\n}"
       operationId: get-domain-api-veracore-integration-instances-integration-instance-orders
@@ -111990,11 +112026,7 @@ paths:
         does not belong to the given integration instance.
 
 
-        Authentication: Requires Bearer token.
-
-
-        **Response field: `parcels`** — per-parcel array (one entry per tracking number).
-        See List Orders for the full field description.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
@@ -112037,14 +112069,10 @@ paths:
                 : 731,\n    \"sku_fulfillment_order_id\": 642,\n    \"customer_name\"\
                 : \"Jane Doe\",\n    \"customer_email\": \"jane.doe@example.com\"\
                 ,\n    \"ship_date\": \"2024-06-03T14:00:00Z\",\n    \"tracking_number\"\
-                : \"1Z999AA10123456784\",\n    \"parcels\": [\n      {\n        \"\
-                tracking_number\": \"1Z999AA10123456784\",\n        \"carrier\": \"\
-                UPS\",\n        \"service\": \"UPS Ground\",\n        \"shipped_at\"\
-                : \"2024-06-03T14:00:00Z\",\n        \"freight\": 12.5\n      }\n\
-                \    ],\n    \"carrier\": \"UPS\",\n    \"carrier_description\": \"\
-                UPS Ground\",\n    \"requested_shipping\": \"Ground\",\n    \"ship_to\"\
-                : {\n      \"name\": \"Jane Doe\",\n      \"company\": null,\n   \
-                \   \"address1\": \"123 Market St\",\n      \"address2\": null,\n\
+                : \"1Z999AA10123456784\",\n    \"carrier\": \"UPS\",\n    \"carrier_description\"\
+                : \"UPS Ground\",\n    \"requested_shipping\": \"Ground\",\n    \"\
+                ship_to\": {\n      \"name\": \"Jane Doe\",\n      \"company\": null,\n\
+                \      \"address1\": \"123 Market St\",\n      \"address2\": null,\n\
                 \      \"city\": \"San Francisco\",\n      \"state\": \"CA\",\n  \
                 \    \"postal_code\": \"94103\",\n      \"country\": \"US\",\n   \
                 \   \"phone\": \"+1-415-555-0100\",\n      \"email\": \"jane.doe@example.com\"\
