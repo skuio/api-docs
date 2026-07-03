@@ -149642,21 +149642,25 @@ paths:
 
         - `supplier_ids` (array of integers, min 1, must exist in suppliers table)
 
-        - `forecast_type` (enum: `sales_history`, `target_quantity`, `fill_backorders`)
+        - `forecast_type` (enum: `with_sales_history`, `target_stock_level`, `fill_backorders`)
 
-        - `target_stock_days` (integer 0-365) — required for `sales_history`. Optional
-        for `target_stock_level` (allows 0 when `use_min_stock_level_as_target` is
-        true) and `fill_backorders` (ignored)
+        - `target_stock_days` (integer 0-365) — required for `with_sales_history`.
+        Optional for `target_stock_level` (allows 0 when `use_min_stock_level_as_target`
+        is true) and `fill_backorders` (ignored)
 
 
         **Optional fields:**
 
         - `description` (string, max 1000)
 
-        - `target_quantity` (integer, min 0) — used by `target_quantity` forecast
-        type
+        - `target_quantity` (integer, min 0) — fixed target quantity used by `target_stock_level`
+        forecast type
 
-        - `sales_history_days` (integer 1-365) — used by `sales_history` forecast
+        - `use_min_stock_level_as_target` (boolean) — when true, `target_stock_level`
+        forecasts use each product''s minimum stock level as the target instead of
+        a fixed `target_quantity`. Persisted on both create and update.
+
+        - `sales_history_days` (integer 1-365) — used by `with_sales_history` forecast
         type
 
         - `sales_start_date` / `sales_end_date` (Y-m-d) — alternative date range for
@@ -149672,7 +149676,17 @@ paths:
         - `enforce_minimum_order_quantity` (boolean) — enforces supplier minimum order
         quantity when generating POs
 
-        - `rounding_method` (enum: `round_half_up`, `round_up`, `round_down`, `no_rounding`)
+        - `use_case_pack` (boolean) — round order quantities to supplier case-pack
+        multiples
+
+        - `case_pack_rounding` (enum: `always_round_up`, `always_round_down`, `round_nearest`)
+        — how to round to the case-pack multiple
+
+        - `ignore_min_stock_level` (boolean) — skip the per-product minimum stock
+        level constraint when computing demand
+
+        - `rounding_method` (enum: `round_half_up`, `round_half_down`, `always_round_up`,
+        `always_round_down`, `no_rounding`)
 
         - `destination_warehouse_id` (integer, must exist in warehouses table)
 
@@ -149685,24 +149699,21 @@ paths:
         - `demand_modifiers` (array) — adjustments to projected demand
 
 
-        **Note:** When `forecast_type` is `fill_backorders`, the controller strips
-        boolean product filters (`has_moq`, `has_leadtime`, `supplier_in_stock`, `has_sales_history`)
-        and forces `target_stock_days` and `sales_history_days` to null.
-
-
         Authentication: Requires Bearer token.'
       requestBody:
         content:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"name\": \"Weekly Sales History — Main Warehouse\",\n  \"description\":
-                \"Standard 90-day sales history forecast for our primary warehouse.\",\n  \"supplier_ids\":
-                [5, 12],\n  \"forecast_type\": \"sales_history\",\n  \"target_quantity\":
-                null,\n  \"sales_history_days\": 90,\n  \"sales_start_date\": null,\n  \"sales_end_date\":
-                null,\n  \"target_stock_days\": 30,\n  \"use_leadtime\": true,\n  \"use_moq\":
+              example: '"{\n  \"name\": \"Min Stock Replenishment \\u2014 Main Warehouse\",\n  \"description\":
+                \"Target stock level forecast using each product''s minimum stock
+                level as the target quantity.\",\n  \"supplier_ids\": [\n    5,\n    12\n  ],\n  \"forecast_type\":
+                \"target_stock_level\",\n  \"target_quantity\": null,\n  \"use_min_stock_level_as_target\":
+                true,\n  \"sales_history_days\": null,\n  \"sales_start_date\": null,\n  \"sales_end_date\":
+                null,\n  \"target_stock_days\": 0,\n  \"use_leadtime\": true,\n  \"use_moq\":
                 true,\n  \"enforce_minimum_order_value\": false,\n  \"enforce_minimum_order_quantity\":
-                false,\n  \"rounding_method\": \"round_half_up\",\n  \"destination_warehouse_id\":
+                false,\n  \"use_case_pack\": true,\n  \"case_pack_rounding\": \"always_round_up\",\n  \"ignore_min_stock_level\":
+                false,\n  \"rounding_method\": \"always_round_up\",\n  \"destination_warehouse_id\":
                 1,\n  \"pricing_tier_id\": null,\n  \"product_filters\": [],\n  \"sales_filters\":
                 [],\n  \"demand_modifiers\": []\n}"'
       parameters:
@@ -149896,11 +149907,14 @@ paths:
 
         The controller merges the incoming payload over the existing configuration
         data via `ForecastConfigurationData::fromModel($configuration)`, so omitted
-        fields retain their current values.
+        fields retain their current values. **Any field you want to change must be
+        present in the validation rules — otherwise `validated()` strips it and the
+        merge silently reverts it to the stored value.**
 
 
-        Accepts the same fields as Create. The `name` uniqueness rule excludes the
-        current record (so unchanged names pass validation).
+        Accepts the same fields as Create, including `use_min_stock_level_as_target`,
+        `use_case_pack`, `case_pack_rounding`, and `ignore_min_stock_level`. The `name`
+        uniqueness rule excludes the current record (so unchanged names pass validation).
 
 
         Authentication: Requires Bearer token.'
@@ -149909,10 +149923,10 @@ paths:
           '*/*':
             schema:
               type: string
-              example: '"{\n  \"name\": \"Weekly Sales History — Main Warehouse (v2)\",\n  \"description\":
-                \"Updated to enforce supplier minimums.\",\n  \"target_stock_days\":
-                45,\n  \"enforce_minimum_order_value\": true,\n  \"enforce_minimum_order_quantity\":
-                true\n}"'
+              example: '"{\n  \"name\": \"Min Stock Replenishment \\u2014 Main Warehouse
+                (v2)\",\n  \"forecast_type\": \"target_stock_level\",\n  \"use_min_stock_level_as_target\":
+                true,\n  \"use_case_pack\": true,\n  \"case_pack_rounding\": \"always_round_up\",\n  \"ignore_min_stock_level\":
+                false\n}"'
       parameters:
       - name: Accept
         in: header
