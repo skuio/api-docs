@@ -95299,24 +95299,26 @@ paths:
       - Sales Channels
       summary: Get Raw Transaction from TikTok
       description: 'Fetches the live transaction JSON directly from the TikTok Shop
-        Finance API (`/finance/202309/statement_transactions`) for a single previously-synced
-        transaction. Mirrors the `Get Raw Order from TikTok` pattern — used by the
-        frontend Raw Data section as a fetch-on-demand tool to inspect the current
-        upstream payload without writing it to the database.
-
-
-        The controller queries TikTok with a ±1 day window around the stored `tiktok_transaction_time`
-        and returns the entry whose id matches `tiktok_transaction_id`.
+        Finance API for a single previously-synced transaction. It reads the parent
+        statement''s transactions via `GET /finance/202309/statements/{statement_id}/statement_transactions`
+        (paginated via `page_token`, `sort_field=order_create_time`) and returns the
+        entry whose id matches the stored `tiktok_transaction_id`. Mirrors the `Get
+        Raw Order from TikTok` pattern — used by the frontend Raw Data section as
+        a fetch-on-demand tool to inspect the current upstream payload without writing
+        it to the database.
 
 
         Path params:
 
-        - `tikTokShopIntegrationInstance` (required) — integration instance id.
+        - `tikTokShopIntegrationInstance` (required) — integration instance id. Must
+        own the transaction, otherwise `403` is returned.
 
-        - `tikTokShopTransaction` (required) — local TikTokShopTransaction id.
+        - `tikTokShopTransaction` (required) — local TikTokShopTransaction id. Must
+        have a stored `statement_id`, otherwise `422` is returned.
 
 
-        Returns: `{ data: <raw TikTok Shop statement transaction object> | null }`.'
+        Returns: `{ data: <raw TikTok Shop statement transaction object> | null }`
+        (`null` when no matching row is found on the statement).'
       parameters:
       - name: Accept
         in: header
@@ -95339,6 +95341,34 @@ paths:
           type: string
         required: true
       responses:
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Transaction does not belong to this integration instance
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: Raw transaction data is unavailable
+                message: This transaction has no associated statement to fetch from
+                  TikTok Shop.
         undefined:
           content:
             text/plain:
@@ -97251,8 +97281,19 @@ paths:
       summary: OAuth Callback
       description: 'Browser redirect target after the merchant authorizes the app
         on TikTok. Exchanges the auth code for access/refresh tokens, persists a TikTokShopIntegrationInstance,
-        syncs authorized shops, subscribes webhooks, and redirects into the SPA. NOT
-        a JSON endpoint.
+        syncs authorized shops, subscribes webhooks, dispatches the initial product
+        + recent-order backfill on the interactive queue (SyncTikTokShopProductsJob
+        + RefreshTikTokShopOrdersJob), and redirects into the SPA. NOT a JSON endpoint.
+
+
+        The single registered callback URL lives on the central apex (app.sku.io),
+        so the callback always lands there with no tenant header. Tenancy is restored
+        from the tenant-prefixed state (`<tenantId>_<uuid>`), and the final redirect
+        is built with TenantUrl::to() so it targets the tenant''s OWN subdomain (e.g.
+        https://siber.sku.io/v2/integrations/tiktok-shop/{id}/dashboard) — loading
+        the SPA in tenant context instead of forcing the central ''Choose an account''
+        picker. On invalid/expired state it redirects to the tenant subdomain''s /v2/integrations/tiktok-shop/new?error=...
+        page.
 
 
         No auth middleware — the cached state UUID is the security mechanism.'
@@ -97286,7 +97327,7 @@ paths:
             Location:
               schema:
                 type: string
-                example: /v2/integrations/tiktok-shop/12/dashboard
+                example: https://siber.sku.io/v2/integrations/tiktok-shop/12/dashboard
           content:
             text/plain:
               schema:
