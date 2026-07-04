@@ -455,17 +455,49 @@ paths:
         - `200 OK` — returns the updated instance (without the live dashboard summary;
         call `GET` to re-hydrate it)
 
-        - `422 Unprocessable Entity` — validation failure'
+        - `422 Unprocessable Entity` — validation failure
+
+
+        **Alert & side-effect settings (all optional):**
+
+        - `side_effects.vendor_credit_shipment_auto_delivered` (boolean, default true)
+        — auto-set the vendor credit shipment''s status to Delivered when the carrier
+        confirms delivery
+
+        - `side_effects.inbound_shipment_arrival_alert` (boolean, default true) —
+        in-app admin alert "package delivered — ready to receive" for inbound shipments
+
+        - `side_effects.rma_arrival_alert` (boolean, default true) — in-app admin
+        alert "package delivered — ready to inspect" for RMAs
+
+        - `quota_alert_threshold` (integer 1–99, default 80) — quota usage % at which
+        admins get a warning alert; a second high-priority alert always fires at 100%
+        (exhausted). Changing the threshold re-arms the alert state machine.
+
+
+        The instance resource now also returns `side_effects`, `quota_alert_threshold`,
+        and a `transit` analytics block (avg days in transit + on-time-vs-ETA rate
+        for rows delivered in the last 90 days, overall and per carrier).'
       requestBody:
         content:
-          '*/*':
+          application/json:
             schema:
-              type: string
-              example: '"{\n    \"name\": \"17TRACK Production (Updated)\",\n    \"auto_track\":
-                {\n        \"sales_order_fulfillments\": true,\n        \"inbound_shipments\":
-                false,\n        \"warehouse_transfer_shipments\": true,\n        \"rmas\":
-                true,\n        \"vendor_credit_shipments\": false\n    },\n    \"is_automatic_sync_enabled\":
-                true\n}"'
+              type: object
+              example:
+                name: My 17TRACK
+                api_key: ABCDEF1234567890
+                is_automatic_sync_enabled: true
+                auto_track:
+                  sales_order_fulfillments: true
+                  inbound_shipments: true
+                  warehouse_transfer_shipments: true
+                  rmas: true
+                  vendor_credit_shipments: true
+                side_effects:
+                  vendor_credit_shipment_auto_delivered: true
+                  inbound_shipment_arrival_alert: true
+                  rma_arrival_alert: true
+                quota_alert_threshold: 80
       parameters:
       - name: Accept
         in: header
@@ -1274,6 +1306,329 @@ paths:
                   tracked_job_log_id: 446400
                 message: Backfill started — track progress in the job tray.
       operationId: post-api-shipment-trackings-backfill
+  /api/shipment-trackings/{tracking}/retrack:
+    post:
+      tags:
+      - Shipment Trackings
+      summary: Re-track Shipment Tracking
+      description: 'Re-activate tracking for an expired or stopped number via 17TRACK''s
+        `/retrack` endpoint. 17TRACK auto-stops tracking ~30 idle days after the last
+        event; this asks it to resume pushing updates.
+
+
+        Only accepted for numbers 17TRACK has stopped following — an actively-tracked
+        number is rejected. Each number can be re-tracked ONCE (17TRACK limit -18019905).
+
+
+        On success the local row''s `stopped_at` is cleared, `delivery_status` resets
+        to `pending` (re-entering the polling set), and the row is immediately re-hydrated
+        via `/gettrackinfo`.
+
+
+        **Responses:**
+
+        - `200 OK` — re-hydrated detail payload (same shape as `GET /shipment-trackings/{id}`)
+
+        - `422 Unprocessable Entity` with `code: retrack_failed` — 17TRACK rejected
+        the retrack (number still active, retrack already used once, connector failure)
+
+        - `404 Not Found` — tracking ID does not exist'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: tracking
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ID of the expired / stopped shipment tracking row to re-activate.
+        example: '4821'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 4821
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 9132
+                  trackable_label: SO-7411 / FUL-9132
+                  trackable_url: /v2/orders/sales-orders/7411
+                  tracking_number: 1Z999AA10123456784
+                  carrier_code: 100002
+                  carrier_name: UPS
+                  delivery_status: pending
+                  delivery_status_label: Pending
+                  delivery_status_color: grey
+                  sub_status: null
+                  latest_event_description: Departed UPS facility
+                  latest_event_location: Memphis, TN
+                  last_event_at: '2026-06-09T13:14:00+00:00'
+                  estimated_delivery_at: '2026-06-11T00:00:00+00:00'
+                  delivered_at: null
+                  registered_at: '2026-05-12T16:04:21+00:00'
+                  registration_error: null
+                  stopped_at: null
+                  created_at: '2026-05-12T15:58:00+00:00'
+                  events: []
+                  integration_instance:
+                    id: 3
+                    name: 17TRACK
+                message: Re-tracking started — 17TRACK will resume pushing updates
+                  for this number.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: '17TRACK rejected the re-track request: Retrack is not allowed.
+                  You can only retrack stopped number.'
+                code: retrack_failed
+      operationId: post-api-shipment-trackings-tracking-retrack
+  /api/shipment-trackings/{tracking}/change-carrier:
+    post:
+      tags:
+      - Shipment Trackings
+      summary: Change Shipment Tracking Carrier
+      description: 'Correct a mis-detected carrier via 17TRACK''s `/changecarrier`
+        endpoint and re-hydrate the row under the new carrier. 17TRACK auto-detects
+        the carrier from the number format when registering and sometimes picks wrong
+        — this fixes it without stopping/re-registering.
+
+
+        17TRACK caps carrier changes at 5 per number (error -18019807).
+
+
+        **Request body:**
+
+        - `carrier_code` (integer, required) — 17TRACK numeric carrier key the shipment
+        actually ships with. Carriers configured in SKU.io (Settings → Shipping Carriers)
+        can carry a `seventeen_track_carrier_code`; the full directory is at https://res.17track.net/asset/carrier/info/apicarrier.all.json.
+
+
+        On success the local row''s `carrier_code` is updated, `carrier_name` clears
+        (re-hydrated on the next `/gettrackinfo`), and the tracking history reloads
+        under the new carrier.
+
+
+        **Responses:**
+
+        - `200 OK` — re-hydrated detail payload
+
+        - `422 Unprocessable Entity` with `code: change_carrier_failed` — 17TRACK
+        rejected the change, or validation failed (missing/invalid `carrier_code`)
+
+        - `404 Not Found` — tracking ID does not exist'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                carrier_code: 21051
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: tracking
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ID of the shipment tracking row whose carrier was mis-detected.
+        example: '4821'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 4821
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 9132
+                  trackable_label: SO-7411 / FUL-9132
+                  trackable_url: /v2/orders/sales-orders/7411
+                  tracking_number: 1Z999AA10123456784
+                  carrier_code: 100002
+                  carrier_name: UPS
+                  delivery_status: pending
+                  delivery_status_label: Pending
+                  delivery_status_color: grey
+                  sub_status: null
+                  latest_event_description: Departed UPS facility
+                  latest_event_location: Memphis, TN
+                  last_event_at: '2026-06-09T13:14:00+00:00'
+                  estimated_delivery_at: '2026-06-11T00:00:00+00:00'
+                  delivered_at: null
+                  registered_at: '2026-05-12T16:04:21+00:00'
+                  registration_error: null
+                  stopped_at: null
+                  created_at: '2026-05-12T15:58:00+00:00'
+                  events: []
+                  integration_instance:
+                    id: 3
+                    name: 17TRACK
+                message: Re-tracking started — 17TRACK will resume pushing updates
+                  for this number.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Select the carrier this shipment actually ships with.
+                errors:
+                  carrier_code:
+                  - Select the carrier this shipment actually ships with.
+      operationId: post-api-shipment-trackings-tracking-change-carrier
+  /api/shipment-trackings/register-parcels:
+    post:
+      tags:
+      - Shipment Trackings
+      summary: Register Parcel Trackings (Multi-Parcel)
+      description: 'Register additional parcel tracking numbers against ONE entity
+        — the multi-parcel path for shipments split across several cartons (each with
+        its own carrier number). The entity''s primary `tracking_number` is registered
+        by the save observer; this endpoint covers the remaining boxes so every carton
+        tracks independently.
+
+
+        **Request body:**
+
+        - `trackable_type` (string, required) — one of `sales_order_fulfillment`,
+        `inbound_shipment`, `warehouse_transfer_shipment`, `rma`, `vendor_credit_shipment`
+
+        - `trackable_id` (integer, required) — ID of the entity
+
+        - `tracking_numbers` (string[], required, 1–40 items) — parcel tracking numbers
+        to register
+
+
+        Numbers already tracked for the entity are skipped; garbage values (`n/a`,
+        `local pickup`, …) are dropped; new rows are created `pending` and pushed
+        via the debounced batch register job. Respects the per-entity auto-track toggle.
+
+
+        **Responses:**
+
+        - `201 Created` — array of the queued tracking rows
+
+        - `422 Unprocessable Entity` with `code: register_skipped` — every number
+        was already tracked / dropped, or auto-track is disabled for this entity type
+
+        - `422 Unprocessable Entity` with `code: not_connected` — 17TRACK is not connected
+
+        - `404 Not Found` — trackable entity does not exist'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                trackable_type: sales_order_fulfillment
+                trackable_id: 9132
+                tracking_numbers:
+                - 1Z999AA10123456791
+                - 1Z999AA10123456806
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 4899
+                  trackable_type: sales_order_fulfillment
+                  trackable_id: 9132
+                  trackable_label: SO-7411 / FUL-9132
+                  trackable_url: /v2/orders/sales-orders/7411
+                  tracking_number: 1Z999AA10123456791
+                  carrier_code: null
+                  carrier_name: null
+                  delivery_status: pending
+                  delivery_status_label: Pending
+                  delivery_status_color: grey
+                  sub_status: null
+                  registered_at: null
+                  registration_error: null
+                  stopped_at: null
+                  created_at: '2026-07-03T15:40:00+00:00'
+                message: 2 parcel(s) queued for tracking.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: No new parcels to track — every number is already tracked
+                  for this entity, or auto-track is disabled for this entity type.
+                code: register_skipped
+      operationId: post-api-shipment-trackings-register-parcels
   /webhooks/seventeentrack/{webhook_token}:
     post:
       tags:
