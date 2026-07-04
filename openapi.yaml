@@ -196106,19 +196106,8 @@ paths:
         Note: purchase_order_id cannot be changed on update.
 
 
-        Product lines (purchase_invoice_lines) and cost lines (financial_lines) are
-        processed independently — send either, both, or neither. Omitting a key leaves
-        that set untouched; sending financial_lines: [] clears all cost lines currently
-        linked to this invoice.
-
-
-        Cost lines (financial_lines) are existing Purchase Order financial lines re-linked
-        to this invoice by id (an ownership transfer — there is no separate invoice-cost-line
-        record). Each entry requires: id (an existing financial_lines.id), quantity
-        (numeric), amount (numeric), and link_type set to "App\Models\PurchaseOrder".
-        quantity and amount must exactly match the PO financial line (all-or-nothing).
-        A 422 is returned if any are missing, if link_type is not the PurchaseOrder
-        class, or if the line is already linked to another invoice.'
+        When financial_lines are provided, each entry requires: id (an existing financial_lines.id),
+        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.'
       requestBody:
         content:
           '*/*':
@@ -196127,11 +196116,9 @@ paths:
               example: '"{\n  \"purchase_invoice_date\": \"2024-01-22\",\n  \"due_date\":
                 \"2024-02-22\",\n  \"supplier_invoice_number\": \"INV-2024-001-REV\",\n  \"status\":
                 \"open\",\n  \"currency_id\": 1,\n  \"currency_rate\": 1.0,\n  \"tags\":
-                [\n    \"revised\"\n  ],\n  \"purchase_invoice_lines\": [\n    {\n      \"purchase_order_line_id\":
-                101,\n      \"quantity_invoiced\": 12,\n      \"unit_price\": 25.0\n    }\n  ],\n  \"financial_lines\":
-                [\n    {\n      \"id\": 55,\n      \"quantity\": 1,\n      \"amount\":
-                150.0,\n      \"tax_allocation\": 0,\n      \"financial_line_type_id\":
-                3,\n      \"link_id\": 620,\n      \"link_type\": \"App\\\\Models\\\\PurchaseOrder\"\n    }\n  ]\n}"'
+                [\"revised\"],\n  \"purchase_invoice_lines\": [\n    {\n      \"purchase_order_line_id\":
+                101,\n      \"quantity_invoiced\": 12,\n      \"unit_price\": 25.00\n    }\n  ],\n  \"financial_lines\":
+                []\n}"'
       parameters:
       - name: Accept
         in: header
@@ -206496,17 +206483,29 @@ paths:
       summary: Print Packing Slips
       description: 'Render (and combine, when several) packing slips for the given
         FulfillmentOrders and return the resulting file URL. The FO is the warehouse
-        work package, so its slip lists the FO''s planned line quantities — the FO
-        equivalent of the sales-order-fulfillment packing-slip export. Open `data.file`
-        in a new tab to view/print the PDF.
+        work package, so its slip lists the FO''s planned line quantities.
 
 
-        Authenticate with a Personal Access Token.
+        **Authentication:** Requires Bearer token.
 
 
-        **Side effect:** printing stamps `packing_slip_printed_at = now()` on each
-        printed FulfillmentOrder (the FO owns the packing slip after the intent/execution
-        refactor), surfaced as the Packing Slip column on the FO table.'
+        **Query parameters:**
+
+        - `ids` (required) — comma-separated FulfillmentOrder ids (e.g. `1,2,3`).
+        Ids that no longer exist are skipped.
+
+        - `engine` (optional, default `snappy`) — `snappy` renders through the NEW
+        PdfTemplate-driven pipeline with fingerprinted `<fo_id>_<fp>.pdf` caching;
+        `jasper` keeps the legacy Jasper flow with stable `<fo_id>.pdf` caching.
+
+
+        Printing stamps `packing_slip_printed_at` on each FO. When multiple slips
+        render, they are combined into a single PDF and a `reports` disk URL is returned.
+
+
+        **Errors:** If the selected engine''s renderer fails, the endpoint returns
+        HTTP 500 with a JSON `message` describing which engine failed (details are
+        written to the application logs).'
       parameters:
       - name: Accept
         in: header
@@ -206553,14 +206552,13 @@ paths:
       tags:
       - Fulfillment Orders
       summary: Get FO Packing Slip Cache Status
-      description: 'Reports whether a rendered packing-slip PDF is currently cached
-        for this Fulfillment Order, and when it was generated. The packing-slip export
-        serves the stored `{id}.pdf` as-is whenever it exists, so a cached slip can
-        lag the FO''s current lines or sequence. The UI uses this to show a "cached"
-        indicator and offer a one-click clear.
+      description: 'Report whether a rendered packing-slip PDF is cached for this
+        FulfillmentOrder (and when it was generated) so the UI can surface a "cached"
+        indicator and offer a one-click clear. Reports the newer of the legacy Jasper
+        (`<fo_id>.pdf`) and Snappy (fingerprinted `<fo_id>_<fp>.pdf`) cache entries.
 
 
-        Requires a Bearer token (Personal Access Token).'
+        **Authentication:** Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
@@ -206605,12 +206603,13 @@ paths:
       tags:
       - Fulfillment Orders
       summary: Clear FO Packing Slip Cache
-      description: 'Clears (deletes) the cached packing-slip PDF for this Fulfillment
-        Order so the next print regenerates from current data. Idempotent — clearing
-        a slip that was never cached is a no-op.
+      description: 'Operator self-serve: drop the cached packing-slip PDF so the next
+        print regenerates from current data. Wipes BOTH engines'' caches — the legacy
+        Jasper `<fo_id>.pdf` and every Snappy fingerprinted `<fo_id>_<fp>.pdf`. Idempotent
+        — clearing a slip that was never cached is a no-op.
 
 
-        Requires a Bearer token (Personal Access Token).'
+        **Authentication:** Requires Bearer token.'
       parameters:
       - name: Accept
         in: header
