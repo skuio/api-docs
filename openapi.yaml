@@ -185063,6 +185063,105 @@ paths:
                 , \"deletable\": true, \"reason\": null, \"reason_details\": null}\n\
                 \  ]\n}"
       operationId: post-api-suppliers-deletable
+  /api/suppliers/{supplier}/request-invoices:
+    post:
+      tags:
+      - Suppliers
+      summary: Request Invoices (Consolidated)
+      description: 'Send a supplier one consolidated email requesting the outstanding
+        invoices for several purchase orders at once. Each selected PO is re-validated
+        server-side: it must belong to this supplier AND still be awaiting its invoice
+        — ineligible ids are skipped and reported back (not emailed). Every PO that
+        IS sent is stamped (invoice_requested_at, invoice_request_count++, invoice_last_requested_by).
+
+
+        If none of the selected POs are eligible, returns 422.
+
+
+        Authentication: Requires Bearer token.
+
+        **Requires permission:** `purchase_orders.update`. Throttled: 60 requests/min.
+
+
+        **Body fields:**
+
+        - to (string, required) — recipient email
+
+        - subject (string, required, max 255)
+
+        - purchase_order_ids (array of ints, required, min 1) — POs to include
+
+        - note (string, optional, max 2000)
+
+        - cc (array of emails, optional, max 10)
+
+
+        Requires both the suppliers and purchase-orders token scopes (it mutates purchase
+        orders by stamping invoice-request tracking), plus the purchase_orders.update
+        permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                to: ap@acme.example
+                subject: Outstanding invoices — 3 purchase orders
+                purchase_order_ids:
+                - 4521
+                - 4530
+                - 4544
+                note: Please send the invoices for the orders listed below; several
+                  are already prepaid.
+                cc:
+                - buyer@ourcompany.example
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"sent_count\": 2,\n  \"skipped\": [\n    {\n      \"\
+                purchase_order_id\": 4544,\n      \"reason\": \"Not awaiting an invoice\
+                \ for this supplier.\"\n    }\n  ]\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"error\": \"None of the selected purchase orders are\
+                \ awaiting an invoice for this supplier.\"\n}"
+      operationId: post-api-suppliers-supplier-request-invoices
   /api/supplier-products:
     post:
       tags:
@@ -195366,6 +195465,179 @@ paths:
               example: "{\n  \"data\": {\n    \"id\": 700,\n    \"tracking_number\"\
                 : \"DROPSHIP-TRACK-001\",\n    \"status\": \"shipped\"\n  }\n}"
       operationId: post-domain-api-purchase-orders-purchase-order-dropship
+  /api/purchase-orders/awaiting-invoices:
+    get:
+      tags:
+      - Purchase Orders
+      summary: List Awaiting-Invoice POs
+      description: "Paginated worklist of purchase orders still awaiting the supplier's\
+        \ invoice — invoice_status in (uninvoiced, partially_invoiced) AND submission_status\
+        \ in (submitted, finalized), not archived. Prepaid POs (a paid vendor deposit)\
+        \ are the priority to chase. Each row projects amount_paid (sum of paid vendor\
+        \ deposits) and age_days.\n\nAuthentication: Requires Bearer token.\n\n**Quick\
+        \ filters** (flat Spatie QueryBuilder params):\n- filter[search] — search\
+        \ PO number, exact ID, or supplier name\n- filter[supplier_id] — exact supplier\
+        \ id\n- filter[invoice_status] — exact: uninvoiced | partially_invoiced\n\
+        - filter[prepaid_only] — true to only include POs with a paid vendor deposit\n\
+        - filter[requested] — true = already requested (invoice_requested_at not null);\
+        \ false = never requested\n\n**Advanced filters** (operator-aware, via GroupedFilterSupport).\
+        \ Send either as a base64-encoded `filter_groups` tree (AND/OR conjunctions)\
+        \ or as flat `filter[column.operator]=value` params. Filterable columns:\n\
+        - purchase_order_number (text)\n- invoice_status (text)\n- supplier_name (text,\
+        \ matches the related supplier's name)\n- total (numeric — maps to total_cost)\n\
+        - purchase_order_date (date)\n- invoice_requested_at (datetime; use is_empty\
+        \ / is_not_empty for never / already requested)\n- invoice_request_count (numeric)\n\
+        \nText operators: contains, does_not_contain, is, is_not, is_one_of, is_not_one_of,\
+        \ starts_with, does_not_start_with, ends_with, does_not_end_with, is_empty,\
+        \ is_not_empty. Numeric operators: is, is_not, is_one_of, is_not_one_of, greater_than,\
+        \ less_than, greater_than_or_equal, less_than_or_equal, between, is_empty,\
+        \ is_not_empty. Datetime operators additionally include before/after and relative\
+        \ shortcuts (today, yesterday, past_week, days_ago, between, etc.).\n\nfilter_groups\
+        \ example (before base64-encoding):\n{\n  \"conjunction\": \"and\",\n  \"\
+        children\": [\n    {\"type\": \"condition\", \"condition\": {\"column\": \"\
+        invoice_status\", \"operator\": \"is\", \"value\": \"partially_invoiced\"\
+        }},\n    {\"type\": \"condition\", \"condition\": {\"column\": \"total\",\
+        \ \"operator\": \"greater_than\", \"value\": \"1000\"}}\n  ]\n}\n\n**Sorts:**\
+        \ id, purchase_order_number, purchase_order_date, total_cost, amount_paid_total,\
+        \ age_days, invoice_requested_at, invoice_request_count (prefix with - for\
+        \ DESC). Default sort: purchase_order_date.\n\n**Pagination:** page, per_page\
+        \ (default 15).\n\n**Filter update (SKU-8140 tab rebuild):** supplier_id is\
+        \ now operator-aware (supplier_id.is / .is_not / .is_one_of …) in addition\
+        \ to the flat filter[supplier_id]; prepaid_only and requested also accept\
+        \ the tree form prepaid_only.is / requested.is (value true|false) so they\
+        \ work as FilterInput pills + saved views. Flat forms still work."
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": [\n    {\n      \"id\": 4521,\n      \"purchase_order_number\"\
+                : \"PO-004521\",\n      \"purchase_order_date\": \"2025-10-21T00:00:00+00:00\"\
+                ,\n      \"age_days\": 255,\n      \"supplier\": {\n        \"id\"\
+                : 12,\n        \"name\": \"Acme Supplier\",\n        \"email\": \"\
+                ap@acme.example\"\n      },\n      \"supplier_route\": \"/crm/suppliers/12\"\
+                ,\n      \"po_route\": \"/orders/purchase-orders/4521\",\n      \"\
+                invoice_status\": \"uninvoiced\",\n      \"currency_code\": \"USD\"\
+                ,\n      \"total\": 14202.88,\n      \"amount_paid\": 7101.44,\n \
+                \     \"is_prepaid\": true,\n      \"invoice_requested_at\": null,\n\
+                \      \"invoice_request_count\": 0\n    }\n  ],\n  \"current_page\"\
+                : 1,\n  \"last_page\": 2,\n  \"per_page\": 15,\n  \"total\": 19,\n\
+                \  \"from\": 1,\n  \"to\": 15,\n  \"path\": \"{{protocol}}{{domain}}/api/purchase-orders/awaiting-invoices\"\
+                \n}"
+      operationId: get-api-purchase-orders-awaiting-invoices
+  /api/purchase-orders/{purchase_order}/request-invoice:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Request Invoice (Single PO)
+      description: 'Email the supplier requesting the outstanding invoice for a single
+        purchase order, optionally attaching vendor-deposit documents (e.g. proof
+        of the prepayment). The reply-to is set to the sending user. On success the
+        PO is stamped: invoice_requested_at = now, invoice_request_count incremented,
+        invoice_last_requested_by = current user.
+
+
+        Only allowed when the PO is still awaiting its invoice (invoice_status in
+        uninvoiced/partially_invoiced AND submission_status in submitted/finalized)
+        — otherwise returns 422.
+
+
+        Authentication: Requires Bearer token.
+
+        **Requires permission:** `purchase_orders.update`. Throttled: 60 requests/min.
+
+
+        **Body fields:**
+
+        - to (string, required) — recipient email
+
+        - subject (string, required, max 255)
+
+        - note (string, optional, max 2000) — appended to the email body
+
+        - cc (array of emails, optional, max 10)
+
+        - attachment_ids (array of ints, optional) — VendorDepositAttachment ids;
+        each MUST belong to one of this PO''s deposits or the request is rejected
+        (422)'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                to: ap@acme.example
+                subject: Invoice request for PO-004521
+                note: We show this order as prepaid but have not yet received your
+                  invoice. Please send it at your earliest convenience.
+                cc:
+                - buyer@ourcompany.example
+                attachment_ids:
+                - 88
+                - 91
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase Order ID
+        example: '4521'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"data\": {\n    \"id\": 4521,\n    \"purchase_order_number\"\
+                : \"PO-004521\",\n    \"invoice_status\": \"uninvoiced\",\n    \"\
+                submission_status\": \"submitted\",\n    \"invoice_requested_at\"\
+                : \"2026-07-03T14:22:05+00:00\",\n    \"invoice_request_count\": 1,\n\
+                \    \"supplier_id\": 12,\n    \"currency_code\": \"USD\",\n    \"\
+                total_cost\": 14202.88,\n    \"total\": 14202.88\n  }\n}"
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "{\n  \"error\": \"An invoice can only be requested for a submitted\
+                \ purchase order that is still awaiting its invoice.\"\n}"
+      operationId: post-api-purchase-orders-purchase-order-request-invoice
   /api/purchase-invoices:
     get:
       tags:
