@@ -54185,8 +54185,20 @@ paths:
         `origin_zip` is the source warehouse zip used as the rating origin.
 
 
-        This is explicitly a ROUGH estimate — real box configurations come from the
-        3PL later in the workflow. Confirmed/expired options are skipped. Requires
+        Each shipment also carries an `assumptions` object describing the physical
+        load the rate is built on: `source`, `units`, `weight_lb`, `volume_cuft`,
+        `estimated_pallets`, `parcel_count`, `parcel_weight_lb`, `parcel_side_in`,
+        `items_missing_data`, `missing_data_mskus`. `assumptions.source` is `box_config`
+        when the shipment has real packed cartons (amazon_fba_inbound_boxes with complete
+        dims + weight) — then `weight_lb` / `volume_cuft` / `estimated_pallets` /
+        `parcel_count` reflect those actual boxes — or `estimated` when the load is
+        inferred from the plan items'' product unit dimensions.
+
+
+        `estimated_at` (top level) is the ISO-8601 time the persisted estimates were
+        last computed (null when none stored). The estimate is a ROUGH approximation
+        whenever `source` is `estimated`; once real box configurations exist for a
+        shipment its rate uses them. Confirmed/expired options are skipped. Requires
         placement options to have been generated first.'
       parameters:
       - name: Accept
@@ -54235,20 +54247,90 @@ paths:
                       destination_fc: SCK8
                       quote:
                         carrier: USPS
+                        carrier_label: USPS
                         service: GroundAdvantage
+                        service_label: USPS Ground Advantage
                         amount: 74.31
                         currency: USD
+                        delivery_days: 3
                         parcels: 3
+                      options:
+                      - carrier: USPS
+                        carrier_label: USPS
+                        service: GroundAdvantage
+                        service_label: USPS Ground Advantage
+                        amount: 74.31
+                        currency: USD
+                        delivery_days: 3
+                        parcels: 3
+                      - carrier: UPSDAP
+                        carrier_label: UPS
+                        service: Ground
+                        service_label: UPS Ground
+                        amount: 78.9
+                        currency: USD
+                        delivery_days: 2
+                        parcels: 3
+                      - carrier: FedExDefault
+                        carrier_label: FedEx
+                        service: FEDEX_GROUND
+                        service_label: FedEx Ground
+                        amount: 81.15
+                        currency: USD
+                        delivery_days: 2
+                        parcels: 3
+                      assumptions:
+                        source: box_config
+                        units: 120
+                        weight_lb: 105
+                        volume_cuft: 12.4
+                        estimated_pallets: null
+                        parcel_count: 3
+                        parcel_weight_lb: 35
+                        parcel_side_in: 18
+                        items_missing_data: 0
+                        missing_data_mskus: []
                       skipped_reason: null
                       missing_dims_mskus: []
                     - shipment_id: 342
                       destination_fc: CLT2
                       quote:
-                        carrier: UPS
+                        carrier: UPSDAP
+                        carrier_label: UPS
                         service: Ground
+                        service_label: UPS Ground
                         amount: 74.31
                         currency: USD
+                        delivery_days: 2
                         parcels: 3
+                      options:
+                      - carrier: UPSDAP
+                        carrier_label: UPS
+                        service: Ground
+                        service_label: UPS Ground
+                        amount: 74.31
+                        currency: USD
+                        delivery_days: 2
+                        parcels: 3
+                      - carrier: USPS
+                        carrier_label: USPS
+                        service: GroundAdvantage
+                        service_label: USPS Ground Advantage
+                        amount: 76.4
+                        currency: USD
+                        delivery_days: 3
+                        parcels: 3
+                      assumptions:
+                        source: estimated
+                        units: 96
+                        weight_lb: 88
+                        volume_cuft: 10.1
+                        estimated_pallets: null
+                        parcel_count: 2
+                        parcel_weight_lb: 44
+                        parcel_side_in: 20
+                        items_missing_data: 0
+                        missing_data_mskus: []
                       skipped_reason: null
                       missing_dims_mskus: []
                   - placement_option_id: 13
@@ -54259,10 +54341,24 @@ paths:
                     - shipment_id: 343
                       destination_fc: TEB9
                       quote: null
-                      skipped_reason: missing_product_dimensions
+                      options: []
+                      assumptions:
+                        source: estimated
+                        units: 24
+                        weight_lb: null
+                        volume_cuft: null
+                        estimated_pallets: null
+                        parcel_count: null
+                        parcel_weight_lb: null
+                        parcel_side_in: null
+                        items_missing_data: 1
+                        missing_data_mskus:
+                        - MSKU-ABC-123
+                      skipped_reason: missing_dims
                       missing_dims_mskus:
                       - MSKU-ABC-123
                   origin_zip: '95206'
+                  estimated_at: '2026-07-03T18:00:00+00:00'
       operationId: get-domain-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-placement-transport-estimates
   ? //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/placement-options/{placement_option}/confirm
   : post:
@@ -57782,6 +57878,276 @@ paths:
                   cant_submit_verification_unless_all_items_verified:
                   - message: Cannot submit verification unless all items are verified.
       operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-portal-hasheddraftinboundplanid-submit-verification
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/fulfillment-portal/{token}/box-contents:
+    post:
+      tags:
+      - Sales Channels
+      summary: Submit Box Contents (3PL Portal)
+      description: 'Anonymous 3PL portal submission of packed box contents. Access
+        is granted by the opaque `:token` in the URL (the packet''s `portal_token`)
+        — no bearer auth. The submission is stored verbatim on the packet''s `portal_submission.boxes`
+        JSON.
+
+
+        **Validation**
+
+        - `boxes` — required array, 1..1000 boxes
+
+        - `boxes.*.box_number` — required integer 1..100000, **distinct** across boxes
+
+        - `boxes.*.lines` — required array, 1..1000 lines per box
+
+        - `boxes.*.lines.*.sku` — required string, max 255
+
+        - `boxes.*.lines.*.quantity` — required integer 1..1000000
+
+
+        Returns the refreshed portal payload (same shape as `GET .../fulfillment-portal/:token`).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                boxes:
+                - box_number: 1
+                  lines:
+                  - sku: SKU-A
+                    quantity: 3
+                  - sku: SKU-B
+                    quantity: 2
+                - box_number: 2
+                  lines:
+                  - sku: SKU-C
+                    quantity: 5
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Box contents submitted.
+                data:
+                  reference: FBA-2026-000123
+                  fba_shipment_id: FBA15ABCDEF
+                  source_name: Acme 3PL Warehouse
+                  source_type: 3pl
+                  destination_fc: ONT8
+                  shipping_mode: GROUND_SMALL_PARCEL
+                  is_ltl: false
+                  requires_pallets: false
+                  status: in_progress
+                  requested_by: Jane Buyer
+                  build_required: false
+                  kits_pending_build: false
+                  kit_build_manifest: []
+                  instructions: Pack each SKU into the boxes exactly as listed, label
+                    every box, then confirm ready to ship.
+                  documents:
+                  - id: 42
+                    type: box_contents
+                    type_label: Box Contents
+                    stage: packing
+                    status: ready
+                  box_contents_submission:
+                  - box_number: 1
+                    lines:
+                    - sku: SKU-A
+                      quantity: 3
+                    - sku: SKU-B
+                      quantity: 2
+                  - box_number: 2
+                    lines:
+                    - sku: SKU-C
+                      quantity: 5
+                  pallets_submission: null
+                  can_confirm: true
+                  confirm_blocked_reason: null
+                  acknowledged_at: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The boxes.0.box_number field has a duplicate value.
+                errors:
+                  boxes.0.box_number:
+                  - The boxes.0.box_number field has a duplicate value.
+                  boxes.1.lines.0.quantity:
+                  - The boxes.1.lines.0.quantity field must be at least 1.
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-fulfillment-portal-token-box-contents
+  //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/fulfillment-portal/{token}/pallets:
+    post:
+      tags:
+      - Sales Channels
+      summary: Submit Pallets (3PL Portal)
+      description: 'Anonymous 3PL portal submission of LTL pallet details. Access
+        is granted by the opaque `:token` in the URL (the packet''s `portal_token`)
+        — no bearer auth. The submission is stored verbatim on the packet''s `portal_submission.pallets`
+        JSON and is required before an LTL packet can be confirmed ready.
+
+
+        **Validation**
+
+        - `pallet_count` — required integer 1..1000
+
+        - `pallets` — optional array, max 1000. A count-only submission (no `pallets`)
+        is allowed; when `pallets` is supplied its length **must equal** `pallet_count`
+
+        - `pallets.*.weight` — required numeric, > 0, max 5000
+
+        - `pallets.*.height` — required numeric, > 0, max 200
+
+
+        Returns the refreshed portal payload (same shape as `GET .../fulfillment-portal/:token`).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                pallet_count: 2
+                pallets:
+                - weight: 120.5
+                  height: 48
+                - weight: 98
+                  height: 40
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: domain
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: integrationInstance
+        in: path
+        schema:
+          type: string
+        required: true
+      - name: token
+        in: path
+        schema:
+          type: string
+        required: true
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Pallet details submitted.
+                data:
+                  reference: FBA-2026-000124
+                  fba_shipment_id: FBA15GHIJKL
+                  source_name: Acme 3PL Warehouse
+                  source_type: 3pl
+                  destination_fc: LGB8
+                  shipping_mode: FREIGHT_LTL
+                  is_ltl: true
+                  requires_pallets: true
+                  status: in_progress
+                  requested_by: Jane Buyer
+                  build_required: false
+                  kits_pending_build: false
+                  kit_build_manifest: []
+                  instructions: Palletize the boxes, record each pallet's weight and
+                    height, then confirm ready to ship.
+                  documents:
+                  - id: 51
+                    type: pallet_labels
+                    type_label: Pallet Labels
+                    stage: shipping
+                    status: ready
+                  box_contents_submission:
+                  - box_number: 1
+                    lines:
+                    - sku: SKU-A
+                      quantity: 3
+                  pallets_submission:
+                    pallet_count: 2
+                    pallets:
+                    - weight: 120.5
+                      height: 48
+                    - weight: 98
+                      height: 40
+                  can_confirm: true
+                  confirm_blocked_reason: null
+                  acknowledged_at: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The number of pallet detail rows must match the pallet count.
+                errors:
+                  pallets:
+                  - The number of pallet detail rows must match the pallet count.
+                  pallets.0.weight:
+                  - The pallets.0.weight field must be greater than 0.
+      operationId: post-domain-api-amazon-integrationinstance-draft-inbound-plans-fulfillment-portal-token-pallets
   //{domain}/api/amazon/{integrationInstance}/draft-inbound-plans/items/{draft_inbound_plan}/add-item:
     post:
       tags:
