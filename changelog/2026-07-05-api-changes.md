@@ -1,0 +1,594 @@
+---
+title: API changes — 2026-07-05
+description: This release 2 changed, 567 removed API endpoint(s).
+authors: [product-team]
+tags: [changed, removed, breaking]
+date: 2026-07-05
+---
+
+This release 2 changed, 567 removed API endpoint(s).
+
+:::danger Breaking change
+This release removes endpoints or adds newly-required request fields. Review the **Removed** and **Changed** sections before upgrading your integration.
+:::
+
+<!-- truncate -->
+
+## Changed
+
+- `GET /api/discount-codes` — List Discount Codes
+  - new parameter(s): `page`, `per_page`
+- `POST /api/discount-codes` — Create Discount Code
+  - removed response code(s): `422`
+
+## Removed
+
+- `DELETE //{domain}/api/discount-codes/{discount_code}` — Delete Discount Code **(breaking)**
+- `DELETE //{domain}/api/purchase-orders` — Bulk Delete **(breaking)**
+- `DELETE //{domain}/api/purchase-orders/{purchase_order}` — Delete Purchase Order **(breaking)**
+- `DELETE //{domain}/api/purchase-orders/{purchase_order}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE //{domain}/api/return-receipts/lines/{returnReceiptLine}` — Delete Return Receipt Line (standalone) **(breaking)**
+- `DELETE //{domain}/api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Remove Line from Return Receipt **(breaking)**
+- `DELETE //{domain}/api/return-receipts/{return_receipt}` — Delete Return Receipt **(breaking)**
+- `DELETE //{protocol}{domain}/api/supplier-pricing-tiers` — Bulk Delete Pricing Tiers **(breaking)**
+- `DELETE //{protocol}{domain}/api/supplier-pricing-tiers/2` — Delete Supplier Pricing Tier **(breaking)**
+- `DELETE /api/artworks/{artwork}` — Archive Artwork **(breaking)**
+- `DELETE /api/decoration-cost-rules/{decoration_cost_rule}` — Delete Decoration Cost Rule **(breaking)**
+- `DELETE /api/discount-codes/{discount_code}` — Delete Discount Code **(breaking)**
+- `DELETE /api/export/fulfillment-orders/{fulfillmentOrder}/packing-slip/cache` — Clear FO Packing Slip Cache **(breaking)**
+- `DELETE /api/export/sales-order-fulfillments/{salesOrderFulfillment}/packing-slip/cache` — Clear Shipment Packing Slip Cache **(breaking)**
+- `DELETE /api/inbound-shipments/receipts/{receipt}` — Delete Receipt **(breaking)**
+- `DELETE /api/inbound-shipments/{inbound_shipment}` — Delete Inbound Shipment **(breaking)**
+- `DELETE /api/inbound-shipments/{inbound_shipment}/bills/{bill}` — Delete Bill **(breaking)**
+- `DELETE /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}` — Delete Extraction **(breaking)**
+- `DELETE /api/purchase-invoices` — Bulk Delete Purchase Invoices **(breaking)**
+- `DELETE /api/purchase-invoices/ocr/{purchase_extraction_id}` — Delete Extraction **(breaking)**
+- `DELETE /api/purchase-invoices/{purchaseInvoiceId}/payments/{payment}` — Delete Payment **(breaking)**
+- `DELETE /api/purchase-invoices/{purchaseInvoice}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE /api/purchase-invoices/{purchase_invoice}` — Delete Purchase Invoice **(breaking)**
+- `DELETE /api/purchase-order-line-short-close-events/{short_close_event}` — Undo Short-Close **(breaking)**
+- `DELETE /api/purchase-order-shipments/{shipment}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE /api/purchase-orders` — Bulk Delete **(breaking)**
+- `DELETE /api/purchase-orders/{purchase_order}` — Delete Purchase Order **(breaking)**
+- `DELETE /api/purchase-orders/{purchase_order}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE /api/purchase-receipts/{receipt}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE /api/quotes/{quote}` — Delete Quote **(breaking)**
+- `DELETE /api/quotes/{quote}/lines/{line}` — Remove Quote Line **(breaking)**
+- `DELETE /api/return-disposition-policies/{returnDispositionPolicy}` — Delete Disposition Policy **(breaking)**
+- `DELETE /api/return-reasons` — Bulk Delete Return Reasons **(breaking)**
+- `DELETE /api/return-reasons/{return_reason}` — Delete Return Reason **(breaking)**
+- `DELETE /api/return-receipts/lines/{returnReceiptLine}` — Delete Return Receipt Line (standalone) **(breaking)**
+- `DELETE /api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Remove Line from Return Receipt **(breaking)**
+- `DELETE /api/return-receipts/{return_receipt}` — Delete Return Receipt **(breaking)**
+- `DELETE /api/rmas/{rma}` — Delete RMA **(breaking)**
+- `DELETE /api/rmas/{rma}/lines/{rmaLine}` — Remove Line from RMA **(breaking)**
+- `DELETE /api/rmas/{rma}/shipping` — Clear Shipping Details **(breaking)**
+- `DELETE /api/sales-credits` — Bulk Delete Sales Credits **(breaking)**
+- `DELETE /api/sales-credits/{salesCredit}/notes/{noteId}` — Delete Note **(breaking)**
+- `DELETE /api/sales-credits/{salesCredit}/payments/{payment}` — Delete Payment **(breaking)**
+- `DELETE /api/sales-credits/{sales_credit}` — Delete Sales Credit **(breaking)**
+- `DELETE /api/sales-order-fulfillments` — Bulk Void Shipments **(breaking)**
+- `DELETE /api/sales-order-fulfillments/{salesOrderFulfillment}` — Void Shipment **(breaking)**
+- `DELETE /api/sales-order-lines` — Delete Sales Order Line **(breaking)**
+- `DELETE /api/sales-order-lines/bulk` — Bulk Delete Sales Order Lines **(breaking)**
+- `DELETE /api/sales-orders` — Bulk Delete Sales Orders **(breaking)**
+- `DELETE /api/sales-orders/ocr/{extraction_id}` — Delete OCR Extraction **(breaking)**
+- `DELETE /api/sales-orders/tracked` — Bulk Delete Sales Orders (Tracked) **(breaking)**
+- `DELETE /api/sales-orders/{salesOrderId}/payments/{payment}` — Delete Sales Order Payment **(breaking)**
+- `DELETE /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decorations/{decoration}` — Remove Line Decoration **(breaking)**
+- `DELETE /api/supplier-pricing-tiers` — Bulk Delete Pricing Tiers **(breaking)**
+- `DELETE /api/supplier-pricing-tiers/2` — Delete Supplier Pricing Tier **(breaking)**
+- `DELETE /api/supplier-products/{supplier_product}` — Delete Supplier Product **(breaking)**
+- `DELETE /api/supplier-products/{supplier_product}/notes/{note}` — Delete Note **(breaking)**
+- `DELETE /api/suppliers` — Bulk Delete **(breaking)**
+- `DELETE /api/suppliers/{supplier}` — Delete Supplier **(breaking)**
+- `DELETE /api/suppliers/{supplier}/pricing-tiers/{tierId}` — Delete Pricing Tier from Supplier **(breaking)**
+- `GET //{domain}/api/discount-codes` — List Discount Codes **(breaking)**
+- `GET //{domain}/api/discount-codes/{discount_code}` — Get Discount Code **(breaking)**
+- `GET //{domain}/api/purchase-orders` — List Purchase Orders (DataTable) **(breaking)**
+- `GET //{domain}/api/purchase-orders/import-lines/template` — Download Lines Import Template **(breaking)**
+- `GET //{domain}/api/purchase-orders/import/template` — Download Import Template **(breaking)**
+- `GET //{domain}/api/purchase-orders/list` — List Purchase Orders (Vue3 List) **(breaking)**
+- `GET //{domain}/api/purchase-orders/list/export` — Export Purchase Orders **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchaseOrder}/invoices` — List PO Invoices **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}` — Get Purchase Order **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/activity-log` — Activity Log **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/bills/{bill}` — Get Bill **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/dropship-shipments` — Get Dropship Shipments **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/fifo-layers` — FIFO Layers **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/inventory-movements` — Inventory Movements **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/invoice/preview` — Preview Invoice **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/line-items` — Get PO Line Items (Lightweight) **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/lines` — Get PO Lines (DataTable) **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/lines-for-invoice` — Get PO Lines for Invoice **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/lines-for-receiving` — Get PO Lines for Receiving **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/notes` — Get Notes **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/receipts` — Get PO Receipts **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/receipts/{receipt}` — Get Single PO Receipt **(breaking)**
+- `GET //{domain}/api/purchase-orders/{purchase_order}/shipment-line-options` — Get PO Lines for Shipment Picker **(breaking)**
+- `GET //{domain}/api/return-receipts` — List Return Receipts **(breaking)**
+- `GET //{domain}/api/return-receipts/session-summary` — Get Session Summary (Station) **(breaking)**
+- `GET //{domain}/api/return-receipts/{return_receipt}` — Get Return Receipt **(breaking)**
+- `GET //{domain}/api/returns/analytics/by-disposition` — By Disposition **(breaking)**
+- `GET //{domain}/api/returns/analytics/by-product` — By Product **(breaking)**
+- `GET //{domain}/api/returns/analytics/by-reason` — By Reason **(breaking)**
+- `GET //{domain}/api/returns/analytics/summary` — Summary (KPIs) **(breaking)**
+- `GET //{domain}/api/returns/analytics/trend` — Trend **(breaking)**
+- `GET //{domain}/api/returns/inbox` — List Inbox **(breaking)**
+- `GET //{protocol}{domain}/api/inbound-shipments` — List Inbound Shipments **(breaking)**
+- `GET //{protocol}{domain}/api/supplier-pricing-tiers` — List Supplier Pricing Tiers **(breaking)**
+- `GET //{protocol}{domain}/api/supplier-pricing-tiers/1` — Get Supplier Pricing Tier **(breaking)**
+- `GET /api/artworks` — List Artworks **(breaking)**
+- `GET /api/artworks/{artwork}` — Get Artwork **(breaking)**
+- `GET /api/cost-category-keyword-aliases` — List Cost Category Keyword Aliases **(breaking)**
+- `GET /api/decoration-cost-rules` — List Decoration Cost Rules **(breaking)**
+- `GET /api/decoration-cost-rules/{decoration_cost_rule}` — Show Decoration Cost Rule **(breaking)**
+- `GET /api/discount-codes/{discount_code}` — Get Discount Code **(breaking)**
+- `GET /api/document-inbox` — List Inbox Documents **(breaking)**
+- `GET /api/document-inbox/customer_po/{extraction_id}/siblings` — Get Siblings (Prev/Next Navigation) **(breaking)**
+- `GET /api/document-inbox/pending-count` — Get Pending Count (Badge) **(breaking)**
+- `GET /api/export/fulfillment-orders/packing-slips` — Print Packing Slips **(breaking)**
+- `GET /api/export/fulfillment-orders/{fulfillmentOrder}/packing-slip/cache-status` — Get FO Packing Slip Cache Status **(breaking)**
+- `GET /api/export/sales-order-fulfillments/{salesOrderFulfillment}/packing-slip/cache-status` — Get Shipment Packing Slip Cache Status **(breaking)**
+- `GET /api/fulfillment-orders` — Dispatch Board — Active FOs Across All Orders **(breaking)**
+- `GET /api/fulfillment-orders/board-counts` — Dispatch Board — Lifecycle Counts **(breaking)**
+- `GET /api/fulfillment-orders/export` — Export Fulfillment Orders (Data Table) **(breaking)**
+- `GET /api/fulfillment-orders/list` — List Fulfillment Orders (Data Table) **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}` — Get Fulfillment Order Detail **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}/activity-log` — Get Fulfillment Order Activity Log **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}/line-items` — Get Fulfillment Order Line Items **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}/merge-candidates` — List Merge Candidates **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}/move-preview` — Preview Fulfillment Order Move (Coverage) **(breaking)**
+- `GET /api/fulfillment-orders/{fulfillmentOrder}/shipping-provider-options` — Get Shipping Provider Options **(breaking)**
+- `GET /api/inbound-shipment-receipts/{receipt}` — Get Inbound Shipment Receipt **(breaking)**
+- `GET /api/inbound-shipment-receipts/{receipt}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/inbound-shipment-receipts/{receipt}/fifo-layers` — Get FIFO Layers **(breaking)**
+- `GET /api/inbound-shipment-receipts/{receipt}/inventory-movements` — Get Inventory Movements **(breaking)**
+- `GET /api/inbound-shipments` — List Inbound Shipments **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}` — Get Inbound Shipment **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}/available-po-lines` — Available Purchase Order Lines **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}/available-purchase-orders` — Available Purchase Orders **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}/bills` — List Bills **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}/bills/{bill}` — Get Bill **(breaking)**
+- `GET /api/inbound-shipments/{inbound_shipment}/landed-cost-preview` — Landed Cost Preview **(breaking)**
+- `GET /api/landed-cost-invoices/ocr` — List Extractions (Inbox) **(breaking)**
+- `GET /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}` — Get Extraction **(breaking)**
+- `GET /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/pdf` — Stream Extraction PDF **(breaking)**
+- `GET /api/pos/payment-config` — Get Payment Config (in-browser SDK) **(breaking)**
+- `GET /api/pos/register-session/current` — Get Current Register Session **(breaking)**
+- `GET /api/pos/settings` — Get POS Settings **(breaking)**
+- `GET /api/pos/square/locations` — List Square Locations **(breaking)**
+- `GET /api/pos/transactions` — List POS Transactions **(breaking)**
+- `GET /api/pos/transactions/{posTransaction}/receipt` — Get POS Receipt **(breaking)**
+- `GET /api/purchase-invoices` — List Purchase Invoices **(breaking)**
+- `GET /api/purchase-invoices/import/template` — Download Import Template **(breaking)**
+- `GET /api/purchase-invoices/list/export` — Export Purchase Invoices **(breaking)**
+- `GET /api/purchase-invoices/ocr/{purchase_extraction_id}` — Get Extraction **(breaking)**
+- `GET /api/purchase-invoices/ocr/{purchase_extraction_id}/pdf` — Stream Extraction PDF **(breaking)**
+- `GET /api/purchase-invoices/variance-report` — Variance Report **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoiceId}/payments` — List Payments **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoiceId}/payments/{payment}` — Get Payment **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/activity-log` — Activity Log **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/inbound-shipments` — List Inbound Shipments for Invoice **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/line-items` — Get Line Items **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/notes` — List Notes **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/shipment-prefill` — Get Shipment Prefill (From Invoice) **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/three-way-match` — Three-Way Match **(breaking)**
+- `GET /api/purchase-invoices/{purchaseInvoice}/variance-resolution-preview` — Variance Resolution Preview **(breaking)**
+- `GET /api/purchase-invoices/{purchaseOrderId}/print` — Print Purchase Invoice PDF **(breaking)**
+- `GET /api/purchase-invoices/{purchase_invoice}` — Get Purchase Invoice **(breaking)**
+- `GET /api/purchase-order-shipments/{shipment}` — Get Shipment **(breaking)**
+- `GET /api/purchase-order-shipments/{shipment}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/purchase-order-shipments/{shipment}/notes` — Get Notes **(breaking)**
+- `GET /api/purchase-orders` — List Purchase Orders (DataTable) **(breaking)**
+- `GET /api/purchase-orders/awaiting-invoices` — List Awaiting-Invoice POs **(breaking)**
+- `GET /api/purchase-orders/csv-columns` — Get CSV Column Registry **(breaking)**
+- `GET /api/purchase-orders/import-lines/template` — Download Lines Import Template **(breaking)**
+- `GET /api/purchase-orders/import/template` — Download Import Template **(breaking)**
+- `GET /api/purchase-orders/list` — List Purchase Orders (Vue3 List) **(breaking)**
+- `GET /api/purchase-orders/list/export` — Export Purchase Orders **(breaking)**
+- `GET /api/purchase-orders/{purchaseOrder}/invoices` — List PO Invoices **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}` — Get Purchase Order **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/activity-log` — Activity Log **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/bills/{bill}` — Get Bill **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/dropship-shipments` — Get Dropship Shipments **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/fifo-layers` — FIFO Layers **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/inventory-movements` — Inventory Movements **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/invoice/preview` — Preview Invoice **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/line-items` — Get PO Line Items (Lightweight) **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines (DataTable) **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/lines-for-invoice` — Get PO Lines for Invoice **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/lines-for-receiving` — Get PO Lines for Receiving **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/notes` — Get Notes **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/receipts` — Get PO Receipts **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/receipts/{receipt}` — Get Single PO Receipt **(breaking)**
+- `GET /api/purchase-orders/{purchase_order}/shipment-line-options` — Get PO Lines for Shipment Picker **(breaking)**
+- `GET /api/purchase-receipts/{receipt}` — Get Purchase Receipt **(breaking)**
+- `GET /api/purchase-receipts/{receipt}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/purchase-receipts/{receipt}/fifo-layers` — Get FIFO Layers **(breaking)**
+- `GET /api/purchase-receipts/{receipt}/inventory-movements` — Get Inventory Movements **(breaking)**
+- `GET /api/purchase-receipts/{receipt}/notes` — Get Notes **(breaking)**
+- `GET /api/quotes` — List Quotes **(breaking)**
+- `GET /api/quotes/{quote}` — Show Quote **(breaking)**
+- `GET /api/return-disposition-policies` — List Disposition Policies **(breaking)**
+- `GET /api/return-disposition-policies/{returnDispositionPolicy}` — Get Disposition Policy **(breaking)**
+- `GET /api/return-reasons` — List Return Reasons **(breaking)**
+- `GET /api/return-reasons/{return_reason}` — Get Return Reason **(breaking)**
+- `GET /api/return-receipts` — List Return Receipts **(breaking)**
+- `GET /api/return-receipts/{return_receipt}` — Get Return Receipt **(breaking)**
+- `GET /api/rmas` — List RMAs **(breaking)**
+- `GET /api/rmas/{rma}` — Get RMA **(breaking)**
+- `GET /api/sales-credits` — List Sales Credits **(breaking)**
+- `GET /api/sales-credits/import/template` — Download Import Template **(breaking)**
+- `GET /api/sales-credits/list/export` — Export Sales Credits **(breaking)**
+- `GET /api/sales-credits/{salesCredit}/notes` — List Notes **(breaking)**
+- `GET /api/sales-credits/{sales_credit}` — Get Sales Credit **(breaking)**
+- `GET /api/sales-credits/{sales_credit}/invoice/preview` — Preview Invoice **(breaking)**
+- `GET /api/sales-order-lines/{salesOrderLineId}` — Get Sales Order Line **(breaking)**
+- `GET /api/sales-order-lines/{salesOrderLine}/matching-unmapped` — Get Matching Unmapped Lines **(breaking)**
+- `GET /api/sales-order-lines/{salesOrderLine}/suggest-warehouse` — Suggest Fulfillment Warehouse **(breaking)**
+- `GET /api/sales-orders/import/template` — Download Import Template **(breaking)**
+- `GET /api/sales-orders/list` — List Sales Orders (V2 Datatable) **(breaking)**
+- `GET /api/sales-orders/list/export` — Export Sales Orders **(breaking)**
+- `GET /api/sales-orders/ocr/{extraction_id}` — Get OCR Extraction **(breaking)**
+- `GET /api/sales-orders/ocr/{extraction_id}/pdf` — Stream Extraction PDF **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/decoration-orders` — List Decoration Orders **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/financials` — Get Sales Order Financials (Proforma) **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/fulfillment-orders` — List Fulfillment Orders for a Sales Order **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/fulfillments` — List Order Shipments **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decorations` — List Line Decorations **(breaking)**
+- `GET /api/sales-orders/{salesOrder}/provider-fulfillment-snapshots` — Get Provider Fulfillment Snapshots **(breaking)**
+- `GET /api/supplier-inventories` — List Supplier Inventories (DataTable) **(breaking)**
+- `GET /api/supplier-inventories/1` — Get Supplier Inventory **(breaking)**
+- `GET /api/supplier-inventories/1/our-inventory` — List Our Inventory for Supplier **(breaking)**
+- `GET /api/supplier-inventories/1/our-inventory/stats` — Get Our Inventory Stats for Supplier **(breaking)**
+- `GET /api/supplier-inventories/5/export` — Export Supplier Inventories **(breaking)**
+- `GET /api/supplier-inventories/5/import/template` — Download Import Template **(breaking)**
+- `GET /api/supplier-inventories/list` — List Supplier Inventories (Lookup) **(breaking)**
+- `GET /api/supplier-pricing-tiers` — List Supplier Pricing Tiers **(breaking)**
+- `GET /api/supplier-pricing-tiers/1` — Get Supplier Pricing Tier **(breaking)**
+- `GET /api/supplier-products/{supplier_product}` — Get Supplier Product **(breaking)**
+- `GET /api/supplier-products/{supplier_product}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/supplier-products/{supplier_product}/notes` — Get Notes **(breaking)**
+- `GET /api/suppliers` — List Suppliers **(breaking)**
+- `GET /api/suppliers/{supplier}` — Get Supplier **(breaking)**
+- `GET /api/suppliers/{supplier}/pricing-tiers` — Get Supplier Pricing Tiers **(breaking)**
+- `GET /api/suppliers/{supplier}/products` — List Supplier Products **(breaking)**
+- `GET /api/suppliers/{supplier}/warehouses` — Get Supplier Warehouses **(breaking)**
+- `GET /api/v2/merged-shipments` — List Merged Shipments **(breaking)**
+- `GET /api/v2/merged-shipments/{mergedShipment}` — Show Merged Shipment **(breaking)**
+- `GET /api/v2/sales-order-fulfillments` — List Fulfillments **(breaking)**
+- `GET /api/v2/sales-order-fulfillments/export` — Export Fulfillments **(breaking)**
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/detail` — Get Fulfillment Detail **(breaking)**
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/inventory-movements` — Get Inventory Movements **(breaking)**
+- `GET /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/line-items` — Get Fulfillment Line Items **(breaking)**
+- `GET /api/v2/sales-orders/backorder/next-schedule` — Get Next Backorder Schedule **(breaking)**
+- `GET /api/v2/sales-orders/sales-order-lines/{salesOrderLine}/backorder-detail` — Get Backorder Detail for Line **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}` — Show Sales Order **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/activity-log` — Get Activity Log **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/allocations` — Get Allocations **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/channel-items` — Get Channel Items **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/customer-details` — Get Customer Details **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/inventory-movements` — Get Inventory Movements **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/line-items` — Get Sales Order Line Items **(breaking)**
+- `GET /api/v2/sales-orders/{salesOrder}/merge-candidates` — List Merge Candidates for Sales Order **(breaking)**
+- `PATCH //{domain}/api/purchase-orders/{purchase_order}/bills/{bill}` — Update Bill **(breaking)**
+- `PATCH /api/fulfillment-orders/{fulfillmentOrder}/move` — Move Fulfillment Order to Different Warehouse **(breaking)**
+- `PATCH /api/fulfillment-orders/{fulfillmentOrder}/shipping` — Edit Fulfillment Order Shipping Details **(breaking)**
+- `PATCH /api/inbound-shipments/{inbound_shipment}/bills/{bill}` — Update Bill **(breaking)**
+- `PATCH /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/draft` — Save Draft (Working State) **(breaking)**
+- `PATCH /api/purchase-order-lines/{purchase_order_line}` — Update PO Line **(breaking)**
+- `PATCH /api/purchase-orders/{purchase_order}/bills/{bill}` — Update Bill **(breaking)**
+- `PATCH /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/shipping-details` — Edit Shipping Details **(breaking)**
+- `POST //{domain}/api/discount-codes` — Create Discount Code **(breaking)**
+- `POST //{domain}/api/purchase-orders` — Create Purchase Order **(breaking)**
+- `POST //{domain}/api/purchase-orders/approve` — Bulk Approve **(breaking)**
+- `POST //{domain}/api/purchase-orders/deletable` — Check Deletable **(breaking)**
+- `POST //{domain}/api/purchase-orders/import` — Execute Import **(breaking)**
+- `POST //{domain}/api/purchase-orders/import-lines` — Import Lines from CSV **(breaking)**
+- `POST //{domain}/api/purchase-orders/import/preview` — Preview Import **(breaking)**
+- `POST //{domain}/api/purchase-orders/import/validate` — Validate Import **(breaking)**
+- `POST //{domain}/api/purchase-orders/submit` — Bulk Submit **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-discount-rate` — Apply Discount Rate to Lines **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-pricing-tier/{supplierPricingTier}` — Apply Pricing Tier to Lines **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/apply-tax-rate/{taxRate}` — Apply Tax Rate to Lines **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchaseOrder}/clear-tax-rate` — Clear Tax Rate from Lines **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/asn` — Send ASN **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/bills` — Create Bill **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/cover-backorders` — Cover Backorders **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/dropship` — Dropship (Ship Fulfillment) **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/duplicate` — Duplicate Purchase Order **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/notes` — Add Note **(breaking)**
+- `POST //{domain}/api/purchase-orders/{purchase_order}/receiving-discrepancy` — Create Receiving Discrepancy **(breaking)**
+- `POST //{domain}/api/return-receipts` — Create Return Receipt **(breaking)**
+- `POST //{domain}/api/return-receipts/resolve-line-disposition` — Resolve Line Disposition (Station) **(breaking)**
+- `POST //{domain}/api/return-receipts/scan-resolve` — Resolve Scan (Station) **(breaking)**
+- `POST //{domain}/api/return-receipts/{returnReceipt}/lines` — Add Line to Return Receipt **(breaking)**
+- `POST //{domain}/api/returns/inbox/bulk-link` — Bulk Link Returns **(breaking)**
+- `POST //{domain}/api/returns/inbox/match-now` — Match Returns Now **(breaking)**
+- `POST //{domain}/api/rmas/bulk/generate-from-orders` — Bulk Generate RMAs from Orders **(breaking)**
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers` — Create Supplier Pricing Tier **(breaking)**
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/archivable` — Check Archivable **(breaking)**
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/deletable` — Check Deletable **(breaking)**
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/import` — Import Pricing Tiers **(breaking)**
+- `POST //{protocol}{domain}/api/supplier-pricing-tiers/import/preview` — Import Pricing Tiers (Preview) **(breaking)**
+- `POST /api/artworks` — Create Artwork **(breaking)**
+- `POST /api/decoration-cost-rules` — Create Decoration Cost Rule **(breaking)**
+- `POST /api/document-inbox/bulk-destroy` — Bulk Delete Inbox Documents **(breaking)**
+- `POST /api/document-inbox/customer_po/{extraction_id}/reclassify` — Reclassify Document Type **(breaking)**
+- `POST /api/document-inbox/customer_po/{extraction_id}/retry` — Retry Failed Extraction **(breaking)**
+- `POST /api/fulfillment-orders` — Create Fulfillment Order **(breaking)**
+- `POST /api/fulfillment-orders/bulk-cancel` — Bulk Cancel Fulfillment Orders **(breaking)**
+- `POST /api/fulfillment-orders/bulk-submit` — Bulk Submit Fulfillment Orders **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/cancel` — Cancel Fulfillment Order **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/force-fail-submission` — Force-Fail Fulfillment Order Submission **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/merge` — Merge Fulfillment Orders **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/record-shipment` — Record Shipment **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/retry-submission` — Retry Fulfillment Order Submission **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/split` — Split Fulfillment Order **(breaking)**
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/submit` — Submit Fulfillment Order to Provider **(breaking)**
+- `POST /api/inbound-shipment-receipts/{receipt}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST /api/inbound-shipments` — Create Inbound Shipment **(breaking)**
+- `POST /api/inbound-shipments/from-invoice/{purchaseInvoice}` — Create Inbound Shipment From Purchase Invoice **(breaking)**
+- `POST /api/inbound-shipments/receive` — Receive Shipment **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/bills` — Create Bill **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/cancel` — Cancel Shipment **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/close` — Close Shipment **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/import-items` — Import Items **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/mark-as-planned` — Mark As Planned **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/mark-as-shipped` — Mark As Shipped **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/receipts` — Create Receipt (Native IS Path) **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/receive` — Receive Shipment **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/resolve-import` — Resolve Import (Preview SKUs/POs) **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/revert-to-draft` — Revert to Draft **(breaking)**
+- `POST /api/inbound-shipments/{inbound_shipment}/unmark-as-planned` — Unmark As Planned **(breaking)**
+- `POST /api/landed-cost-invoices/ocr/upload` — Upload Landed Cost Invoice PDF **(breaking)**
+- `POST /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/apply` — Apply Extraction (Create Bills) **(breaking)**
+- `POST /api/landed-cost-invoices/ocr/{landed_cost_extraction_id}/rescan` — Re-scan Extraction **(breaking)**
+- `POST /api/pos/checkout` — POS Checkout (Cash or Card) **(breaking)**
+- `POST /api/pos/register-sessions` — Open Register Session **(breaking)**
+- `POST /api/pos/register-sessions/{registerSession}/close` — Close Register Session **(breaking)**
+- `POST /api/pos/transactions/{posTransaction}/refund` — Refund POS Sale (Return) **(breaking)**
+- `POST /api/purchase-invoices` — Create Purchase Invoice **(breaking)**
+- `POST /api/purchase-invoices/deletable` — Check Deletability **(breaking)**
+- `POST /api/purchase-invoices/fees-received` — Create Custom (Fees Received) Invoice **(breaking)**
+- `POST /api/purchase-invoices/import` — Execute Import **(breaking)**
+- `POST /api/purchase-invoices/import/validate` — Validate Import Data **(breaking)**
+- `POST /api/purchase-invoices/ocr/upload` — Upload Supplier Invoice PDF **(breaking)**
+- `POST /api/purchase-invoices/ocr/{purchase_extraction_id}/attach-to-invoice` — Attach OCR Document to Existing Invoice **(breaking)**
+- `POST /api/purchase-invoices/ocr/{purchase_extraction_id}/create-invoice` — Create Purchase Invoice from Extraction **(breaking)**
+- `POST /api/purchase-invoices/ocr/{purchase_extraction_id}/reclassify-as-credit` — Reclassify as Vendor Credit **(breaking)**
+- `POST /api/purchase-invoices/ocr/{purchase_extraction_id}/reclassify-as-customer-po` — Reclassify as Customer PO **(breaking)**
+- `POST /api/purchase-invoices/ocr/{purchase_extraction_id}/rescan` — Re-scan Extraction **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoiceId}/payments` — Create Payment **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/approve` — Approve Invoice **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/lines/{purchaseInvoiceLine}/sync-po-price` — Sync PO Price From Invoice Line **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/notes` — Add Note **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/reject` — Reject Invoice **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/resolve-with-credit` — Resolve with Vendor Credit **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/resubmit` — Resubmit Invoice for Approval **(breaking)**
+- `POST /api/purchase-invoices/{purchaseInvoice}/sync-po-prices` — Sync PO Prices Bulk **(breaking)**
+- `POST /api/purchase-order-lines/{purchase_order_line}/short-close` — Short-Close PO Line **(breaking)**
+- `POST /api/purchase-order-shipments` — Create Shipment **(breaking)**
+- `POST /api/purchase-order-shipments/{shipment}/notes` — Add Note **(breaking)**
+- `POST /api/purchase-orders` — Create Purchase Order **(breaking)**
+- `POST /api/purchase-orders/approve` — Bulk Approve **(breaking)**
+- `POST /api/purchase-orders/deletable` — Check Deletable **(breaking)**
+- `POST /api/purchase-orders/import` — Execute Import **(breaking)**
+- `POST /api/purchase-orders/import-lines` — Import Lines from CSV **(breaking)**
+- `POST /api/purchase-orders/import/preview` — Preview Import **(breaking)**
+- `POST /api/purchase-orders/import/validate` — Validate Import **(breaking)**
+- `POST /api/purchase-orders/submit` — Bulk Submit **(breaking)**
+- `POST /api/purchase-orders/{purchaseOrder}/apply-discount-rate` — Apply Discount Rate to Lines **(breaking)**
+- `POST /api/purchase-orders/{purchaseOrder}/apply-pricing-tier/{supplierPricingTier}` — Apply Pricing Tier to Lines **(breaking)**
+- `POST /api/purchase-orders/{purchaseOrder}/apply-tax-rate/{taxRate}` — Apply Tax Rate to Lines **(breaking)**
+- `POST /api/purchase-orders/{purchaseOrder}/clear-tax-rate` — Clear Tax Rate from Lines **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/asn` — Send ASN **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/bills` — Create Bill **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/cover-backorders` — Cover Backorders **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/dropship` — Dropship (Ship Fulfillment) **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/duplicate` — Duplicate Purchase Order **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/notes` — Add Note **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/receiving-discrepancy` — Create Receiving Discrepancy **(breaking)**
+- `POST /api/purchase-orders/{purchase_order}/request-invoice` — Request Invoice (Single PO) **(breaking)**
+- `POST /api/purchase-receipts/{receipt}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST /api/purchase-receipts/{receipt}/notes` — Add Note **(breaking)**
+- `POST /api/quotes` — Create Quote **(breaking)**
+- `POST /api/quotes/bulk-archive` — Bulk Archive Quotes **(breaking)**
+- `POST /api/quotes/bulk-delete` — Bulk Delete Quotes **(breaking)**
+- `POST /api/quotes/bulk-expire` — Bulk Expire Quotes **(breaking)**
+- `POST /api/quotes/bulk-send` — Bulk Send Quotes **(breaking)**
+- `POST /api/quotes/bulk-unarchive` — Bulk Unarchive Quotes **(breaking)**
+- `POST /api/quotes/{quote}/accept` — Accept Quote **(breaking)**
+- `POST /api/quotes/{quote}/allocation` — Set Quote Inventory Allocation **(breaking)**
+- `POST /api/quotes/{quote}/convert` — Convert Quote **(breaking)**
+- `POST /api/quotes/{quote}/create-order` — Create Sales Order from Quote **(breaking)**
+- `POST /api/quotes/{quote}/decline` — Decline Quote **(breaking)**
+- `POST /api/quotes/{quote}/expire` — Expire Quote **(breaking)**
+- `POST /api/quotes/{quote}/lines` — Add Quote Line **(breaking)**
+- `POST /api/quotes/{quote}/lines/bulk-update` — Bulk Update Lines **(breaking)**
+- `POST /api/quotes/{quote}/lines/bulk-warehouse` — Bulk Set Line Warehouse **(breaking)**
+- `POST /api/quotes/{quote}/lines/reorder` — Reorder Lines **(breaking)**
+- `POST /api/quotes/{quote}/lines/{line}/convert-to-revenue` — Convert Line to Revenue **(breaking)**
+- `POST /api/quotes/{quote}/revise` — Revise Quote **(breaking)**
+- `POST /api/quotes/{quote}/send` — Send Quote **(breaking)**
+- `POST /api/return-disposition-policies` — Create Disposition Policy **(breaking)**
+- `POST /api/return-disposition-policies/reorder` — Reorder Disposition Policies **(breaking)**
+- `POST /api/return-reasons` — Create Return Reason **(breaking)**
+- `POST /api/return-reasons/deletable` — Check Deletable **(breaking)**
+- `POST /api/return-receipts` — Create Return Receipt **(breaking)**
+- `POST /api/return-receipts/{returnReceipt}/lines` — Add Line to Return Receipt **(breaking)**
+- `POST /api/return-receipts/{returnReceipt}/lines/bulk-disposition` — Bulk Set Disposition on Lines **(breaking)**
+- `POST /api/rmas` — Create RMA **(breaking)**
+- `POST /api/rmas/bulk/approve` — Bulk Approve **(breaking)**
+- `POST /api/rmas/bulk/cancel` — Bulk Cancel **(breaking)**
+- `POST /api/rmas/bulk/close` — Bulk Close **(breaking)**
+- `POST /api/rmas/bulk/delete` — Bulk Delete **(breaking)**
+- `POST /api/rmas/bulk/revert-to-draft` — Bulk Revert to Draft **(breaking)**
+- `POST /api/rmas/{rma}/approve` — Approve RMA **(breaking)**
+- `POST /api/rmas/{rma}/cancel` — Cancel RMA **(breaking)**
+- `POST /api/rmas/{rma}/close` — Close RMA **(breaking)**
+- `POST /api/rmas/{rma}/lines` — Add Line to RMA **(breaking)**
+- `POST /api/rmas/{rma}/receipts` — Create Return Receipt from RMA **(breaking)**
+- `POST /api/rmas/{rma}/reopen` — Reopen RMA **(breaking)**
+- `POST /api/rmas/{rma}/revert-to-draft` — Revert to Draft **(breaking)**
+- `POST /api/rmas/{rma}/ship` — Mark as Shipped **(breaking)**
+- `POST /api/rmas/{rma}/uncancel` — Uncancel RMA **(breaking)**
+- `POST /api/sales-credits` — Create Sales Credit **(breaking)**
+- `POST /api/sales-credits/deletable` — Check Deletable **(breaking)**
+- `POST /api/sales-credits/import` — Import Sales Credits **(breaking)**
+- `POST /api/sales-credits/import/validate` — Validate Import **(breaking)**
+- `POST /api/sales-credits/paid` — Record Payment (Paid) **(breaking)**
+- `POST /api/sales-credits/{salesCredit}/generate-accounting-transaction` — Generate Accounting Transaction **(breaking)**
+- `POST /api/sales-credits/{salesCredit}/notes` — Add Note **(breaking)**
+- `POST /api/sales-order-lines/bulk-map` — Bulk Map Lines to Product **(breaking)**
+- `POST /api/sales-order-lines/import` — Import Lines from CSV **(breaking)**
+- `POST /api/sales-order-lines/reservations` — Manage Reservations **(breaking)**
+- `POST /api/sales-order-lines/{salesOrderLine}/replace` — Replace Line Product(s) **(breaking)**
+- `POST /api/sales-order-lines/{salesOrderLine}/split-across-warehouses` — Split Line Across Warehouses **(breaking)**
+- `POST /api/sales-order-lines/{salesOrderLine}/{financialLineType}/convert-to-financial-line` — Convert to Financial Line **(breaking)**
+- `POST /api/sales-order-lines/{sales_order_line}/clear-edition-override` — Clear Edition Override **(breaking)**
+- `POST /api/sales-order-lines/{sales_order_line}/override-edition` — Override Edition **(breaking)**
+- `POST /api/sales-orders/bulk-email` — Bulk Email Customers About Orders **(breaking)**
+- `POST /api/sales-orders/bulk-email/preview` — Preview Bulk Customer Email **(breaking)**
+- `POST /api/sales-orders/close` — Bulk Close Sales Orders **(breaking)**
+- `POST /api/sales-orders/import` — Import Sales Orders **(breaking)**
+- `POST /api/sales-orders/import/validate` — Validate Import **(breaking)**
+- `POST /api/sales-orders/ocr/upload` — Upload Customer PO PDF **(breaking)**
+- `POST /api/sales-orders/ocr/{extraction_id}/clone-from` — Clone Lines from Sales Order **(breaking)**
+- `POST /api/sales-orders/ocr/{extraction_id}/create-order` — Create Sales Order from Extraction **(breaking)**
+- `POST /api/sales-orders/ocr/{extraction_id}/reclassify-as-supplier-invoice` — Reclassify as Supplier Invoice **(breaking)**
+- `POST /api/sales-orders/ocr/{extraction_id}/rescan` — Rescan Customer PO OCR **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/decoration-orders` — Create Decoration Orders (Bulk) **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decoration-orders` — Create Line Decoration Orders **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decorations` — Add Line Decoration **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decorations/{decoration}/reprice` — Reprice Line Decoration **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/provider-fulfillment-snapshots/import` — Import Provider Fulfillment Orphan **(breaking)**
+- `POST /api/sales-orders/{salesOrder}/provider-fulfillment-snapshots/repair` — Repair Provider Fulfillment Orphan **(breaking)**
+- `POST /api/supplier-inventories/5/import` — Execute Import **(breaking)**
+- `POST /api/supplier-inventories/5/import/validate` — Validate Import **(breaking)**
+- `POST /api/supplier-inventories/archivable` — Check Archivable **(breaking)**
+- `POST /api/supplier-inventories/deletable` — Check Deletable **(breaking)**
+- `POST /api/supplier-pricing-tiers` — Create Supplier Pricing Tier **(breaking)**
+- `POST /api/supplier-pricing-tiers/archivable` — Check Archivable **(breaking)**
+- `POST /api/supplier-pricing-tiers/deletable` — Check Deletable **(breaking)**
+- `POST /api/supplier-pricing-tiers/import` — Import Pricing Tiers **(breaking)**
+- `POST /api/supplier-pricing-tiers/import/preview` — Import Pricing Tiers (Preview) **(breaking)**
+- `POST /api/supplier-products` — Create Supplier Product **(breaking)**
+- `POST /api/supplier-products/{supplier_product}/notes` — Add Note **(breaking)**
+- `POST /api/suppliers` — Create Supplier **(breaking)**
+- `POST /api/suppliers/deletable` — Check Deletable **(breaking)**
+- `POST /api/suppliers/import` — Import Suppliers **(breaking)**
+- `POST /api/suppliers/import/preview` — Preview Supplier Import **(breaking)**
+- `POST /api/suppliers/warehouses/{warehouse}/linked-orders` — Get Warehouse Linked Orders **(breaking)**
+- `POST /api/suppliers/{supplier}/csv-sample` — Download PO CSV Sample **(breaking)**
+- `POST /api/suppliers/{supplier}/import` — Import Supplier Inventory **(breaking)**
+- `POST /api/suppliers/{supplier}/import/preview` — Preview Supplier Inventory Import **(breaking)**
+- `POST /api/suppliers/{supplier}/po-sample` — Download PO Sample (CSV/XLSX) **(breaking)**
+- `POST /api/suppliers/{supplier}/pricing-tiers/{supplierPricingTier}/attach` — Attach Pricing Tier to Supplier **(breaking)**
+- `POST /api/suppliers/{supplier}/products-stocks` — Get Supplier Products Stock **(breaking)**
+- `POST /api/suppliers/{supplier}/request-invoices` — Request Invoices (Consolidated) **(breaking)**
+- `POST /api/suppliers/{supplier}/warehouses` — Create Supplier Warehouse **(breaking)**
+- `POST /api/v2/merged-shipments` — Create Merged Shipment **(breaking)**
+- `POST /api/v2/merged-shipments/eligibility` — Check Merge Eligibility **(breaking)**
+- `POST /api/v2/merged-shipments/{mergedShipment}/unmerge` — Unmerge Merged Shipment **(breaking)**
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/cancel-provider-order` — Cancel Provider Order **(breaking)**
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/clear-channel-submission` — Clear Channel Submission **(breaking)**
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/resync-from-provider` — Resync from Provider **(breaking)**
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/resync-to-provider` — Resync to Provider **(breaking)**
+- `POST /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/submit-to-channel` — Submit to Sales Channel **(breaking)**
+- `POST /api/v2/sales-orders/backorder/create-po` — Create PO from Backorder **(breaking)**
+- `PUT //{domain}/api/discount-codes/{discount_code}` — Update Discount Code **(breaking)**
+- `PUT //{domain}/api/purchase-orders/archive` — Bulk Archive **(breaking)**
+- `PUT //{domain}/api/purchase-orders/unarchive` — Bulk Unarchive **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}` — Update Purchase Order **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/close` — Close Purchase Order **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/mark-as-shipped` — Mark as Shipped (FBA/AWD) **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/notes/{noteId}/toggle-pin` — Toggle Note Pin **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/reopen` — Reopen Purchase Order **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/submit` — Submit PO to Supplier **(breaking)**
+- `PUT //{domain}/api/purchase-orders/{purchase_order}/update-shipment` — Update Shipment Details (FBA) **(breaking)**
+- `PUT //{domain}/api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Update Return Receipt Line **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2` — Update Supplier Pricing Tier **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/archive` — Archive Pricing Tier **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/default` — Set as Default **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/2/unarchived` — Unarchive Pricing Tier **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/archive` — Bulk Archive Pricing Tiers **(breaking)**
+- `PUT //{protocol}{domain}/api/supplier-pricing-tiers/unarchive` — Bulk Unarchive Pricing Tiers **(breaking)**
+- `PUT /api/artworks/{artwork}` — Update Artwork **(breaking)**
+- `PUT /api/cost-category-keyword-aliases` — Replace Cost Category Keyword Aliases **(breaking)**
+- `PUT /api/decoration-cost-rules/{decoration_cost_rule}` — Update Decoration Cost Rule **(breaking)**
+- `PUT /api/discount-codes/{discount_code}` — Update Discount Code **(breaking)**
+- `PUT /api/fulfillment-orders/{fulfillmentOrder}/mark-picked-up` — Mark Fulfillment Order Picked Up **(breaking)**
+- `PUT /api/fulfillment-orders/{fulfillmentOrder}/unmark-picked-up` — Unmark Fulfillment Order Picked Up **(breaking)**
+- `PUT /api/inbound-shipments/receipts/{receipt}` — Update Receipt **(breaking)**
+- `PUT /api/inbound-shipments/{inbound_shipment}` — Update Inbound Shipment **(breaking)**
+- `PUT /api/pos/settings` — Update POS Settings **(breaking)**
+- `PUT /api/purchase-invoices/archive` — Bulk Archive Purchase Invoices **(breaking)**
+- `PUT /api/purchase-invoices/unarchive` — Bulk Unarchive Purchase Invoices **(breaking)**
+- `PUT /api/purchase-invoices/{purchaseInvoiceId}/payments/{payment}` — Update Payment **(breaking)**
+- `PUT /api/purchase-invoices/{purchaseInvoice}/archive` — Archive Single Purchase Invoice **(breaking)**
+- `PUT /api/purchase-invoices/{purchaseInvoice}/notes/{noteId}/toggle-pin` — Toggle Note Pin **(breaking)**
+- `PUT /api/purchase-invoices/{purchaseInvoice}/unarchived` — Unarchive Single Purchase Invoice **(breaking)**
+- `PUT /api/purchase-invoices/{purchase_invoice}` — Update Purchase Invoice **(breaking)**
+- `PUT /api/purchase-order-shipments/receipts/{receipt}/delete-lines` — Delete Receipt Lines **(breaking)**
+- `PUT /api/purchase-order-shipments/{purchase_order_shipment}` — Update Shipment **(breaking)**
+- `PUT /api/purchase-orders/archive` — Bulk Archive **(breaking)**
+- `PUT /api/purchase-orders/unarchive` — Bulk Unarchive **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}` — Update Purchase Order **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/close` — Close Purchase Order **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/mark-as-shipped` — Mark as Shipped (FBA/AWD) **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/notes/{noteId}/toggle-pin` — Toggle Note Pin **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/reopen` — Reopen Purchase Order **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/submit` — Submit PO to Supplier **(breaking)**
+- `PUT /api/purchase-orders/{purchase_order}/update-shipment` — Update Shipment Details (FBA) **(breaking)**
+- `PUT /api/purchase-receipts/{receipt}/notes/{noteId}/toggle-pin` — Toggle Note Pin **(breaking)**
+- `PUT /api/quotes/{quote}` — Update Quote **(breaking)**
+- `PUT /api/quotes/{quote}/lines/{line}` — Update Quote Line **(breaking)**
+- `PUT /api/return-disposition-policies/{returnDispositionPolicy}` — Update Disposition Policy **(breaking)**
+- `PUT /api/return-reasons/archive` — Bulk Archive Return Reasons **(breaking)**
+- `PUT /api/return-reasons/unarchive` — Bulk Unarchive Return Reasons **(breaking)**
+- `PUT /api/return-reasons/{return_reason}` — Update Return Reason **(breaking)**
+- `PUT /api/return-reasons/{return_reason}/archive` — Archive Return Reason **(breaking)**
+- `PUT /api/return-reasons/{return_reason}/unarchived` — Unarchive Return Reason **(breaking)**
+- `PUT /api/return-receipts/{returnReceipt}/lines/{returnReceiptLine}` — Update Return Receipt Line **(breaking)**
+- `PUT /api/rmas/{rma}` — Update RMA **(breaking)**
+- `PUT /api/rmas/{rma}/lines/{rmaLine}` — Update RMA Line **(breaking)**
+- `PUT /api/rmas/{rma}/shipping` — Update Shipping Details **(breaking)**
+- `PUT /api/sales-credits/archive` — Bulk Archive Sales Credits **(breaking)**
+- `PUT /api/sales-credits/unarchive` — Bulk Unarchive Sales Credits **(breaking)**
+- `PUT /api/sales-credits/{salesCredit}/payments/{payment}` — Update Payment **(breaking)**
+- `PUT /api/sales-credits/{sales_credit}` — Update Sales Credit **(breaking)**
+- `PUT /api/sales-credits/{sales_credit}/archive` — Archive Sales Credit **(breaking)**
+- `PUT /api/sales-credits/{sales_credit}/unarchived` — Unarchive Sales Credit **(breaking)**
+- `PUT /api/sales-order-fulfillments/{salesOrderFulfillment}` — Fulfill / Update Shipment (with optional lot allocation) **(breaking)**
+- `PUT /api/sales-order-lines/{salesOrderLine}/nominal-code` — Update Line Nominal Code **(breaking)**
+- `PUT /api/sales-order-lines/{sales_order_line}/make-as-non-product` — Mark Line as Non-Product **(breaking)**
+- `PUT /api/sales-order-lines/{sales_order_line}/map` — Map Line to Product **(breaking)**
+- `PUT /api/sales-orders/{salesOrder}` — Update Sales Order **(breaking)**
+- `PUT /api/sales-orders/{salesOrder}/lines/{salesOrderLine}/decorations/{decoration}` — Update Line Decoration **(breaking)**
+- `PUT /api/supplier-inventories/1` — Update Supplier Inventory **(breaking)**
+- `PUT /api/supplier-inventories/1/archive` — Archive Supplier Inventory **(breaking)**
+- `PUT /api/supplier-inventories/1/unarchived` — Unarchive Supplier Inventory **(breaking)**
+- `PUT /api/supplier-inventories/archive` — Bulk Archive Supplier Inventories **(breaking)**
+- `PUT /api/supplier-inventories/unarchive` — Bulk Unarchive Supplier Inventories **(breaking)**
+- `PUT /api/supplier-pricing-tiers/2` — Update Supplier Pricing Tier **(breaking)**
+- `PUT /api/supplier-pricing-tiers/2/archive` — Archive Pricing Tier **(breaking)**
+- `PUT /api/supplier-pricing-tiers/2/default` — Set as Default **(breaking)**
+- `PUT /api/supplier-pricing-tiers/2/unarchived` — Unarchive Pricing Tier **(breaking)**
+- `PUT /api/supplier-pricing-tiers/archive` — Bulk Archive Pricing Tiers **(breaking)**
+- `PUT /api/supplier-pricing-tiers/unarchive` — Bulk Unarchive Pricing Tiers **(breaking)**
+- `PUT /api/supplier-products/{supplier_product}` — Update Supplier Product **(breaking)**
+- `PUT /api/supplier-products/{supplier_product}/pricing` — Update Pricing Tiers **(breaking)**
+- `PUT /api/suppliers/archive` — Bulk Archive **(breaking)**
+- `PUT /api/suppliers/unarchive` — Bulk Unarchive **(breaking)**
+- `PUT /api/suppliers/{supplier}` — Update Supplier **(breaking)**
+- `PUT /api/suppliers/{supplier}/archive` — Archive Supplier **(breaking)**
+- `PUT /api/suppliers/{supplier}/unarchived` — Unarchive Supplier **(breaking)**
+- `PUT /api/v2/sales-orders/{salesOrder}/channel-mappings` — Update Channel Mappings **(breaking)**
+
+_Spec version 1.0.0 → 1.0.0._
