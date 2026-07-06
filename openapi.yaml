@@ -21420,6 +21420,338 @@ paths:
               example:
                 message: Warehouse mappings updated successfully.
       operationId: put-api-integration-instances-integration-instance-store-mapped-warehouse-locations
+  /api/integration-instances/{integration_instance}/sync-controls:
+    patch:
+      tags:
+      - Integration Instances
+      summary: Update Sync Controls
+      description: 'Apply a granular, direction- and entity-aware sync-controls update
+        for a channel integration instance (SKU-8131). Replaces the overloaded `is_automatic_sync_enabled`
+        boolean with per-capability toggles.
+
+
+        Authentication: Requires Bearer token + `integrations.update` permission.
+
+
+        All sections are OPTIONAL — send a partial PATCH and only the provided keys
+        are merged onto the instance''s current (or default) controls:
+
+
+        - `schedule_state` — `active` or `paused`. Drives the derived `is_automatic_sync_enabled`
+        coarse flag and pauses/resumes all scheduled sync.
+
+        - `capabilities` — map of direction (`inbound`/`outbound`) to a map of entity
+        (`orders`, `products`, `inventory`, `pricing`, `tracking`) to boolean. Capabilities
+        outside the integration''s applicable matrix are silently discarded.
+
+        - `source_of_truth` — for BIDIRECTIONAL entities only (`inventory`, `pricing`):
+        `sku` or `channel`. Non-bidirectional entries are ignored.
+
+        - `start_dates` — for entities that support a cutoff (`orders`, `products`):
+        `Y-m-d` date or `null`. Entries for other entities are ignored.
+
+
+        Returns the updated IntegrationInstanceResource, including `sync_controls`,
+        `applicable_sync_capabilities`, and `is_sync_schedule_paused`.
+
+
+        Accounting integrations are rejected with 400 — they use the separate accounting
+        sync configuration.'
+      requestBody:
+        content:
+          '*/*':
+            schema:
+              type: string
+              example: '"{\n  \"schedule_state\": \"active\",\n  \"capabilities\":
+                {\n    \"inbound\": {\n      \"orders\": true,\n      \"products\":
+                true\n    },\n    \"outbound\": {\n      \"tracking\": true,\n      \"inventory\":
+                true,\n      \"pricing\": false\n    }\n  },\n  \"source_of_truth\":
+                {\n    \"inventory\": \"sku\",\n    \"pricing\": \"channel\"\n  },\n  \"start_dates\":
+                {\n    \"orders\": \"2026-01-01\",\n    \"products\": null\n  }\n}"'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  integration_id: 3
+                  name: My Shopify Store
+                  connection_status: connected
+                  is_automatic_sync_enabled: true
+                  sync_status: active
+                  sync_controls:
+                    schedule_state: active
+                    capabilities:
+                      inbound:
+                        orders: true
+                        products: true
+                      outbound:
+                        tracking: true
+                        inventory: true
+                        pricing: false
+                    source_of_truth:
+                      inventory: sku
+                      pricing: channel
+                    start_dates:
+                      orders: '2026-01-01'
+                      products: null
+                  applicable_sync_capabilities:
+                    inbound:
+                    - entity: orders
+                      label: Orders
+                      capability_label: Import Orders
+                      is_bidirectional: false
+                      supports_start_date: true
+                    - entity: products
+                      label: Products
+                      capability_label: Import Products
+                      is_bidirectional: false
+                      supports_start_date: true
+                    outbound:
+                    - entity: tracking
+                      label: Tracking
+                      capability_label: Submit Tracking
+                      is_bidirectional: false
+                      supports_start_date: false
+                    - entity: inventory
+                      label: Inventory
+                      capability_label: Push Inventory
+                      is_bidirectional: true
+                      supports_start_date: false
+                    - entity: pricing
+                      label: Pricing
+                      capability_label: Push Pricing
+                      is_bidirectional: true
+                      supports_start_date: false
+                  is_sync_schedule_paused: false
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Accounting integrations use a separate sync configuration.
+                errors:
+                  integration_instance:
+                  - Accounting integrations use a separate sync configuration.
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: The schedule state must be active or paused.
+                errors:
+                  schedule_state:
+                  - The schedule state must be active or paused.
+      operationId: patch-api-integration-instances-integration-instance-sync-controls
+  /api/integration-instances/{integration_instance}/sync-controls/pause:
+    post:
+      tags:
+      - Integration Instances
+      summary: Pause Sync Schedule
+      description: 'Pause the integration instance''s automatic sync schedule (SKU-8131).
+        Sets `schedule_state` to `paused`, which short-circuits all scheduled inbound
+        pulls, inbound webhook processing, and outbound submissions, and flips the
+        derived `is_automatic_sync_enabled` flag to false. Per-capability toggles
+        are preserved so resuming restores the prior configuration.
+
+
+        Authentication: Requires Bearer token + `integrations.update` permission.
+
+
+        No request body. Returns the updated IntegrationInstanceResource.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  integration_id: 3
+                  name: My Shopify Store
+                  connection_status: connected
+                  is_automatic_sync_enabled: false
+                  sync_status: active
+                  sync_controls:
+                    schedule_state: paused
+                    capabilities:
+                      inbound:
+                        orders: true
+                        products: true
+                      outbound:
+                        tracking: true
+                        inventory: true
+                        pricing: false
+                    source_of_truth:
+                      inventory: sku
+                      pricing: channel
+                    start_dates:
+                      orders: '2026-01-01'
+                      products: null
+                  applicable_sync_capabilities:
+                    inbound:
+                    - entity: orders
+                      label: Orders
+                      capability_label: Import Orders
+                      is_bidirectional: false
+                      supports_start_date: true
+                    - entity: products
+                      label: Products
+                      capability_label: Import Products
+                      is_bidirectional: false
+                      supports_start_date: true
+                    outbound:
+                    - entity: tracking
+                      label: Tracking
+                      capability_label: Submit Tracking
+                      is_bidirectional: false
+                      supports_start_date: false
+                    - entity: inventory
+                      label: Inventory
+                      capability_label: Push Inventory
+                      is_bidirectional: true
+                      supports_start_date: false
+                    - entity: pricing
+                      label: Pricing
+                      capability_label: Push Pricing
+                      is_bidirectional: true
+                      supports_start_date: false
+                  is_sync_schedule_paused: true
+      operationId: post-api-integration-instances-integration-instance-sync-controls-pause
+  /api/integration-instances/{integration_instance}/sync-controls/resume:
+    post:
+      tags:
+      - Integration Instances
+      summary: Resume Sync Schedule
+      description: 'Resume the integration instance''s automatic sync schedule (SKU-8131).
+        Sets `schedule_state` to `active`, re-enabling scheduled sync and flipping
+        the derived `is_automatic_sync_enabled` flag back to true. Per-capability
+        toggles set before pausing are restored unchanged.
+
+
+        Authentication: Requires Bearer token + `integrations.update` permission.
+
+
+        No request body. Returns the updated IntegrationInstanceResource.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 12
+                  integration_id: 3
+                  name: My Shopify Store
+                  connection_status: connected
+                  is_automatic_sync_enabled: true
+                  sync_status: active
+                  sync_controls:
+                    schedule_state: active
+                    capabilities:
+                      inbound:
+                        orders: true
+                        products: true
+                      outbound:
+                        tracking: true
+                        inventory: true
+                        pricing: false
+                    source_of_truth:
+                      inventory: sku
+                      pricing: channel
+                    start_dates:
+                      orders: '2026-01-01'
+                      products: null
+                  applicable_sync_capabilities:
+                    inbound:
+                    - entity: orders
+                      label: Orders
+                      capability_label: Import Orders
+                      is_bidirectional: false
+                      supports_start_date: true
+                    - entity: products
+                      label: Products
+                      capability_label: Import Products
+                      is_bidirectional: false
+                      supports_start_date: true
+                    outbound:
+                    - entity: tracking
+                      label: Tracking
+                      capability_label: Submit Tracking
+                      is_bidirectional: false
+                      supports_start_date: false
+                    - entity: inventory
+                      label: Inventory
+                      capability_label: Push Inventory
+                      is_bidirectional: true
+                      supports_start_date: false
+                    - entity: pricing
+                      label: Pricing
+                      capability_label: Push Pricing
+                      is_bidirectional: true
+                      supports_start_date: false
+                  is_sync_schedule_paused: false
+      operationId: post-api-integration-instances-integration-instance-sync-controls-resume
   /api/integration-instances/{integration_instance}/magento/stores:
     get:
       tags:
