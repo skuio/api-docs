@@ -67,8 +67,9 @@ management / ERP platform for multichannel ecommerce brands).
 - Error catalog: `https://developer.sku.io/errors.json` — every status with
   body shapes, stable codes, and retry guidance.
 - Webhook event catalog: `https://developer.sku.io/webhooks/events.json`.
-- MCP server (search_docs / fetch_doc / get_openapi): see
-  `https://github.com/skuio/api-docs/tree/main/mcp`.
+- MCP server (search_docs / fetch_doc / get_openapi):
+  `claude mcp add skuio-docs -- npx -y @skuio/docs-mcp`
+  (published as https://www.npmjs.com/package/@skuio/docs-mcp).
 
 ## More
 
