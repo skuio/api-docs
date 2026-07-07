@@ -62289,7 +62289,10 @@ paths:
         and `source_id` so the UI can deep-link the source to its detail page, plus
         `draft_id` for linked plans (deep-link into the in-app workflow). The response
         also carries `status_counts` (per-Amazon-status totals powering the metric
-        cards) and `unfiltered_total` (the tab's total ignoring filters).
+        cards) and `unfiltered_total` (the tab's total ignoring filters). Linked rows
+        also expose `created_by_user_id` / `created_by` — the user who created the
+        draft in-app (null for unlinked / Seller Central plans and drafts that predate
+        creator tracking).
       parameters:
       - name: Accept
         in: header
@@ -62336,6 +62339,8 @@ paths:
                   draft_id: 65
                   draft_status: submitted_to_amazon
                   draft_status_label: Submitted To Amazon
+                  created_by_user_id: 7
+                  created_by: Jane Smith
                   lastUpdatedAt: '2026-06-14T18:22:00Z'
                   createdAt: '2026-06-10T12:00:00Z'
                   created_at: '2026-06-10T12:00:00.000000Z'
@@ -62355,6 +62360,8 @@ paths:
                   draft_id: null
                   draft_status: null
                   draft_status_label: null
+                  created_by_user_id: null
+                  created_by: null
                   lastUpdatedAt: '2026-05-30T09:10:00Z'
                   createdAt: '2026-05-28T08:00:00Z'
                   created_at: '2026-05-28T08:00:00.000000Z'
@@ -63891,15 +63898,28 @@ paths:
         — no bearer auth (`tenant.public-portal` middleware). Returns the full portal
         payload the 3PL sees: shipment reference + FBA id, source, the destination
         fulfillment center (`destination_fc`) and its **full destination address**
-        (`destination_address`, Amazon SP-API camelCase keys), shipping mode / LTL
-        flags, condition-aware `instructions` (markdown), downloadable `documents`,
-        the product catalogue for the box-contents lookup (`products`), the tenant''s
-        saved carton presets (`carton_templates`, read-only), any prior `box_contents_submission`
-        / `pallets_submission`, and the ready-to-ship gate (`can_confirm` / `confirm_blocked_reason`).
+        (`destination_address`, Amazon SP-API camelCase keys — null until Amazon assigns
+        placement), shipping mode / LTL flags, condition-aware `instructions` (markdown,
+        rendered inline by the portal), downloadable `documents`, the product catalogue
+        for the box-contents packing station (`products`), the tenant''s saved carton
+        presets (`carton_templates`), any existing `box_contents_submission` / `pallets_submission`,
+        and the confirm gating (`can_confirm`, `confirm_blocked_reason`).
 
 
-        The same payload shape is returned by the box-contents and pallets submission
-        endpoints.'
+        **`products[]` fields:** each item carries `product_id`, `sku`, `name`, `image_url`,
+        `msku`, `fnsku`, `barcode` (UPC — enables barcode scanning in the portal),
+        `quantity` (required units), and the unit measurements saved on the product
+        record: `weight`, `weight_unit`, `length`, `width`, `height`, `dimension_unit`.
+
+
+        **`documents[]`** lists only genuinely downloadable paperwork (kitting work
+        order, FNSKU/box/pallet labels, BOL once attached). The renderable `instructions`
+        and `box_contents` types are NOT listed — the portal renders instructions
+        inline and collects box contents via its own form.
+
+
+        Every view is audit-logged (portal events). Returns 404 when the token is
+        expired, rotated, or revoked.'
       parameters:
       - name: Accept
         in: header
@@ -63966,10 +63986,15 @@ paths:
                     Pack each SKU into the boxes exactly as listed, label every box,
                     then confirm ready to ship.'
                   documents:
-                  - id: 42
-                    type: box_contents
-                    type_label: Box Contents
-                    stage: packing
+                  - id: 41
+                    type: work_order
+                    type_label: Kitting Work Order
+                    stage: initial
+                    status: ready
+                  - id: 44
+                    type: box_labels
+                    type_label: Box Labels
+                    stage: mid
                     status: ready
                   products:
                   - product_id: 5567
@@ -63978,14 +64003,28 @@ paths:
                     image_url: https://cdn.example.com/img/sku-a.jpg
                     msku: ACME-SKU-A
                     fnsku: X001ABCDEF
+                    barcode: '812345678901'
                     quantity: 24
+                    weight: 1.4
+                    weight_unit: lb
+                    length: 7.3
+                    width: 4.9
+                    height: 2.8
+                    dimension_unit: in
                   - product_id: 5568
                     sku: SKU-B
                     name: Acme Widget - Red
                     image_url: null
                     msku: ACME-SKU-B
                     fnsku: X001GHIJKL
+                    barcode: null
                     quantity: 12
+                    weight: null
+                    weight_unit: null
+                    length: null
+                    width: null
+                    height: null
+                    dimension_unit: null
                   carton_templates:
                   - id: 7
                     name: Standard 12x10x8
@@ -64154,10 +64193,10 @@ paths:
                     Pack each SKU into the boxes exactly as listed, label every box,
                     then confirm ready to ship.'
                   documents:
-                  - id: 42
-                    type: box_contents
-                    type_label: Box Contents
-                    stage: packing
+                  - id: 41
+                    type: work_order
+                    type_label: Kitting Work Order
+                    stage: initial
                     status: ready
                   products:
                   - product_id: 5567
@@ -64167,6 +64206,13 @@ paths:
                     msku: ACME-SKU-A
                     fnsku: X001ABCDEF
                     quantity: 24
+                    barcode: null
+                    weight: null
+                    weight_unit: null
+                    length: null
+                    width: null
+                    height: null
+                    dimension_unit: null
                   - product_id: 5568
                     sku: SKU-B
                     name: Acme Widget - Red
@@ -64174,6 +64220,13 @@ paths:
                     msku: ACME-SKU-B
                     fnsku: X001GHIJKL
                     quantity: 12
+                    barcode: null
+                    weight: null
+                    weight_unit: null
+                    length: null
+                    width: null
+                    height: null
+                    dimension_unit: null
                   carton_templates:
                   - id: 7
                     name: Standard 12x10x8
