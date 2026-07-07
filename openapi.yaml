@@ -199,6 +199,7 @@ tags:
 - name: Applications
 - name: Returns
 - name: WFS
+- name: Dashboard
 - name: Event Catalog
 - name: Reports
 - name: Refunds
@@ -96271,7 +96272,7 @@ paths:
         + orderItems), POSTs it to Walmart (POST /v3/fulfillment/inbound-shipments),
         and persists the shipment(s) Walmart returns — Walmart may split one inbound
         order across fulfillment centers, so `data` is an array. Typically driven
-        from the WFS Replenishment grid''s cart ("Send to WFS").
+        from the inbound builder or the WFS Replenishment grid''s cart ("Send to WFS").
 
 
         Request body:
@@ -96286,6 +96287,26 @@ paths:
         - items (required, array, min 1) — each: { sku (required string), quantity
         (required integer >= 1) }.
 
+        - items[].packing_type (optional, ''individual'' | ''case_packed'', default
+        ''individual'') — Seller Center''s "Packing setup". Individual: each outer
+        box holds one sellable unit. Case-packed: master cases of N units.
+
+        - items[].units_per_case (optional, integer >= 1, default 1) — sellable units
+        per master case (Walmart''s innerPackQty). Only meaningful for case_packed;
+        quantity MUST divide evenly into cases (422 otherwise). SKU.io maps vendorPackQty
+        = quantity / units_per_case (the case count).
+
+        - items[].prep_services (optional, array of ''LABEL'' | ''BAG'') — WFS Prep
+        Services Walmart performs on receipt, sent as the order item''s addOnServices.
+        LABEL = item labeling ($0.45/unit), BAG = poly bagging ($0.60/unit) — billed
+        by Walmart off its fixed rate card (the API carries no price field). Omit
+        (or send []) for "Do it myself". Prep and packing are LOCKED once the IO is
+        submitted — changing them means cancelling and recreating the inbound.
+
+        - items[].kit_fulfillment_mode (optional): for kit/bundle SKUs — ''kit_stock''
+        (ship pre-built) or ''components'' (assemble from components at the source;
+        the build is deferred until the 3PL confirms ''Kits Built'').
+
         - expected_delivery_date (optional, date Y-m-d, must be today or later) —
         when the stock is expected to reach Walmart''s fulfillment center. Walmart
         requires a non-null estimate; when omitted SKU.io defaults it to 7 days out
@@ -96294,17 +96315,12 @@ paths:
 
         Notes on the Walmart payload SKU.io builds: returnAddress.countryCode is sent
         as a 2-letter uppercase code (e.g. US), and per Walmart each item''s itemQty
-        must equal vendorPackQty × innerPackQty, so loose eaches ship as a single
-        vendor pack of `quantity` (innerPackQty 1).
+        must equal vendorPackQty × innerPackQty — individually packed items ship with
+        innerPackQty 1, case-packed items with innerPackQty = units_per_case.
 
 
         Each SKU must have a GTIN/UPC; a SKU without one is rejected (422) before
-        any call to Walmart. Requires a Bearer token.
-
-
-        items[].kit_fulfillment_mode (optional): for kit/bundle SKUs — ''kit_stock''
-        (ship pre-built) or ''components'' (assemble from components at the source;
-        the build is deferred until the 3PL confirms ''Kits Built'').'
+        any call to Walmart. Requires a Bearer token.'
       requestBody:
         content:
           application/json:
@@ -96314,7 +96330,12 @@ paths:
                 source_warehouse_id: 8
                 items:
                 - sku: ABC-001
-                  quantity: 20
+                  quantity: 24
+                  packing_type: case_packed
+                  units_per_case: 6
+                  prep_services:
+                  - LABEL
+                  - BAG
                 - sku: KIT-1
                   quantity: 4
                   kit_fulfillment_mode: components
@@ -96401,6 +96422,14 @@ paths:
                     message: 'Failed to create WFS inbound shipment: SKU ABC-009 is
                       missing a GTIN/UPC, which Walmart requires to create a WFS inbound
                       shipment.'
+                example-2:
+                  summary: 422 Invalid case pack
+                  value:
+                    message: Total units (25) must divide evenly into master cases
+                      of 6.
+                    errors:
+                      items.0.units_per_case:
+                      - Total units (25) must divide evenly into master cases of 6.
       operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments
   /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}:
     get:
@@ -96594,20 +96623,31 @@ paths:
 
 
         Validation errors return 422; a Walmart-side rejection also returns 422 with
-        the failure reason. Requires a Bearer token.'
+        the failure reason. Requires a Bearer token.
+
+
+        Accepts the same body as Create WFS Inbound Shipment, including the per-item
+        packing_type / units_per_case / prep_services fields (see that endpoint for
+        field semantics).'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               example:
-                source_warehouse_id: 12
-                expected_delivery_date: '2026-06-30'
+                source_warehouse_id: 8
                 items:
                 - sku: ABC-001
-                  quantity: 20
-                - sku: ABC-002
-                  quantity: 10
+                  quantity: 24
+                  packing_type: case_packed
+                  units_per_case: 6
+                  prep_services:
+                  - LABEL
+                  - BAG
+                - sku: KIT-1
+                  quantity: 4
+                  kit_fulfillment_mode: components
+                expected_delivery_date: 06/30/2026
       parameters:
       - name: Accept
         in: header
@@ -202611,6 +202651,279 @@ paths:
                 prev_page_url: null
                 path: '{{base_url}}/api/walmart/1/wfs/replenishment/candidates'
       operationId: get-api-walmart-integrationinstance-wfs-replenishment-candidates
+  /api/walmart/{integrationInstance}/wfs/inbound-products/recommendations:
+    get:
+      tags:
+      - WFS
+      summary: WFS Recommended Items
+      description: 'Walmart''s WFS restock recommendations for the inbound builder''s
+        "Recommended items" modal — items running low at WFS with days of supply,
+        stock status, and Walmart''s suggested send quantities, joined to the local
+        product (product_id) so a recommendation can be added straight to the cart.
+
+
+        Proxies Walmart''s GET /v3/wfs/recommendation/restock with showInsights=true
+        (no caching). Returns an empty data array when Walmart has no recommendations.
+        A Walmart API failure returns 422 with a message.
+
+
+        Response fields per item: sku, gtin, item_name, brand, stock_status (e.g.
+        ''At Risk''), days_of_supply, suggested_units, forecasted_sales_lift, customer_favorite,
+        product_id (local product id or null).
+
+
+        Requires a Bearer token.'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - sku: ABC-001
+                  gtin: 00894147009695
+                  item_name: Charlie Banana Baby Washable Diaper
+                  brand: Charlie Banana
+                  stock_status: At Risk
+                  days_of_supply: 9
+                  suggested_units: 40
+                  forecasted_sales_lift: 120.5
+                  customer_favorite: true
+                  product_id: 512
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to load recommended items: Walmart WFS restock recommendations
+                  fetch failed (HTTP 500)'
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-products-recommendations
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/item-labels:
+    post:
+      tags:
+      - WFS
+      summary: Print WFS GTIN Item Labels (shipment)
+      description: 'Render printable GTIN item labels (PDF) for a WFS inbound shipment''s
+        lines — the detail page''s "Item labels" print-all. Defaults to ONE LABEL
+        PER UNIT of every intent line when the body is empty; pass items to override
+        per-SKU label counts (per-row printing).
+
+
+        Request body (all optional):
+
+        - items (array, 1–500) — each: { sku (required string), quantity (required
+        integer 1–3000) }. Omit to print every line at its full quantity.
+
+        - format: ''letter_30'' (default) or ''thermal_2_25x1_25''.
+
+
+        404 when the shipment belongs to another integration instance; 422 when the
+        shipment has no lines (e.g. synced from Walmart without local intent lines)
+        or a SKU lacks a GTIN/UPC. Response is the raw PDF (application/pdf). See
+        the ad-hoc variant for label/symbology details. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                items:
+                - sku: ABC-001
+                  quantity: 12
+                format: thermal_2_25x1_25
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: SKU.io WFS inbound shipment ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/pdf
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="wfs-item-labels-0066618GDM.pdf"
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '%PDF-1.4 … (binary PDF stream — the generated GTIN label sheet)'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: This shipment has no lines to print labels for.
+      operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-item-labels
+  /api/walmart/{integrationInstance}/wfs/item-labels:
+    post:
+      tags:
+      - WFS
+      summary: Print WFS GTIN Item Labels (ad-hoc)
+      description: 'Render printable GTIN item labels (PDF) for arbitrary WFS-bound
+        SKUs — the inbound builder''s per-row "Print GTIN label". Walmart exposes
+        NO item-label API (Seller Center only), but WFS item labels are plain GTIN-14
+        / UPC-12 barcodes (no FNSKU-style Walmart identifier), so SKU.io renders the
+        PDF locally from the listing''s GTIN/UPC (fallback UPC → product barcode),
+        mirroring the Amazon FBA item-label UX.
+
+
+        Request body:
+
+        - items (required, array, 1–500) — each: { sku (required string), quantity
+        (required integer 1–3000) — number of labels to print for that SKU }.
+
+        - format (optional): ''letter_30'' (default — Avery-5160-style letter sheet,
+        30 labels of 2⅝" × 1") or ''thermal_2_25x1_25'' (one 2¼" × 1¼" label per page).
+
+
+        Hard cap 3,000 labels per render. Barcode symbology is chosen by code length
+        (12 → UPC-A, 13 → EAN-13, 14 → ITF-14, else Code 128). Each label shows product
+        name, barcode, the numeric GTIN/UPC, and the SKU.
+
+
+        Response is the raw PDF (Content-Type: application/pdf, attachment). A SKU
+        without a GTIN/UPC returns 422 before any rendering. Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                items:
+                - sku: ABC-001
+                  quantity: 24
+                format: letter_30
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Content-Type
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/pdf
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="wfs-item-labels.pdf"
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: '%PDF-1.4 … (binary PDF stream — the generated GTIN label sheet)'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: 'Failed to generate GTIN labels: SKU NO-GTIN has no GTIN/UPC
+                  on its Walmart listing or product record, so a GTIN label can''t
+                  be printed.'
+      operationId: post-api-walmart-integrationinstance-wfs-item-labels
   /api/walmart/{integrationInstance}/wfs/inventory/log:
     get:
       tags:
@@ -203217,6 +203530,54 @@ paths:
                 error: Could not resolve a Walmart integration instance for this webhook.
       security: []
       operationId: post-webhooks-walmart-webhook-token
+  /api/walmart/dashboard:
+    get:
+      tags:
+      - Dashboard
+      summary: Get Walmart Dashboard Metrics
+      description: 'Get aggregated dashboard metrics across all Walmart integration
+        instances.
+
+
+        Returns order counts, revenue metrics, and sync status per instance.
+
+
+        Period validation: Must be one of today, 7d, or 30d. Invalid values return
+        a 422 error.
+
+
+        Route name: walmart.dashboard'
+      parameters:
+      - name: Accept
+        in: header
+        schema:
+          type: string
+        example: application/json
+      - name: Authorization
+        in: header
+        schema:
+          type: string
+        example: Bearer {{token}}
+      - name: integration_instance_ids
+        in: query
+        schema:
+          type: string
+        description: Optional. Comma-separated list of integration instance IDs to
+          filter by. Omit for all instances.
+        example: 1,2
+      - name: period
+        in: query
+        schema:
+          type: string
+        description: 'Optional. Time period filter. Valid values: today, 7d, 30d.
+          Returns 422 for invalid values.'
+        example: 7d
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+      operationId: get-api-walmart-dashboard
   /api/webhook-events:
     get:
       tags:
@@ -204715,3 +205076,4 @@ x-tagGroups:
   - Subscriptions
   - Getting Started
   - Report Templates
+  - Dashboard
