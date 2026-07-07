@@ -270972,6 +270972,270 @@ paths:
         '404': *id004
       x-required-scope: orders:read
       operationId: get-api-fulfillment-orders-fulfillmentorder-merge-candidates
+  /api/fulfillment-orders/{fulfillmentOrder}/post-submission-merge-candidates:
+    get:
+      tags:
+      - Fulfillment Orders
+      summary: List Post-Submission Merge Candidates
+      description: "Returns sibling fulfillment orders on OTHER sales orders that\
+        \ this ALREADY-DISPATCHED fulfillment order could still be merged with at\
+        \ the shipping provider (post-submission cross-order merge). Same customer/address/warehouse/provider\
+        \ consensus as the pre-dispatch merge candidates, but for the window after\
+        \ auto-dispatch has already sent the orders to the provider.\n\n**Eligibility**\
+        \ — a candidate is included only if it (and the anchor):\n- Is `status=open`\
+        \ and `request_status` in {`submitted`, `accepted`, `acknowledged`} (handed\
+        \ to the provider, awaiting tracking).\n- Belongs to a sales order that is\
+        \ NOT cancelled.\n- Is at the SAME warehouse, resolves to the SAME provider\
+        \ type + requested integration instance, and is NOT FBA-routed.\n- Ships to\
+        \ the SAME shipping-address signature as the anchor, and is on a DIFFERENT\
+        \ sales order (ungrouped or already in the anchor's merge group).\n\nIf the\
+        \ anchor is itself ineligible (not in the post-submission window, FBA, cancelled\
+        \ order, or no shipping address) an empty list is returned.\n\n**Response\
+        \ shape** — `data[]` is an array of merge candidates. Same fields as the pre-dispatch\
+        \ merge candidates, plus a provider-side verdict:\n- `provider_eligibility`\
+        \ (object) — whether the candidate can still be cancelled/merged at its provider:\n\
+        \  - `eligible` (bool) — `false` when the provider order has already shipped\
+        \ or been cancelled.\n  - `reason` (string | null) — human-facing explanation\
+        \ shown when ineligible.\n  - `requires_label_void` (bool) — `true` when a\
+        \ shipping label must be voided before the order becomes mutable again.\n\n\
+        This is a conservative list-level read of each candidate's locally-synced\
+        \ provider order; the precise, live per-provider \"too far gone\" check runs\
+        \ immediately before the merge is executed."
+      parameters:
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Anchor FulfillmentOrder ID — the already-dispatched FO to find
+          post-submission merge candidates for.
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - fulfillment_order_id: 462
+                  sales_order_id: 1055
+                  sales_order_number: SO-1055
+                  customer_name: Acme Retail
+                  integration_instance_name: Shopify — Main Store
+                  integration_instance_id: 12
+                  line_count: 2
+                  total_quantity: 5
+                  requested_shipping_method: Standard
+                  integration_matches_anchor: true
+                  already_in_group: false
+                  ship_by_date: '2026-07-09T00:00:00.000000Z'
+                  hold_until_date: null
+                  deliver_by_date: null
+                  provider_eligibility:
+                    eligible: true
+                    reason: null
+                    requires_label_void: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-fulfillment-orders-fulfillmentorder-post-submission-merge-candidates
+  /api/fulfillment-orders/merge-provider/preflight:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Preflight Post-Submission Merge
+      description: 'Returns the read-only PLAN for merging two or more already-dispatched
+        fulfillment orders into one provider order (post-submission cross-order merge).
+        No provider call and no data is changed — this is the plan the operator confirms
+        before the merge runs.
+
+
+        **Body**
+
+        - `fulfillment_order_ids` (int[], required, min 2) — the already-dispatched
+        fulfillment orders to merge.
+
+        - `primary_fulfillment_order_id` (int, optional) — the order to keep as the
+        master (it receives the others'' lines). Defaults to the order with the most
+        lines.
+
+
+        **Response** — a plan object:
+
+        - `primary_fulfillment_order_id` (int) — the master.
+
+        - `provider` (string | null) — the resolved shipping provider.
+
+        - `warehouse_id` (int | null).
+
+        - `can_execute` (bool) — true only when there are no blockers and at least
+        two eligible members (including the master).
+
+        - `blockers` (string[]) — whole-plan problems (different warehouses, providers,
+        or addresses) that no per-order exclusion can fix.
+
+        - `members[]` — one per order: `fulfillment_order_id`, `sales_order_id`, `sales_order_number`,
+        `role` (`master` | `absorbed`), `action` (`receive_lines` | `cancel`), `line_count`,
+        `eligible` (bool), `reason` (string | null), `requires_label_void` (bool),
+        `provider_order_reference` (string | null), `provider_status` (string | null).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                fulfillment_order_ids:
+                - 451
+                - 462
+                primary_fulfillment_order_id: 451
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  primary_fulfillment_order_id: 451
+                  provider: shipstation
+                  warehouse_id: 7
+                  can_execute: true
+                  blockers: []
+                  members:
+                  - fulfillment_order_id: 451
+                    sales_order_id: 1042
+                    sales_order_number: SO-1042
+                    role: master
+                    action: receive_lines
+                    line_count: 3
+                    eligible: true
+                    reason: null
+                    requires_label_void: false
+                    provider_order_reference: SO-1042
+                    provider_status: Awaiting Shipment
+                  - fulfillment_order_id: 462
+                    sales_order_id: 1055
+                    sales_order_number: SO-1055
+                    role: absorbed
+                    action: cancel
+                    line_count: 2
+                    eligible: true
+                    reason: null
+                    requires_label_void: false
+                    provider_order_reference: SO-1055
+                    provider_status: Awaiting Shipment
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Select at least two fulfillment orders to merge.
+                errors:
+                  fulfillment_order_ids:
+                  - Select at least two fulfillment orders to merge.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-fulfillment-orders-merge-provider-preflight
+  /api/fulfillment-orders/merge-provider/execute:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Execute Post-Submission Merge
+      description: 'Runs a post-submission cross-order merge for already-dispatched
+        fulfillment orders. The plan is re-validated first; if it can still run, a
+        background job cancels the absorbed orders at the shipping provider, adds
+        their items to the master order, and then records the merge in SKU (each sales
+        order keeps its own tracking). Returns a job handle to track progress.
+
+
+        **Body**
+
+        - `fulfillment_order_ids` (int[], required, min 2) — the orders to merge.
+
+        - `primary_fulfillment_order_id` (int, required) — the order that survives
+        as the master (it receives the others'' items).
+
+        - `acknowledge_label_voids` (bool, optional) — set true to confirm any labels
+        that must be voided first.
+
+
+        **Responses**
+
+        - `202 Accepted` — `data.tracked_job_log_id` to poll/subscribe on.
+
+        - `422` — the merge can''t run; `blockers` lists why.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                fulfillment_order_ids:
+                - 451
+                - 462
+                primary_fulfillment_order_id: 451
+                acknowledge_label_voids: false
+      parameters: []
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  tracked_job_log_id: 90321
+                message: Merge started
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                error: This merge can’t run yet — resolve the highlighted issues and
+                  try again.
+                blockers:
+                - Fulfillment orders must ship to the same address to be merged into
+                  one shipment.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-fulfillment-orders-merge-provider-execute
   /api/fulfillment-orders/{fulfillmentOrder}/merge:
     post:
       tags:
