@@ -1,0 +1,107 @@
+{
+  "description": "Machine-readable catalog of SKU.io API error responses. Two body shapes exist: 'plain' ({message, ...extras}) used by middleware and newer endpoints, and 'envelope' ({errors: {key: [{message, code, data}]}, status: 'failure', message}) used by most core endpoints. In the envelope, `code` is the stable machine-readable identifier; `message` may change.",
+  "docs_url": "https://developer.sku.io/docs/guides/errors",
+  "quirks": [
+    "Endpoints using the envelope return HTTP 200 for all successes, including creates — check the body's `status` field, not just the HTTP status.",
+    "HTTP 299 ('OK With Warning') is used by some envelope endpoints for partial successes."
+  ],
+  "statuses": {
+    "401": {
+      "meaning": "Missing, revoked, expired, or malformed token — or the Bearer prefix was omitted.",
+      "shapes": [
+        { "shape": "plain", "example": { "message": "Unauthenticated." } },
+        {
+          "shape": "envelope",
+          "example": {
+            "errors": { "token": [{ "message": "Unauthorized", "code": "Unauthorized", "data": [] }] },
+            "status": "failure",
+            "message": "Unauthorized"
+          }
+        }
+      ],
+      "retry": "Never retry automatically; fix the credential."
+    },
+    "403": {
+      "meaning": "Authenticated but not allowed. Three distinct bodies exist.",
+      "shapes": [
+        {
+          "shape": "plain",
+          "case": "token missing a scope",
+          "example": { "message": "Token is missing the required scope: orders:write", "required_scope": "orders:write" },
+          "resolution": "A human must edit the token's scopes in Settings → Developer → Personal Access Tokens."
+        },
+        {
+          "shape": "plain",
+          "case": "endpoint not exposed to API tokens at all",
+          "example": { "message": "This endpoint is not available to API tokens." },
+          "resolution": "The endpoint is session-only; there is no scope that unlocks it."
+        },
+        {
+          "shape": "envelope",
+          "case": "user behind the token lacks the app permission",
+          "example": {
+            "errors": { "user": [{ "message": "This action is unauthorized for you.", "code": "Forbidden", "data": [] }] },
+            "status": "failure",
+            "message": "This action is unauthorized for you."
+          },
+          "resolution": "Grant the user the permission in SKU.io role settings."
+        }
+      ],
+      "retry": "Never retry automatically."
+    },
+    "404": {
+      "meaning": "Route or record not found. Envelope key is `url` for unknown routes, or the model class name for missing records.",
+      "shapes": [
+        {
+          "shape": "envelope",
+          "example": {
+            "errors": { "url": [{ "message": "Not found", "code": "NotFound", "data": [] }] },
+            "status": "failure",
+            "message": "Not found"
+          }
+        }
+      ],
+      "retry": "Do not retry; verify the ID and path."
+    },
+    "422": {
+      "meaning": "Validation failed.",
+      "shapes": [
+        {
+          "shape": "plain",
+          "case": "Laravel validation",
+          "example": {
+            "message": "The given data was invalid.",
+            "errors": { "field_name": ["The field name is required."] }
+          }
+        },
+        {
+          "shape": "envelope",
+          "case": "domain validation with stable codes",
+          "example": {
+            "errors": { "customer": [{ "message": "Customer already exists", "code": "CustomerExists", "data": [] }] },
+            "status": "failure",
+            "message": "Customer already exists"
+          }
+        }
+      ],
+      "retry": "Fix the payload and resubmit.",
+      "known_codes": ["CustomerExists", "IsLocked", "NotFound", "Forbidden", "Unauthorized"]
+    },
+    "429": {
+      "meaning": "Rate limit exceeded. Platform limit is 1,000 requests/min; individual tokens may carry lower per-token limits; a few heavy endpoints have 30–60/min route limits.",
+      "shapes": [
+        {
+          "shape": "plain",
+          "example": { "message": "Token rate limit exceeded.", "retry_after_seconds": 42 }
+        }
+      ],
+      "headers": ["Retry-After"],
+      "retry": "Wait for Retry-After seconds, then retry with backoff."
+    },
+    "500": {
+      "meaning": "Server error.",
+      "shapes": [{ "shape": "plain", "example": { "message": "Server Error" } }],
+      "retry": "Safe to retry idempotent reads with backoff; do not blind-retry writes."
+    }
+  }
+}

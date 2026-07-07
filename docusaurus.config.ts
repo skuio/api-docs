@@ -35,7 +35,7 @@ const config: Config = {
     apiOperationCount,
   },
 
-  onBrokenLinks: "warn",
+  onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
 
   i18n: {
@@ -67,8 +67,49 @@ const config: Config = {
     // release-notes screenshots. Without this, images render at their column
     // width with no way to enlarge them.
     "docusaurus-plugin-image-zoom",
-    // Serves the merged spec at /openapi.yaml (postBuild copy from repo root,
-    // where the skuio/sku publish workflow keeps it current).
+    // .md twins of every built page (developer.sku.io/docs/foo.md) so AI
+    // agents can fetch clean markdown instead of parsing the HTML shell.
+    // Ordered BEFORE publish-openapi: that plugin's postBuild restores the
+    // hand-curated static/llms.txt if this one overwrites it.
+    [
+      "@signalwire/docusaurus-plugin-llms-txt",
+      {
+        runOnPostBuild: true,
+        onRouteError: "warn",
+        siteTitle: "SKU.io API Documentation",
+        content: {
+          enableMarkdownFiles: true,
+          enableLlmsFullTxt: false,
+          relativePaths: false,
+          includeDocs: true,
+          includeBlog: false,
+          includePages: false,
+        },
+      },
+    ],
+    // The 2026-07 path canonicalization renamed every operation slug that
+    // carried Postman host-variable leakage: get-domain-api-x → get-api-x.
+    // Emit redirects from the old slugs so pre-cleanup deep links survive.
+    [
+      "@docusaurus/plugin-client-redirects",
+      {
+        createRedirects(existingPath: string) {
+          const m = existingPath.match(
+            /^\/docs\/api\/(get|post|put|patch|delete|head|options)-(api-.+)$/
+          );
+          if (m) {
+            return [
+              `/docs/api/${m[1]}-domain-${m[2]}`,
+              `/docs/api/${m[1]}-protocol-domain-${m[2]}`,
+            ];
+          }
+          return undefined;
+        },
+      },
+    ],
+    // Serves the merged spec at /openapi.yaml plus per-tag chunks under
+    // /openapi/ (postBuild copy/split from the repo-root spec, which the
+    // skuio/sku publish workflow keeps current).
     "./plugins/publish-openapi",
     function webpackFallbackPlugin() {
       return {

@@ -57,6 +57,19 @@ management / ERP platform for multichannel ecommerce brands).
 - Multi-step flows (e.g. create sales order → fulfill → ship) should be
   executed one step at a time with verification reads between steps.
 
+## Machine-readable assets
+
+- Per-domain OpenAPI chunks: `https://developer.sku.io/openapi/index.json`
+  (catalog) → e.g. `/openapi/sales-orders.yaml`, `/openapi/amazon.yaml` —
+  fetch one domain instead of the full 6 MB spec.
+- Markdown twins: append `.md` to any docs URL
+  (e.g. `/docs/guides/quickstart.md`).
+- Error catalog: `https://developer.sku.io/errors.json` — every status with
+  body shapes, stable codes, and retry guidance.
+- Webhook event catalog: `https://developer.sku.io/webhooks/events.json`.
+- MCP server (search_docs / fetch_doc / get_openapi): see
+  `https://github.com/skuio/api-docs/tree/main/mcp`.
+
 ## More
 
 - Curated link index: `https://developer.sku.io/llms.txt`
