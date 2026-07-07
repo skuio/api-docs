@@ -1,0 +1,122 @@
+---
+id: authentication
+title: Authentication
+sidebar_label: Authentication
+slug: /guides/authentication
+---
+
+# Authentication
+
+The SKU.io API authenticates external callers with **Personal Access Tokens (PATs)** — Laravel Sanctum bearer tokens with explicit scopes.
+
+## Base URL
+
+SKU.io is multitenant. Every tenant has its own domain, and the API is served from it:
+
+```
+https://{tenant}.sku.io/api
+```
+
+Your token belongs to your user account on your tenant. Calling another tenant's domain with it will not work.
+
+## Creating a token
+
+Tokens are created in the web app:
+
+1. **Settings → Developer → Personal Access Tokens**
+2. **Create Token** — choose a name, scopes, and (optionally) an expiry, an IP allowlist, and a per-token rate limit.
+3. Copy the plaintext token from the create dialog. **It is shown once and never again** — only a hash is stored.
+
+A token looks like:
+
+```
+142|hZk3vX9pQ7WmT2sLxCbNvA8dRfGjK4eYuI6oP1zq
+```
+
+Token management is deliberately session-only: **a PAT cannot be used to create, list, or revoke PATs.** A leaked token can't mint more tokens. Each user can hold at most 50 active PATs.
+
+## Sending the token
+
+Include it as a Bearer token on every request, and ask for JSON:
+
+```bash
+curl "https://acme.sku.io/api/v2/products" \
+  -H "Authorization: Bearer 142|hZk3vX9pQ7WmT2sLxCbNvA8dRfGjK4eYuI6oP1zq" \
+  -H "Accept: application/json"
+```
+
+## Scopes
+
+Tokens carry an explicit list of scopes, named `{resource}:{action}`:
+
+| Scope | Grants |
+|-------|--------|
+| `orders:read` | View sales orders and order lines |
+| `orders:write` | Create, update, and cancel sales orders |
+| `products:read` | View products, SKUs, and variants |
+| `products:write` | Create and update products |
+| `inventory:read` | View stock levels, allocations, and reorder points |
+| `inventory:write` | Adjust inventory, transfer stock, and reconcile counts |
+| `customers:read` | View customers |
+| `customers:write` | Create and update customers |
+| `suppliers:read` | View suppliers |
+| `suppliers:write` | Create and update suppliers |
+| `purchase-orders:read` | View purchase orders |
+| `purchase-orders:write` | Create, update, and approve purchase orders |
+| `warehouses:read` | View warehouses and locations |
+| `reports:read` | View reports and analytics |
+| `webhooks:manage` | Create and delete webhook subscriptions |
+
+How scopes are applied:
+
+- Endpoints under a resource require `{resource}:read` for `GET`/`HEAD` requests and `{resource}:write` for `POST`/`PUT`/`PATCH`/`DELETE`.
+- **PATs are deny-by-default.** Endpoints that haven't been opened to the token scope system reject PATs outright with `403` — `"This endpoint is not available to API tokens."` The API reference and these guides only describe token-accessible surface; if you hit that error on an endpoint you need, contact support.
+- Scopes do not bypass user permissions. A token acts *as you* — if your user role can't delete products, neither can your token, even with `products:write`.
+
+Missing scope response (`403 Forbidden`):
+
+```json
+{
+  "message": "Token is missing the required scope: orders:read",
+  "required_scope": "orders:read"
+}
+```
+
+## What a 401 looks like
+
+Missing, malformed, expired, or revoked tokens all produce `401 Unauthorized`:
+
+```json
+{
+  "errors": {
+    "token": [
+      {
+        "message": "Unauthorized",
+        "code": "Unauthorized",
+        "data": []
+      }
+    ]
+  },
+  "status": "failure",
+  "message": "Unauthorized"
+}
+```
+
+Treat any 401 as "re-check the credential" — the API does not distinguish expired from revoked.
+
+## Token lifecycle
+
+- **Expiry** — optional, set at creation. The create dialog suggests 90 days; a token created without an expiry never expires. Expired tokens return 401.
+- **Revocation** — delete the token in **Settings → Developer → Personal Access Tokens**. Revocation is immediate.
+- **Editing** — name, scopes, IP allowlist, and rate limit can be changed after creation. Adding a `:write` or `:manage` scope to an existing token requires re-entering your password (and your 2FA code, if enabled).
+- **IP allowlist** — optional CIDR list per token. Requests from other addresses get `403`: `"This token is not permitted from 203.0.113.5."`
+- **Per-token rate limit** — optional requests-per-minute cap per token; see [Rate Limits](/docs/guides/rate-limits).
+- **Usage log** — every token-authenticated request is recorded. Open a token in Developer Settings to see its request history and usage analytics.
+
+## Security recommendations
+
+- Create one token per integration, scoped to exactly what it needs.
+- Prefer read-only scopes wherever possible.
+- Set an expiry and rotate before it lapses.
+- Pin production tokens to your servers' egress IPs with the allowlist.
+- Store tokens in a secrets manager; never commit them.

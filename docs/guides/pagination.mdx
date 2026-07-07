@@ -1,0 +1,91 @@
+---
+id: pagination
+title: Pagination
+sidebar_label: Pagination
+slug: /guides/pagination
+---
+
+# Pagination
+
+List endpoints return standard Laravel page-based pagination. Control it with two query parameters:
+
+| Parameter | Default | Meaning |
+|-----------|---------|---------|
+| `page` | `1` | Page number (1-based) |
+| `per_page` | `10` | Items per page |
+
+```bash
+curl "https://acme.sku.io/api/purchase-invoices?page=2&per_page=25" \
+  -H "Authorization: Bearer $SKU_TOKEN" \
+  -H "Accept: application/json"
+```
+
+## Response shape
+
+Items are in the top-level `data` array; pagination metadata sits alongside it (not nested):
+
+```json
+{
+  "current_page": 2,
+  "data": [
+    {
+      "id": 26,
+      "supplier_invoice_number": "INV-2041",
+      "status": "unpaid",
+      "currency": "USD",
+      "total": 1240.5,
+      "due_date": "2026-08-01",
+      "created_at": "2026-06-20T08:15:42.000000Z"
+    }
+  ],
+  "first_page_url": "https://acme.sku.io/api/purchase-invoices?page=1",
+  "from": 26,
+  "last_page": 8,
+  "last_page_url": "https://acme.sku.io/api/purchase-invoices?page=8",
+  "links": [
+    { "url": "https://acme.sku.io/api/purchase-invoices?page=1", "label": "&laquo; Previous", "active": false },
+    { "url": "https://acme.sku.io/api/purchase-invoices?page=2", "label": "2", "active": true }
+  ],
+  "next_page_url": "https://acme.sku.io/api/purchase-invoices?page=3",
+  "path": "https://acme.sku.io/api/purchase-invoices",
+  "per_page": 25,
+  "prev_page_url": "https://acme.sku.io/api/purchase-invoices?page=1",
+  "to": 50,
+  "total": 187
+}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `data` | The items for this page |
+| `current_page` / `last_page` | Where you are / how many pages exist |
+| `per_page` | Effective page size |
+| `total` | Total matching items across all pages |
+| `from` / `to` | 1-based index range of this page within the total |
+| `next_page_url` / `prev_page_url` | Ready-made URLs (`null` at the ends) |
+
+Some endpoints add extra top-level fields — for example `GET /api/v2/products` includes `unfiltered_total` (the row count before your filters were applied).
+
+## Iterating all pages
+
+Either follow `next_page_url` until it is `null`, or loop `page` from 1 to `last_page`:
+
+```bash
+page=1
+while : ; do
+  resp=$(curl -s "https://acme.sku.io/api/v2/products?per_page=100&page=$page" \
+    -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json")
+  echo "$resp" | jq -r '.data[].sku'
+  next=$(echo "$resp" | jq -r '.next_page_url')
+  [ "$next" = "null" ] && break
+  page=$((page + 1))
+done
+```
+
+Filter, sort, and search parameters are preserved in the generated page URLs, so following `next_page_url` keeps your query intact.
+
+## Practical notes
+
+- **Page size**: most endpoints don't enforce a hard `per_page` maximum. Stay at or below 100 — large pages on wide resources (products with inventory rollups, orders with lines) get slow and increase timeout risk.
+- **Consistency**: pagination is offset-based. If rows are inserted or deleted while you iterate, items can shift between pages. For a stable full export, sort by an immutable key (`sort=id`) and iterate quickly, or use an endpoint's dedicated export where one exists.
+- **Counting**: to size a job cheaply, request `per_page=1` and read `total`.

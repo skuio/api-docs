@@ -1,0 +1,62 @@
+---
+id: rate-limits
+title: Rate Limits
+sidebar_label: Rate Limits
+slug: /guides/rate-limits
+---
+
+# Rate Limits
+
+Three layers of rate limiting can apply to a request. All of them return `429 Too Many Requests` with a `Retry-After` header when exceeded.
+
+## 1. Global platform limit — 1,000 requests/minute
+
+Every `/api` request passes through a global throttle of **1,000 requests per minute**, keyed to your authenticated user (or client IP for unauthenticated requests). All tokens belonging to the same user share this bucket.
+
+Exceeding it returns Laravel's standard throttle response:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 42
+X-RateLimit-Limit: 1000
+X-RateLimit-Remaining: 0
+```
+
+```json
+{ "message": "Too Many Attempts." }
+```
+
+## 2. Per-token limit — optional, you set it
+
+When creating or editing a Personal Access Token you can set a **requests-per-minute cap for that specific token** (Settings → Developer → Personal Access Tokens). Use it to keep one integration from starving the others sharing your user's global bucket.
+
+Exceeding a per-token cap returns a distinct body:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 17
+```
+
+```json
+{
+  "message": "Token rate limit exceeded.",
+  "retry_after_seconds": 17
+}
+```
+
+Tokens without a configured cap are limited only by the global layer.
+
+## 3. Endpoint-specific limits
+
+A handful of expensive or abuse-prone endpoints carry their own tighter throttles (typically 30–60 requests/minute) — for example supplier invoice-request emails and some computation-heavy report actions. These are the exception, not the rule; when you hit one you'll get the same standard 429 shape as the global limit, with `Retry-After` set.
+
+## Handling 429s
+
+- **Always honor `Retry-After`** — it's present on every 429 and tells you exactly how many seconds to wait. (`retry_after_seconds` in the per-token body is the same value.)
+- Add jitter when many workers share a token, so they don't all retry in the same second.
+- Watch `X-RateLimit-Remaining` on throttled routes to slow down *before* hitting the wall.
+- For bulk work (catalog syncs, backfills), prefer larger `per_page` values over more requests, and use [webhooks](/docs/guides/webhooks) instead of polling for changes.
+
+## Practical sizing
+
+1,000 requests/minute is generous for normal integrations — a full 50,000-product catalog sync at `per_page=100` is 500 requests. If you have a sustained workload that genuinely needs more, contact support before building around the limit; limits may be tuned per deployment over time, so treat the numbers here as current defaults rather than a contract.

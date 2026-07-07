@@ -67,6 +67,9 @@ const config: Config = {
     // release-notes screenshots. Without this, images render at their column
     // width with no way to enlarge them.
     "docusaurus-plugin-image-zoom",
+    // Serves the merged spec at /openapi.yaml (postBuild copy from repo root,
+    // where the skuio/sku publish workflow keeps it current).
+    "./plugins/publish-openapi",
     function webpackFallbackPlugin() {
       return {
         name: "webpack-fallback-plugin",
@@ -222,6 +225,11 @@ const config: Config = {
         href: "/",
       },
       items: [
+        {
+          to: "/docs/guides/quickstart",
+          label: "Guides",
+          position: "left",
+        },
         {
           to: "/docs/api/introduction",
           label: "API Reference",

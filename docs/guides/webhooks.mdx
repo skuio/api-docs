@@ -1,0 +1,167 @@
+---
+id: webhooks
+title: Webhooks
+sidebar_label: Webhooks
+slug: /guides/webhooks
+---
+
+# Webhooks
+
+Instead of polling, subscribe to events and SKU.io will `POST` signed JSON to your HTTPS endpoint when they happen.
+
+Managing subscriptions requires the **`webhooks:manage`** scope; subscribing to an event additionally requires that event's read scope (e.g. `orders:read` for `sales_order.created`).
+
+## Event catalog
+
+| Event | Fires when | Required scope |
+|-------|-----------|----------------|
+| `sales_order.created` | A sales order is created (any channel or manual) | `orders:read` |
+| `sales_order.shipped` | A sales order is fully fulfilled / shipped | `orders:read` |
+| `sales_order.cancelled` | A sales order is cancelled (manual or channel-sync) | `orders:read` |
+| `purchase_order.created` | A purchase order is created | `purchase-orders:read` |
+| `purchase_order.approved` | A purchase order is approved | `purchase-orders:read` |
+| `purchase_order.submitted` | A purchase order is submitted to the supplier | `purchase-orders:read` |
+| `purchase_order.received` | Goods are received against a purchase order | `purchase-orders:read` |
+| `inventory.adjusted` | Inventory levels are adjusted (manual or system) | `inventory:read` |
+| `product.created` | A product is created (UI, API, or import) | `products:read` |
+| `customer.created` | A customer is created (manual or first-seen-from-channel) | `customers:read` |
+
+The catalog is also available live, including a real sample payload per event from your own tenant's data:
+
+```bash
+curl "https://acme.sku.io/api/webhook-events" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Up to 3 recent records shaped exactly like the webhook payload:
+curl "https://acme.sku.io/api/webhook-events/sales_order.created/sample" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+## Subscribing
+
+One subscription = one event + one target URL. The target must be **HTTPS** and publicly resolvable (URLs resolving to private/reserved IPs are rejected).
+
+```bash
+curl -X POST "https://acme.sku.io/api/webhook-subscriptions" \
+  -H "Authorization: Bearer $SKU_TOKEN" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "event": "sales_order.created",
+    "target_url": "https://hooks.example.com/skuio/orders"
+  }'
+```
+
+Response (`201 Created`):
+
+```json
+{
+  "data": {
+    "id": 12,
+    "event": "sales_order.created",
+    "target_url": "https://hooks.example.com/skuio/orders",
+    "source": "api",
+    "is_active": true,
+    "failure_count": 0,
+    "disabled_reason": null,
+    "last_delivery_at": null,
+    "last_delivery_status": null,
+    "created_at": "2026-07-06T18:20:00+00:00",
+    "updated_at": "2026-07-06T18:20:00+00:00",
+    "secret": "whsec_4f8a2c91d7e3b5a6f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5"
+  }
+}
+```
+
+**`secret` is returned exactly once**, here — store it; you need it to verify signatures. Creating the same event + URL pair again is idempotent: you get `200` with the existing subscription and **no** secret (delete and re-create if you lost it).
+
+Other subscription operations:
+
+```bash
+# List subscriptions
+curl "https://acme.sku.io/api/webhook-subscriptions" -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Inspect one
+curl "https://acme.sku.io/api/webhook-subscriptions/12" -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Send a test delivery to your endpoint
+curl -X POST "https://acme.sku.io/api/webhook-subscriptions/12/test" -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Paginated delivery log (status, response code, duration, payload per attempt)
+curl "https://acme.sku.io/api/webhook-subscriptions/12/deliveries" -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Unsubscribe (idempotent — 204 even if already gone)
+curl -X DELETE "https://acme.sku.io/api/webhook-subscriptions/12" -H "Authorization: Bearer $SKU_TOKEN"
+```
+
+## What a delivery looks like
+
+```
+POST /skuio/orders HTTP/1.1
+Host: hooks.example.com
+Content-Type: application/json
+User-Agent: SKU.io-Webhook/1.0
+X-SKU-Event: sales_order.created
+X-SKU-Delivery-Id: 0197e4a2-1c3b-7f42-9d1e-8a5b6c7d8e9f
+X-SKU-Signature: sha256=b7a4f0e1c2d3...
+```
+
+```json
+{
+  "event": "sales_order.created",
+  "delivery_id": "0197e4a2-1c3b-7f42-9d1e-8a5b6c7d8e9f",
+  "occurred_at": "2026-07-06T18:22:41+00:00",
+  "data": {
+    "id": 5011,
+    "order_number": "SO-5011",
+    "status": "pending",
+    "customer": { "id": 87, "name": "Jane Smith" },
+    "lines": [
+      { "sku": "WDG-001", "quantity": 2, "price": 19.99 }
+    ]
+  }
+}
+```
+
+The envelope is always `event`, `delivery_id`, `occurred_at`, `data`. The `data` shape per event matches the sample endpoint above. `delivery_id` is unique per delivery — use it to deduplicate, since retries re-send the same `delivery_id`.
+
+## Verifying signatures
+
+Every delivery is signed with **HMAC-SHA256 over the raw request body**, using your subscription's secret. The hex digest is sent in `X-SKU-Signature` prefixed with `sha256=`.
+
+```javascript
+// Node.js
+const crypto = require("crypto");
+
+function verifySkuWebhook(rawBody, signatureHeader, secret) {
+  const expected = "sha256=" +
+    crypto.createHmac("sha256", secret).update(rawBody, "utf8").digest("hex");
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signatureHeader));
+}
+```
+
+```php
+// PHP
+function verifySkuWebhook(string $rawBody, string $signatureHeader, string $secret): bool
+{
+    $expected = 'sha256='.hash_hmac('sha256', $rawBody, $secret);
+
+    return hash_equals($expected, $signatureHeader);
+}
+```
+
+Verify against the **raw bytes** of the body — parse the JSON only after the signature checks out. Reject anything that fails verification with a 4xx.
+
+## Retries & automatic deactivation
+
+- Respond with any **2xx quickly** (aim for under a couple of seconds; the delivery times out after 15). Do your processing async.
+- A failed delivery (non-2xx, timeout, or connection error) is retried up to **3 attempts total**, with backoff of **30 seconds**, then **5 minutes**.
+- Responding **`410 Gone`** deactivates the subscription immediately — the clean way for your endpoint to unsubscribe itself.
+- After **25 consecutive failed deliveries**, the subscription is deactivated (`disabled_reason: "max_failures"`) and the owning user is notified. There is no reactivate call — once your endpoint is healthy, `POST` the same event + URL again; deactivated rows don't count as duplicates, so you get a fresh subscription with a **new secret**.
+- Deliveries are subject to a per-tenant outbound cap (600 deliveries/minute by default). Deliveries over the cap are **dropped, not queued** — they appear in the delivery log marked as throttled. If you expect event bursts (e.g. `inventory.adjusted` during large syncs), design your consumer to reconcile via the REST API rather than assuming every event arrives.
+
+Every attempt — success, failure, or throttled drop — is visible in the delivery log endpoint and in **Settings → Developer → Webhooks**.
+
+## Ordering
+
+Deliveries are dispatched from a queue and retried independently; **order is not guaranteed**. Use `occurred_at` (and your own reads back through the REST API) to resolve state, not arrival order.

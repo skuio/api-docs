@@ -1,0 +1,64 @@
+---
+id: dates-and-timezones
+title: Dates & Timezones
+sidebar_label: Dates & Timezones
+slug: /guides/dates-and-timezones
+---
+
+# Dates & Timezones
+
+Two kinds of temporal values flow through the API, with different timezone rules. Getting this wrong is the most common source of off-by-one-day bugs in integrations.
+
+## The two rules
+
+| Kind | Example fields | Timezone | Wire format |
+|------|----------------|----------|-------------|
+| **Date-time** | `created_at`, `updated_at`, `shipped_at`, `occurred_at` | **UTC**, always | `2026-07-06T18:04:11.000000Z` (ISO 8601) |
+| **Date-only** | `due_date`, `order_date`, `expected_date` | **Tenant's application timezone** — represents a whole local day | `2026-07-06` |
+
+Every tenant has an application timezone configured in settings (e.g. `America/Los_Angeles`). The API itself always speaks UTC for datetimes; the tenant timezone matters for date-only values and for how datetime *filters* are interpreted.
+
+## Reading datetimes
+
+Datetimes in responses are UTC. Convert to your display timezone yourself:
+
+```json
+{
+  "id": 42,
+  "created_at": "2026-07-06T18:04:11.000000Z",
+  "due_date": "2026-08-01"
+}
+```
+
+`created_at` above is 18:04 UTC = 11:04 in Los Angeles. `due_date` is simply "August 1st" in the tenant's local calendar — do **not** timezone-shift it, or you'll move it to July 31st.
+
+## Writing datetimes
+
+Send datetimes in UTC. `2026-07-06T18:04:11Z` and `2026-07-06 18:04:11` are both accepted and treated as UTC. Send date-only values as plain `YYYY-MM-DD` with no conversion.
+
+## Filtering by date
+
+Date filters (see [Filtering & Sorting](/docs/guides/filtering-and-sorting)) take plain `YYYY-MM-DD` values and are interpreted as **full days in the tenant's timezone**:
+
+```bash
+# Everything created on/after June 1 local time, through end of June 30 local time
+curl "https://acme.sku.io/api/purchase-invoices?filter[created_at.between]=2026-06-01,2026-06-30" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+- On **datetime columns** (`created_at`, ...), the boundary dates are converted from tenant-local midnight to UTC internally, and the end date is **inclusive** (the whole local day is covered).
+- On **date-only columns** (`due_date`, ...), values compare directly with no conversion.
+
+This means filter results always match what a user sees in the SKU.io UI, even though the raw `created_at` values in the response are UTC.
+
+## Exports and imports
+
+- **File exports** produced by the platform render datetimes in the tenant's timezone (so files match the UI) — unlike API responses, which are UTC. Don't diff the two without converting.
+- **Imports** treat incoming datetimes as tenant-local and convert to UTC on storage. Date-only import columns are stored as-is.
+
+## Checklist
+
+- Parse anything ending in `Z` as UTC; never assume server-local time.
+- Never apply a timezone shift to a `YYYY-MM-DD` field.
+- When filtering "today's orders", just pass today's local date — the API handles the UTC boundary math.
+- Store UTC in your own system and convert at the edges; it's the same rule this API follows.

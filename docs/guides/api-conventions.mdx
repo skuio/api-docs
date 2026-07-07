@@ -1,0 +1,91 @@
+---
+id: api-conventions
+title: API Conventions
+sidebar_label: API Conventions
+slug: /guides/api-conventions
+---
+
+# API Conventions
+
+The ground rules that apply across the whole API: URL structure, the `/api` vs `/api/v2` split, response envelopes, and headers.
+
+## URL structure
+
+```
+https://{tenant}.sku.io/api/<resource>
+https://{tenant}.sku.io/api/v2/<resource>
+```
+
+Everything is tenant-scoped by domain — there is no tenant ID parameter. All requests and responses are JSON; send `Accept: application/json` (and `Content-Type: application/json` on writes).
+
+## `/api` vs `/api/v2` — not what you think
+
+The two URL prefixes are **not sequential API versions**:
+
+- **`/api/<resource>`** — the canonical, full-CRUD surface. The SKU.io frontend itself uses these paths for create/update/delete operations. **Use this prefix for standard integration work.**
+- **`/api/v2/<resource>`** — a smaller, partial BFF (backend-for-frontend) layer focused on rich list/detail reads and specific workflows (e.g. `GET /api/v2/products` is the modern product list with inventory rollups; bulk imports and the bundle workshop live here too). It is **not** a versioned replacement — most resources have no `/api/v2` write equivalent, and many have no `/api/v2` list either.
+
+In practice you will mix them: list products via `GET /api/v2/products`, but create a customer via `POST /api/customers`. Always use the exact path shown in the reference — both prefixes appear there as first-class endpoints.
+
+:::warning Don't conflate `/v2/` in browser URLs with `/api/v2/`
+The `/v2/...` segment in **browser URLs** (e.g. `https://acme.sku.io/v2/dashboard`) is the web app's frontend routing namespace, unrelated to the `/api/v2/` API prefix.
+:::
+
+## Response envelopes
+
+There are three response styles; which one you get is per-endpoint and consistent:
+
+**1. Paginated lists** — a bare Laravel paginator (no wrapper):
+
+```json
+{
+  "current_page": 1,
+  "data": [ ... ],
+  "per_page": 10,
+  "total": 187,
+  "last_page": 19,
+  "next_page_url": "...",
+  ...
+}
+```
+
+See [Pagination](/docs/guides/pagination).
+
+**2. Platform envelope** — most single-object reads and writes on `/api`:
+
+```json
+{
+  "data": { ... },
+  "message": "The customer created successfully",
+  "status": "success"
+}
+```
+
+`status` is `success`, `warning`, or `failure`. On failure, an `errors` map is present — see [Errors](/docs/guides/errors).
+
+**3. Plain resource** — newer endpoints (webhooks, some `/api/v2` reads) return `{ "data": { ... } }` or the resource directly, with conventional status codes.
+
+## Status code quirk: successful writes return 200
+
+Endpoints built on the platform envelope normalize every success to **HTTP 200** — including creates that would conventionally be 201. Newer endpoints (e.g. `POST /api/webhook-subscriptions` → 201, `DELETE /api/webhook-subscriptions/{id}` → 204) use conventional codes.
+
+Robust client rule: **treat any 2xx as success**; where a body is present, `"status": "success"` (or the absence of an `errors` key) confirms it. Never hard-code "expect 201".
+
+There is also a soft-warning status: `299 OK With Warning`, used when an operation succeeded but has caveats — the body carries `"status": "warning"` plus a `warnings` map shaped like the `errors` map. Treat 299 as success and surface the warnings.
+
+## Useful headers
+
+| Header | Direction | Purpose |
+|--------|-----------|---------|
+| `Authorization: Bearer <token>` | request | Authentication ([guide](/docs/guides/authentication)) |
+| `Accept: application/json` | request | Always send it — guarantees JSON errors instead of redirects |
+| `X-Request-Id` | response | Correlation ID assigned to every authenticated API response; quote it in support requests |
+| `Retry-After` | response | Present on every 429 ([guide](/docs/guides/rate-limits)) |
+
+## Naming & formats
+
+- Resource fields are `snake_case`.
+- IDs are integers, unique per tenant.
+- Datetimes are UTC ISO 8601; date-only fields are `YYYY-MM-DD` in the tenant's timezone — see [Dates & Timezones](/docs/guides/dates-and-timezones).
+- Money fields are decimal numbers in the document's currency (a `currency` field appears on monetary resources).
+- Deleting is often **archiving**: many resources support `PUT .../{id}/archive` and `unarchived` instead of destructive deletes, and list endpoints hide archived rows by default (`filter[archived]=all` or `only` to change that).

@@ -1,0 +1,144 @@
+---
+id: quickstart
+title: "Quickstart: Your First API Call"
+sidebar_label: Quickstart
+slug: /guides/quickstart
+---
+
+# Quickstart: Your First API Call
+
+Make your first authenticated request in about five minutes: create a token, list products, then create a customer.
+
+Your API lives at your tenant's own domain:
+
+```
+https://{tenant}.sku.io/api
+```
+
+If your SKU.io account is at `acme.sku.io`, your API base URL is `https://acme.sku.io/api`. The examples below use `acme` — substitute your own tenant.
+
+## 1. Create a Personal Access Token
+
+1. Log in to your SKU.io account.
+2. Go to **Settings → Developer → Personal Access Tokens**.
+3. Click **Create Token**, give it a name, and select scopes. For this quickstart pick **`products:read`** and **`customers:write`**.
+4. Copy the token now — it is shown exactly once and cannot be retrieved later.
+
+Tokens look like `142|hZk3vX9pQ7...` (a numeric ID, a pipe, then a random string). Scopes matter: a token can only call endpoints its scopes cover. See [Authentication](/docs/guides/authentication) for the full scope list.
+
+## 2. List products
+
+`GET /api/v2/products` is the paginated product list. Send your token as a Bearer token:
+
+```bash
+curl "https://acme.sku.io/api/v2/products?per_page=2&sort=-created_at" \
+  -H "Authorization: Bearer 142|hZk3vX9pQ7WmT2sLxCbNvA8dRfGjK4eYuI6oP1zq" \
+  -H "Accept: application/json"
+```
+
+Response (`200 OK`) — a standard paginated list:
+
+```json
+{
+  "current_page": 1,
+  "data": [
+    {
+      "id": 42,
+      "sku": "WDG-001",
+      "name": "Blue Widget",
+      "type": "standard",
+      "barcode": "0123456789012",
+      "unit_cost": 5.5,
+      "average_cost": 5.75,
+      "brand_id": 1,
+      "brand_name": "Acme",
+      "inventory_total": 500,
+      "inventory_available": 450,
+      "inventory_allocated": 50,
+      "created_at": "2026-01-15T10:30:00.000000Z",
+      "updated_at": "2026-06-01T14:20:00.000000Z"
+    },
+    {
+      "id": 41,
+      "sku": "WDG-002",
+      "name": "Red Widget",
+      "type": "standard",
+      "unit_cost": 4.25,
+      "inventory_total": 120,
+      "created_at": "2026-01-14T09:12:00.000000Z",
+      "updated_at": "2026-05-28T11:03:00.000000Z"
+    }
+  ],
+  "first_page_url": "https://acme.sku.io/api/v2/products?page=1",
+  "from": 1,
+  "last_page": 249,
+  "next_page_url": "https://acme.sku.io/api/v2/products?page=2",
+  "path": "https://acme.sku.io/api/v2/products",
+  "per_page": 2,
+  "prev_page_url": null,
+  "to": 2,
+  "total": 498
+}
+```
+
+(Product objects are abridged here — the live response contains many more fields. See the [Products reference](/docs/api/introduction) for the full schema.)
+
+If you get `401` with `"message": "Unauthorized"`, the token is missing, malformed, expired, or revoked. If you get `403` with `"required_scope": "products:read"`, the token exists but lacks the scope.
+
+## 3. Create a customer
+
+Now a write. `POST /api/customers` requires the `customers:write` scope:
+
+```bash
+curl -X POST "https://acme.sku.io/api/customers" \
+  -H "Authorization: Bearer 142|hZk3vX9pQ7WmT2sLxCbNvA8dRfGjK4eYuI6oP1zq" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Jane Smith",
+    "company": "Smith Industries",
+    "email": "jane.smith@smithindustries.com",
+    "phone": "+1-555-0200",
+    "address1": "456 Commerce Ave",
+    "city": "Los Angeles",
+    "province": "California",
+    "province_code": "CA",
+    "zip": "90001",
+    "country": "United States",
+    "country_code": "US"
+  }'
+```
+
+Response (`200 OK`):
+
+```json
+{
+  "data": {
+    "id": 87,
+    "name": "Jane Smith",
+    "email": "jane.smith@smithindustries.com",
+    "company": "Smith Industries",
+    "phone": "+1-555-0200",
+    "address1": "456 Commerce Ave",
+    "zip": "90001",
+    "created_at": "2026-07-06T18:04:11.000000Z"
+  },
+  "message": "The customer created successfully",
+  "status": "success"
+}
+```
+
+Note the HTTP status is `200`, not `201` — endpoints that use the platform response envelope normalize all success statuses to 200. Read the body's `status` / `message` fields, and check for an `errors` key on failure. (A handful of newer endpoints — webhooks, for example — return conventional `201`/`204`.) Details in [API Conventions](/docs/guides/api-conventions).
+
+If the customer already exists (same name + zip + address), you get `422` with an `errors` map — see [Errors](/docs/guides/errors).
+
+## Where to next
+
+- [Authentication](/docs/guides/authentication) — scopes, token lifecycle, IP allowlists
+- [Pagination](/docs/guides/pagination) — walking large result sets
+- [Filtering & Sorting](/docs/guides/filtering-and-sorting) — `filter[status.is]=unpaid`, `sort=-created_at`, filter trees
+- [Errors](/docs/guides/errors) — every error shape you'll encounter
+- [Dates & Timezones](/docs/guides/dates-and-timezones) — UTC in, UTC out
+- [Rate Limits](/docs/guides/rate-limits) — what limits exist and how to handle 429s
+- [Webhooks](/docs/guides/webhooks) — get notified instead of polling
+- [API Conventions](/docs/guides/api-conventions) — `/api` vs `/api/v2`, response envelopes

@@ -1,0 +1,174 @@
+---
+id: errors
+title: Errors
+sidebar_label: Errors
+slug: /guides/errors
+---
+
+# Errors
+
+Errors are JSON. There are two body shapes, depending on which layer produced the error — always branch on the **HTTP status code** first, then inspect the body.
+
+**Shape A — simple message** (middleware and newer endpoints):
+
+```json
+{ "message": "Human-readable explanation" }
+```
+
+**Shape B — platform envelope** (most core endpoints):
+
+```json
+{
+  "errors": {
+    "some_key": [
+      { "message": "Human-readable explanation", "code": "MachineReadableCode", "data": [] }
+    ]
+  },
+  "status": "failure",
+  "message": "Human-readable explanation"
+}
+```
+
+In Shape B, `errors` is a map of key → array of error objects. The key names what the error is about (`token`, `user`, `url`, a field name, or a model class). `code` is a stable machine-readable identifier (e.g. `Unauthorized`, `NotFound`, `CustomerExists`, `IsLocked`); `message` may change, `code` won't. The top-level `message` mirrors the first error's message.
+
+## 401 Unauthenticated
+
+Missing, malformed, expired, or revoked token:
+
+```json
+{
+  "errors": {
+    "token": [
+      { "message": "Unauthorized", "code": "Unauthorized", "data": [] }
+    ]
+  },
+  "status": "failure",
+  "message": "Unauthorized"
+}
+```
+
+Fix the credential and retry. Don't retry automatically — 401 never resolves by itself.
+
+## 403 Forbidden
+
+Three distinct causes, distinguishable by body:
+
+**Missing token scope** (Shape A, includes `required_scope`):
+
+```json
+{
+  "message": "Token is missing the required scope: orders:write",
+  "required_scope": "orders:write"
+}
+```
+
+**PAT on an endpoint not open to tokens** (Shape A):
+
+```json
+{ "message": "This endpoint is not available to API tokens." }
+```
+
+**User-level permission denial** (Shape B) — the token has the scope, but the user account behind it lacks the permission:
+
+```json
+{
+  "errors": {
+    "user": [
+      { "message": "This action is unauthorized for you.", "code": "Forbidden", "data": [] }
+    ]
+  },
+  "status": "failure",
+  "message": "This action is unauthorized for you."
+}
+```
+
+A token pinned to an IP allowlist also returns 403 from other addresses: `"This token is not permitted from 203.0.113.5."`
+
+## 404 Not Found
+
+Unknown route:
+
+```json
+{
+  "errors": {
+    "url": [
+      { "message": "No route found for this url.", "code": "NotFound", "data": [] }
+    ]
+  },
+  "status": "failure",
+  "message": "No route found for this url."
+}
+```
+
+Missing record — the key is the model class instead of `url`:
+
+```json
+{
+  "errors": {
+    "App\\Models\\Customer": [
+      { "message": "No query results for model [App\\Models\\Customer] 999", "code": "NotFound", "data": [] }
+    ]
+  },
+  "status": "failure",
+  "message": "No query results for model [App\\Models\\Customer] 999"
+}
+```
+
+## 405 Method Not Allowed
+
+Wrong HTTP verb on a real path — same envelope with `"code": "MethodNotAllowed"` under the `method` key.
+
+## 422 Validation Failed
+
+`errors` maps each invalid field to an array of message strings:
+
+```json
+{
+  "message": "The name field is required. (and 1 more error)",
+  "errors": {
+    "name": ["The name field is required."],
+    "email": ["The email must be a valid email address."]
+  },
+  "status": "failure"
+}
+```
+
+Domain-rule 422s use error objects with a stable `code` and extra `data` instead of plain strings — for example creating a duplicate customer:
+
+```json
+{
+  "message": "You have this address for another customer",
+  "errors": {
+    "address": [
+      {
+        "message": "You have this address for another customer",
+        "code": "CustomerExists",
+        "data": { "existing_customer_id": 15 }
+      }
+    ]
+  },
+  "status": "failure"
+}
+```
+
+Handle both: strings mean "fix this field"; objects carry a `code` you can switch on and `data` you can act on.
+
+## 429 Too Many Requests
+
+See [Rate Limits](/docs/guides/rate-limits) for both 429 variants. Always honor the `Retry-After` header.
+
+## 500 Internal Server Error
+
+```json
+{ "message": "Server Error" }
+```
+
+Not actionable client-side. Retry idempotent requests with backoff; if it persists, contact support with the `X-Request-Id` response header value — every API response carries one, and it lets support find the exact failing request in the logs.
+
+## Handling guidance
+
+- Branch on HTTP status first; then on `errors.*[].code` where present.
+- Log the `X-Request-Id` header for every non-2xx response.
+- Retry only 429 (per `Retry-After`) and 5xx (with exponential backoff, idempotent requests only).
+- Expect either error shape from any endpoint and parse defensively: `message` is always present; `errors` may be absent, a field→strings map, or a key→objects map.
+- One success caveat: endpoints using the platform envelope return HTTP **200** even for creates, and business failures inside those endpoints still surface as 4xx with the envelope. A `2xx` plus `"status": "success"` is the reliable success signal there — see [API Conventions](/docs/guides/api-conventions).

@@ -1,0 +1,163 @@
+---
+id: filtering-and-sorting
+title: Filtering & Sorting
+sidebar_label: Filtering & Sorting
+slug: /guides/filtering-and-sorting
+---
+
+# Filtering & Sorting
+
+List endpoints support three tiers of filtering, from simple equality to nested AND/OR trees, plus sorting and search. All tiers compose in one request.
+
+## Tier 1: Simple filters
+
+Bare column name, exact match:
+
+```bash
+# Unpaid purchase invoices
+curl "https://acme.sku.io/api/purchase-invoices?filter[status]=unpaid" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+# Standard-type products
+curl "https://acme.sku.io/api/v2/products?filter[type]=standard" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+Multiple filters are ANDed together. `filter[status]=unpaid` is shorthand for `filter[status.is]=unpaid`.
+
+## Tier 2: Operator filters
+
+Add an operator after the column with a dot: `filter[column.operator]=value`.
+
+```bash
+# Unpaid invoices from suppliers matching "Default", created after June 1
+curl "https://acme.sku.io/api/purchase-invoices?filter[status.is]=unpaid&filter[supplier_name.contains]=Default&filter[created_at.after]=2026-06-01" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+### Text operators
+
+| Operator | Example | Matches |
+|----------|---------|---------|
+| `is` / `is_not` | `filter[status.is]=paid` | equality / inequality |
+| `contains` / `does_not_contain` | `filter[name.contains]=widget` | substring |
+| `starts_with` / `does_not_start_with` | `filter[sku.starts_with]=WDG` | prefix |
+| `ends_with` / `does_not_end_with` | `filter[sku.ends_with]=-US` | suffix |
+| `is_one_of` | `filter[status.is_one_of]=paid,unpaid` | IN list (comma-separated) |
+| `is_empty` / `is_not_empty` | `filter[barcode.is_empty]=1` | null or empty string |
+
+### Numeric operators
+
+| Operator | Example |
+|----------|---------|
+| `is`, `is_not`, `is_one_of` | `filter[id.is_one_of]=1,2,3` |
+| `greater_than`, `less_than` | `filter[unit_cost.greater_than]=20` |
+| `greater_than_or_equal`, `less_than_or_equal` | `filter[unit_cost.less_than_or_equal]=10` |
+| `between` | `filter[unit_cost.between]=10,20` |
+| `is_empty`, `is_not_empty` | `filter[quantity.is_empty]=1` |
+
+### Date operators
+
+| Operator | Example |
+|----------|---------|
+| `is`, `is_not` | `filter[due_date.is]=2026-12-24` |
+| `before`, `after` | `filter[created_at.after]=2026-06-01` |
+| `on_or_before`, `on_or_after` | `filter[due_date.on_or_before]=2026-12-31` |
+| `between` | `filter[due_date.between]=2026-01-01,2026-12-31` |
+| `today`, `yesterday`, `tomorrow` | `filter[due_date.today]=1` |
+| `past_week`, `past_month`, `past_year` | `filter[created_at.past_month]=1` |
+| `next_week`, `next_month`, `next_year` | `filter[due_date.next_week]=1` |
+| `days_ago`, `days_from_now` | `filter[created_at.days_ago]=7` |
+| `past_days`, `next_days` | `filter[created_at.past_days]=14` |
+| `is_empty`, `is_not_empty` | `filter[due_date.is_empty]=1` |
+
+Datetime columns (`created_at`, `updated_at`, ...) are compared in your tenant's timezone and converted to UTC internally; date-only columns (`due_date`, ...) compare directly. See [Dates & Timezones](/docs/guides/dates-and-timezones).
+
+## Discovering an endpoint's filters
+
+Filter columns are allowlisted per endpoint. Sending an unknown filter returns `400` with the complete allowed list — a deliberate discovery mechanism:
+
+```bash
+curl "https://acme.sku.io/api/purchase-invoices?filter[_discover]=1" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+```json
+{
+  "message": "Requested filter(s) `_discover` are not allowed. Allowed filter(s) are `status, status.is, status.is_not, status.contains, supplier_name.contains, created_at.after, created_at.between, ...`"
+}
+```
+
+Everything before the dot is a column; everything after is an operator; a bare name (no dot) means Tier 1 equality is supported.
+
+## Sorting
+
+Use `sort` with a field name; prefix `-` for descending:
+
+```bash
+curl "https://acme.sku.io/api/v2/products?sort=-created_at" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+
+curl "https://acme.sku.io/api/v2/products?sort=sku" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+Sortable fields are allowlisted per endpoint and listed in each endpoint's reference page (for example, `GET /api/v2/products` allows `id`, `sku`, `name`, `type`, `unit_cost`, `average_cost`, `created_at`, `updated_at`, and more). An unlisted sort field returns `400`. Endpoints have a sensible default sort (usually newest first).
+
+## Search
+
+Many list endpoints accept `filter[search]` for cross-field text search:
+
+```bash
+# Searches ID (exact), SKU, name, barcode, MPN, and brand name on products
+curl "https://acme.sku.io/api/v2/products?filter[search]=widget" \
+  -H "Authorization: Bearer $SKU_TOKEN" -H "Accept: application/json"
+```
+
+## Tier 3: Grouped filter trees (advanced)
+
+For nested AND/OR logic that flat filters can't express, send a `filter_groups` tree. Selected endpoints accept it as a JSON `POST` body; all supporting endpoints accept it as a base64-encoded `GET` query parameter.
+
+```bash
+# Products whose SKU starts with "LB-" AND whose type is standard OR bundle
+curl -X POST "https://acme.sku.io/api/v2/products" \
+  -H "Authorization: Bearer $SKU_TOKEN" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "filter_groups": {
+      "conjunction": "and",
+      "children": [
+        {"type": "condition", "condition": {"column": "sku", "operator": "starts_with", "value": "LB-"}},
+        {
+          "type": "group",
+          "group": {
+            "conjunction": "or",
+            "children": [
+              {"type": "condition", "condition": {"column": "type", "operator": "is", "value": "standard"}},
+              {"type": "condition", "condition": {"column": "type", "operator": "is", "value": "bundle"}}
+            ]
+          }
+        }
+      ]
+    },
+    "per_page": 25,
+    "sort": "-created_at"
+  }'
+```
+
+Rules:
+
+- Same columns and operators as Tiers 1–2; unknown columns in a tree are silently ignored.
+- Maximum nesting: root plus one level of sub-groups.
+- `page`, `per_page`, `sort`, and `filter[search]` compose with the tree (in the body or as query params).
+- Flat filters in the same request are ANDed with the tree result.
+- For `GET`, base64-encode the same JSON: `?filter_groups=eyJjb25qdW5jdGlvbiI6...`
+
+`POST`-body support currently covers `/api/v2/products`, `/api/v2/warehouse-transfers`, `/api/v2/inventory-adjustments`, `/api/v2/inventory-movements`, `/api/v2/fifo-layers`, `/api/v2/backorder-queues`, `/api/assemblies`, and `/api/stock-takes/list`; other list endpoints take the base64 `GET` form.
+
+Flat Tier 1/2 filters cover the vast majority of integration use cases — reach for trees only when you genuinely need OR logic.
+
+## Includes
+
+The API does **not** support a generic `include` parameter for loading relationships on demand. Each endpoint returns a fixed shape (relations the endpoint eager-loads are documented per endpoint in the reference).
