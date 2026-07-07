@@ -5,12 +5,17 @@ import Layout from "@theme/Layout";
 import styles from "./index.module.css";
 
 function HomepageHeader() {
+  const { siteConfig } = useDocusaurusContext();
+  const operationCount = siteConfig.customFields?.apiOperationCount as number;
+  const countLabel = operationCount
+    ? `${operationCount.toLocaleString("en-US")} endpoints`
+    : "thousands of endpoints";
   return (
     <header className={`hero hero--primary ${styles.heroBanner}`}>
       <div className="container">
         <h1 className="hero__title">SKU.io API Reference</h1>
         <p className="hero__subtitle">
-          Integrate with SKU.io — 1823 endpoints for orders, inventory,
+          Integrate with SKU.io — {countLabel} for orders, inventory,
           products, integrations, and more.
         </p>
         <div className={styles.buttons}>

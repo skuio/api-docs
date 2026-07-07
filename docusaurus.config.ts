@@ -1,10 +1,23 @@
 import { themes as prismThemes } from "prism-react-renderer";
 import type { Config } from "@docusaurus/types";
 import type * as Preset from "@docusaurus/preset-classic";
+import * as fs from "fs";
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 const currentYear = new Date().getFullYear();
+
+// Counted at build time from the merged spec so the landing page never drifts
+// from reality (it was previously hardcoded and stale). Operations are the
+// `operationId:` lines emitted by merge-openapi.py at 6-space indent.
+const apiOperationCount = (() => {
+  try {
+    const spec = fs.readFileSync("./openapi.yaml", "utf8");
+    return (spec.match(/^ {6}operationId:/gm) || []).length;
+  } catch {
+    return 0;
+  }
+})();
 
 const config: Config = {
   title: "SKU.io Docs",
@@ -17,6 +30,10 @@ const config: Config = {
 
   organizationName: "skuio",
   projectName: "api-docs",
+
+  customFields: {
+    apiOperationCount,
+  },
 
   onBrokenLinks: "warn",
   onBrokenMarkdownLinks: "warn",
