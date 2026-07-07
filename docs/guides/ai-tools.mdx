@@ -1,0 +1,100 @@
+---
+id: ai-tools
+title: "Build with AI"
+sidebar_label: Build with AI
+slug: /guides/ai-tools
+---
+
+# Build with AI
+
+Everything on this portal is published in machine-readable form so AI coding
+agents (Claude Code, Cursor, ChatGPT, or your own) can integrate with the
+SKU.io API without scraping HTML.
+
+## MCP server
+
+The fastest way to give an agent full access to these docs:
+
+```bash
+claude mcp add skuio-docs -- npx -y @skuio/docs-mcp
+```
+
+That's it — no API keys. The server ([`@skuio/docs-mcp`](https://www.npmjs.com/package/@skuio/docs-mcp))
+exposes three tools over this site's static assets:
+
+| Tool | Does |
+|------|------|
+| `search_docs(query)` | Search guides, API domains, and operation summaries |
+| `fetch_doc(path)` | Fetch any docs page as clean markdown |
+| `get_openapi(domain?)` | The domain catalog, or one domain's full OpenAPI chunk |
+
+For other MCP clients, the equivalent JSON config:
+
+```json
+{
+  "mcpServers": {
+    "skuio-docs": {
+      "command": "npx",
+      "args": ["-y", "@skuio/docs-mcp"]
+    }
+  }
+}
+```
+
+## Point an agent at the docs directly
+
+No MCP? Give your agent these URLs — they're designed to be fetched:
+
+| Resource | URL |
+|----------|-----|
+| Curated index + agent instructions | [`/llms.txt`](https://developer.sku.io/llms.txt) |
+| Agent operating manual | [`/agents.md`](https://developer.sku.io/agents.md) |
+| Full OpenAPI spec (~3,200 operations) | [`/openapi.yaml`](https://developer.sku.io/openapi.yaml) |
+| Per-domain spec chunks (catalog) | [`/openapi/index.json`](https://developer.sku.io/openapi/index.json) |
+| Error catalog (JSON) | [`/errors.json`](https://developer.sku.io/errors.json) |
+| Webhook event catalog (JSON) | [`/webhooks/events.json`](https://developer.sku.io/webhooks/events.json) |
+
+A prompt as simple as this works in Claude Code:
+
+> Read https://developer.sku.io/llms.txt and then build me an integration
+> that pushes our inventory levels to SKU.io.
+
+## Markdown twins
+
+Every page on this site has a markdown mirror — append `.md` to the URL:
+
+```
+https://developer.sku.io/docs/guides/quickstart.md
+https://developer.sku.io/docs/api/introduction.md
+```
+
+Markdown is roughly 4× cheaper in tokens than the rendered HTML, and agents
+parse it far more reliably.
+
+## Per-domain OpenAPI chunks
+
+The full spec is ~6 MB — too big for most context windows. Fetch
+[`/openapi/index.json`](https://developer.sku.io/openapi/index.json) for the
+catalog, then just the domain you need:
+
+```
+https://developer.sku.io/openapi/sales-orders.yaml
+https://developer.sku.io/openapi/amazon.yaml
+https://developer.sku.io/openapi/inventory.yaml
+```
+
+Each chunk is a complete, valid OpenAPI 3.0 document for that domain — every
+path, parameter, and example — small enough to drop into a prompt.
+
+## Ground rules for agents
+
+The short version of [`/agents.md`](https://developer.sku.io/agents.md):
+
+- Authenticate with a **scoped Personal Access Token** (see
+  [Authentication](/docs/guides/authentication)); tokens are deny-by-default —
+  a 403 means the token needs another scope, not a retry.
+- Prefer `/api/...` paths; `/api/v2/...` is a separate read-mostly layer, not
+  a version upgrade.
+- Never use operations flagged `deprecated: true`.
+- Confirm with a human before destructive calls (DELETE, bulk-delete, cancel,
+  void, inventory adjustments).
