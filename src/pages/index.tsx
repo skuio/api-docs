@@ -34,11 +34,18 @@ function HomepageHeader() {
           </Link>
           <Link
             className="button button--outline button--secondary button--lg"
+            href="https://app.getpostman.com/run-collection/7002958-7b897b8f-b2aa-4bf7-ac12-a1e7afd78588?action=collection%2Ffork&source=rip_markdown&collection-url=entityId%3D7002958-7b897b8f-b2aa-4bf7-ac12-a1e7afd78588%26entityType%3Dcollection%26workspaceId%3D91f71d39-72ce-4e93-be5b-f77a1ed87347"
+            style={{ marginLeft: "1rem" }}
+          >
+            Run in Postman ▶
+          </Link>
+          <Link
+            className="button button--outline button--secondary button--lg"
             href="pathname:///skuio-api.postman_collection.json"
             download
             style={{ marginLeft: "1rem" }}
           >
-            Postman Collection
+            Download Collection
           </Link>
         </div>
       </div>
