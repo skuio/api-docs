@@ -89749,69 +89749,6 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-amazon-integrationinstance-fba-inbound-discrepancies
-  /api/amazon/{integrationInstance}/fba-inbound/3pl-metrics:
-    get:
-      tags:
-      - Amazon
-      summary: 3PL / Supplier Turnaround Metrics (Tenant-Level)
-      description: '3PL/supplier turnaround SLA metrics across all FBA inbound plans
-        of the instance: per-partner turnaround gaps (time from sending the fulfillment
-        request to box-contents-submitted and to ready-to-ship), counts of ready and
-        overdue shipments, plus an overall summary, over an optional date range. Requires
-        a Bearer token.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::'
-      parameters:
-      - name: integrationInstance
-        in: path
-        schema:
-          type: integer
-        required: true
-        description: Amazon integration instance ID
-        example: '1'
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-              example:
-                data:
-                  summary:
-                    partner_name: All partners
-                    partner_type: all
-                    shipments_sent: 12
-                    ready_count: 9
-                    overdue_count: 1
-                    median_hours_to_box_contents: 26.5
-                    median_hours_to_ready: 52.0
-                    avg_hours_to_ready: 61.3
-                  partners:
-                  - partner_name: Ship Fusion
-                    partner_type: 3pl
-                    shipments_sent: 8
-                    ready_count: 7
-                    overdue_count: 0
-                    median_hours_to_box_contents: 24.0
-                    median_hours_to_ready: 48.0
-                    avg_hours_to_ready: 50.2
-        '429': *id001
-        '401': *id002
-        '403': *id003
-        '404': *id004
-      operationId: get-api-amazon-integrationinstance-fba-inbound-3pl-metrics
   /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/refresh-amazon-plan:
     post:
       tags:
@@ -115451,7 +115388,11 @@ paths:
         **`case_pack_rounding`** (string, optional) — how suggested quantities round
         to full cases for products with a `case_pack_qty`: `always_round_down` (default
         — never exceed the target/cap), `always_round_up` (ship full cases; may overshoot
-        the coverage target but never the origin/supplier stock cap), or `round_nearest`.'
+        the coverage target but never the origin/supplier stock cap), or `round_nearest`.
+
+
+        case_pack_rounding accepts: always_round_up, always_round_down, round_nearest,
+        none (send the exact suggested quantity, no case-pack rounding).'
       requestBody:
         content:
           application/json:
@@ -117863,10 +117804,11 @@ paths:
 
 
         If Shopify can''t return the order — order older than 60 days without the
-        read_all_orders scope, a draft order without read_draft_orders, or an order
-        deleted on Shopify — the endpoint returns HTTP 200 with `data: null` and an
-        `unavailable_reason` string explaining why. Draft orders (source_name = shopify_draft_order)
-        are fetched from the draft_orders endpoint.
+        read_all_orders scope, or an order deleted on Shopify — the endpoint returns
+        HTTP 200 with `data: null` and an `unavailable_reason` string explaining why.
+        Orders that originated as drafts (source_name = shopify_draft_order) are completed
+        orders and are read from the standard orders endpoint with the read_orders
+        scope.
 
 
         Authentication: Requires Bearer token.'
@@ -117927,8 +117869,9 @@ paths:
       - Shopify
       summary: Get Raw Order (GraphQL)
       description: 'Fetch order data from the Shopify GraphQL API (same query used
-        for order sync). Draft orders (source_name = shopify_draft_order) are fetched
-        via the DraftOrder query.
+        for order sync). Orders that originated as drafts (source_name = shopify_draft_order)
+        are completed orders and are read via the standard order query with the read_orders
+        scope.
 
 
         :::info[Authorization]
@@ -117940,8 +117883,8 @@ paths:
 
 
         If Shopify can''t return the order — older than 60 days without read_all_orders,
-        a draft order without read_draft_orders, or deleted — the response includes
-        an `unavailable_reason` string and the order node is null.
+        or deleted — the response includes an `unavailable_reason` string and the
+        order node is null.
 
 
         Authentication: Requires Bearer token.'
@@ -137632,6 +137575,87 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-placement-preview
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/3pl-metrics:
+    get:
+      tags:
+      - Walmart
+      summary: Get 3PL Turnaround Metrics
+      description: '3PL/supplier turnaround SLA metrics: per-partner turnaround gaps
+        between sending a WFS-inbound fulfilment request and each milestone (sent
+        → box contents submitted, sent → ready to ship), plus an overall summary.
+        Derived from packet timestamps + portal events across all of this integration
+        instance''s WFS inbound shipments.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query parameters (both optional):
+
+        - date_from (date, m/d/Y or Y-m-d): only include packets sent on/after this
+        day (start of day).
+
+        - date_to (date, m/d/Y or Y-m-d): only include packets sent on/before this
+        day (end of day).
+
+
+        Response: { data: { summary, partners[] } }. summary is the ''All partners''
+        aggregate; partners[] is one row per 3PL warehouse / supplier, sorted by shipments_sent
+        desc. partner_type is ''all'' (summary), ''3pl'', or ''supplier''. Median/avg
+        hour fields are null when no packet has reached that milestone yet.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  summary:
+                    partner_name: All partners
+                    partner_type: all
+                    shipments_sent: 12
+                    ready_count: 9
+                    overdue_count: 1
+                    median_hours_to_box_contents: 6.5
+                    median_hours_to_ready: 20.5
+                    avg_hours_to_ready: 22.3
+                  partners:
+                  - partner_name: Acme 3PL Warehouse
+                    partner_type: 3pl
+                    shipments_sent: 7
+                    ready_count: 6
+                    overdue_count: 0
+                    median_hours_to_box_contents: 5
+                    median_hours_to_ready: 18
+                    avg_hours_to_ready: 19.2
+                  - partner_name: Widget Supply Co
+                    partner_type: supplier
+                    shipments_sent: 5
+                    ready_count: 3
+                    overdue_count: 1
+                    median_hours_to_box_contents: 8
+                    median_hours_to_ready: 26
+                    avg_hours_to_ready: 27.5
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-3pl-metrics
   /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/suggested-package:
     get:
       tags:
@@ -138651,6 +138675,45 @@ paths:
                     acknowledged_at: null
                     recipient_email: receiving@acme3pl.com
                     recipient_name: Acme 3PL Warehouse
+                    email_from:
+                      address: noreply@sku.io
+                      name: Acme Store
+                    email_reply_to:
+                      address: ops@acme-store.com
+                      name: Jane Operator
+                    email_from_default_mode: system
+                    email_from_options:
+                      merchant:
+                        address: orders@acme-store.com
+                        name: Acme Store
+                      system:
+                        address: noreply@sku.io
+                        name: Acme Store
+                    email_from_dns_setup:
+                      domain: acme-store.com
+                      provider: Postmark
+                      steps:
+                      - title: Authorize Postmark in acme-store.com's SPF record
+                        detail: 'Add include:spf.mtasv.net to the SPF TXT record on
+                          acme-store.com. A domain must have exactly one SPF record
+                          — merge it into the existing one instead of adding a second.
+                          If acme-store.com has no SPF record yet, publish:'
+                        record:
+                          type: TXT
+                          host: acme-store.com
+                          value: v=spf1 include:spf.mtasv.net ~all
+                      - title: Publish acme-store.com's DKIM records
+                        detail: DKIM records are unique per domain and are generated
+                          when acme-store.com is added to SKU.io's Postmark sending
+                          account. Ask SKU.io support to add acme-store.com — you'll
+                          receive three CNAME records (s1._domainkey.acme-store.com,
+                          s2._domainkey.acme-store.com and a return-path host) to
+                          publish, which also aligns the emails with your DMARC policy.
+                      - title: Verify before relying on it
+                        detail: Send a test email and check it arrives in the inbox
+                          (not spam) with SPF and DKIM shown as PASS in the message
+                          headers. Until both pass, recipients with a strict DMARC
+                          policy on acme-store.com may reject these emails.
                     email_template:
                       subject: Walmart WFS inbound — prep & receiving label needed
                         for {{reference}}
@@ -138668,6 +138731,7 @@ paths:
                         ready in the portal we&rsquo;ll finalize the inbound with
                         Walmart and send the carrier / pickup details.</p><p>Thank
                         you.</p>
+                      is_custom: false
                     documents:
                     - id: 101
                       type: receiving_label
@@ -138995,13 +139059,18 @@ paths:
 
         Fields:
 
-        - subject (string, required, max 255): the operator''s edited subject line
-        (may contain tokens).
+        - subject (string, required, max 255): the final subject line (tokens substituted
+        server-side).
 
-        - body (string, required): the operator''s edited HTML body (may contain tokens).
+        - body (string, required): the final HTML body (tokens substituted server-side).
 
         - cc (string[], optional, nullable, each a valid email): additional CC recipients
-        (ignored by preview; used on send).'
+        (ignored by preview; used on send).
+
+        - from_mode (string, optional, nullable, one of: merchant, system): sender-identity
+        override. ''merchant'' sends From the store''s own domain (needs the SPF/DKIM
+        setup in email_from_dns_setup); ''system'' sends via SKU.io with the operator
+        as Reply-To. Null = the tenant''s default (email_from_default_mode).'
       requestBody:
         content:
           '*/*':
@@ -139019,7 +139088,8 @@ paths:
                 affix the WFS receiving label to the outside of each carton before
                 the shipment goes out. Once you confirm it&rsquo;s ready in the portal
                 we&rsquo;ll finalize the inbound with Walmart and send the carrier
-                / pickup details.</p><p>Thank you.</p>\",\n  \"cc\": [\n    \"warehouse-manager@acme3pl.com\"\n  ]\n}"'
+                / pickup details.</p><p>Thank you.</p>\",\n  \"cc\": [\n    \"warehouse-manager@acme3pl.com\"\n  ],\n  \"from_mode\":
+                \"system\"\n}"'
       parameters:
       - name: integrationInstance
         in: path
@@ -139122,7 +139192,12 @@ paths:
 
         - body (string, required): the final HTML body (tokens substituted server-side).
 
-        - cc (string[], optional, nullable, each a valid email): additional CC recipients.'
+        - cc (string[], optional, nullable, each a valid email): additional CC recipients.
+
+        - from_mode (string, optional, nullable, one of: merchant, system): sender-identity
+        override. ''merchant'' sends From the store''s own domain (needs the SPF/DKIM
+        setup in email_from_dns_setup); ''system'' sends via SKU.io with the operator
+        as Reply-To. Null = the tenant''s default (email_from_default_mode).'
       requestBody:
         content:
           '*/*':
@@ -139140,7 +139215,8 @@ paths:
                 affix the WFS receiving label to the outside of each carton before
                 the shipment goes out. Once you confirm it&rsquo;s ready in the portal
                 we&rsquo;ll finalize the inbound with Walmart and send the carrier
-                / pickup details.</p><p>Thank you.</p>\",\n  \"cc\": [\n    \"warehouse-manager@acme3pl.com\"\n  ]\n}"'
+                / pickup details.</p><p>Thank you.</p>\",\n  \"cc\": [\n    \"warehouse-manager@acme3pl.com\"\n  ],\n  \"from_mode\":
+                \"system\"\n}"'
       parameters:
       - name: integrationInstance
         in: path
@@ -139188,6 +139264,45 @@ paths:
                   acknowledged_at: null
                   recipient_email: receiving@acme3pl.com
                   recipient_name: Acme 3PL Warehouse
+                  email_from:
+                    address: noreply@sku.io
+                    name: Acme Store
+                  email_reply_to:
+                    address: ops@acme-store.com
+                    name: Jane Operator
+                  email_from_default_mode: system
+                  email_from_options:
+                    merchant:
+                      address: orders@acme-store.com
+                      name: Acme Store
+                    system:
+                      address: noreply@sku.io
+                      name: Acme Store
+                  email_from_dns_setup:
+                    domain: acme-store.com
+                    provider: Postmark
+                    steps:
+                    - title: Authorize Postmark in acme-store.com's SPF record
+                      detail: 'Add include:spf.mtasv.net to the SPF TXT record on
+                        acme-store.com. A domain must have exactly one SPF record
+                        — merge it into the existing one instead of adding a second.
+                        If acme-store.com has no SPF record yet, publish:'
+                      record:
+                        type: TXT
+                        host: acme-store.com
+                        value: v=spf1 include:spf.mtasv.net ~all
+                    - title: Publish acme-store.com's DKIM records
+                      detail: DKIM records are unique per domain and are generated
+                        when acme-store.com is added to SKU.io's Postmark sending
+                        account. Ask SKU.io support to add acme-store.com — you'll
+                        receive three CNAME records (s1._domainkey.acme-store.com,
+                        s2._domainkey.acme-store.com and a return-path host) to publish,
+                        which also aligns the emails with your DMARC policy.
+                    - title: Verify before relying on it
+                      detail: Send a test email and check it arrives in the inbox
+                        (not spam) with SPF and DKIM shown as PASS in the message
+                        headers. Until both pass, recipients with a strict DMARC policy
+                        on acme-store.com may reject these emails.
                   email_template:
                     subject: Walmart WFS inbound — prep & receiving label needed for
                       {{reference}}
@@ -139204,6 +139319,7 @@ paths:
                       the shipment goes out. Once you confirm it&rsquo;s ready in
                       the portal we&rsquo;ll finalize the inbound with Walmart and
                       send the carrier / pickup details.</p><p>Thank you.</p>
+                    is_custom: false
                   documents:
                   - id: 101
                     type: receiving_label
@@ -139237,6 +139353,75 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-fulfillment-email
+  /api/walmart/{integrationInstance}/wfs/inbound-shipments/{shipment}/fulfillment/prep-sheet.csv:
+    get:
+      tags:
+      - Walmart
+      summary: Download Prep & Pack Sheet (CSV)
+      description: 'Stream the prep-&-pack sheet as a CSV (unit mix, packing, prep,
+        and any kitting work order) so an operator can hand it to a 3PL/supplier that
+        won''t use the secure portal. The file is named wfs-prep-pack-sheet-&lt;packetId>.csv.
+        A fulfilment packet must have been built first — returns 422 JSON { message
+        } when none exists yet.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response: a text/csv file download (no JSON body on success).'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Walmart integration instance ID
+        example: '1'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: WFS inbound shipment ID (local WalmartWfsInboundShipment id)
+        example: '843'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=wfs-prep-pack-sheet-12.csv
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: "Section,SKU,Description,Quantity,Notes\r\nUnit Mix,WIDGET-BLUE,Blue\
+                \ Widget 12oz,48,\r\nUnit Mix,WIDGET-RED,Red Widget 12oz,24,\r\nPacking,,,,Affix\
+                \ WFS receiving label to each carton\r\nPrep,,,,Poly-bag units with\
+                \ suffocation warning\r\n"
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Build the fulfilment packet before exporting the prep sheet.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-walmart-integrationinstance-wfs-inbound-shipments-shipment-fulfillment-prep-sheet-csv
   /api/walmart/{integrationInstance}/wfs/inbound-shipments/fulfillment-portal/{token}:
     get:
       tags:
@@ -167332,6 +167517,235 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-trackstar-integration-instances-integration-instance-orders-order-sync-detail
+  /api/trackstar/integration-instances/{integration_instance}/order-shipments:
+    get:
+      tags:
+      - Trackstar
+      summary: List Order Shipments
+      description: 'List outbound fulfillment shipments for a Trackstar integration
+        instance, with pagination, filtering, and sorting.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Each shipment is scoped to the integration instance through its parent order.
+
+
+        Search:
+
+        - filter[search]: Partial match across tracking_number, trackstar_shipment_id,
+        carrier, and shipping_method
+
+
+        Operator filters use the form filter[column.operator]=value (a bare filter[column]=value
+        is treated as an exact ''is'' match):
+
+        - Text columns (tracking_number, trackstar_shipment_id, carrier, shipping_method):
+        is, is_not, contains, does_not_contain, starts_with, ends_with, is_one_of,
+        is_not_one_of, is_empty, is_not_empty
+
+        - Numeric columns (id, shipping_cost): is, is_not, greater_than, less_than,
+        greater_than_or_equal, less_than_or_equal, between, is_one_of, is_empty, is_not_empty
+
+        - Date-time columns (shipped_at, created_at, updated_at): is, before, after,
+        on_or_before, on_or_after, between, today, yesterday, past_week, past_month,
+        past_year, past_days, is_empty, is_not_empty
+
+
+        Allowed sorts: id, trackstar_shipment_id, tracking_number, carrier, shipping_method,
+        shipping_cost, shipped_at, created_at, updated_at
+
+        Default sort: -shipped_at
+
+        Pagination default: 10 per page'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: 'Page number (default: 1)'
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 5001
+                  trackstar_order_id: 301
+                  trackstar_shipment_id: ts-ship-001
+                  tracking_number: 1Z999AA10123456784
+                  carrier: UPS
+                  shipping_method: Ground
+                  shipping_cost: 12.45
+                  shipped_at: '2024-06-03T14:00:00+00:00'
+                  created_at: '2024-06-03T14:05:00+00:00'
+                  updated_at: '2024-06-03T14:05:00+00:00'
+                  order:
+                    id: 301
+                    order_number: ORD-12345
+                    trackstar_order_id: ts-ord-001
+                    link_reference: ORD-12345
+                    link_type_label: Trackstar Order
+                    link_id: 301
+                    link_route: /integrations/trackstar/10/orders/301
+                  sku_sales_order_fulfillment_id: 8801
+                  sku_fulfillment:
+                    id: 8801
+                    link_reference: 8801
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 8801
+                    link_route: /orders/sales-orders/fulfillments/8801
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?tracknum=1Z999AA10123456784
+                    sales_order_id: 4501
+                    sales_order_number: SO-2024-001
+                  sales_order_id: 4501
+                  sales_order_number: SO-2024-001
+                  warehouse:
+                    id: 12
+                    name: Main Warehouse
+                current_page: 1
+                last_page: 12
+                per_page: 10
+                total: 118
+                from: 1
+                to: 10
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-order-shipments
+  /api/trackstar/integration-instances/{integration_instance}/order-shipments/{order_shipment}:
+    get:
+      tags:
+      - Trackstar
+      summary: Get Order Shipment
+      description: 'Retrieve a single order shipment by its database ID, scoped to
+        the integration instance. The response always includes the raw json_object
+        payload received from Trackstar. Returns 404 if the shipment does not exist
+        or does not belong to the integration instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      - name: order_shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Order shipment database ID
+        example: '5001'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 5001
+                  trackstar_order_id: 301
+                  trackstar_shipment_id: ts-ship-001
+                  tracking_number: 1Z999AA10123456784
+                  carrier: UPS
+                  shipping_method: Ground
+                  shipping_cost: 12.45
+                  shipped_at: '2024-06-03T14:00:00+00:00'
+                  created_at: '2024-06-03T14:05:00+00:00'
+                  updated_at: '2024-06-03T14:05:00+00:00'
+                  order:
+                    id: 301
+                    order_number: ORD-12345
+                    trackstar_order_id: ts-ord-001
+                    link_reference: ORD-12345
+                    link_type_label: Trackstar Order
+                    link_id: 301
+                    link_route: /integrations/trackstar/10/orders/301
+                  sku_sales_order_fulfillment_id: 8801
+                  sku_fulfillment:
+                    id: 8801
+                    link_reference: 8801
+                    link_type_label: Sales Order Fulfillment
+                    link_id: 8801
+                    link_route: /orders/sales-orders/fulfillments/8801
+                    status: shipped
+                    tracking_number: 1Z999AA10123456784
+                    tracking_url: https://www.ups.com/track?tracknum=1Z999AA10123456784
+                    sales_order_id: 4501
+                    sales_order_number: SO-2024-001
+                  sales_order_id: 4501
+                  sales_order_number: SO-2024-001
+                  warehouse:
+                    id: 12
+                    name: Main Warehouse
+                  json_object:
+                    id: ts-ship-001
+                    order_id: ts-ord-001
+                    tracking_number: 1Z999AA10123456784
+                    carrier: UPS
+                    shipping_method: Ground
+                    shipping_cost: 12.45
+                    shipped_date: '2024-06-03T14:00:00Z'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                status: failure
+                message: Shipment not found
+                errors:
+                  order_shipment:
+                  - message: Shipment not found
+                    code: ShipmentNotFound
+                    data: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-trackstar-integration-instances-integration-instance-order-shipments-order-shipment
   /api/trackstar/integration-instances/{integration_instance}/inventory:
     get:
       tags:
@@ -209936,7 +210350,18 @@ paths:
 
         Also accepts (3PL warehouses): fba_inbound_reminders_enabled (boolean) and
         fba_inbound_reminder_days (array of positive integer day-offsets, e.g. [3,7,14])
-        — controls automatic FBA-inbound turnaround reminders to this 3PL.'
+        — controls automatic FBA-inbound turnaround reminders to this 3PL.
+
+
+        WFS inbound-reminder settings (opt-in turnaround nudges for WFS inbound shipments
+        sourced from this 3PL/warehouse):
+
+        - wfs_inbound_reminders_enabled (boolean, optional): enable per-warehouse
+        WFS inbound turnaround reminders.
+
+        - wfs_inbound_reminder_days (int[], optional, nullable, each 1–365): days-after-send
+        cadence to remind on (default [3, 7, 14] when reminders are enabled and none
+        provided).'
       requestBody:
         content:
           application/json:
@@ -209970,6 +210395,11 @@ paths:
                   bin: null
                 nominal_code_id: null
                 transfer_destination_warehouse_id: null
+                wfs_inbound_reminders_enabled: true
+                wfs_inbound_reminder_days:
+                - 3
+                - 7
+                - 14
       parameters: []
       responses:
         '201':
@@ -210128,7 +210558,18 @@ paths:
 
         Also accepts (3PL warehouses): fba_inbound_reminders_enabled (boolean) and
         fba_inbound_reminder_days (array of positive integer day-offsets, e.g. [3,7,14])
-        — controls automatic FBA-inbound turnaround reminders to this 3PL.'
+        — controls automatic FBA-inbound turnaround reminders to this 3PL.
+
+
+        WFS inbound-reminder settings (opt-in turnaround nudges for WFS inbound shipments
+        sourced from this 3PL/warehouse):
+
+        - wfs_inbound_reminders_enabled (boolean, optional): enable per-warehouse
+        WFS inbound turnaround reminders.
+
+        - wfs_inbound_reminder_days (int[], optional, nullable, each 1–365): days-after-send
+        cadence to remind on (default [3, 7, 14] when reminders are enabled and none
+        provided).'
       requestBody:
         content:
           application/json:
@@ -210138,6 +210579,11 @@ paths:
                 name: Main Warehouse East
                 auto_routing_enabled: false
                 order_fulfillment: manual
+                wfs_inbound_reminders_enabled: true
+                wfs_inbound_reminder_days:
+                - 3
+                - 7
+                - 14
       parameters:
       - name: warehouse
         in: path
