@@ -167106,9 +167106,12 @@ paths:
       tags:
       - Trackstar
       summary: Sync Orders (Queued)
-      description: 'Queue a background job to sync orders from Trackstar API. Returns
-        a tracked_job_log_id to monitor progress via the sync-progress endpoint. Requires
-        Bearer token.
+      description: 'Queue an order sync from Trackstar. Accepts a refresh payload:
+        `mode` (`since_latest` | `date_range` | `all`) with `date_from` / `date_to`
+        (YYYY-MM-DD) and `date_method` (`created` | `updated`, for `date_range`).
+        The sync narrows the ingest to the resolved date window. Legacy `start_date`
+        / `end_date` are still honored when no `mode` is sent. Returns the tracked
+        job log id to poll for progress. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -167116,18 +167119,17 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::
-
-
-        Query parameters:
-
-        - start_date (optional): Date range start for sync
-
-        - end_date (optional): Date range end for sync
-
-        - status (optional): Filter by order status; pass ''all'' to sync all statuses'
+        :::'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                mode: date_range
+                date_from: '2026-06-01'
+                date_to: '2026-06-30'
+                date_method: updated
       parameters:
       - name: start_date
         in: query
@@ -167161,9 +167163,9 @@ paths:
               schema:
                 type: object
               example:
-                data:
-                  tracked_job_log_id: 892
                 message: Order sync job has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
@@ -167548,6 +167550,141 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-trackstar-integration-instances-integration-instance-orders-order-raw
+  /api/trackstar/integration-instances/{integration_instance}/orders/sync-info:
+    get:
+      tags:
+      - Trackstar
+      summary: Get Orders Sync Info
+      description: 'Baseline info for the Refresh Orders modal: the latest synced
+        order (identifier + date) and the total synced count, so the UI can offer
+        a "fetch since latest sync" option. Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  latest_order_number: 915404R
+                  latest_order_date: '2026-06-02T02:10:00.000000Z'
+                  total_orders: 42
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-orders-sync-info
+  /api/trackstar/integration-instances/{integration_instance}/orders/search:
+    post:
+      tags:
+      - Trackstar
+      summary: Search Orders
+      description: Search Trackstar live for orders matching a query (order number
+        / reference, or a Trackstar order id). Each result is flagged with whether
+        it already exists locally so the caller can decide to download vs update.
+        Requires Bearer token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                query: 915404R
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: ord_2b7c1e
+                  order_number: 915404R
+                  reference_id: '#915404R'
+                  status: fulfilled
+                  created_date: '2026-05-20T07:38:00Z'
+                  total_price: 129.99
+                  currency: USD
+                  exists_in_database: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-trackstar-integration-instances-integration-instance-orders-search
+  /api/trackstar/integration-instances/{integration_instance}/orders/refresh-order:
+    post:
+      tags:
+      - Trackstar
+      summary: Download Order from Trackstar
+      description: Download (or update) a single order live from Trackstar by its
+        Trackstar order id and persist it. Backs the search tab's per-result Download/Update
+        action. Requires Bearer token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                uniqueId: ord_2b7c1e
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  id: 1
+                message: Order refreshed from Trackstar
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-trackstar-integration-instances-integration-instance-orders-refresh-order
   /api/trackstar/integration-instances/{integration_instance}/order-shipments:
     get:
       tags:
@@ -244555,12 +244692,12 @@ paths:
       - Fulfillments
       summary: Fulfill or Update Shipment
       description: "Create or update a shipment (fulfillment) for a sales order. Uses\
-        \ FulfillSalesOrderRequest. Authenticate with a Bearer Personal Access Token.\n\
-        \nPUT updates the bound fulfillment; the same body shape is used when creating\
-        \ via POST /api/sales-orders/{salesOrder}/fulfillments.\n\nBody fields:\n\
-        - fulfillment_type (required): one of the SalesOrderFulfillment::TYPES (e.g.\
-        \ manual, fba, pickup).\n- warehouse_id (nullable on PUT; required on POST\
-        \ when the order spans multiple warehouses — auto-selected when single).\n\
+        \ FulfillSalesOrderRequest. Authenticate with a Personal Access Token, passed\
+        \ in the `Authorization` header as a bearer token.\n\nPUT updates the bound\
+        \ fulfillment; the same body shape is used when creating via POST /api/sales-orders/{salesOrder}/fulfillments.\n\
+        \nBody fields:\n- fulfillment_type (required): one of the SalesOrderFulfillment::TYPES\
+        \ (e.g. manual, fba, pickup).\n- warehouse_id (nullable on PUT; required on\
+        \ POST when the order spans multiple warehouses — auto-selected when single).\n\
         - requested_shipping_method_id / requested_shipping_method (nullable).\n-\
         \ fulfilled_shipping_method_id / manual_fulfilled_shipping_method (nullable\
         \ — for manual fulfillment).\n- fulfilled_at (required when fulfillment_type=manual;\
