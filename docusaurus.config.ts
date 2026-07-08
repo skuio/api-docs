@@ -79,7 +79,14 @@ const config: Config = {
         siteTitle: "SKU.io API Documentation",
         content: {
           enableMarkdownFiles: true,
-          enableLlmsFullTxt: false,
+          // Emits /llms-full.txt — the whole docs corpus concatenated into one
+          // file (the llms.txt standard's full-content companion). finalize-build
+          // only restores the curated llms.txt, so this generated file survives.
+          // Kept at includeDocs:true (no excludeRoutes) on purpose: excludeRoutes
+          // is global and would also drop the per-endpoint .md twins, breaking the
+          // "append .md to any URL" promise. The full dump therefore mirrors the
+          // twins exactly.
+          enableLlmsFullTxt: true,
           relativePaths: false,
           includeDocs: true,
           includeBlog: false,
