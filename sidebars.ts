@@ -190,6 +190,18 @@ const sidebars: SidebarsConfig = {
     { type: "doc", id: "guides/dates-and-timezones", label: "Dates & Timezones" },
     { type: "doc", id: "guides/rate-limits", label: "Rate Limits" },
     { type: "doc", id: "guides/webhooks", label: "Webhooks" },
+    { type: "doc", id: "guides/common-operations", label: "Common Operations" },
+    {
+      type: "category",
+      label: "Tutorials",
+      collapsible: true,
+      collapsed: false,
+      items: [
+        { type: "doc", id: "guides/tutorials/create-and-fulfill-order", label: "Create & Fulfill an Order" },
+        { type: "doc", id: "guides/tutorials/sync-inventory-levels", label: "Sync Inventory Levels" },
+        { type: "doc", id: "guides/tutorials/import-products", label: "Import & Update Products" },
+      ],
+    },
     { type: "doc", id: "guides/ai-tools", label: "Build with AI" },
   ],
   apiSidebar: [

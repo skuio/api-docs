@@ -245,6 +245,15 @@ const config: Config = {
         searchBarPosition: "right",
         highlightSearchTermsOnTargetPage: true,
         explicitSearchResultPath: true,
+        // Split the monolithic search index by section. The 4,000+ API reference
+        // pages dominate the index (~17-19 MB); without this every first search —
+        // even from a guide — downloads the whole thing. The SearchBar auto-selects
+        // the context matching the current page path, so a guide reader downloads
+        // only the small guides index and an API reader only the API index.
+        // useAllContextsWithNoSearchContext keeps search working (full index) from
+        // pages outside these sections, e.g. the landing page.
+        searchContextByPaths: ["docs/api", "docs/guides", "release-notes", "changelog"],
+        useAllContextsWithNoSearchContext: true,
       },
     ],
   ],

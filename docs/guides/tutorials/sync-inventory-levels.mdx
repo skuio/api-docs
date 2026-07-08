@@ -1,0 +1,68 @@
+---
+id: sync-inventory-levels
+title: "Tutorial: Sync Inventory Levels"
+sidebar_label: Sync Inventory Levels
+slug: /guides/tutorials/sync-inventory-levels
+description: Read current stock, reconcile against an external system, and post adjustments.
+---
+
+# Tutorial: Sync Inventory Levels
+
+A common integration keeps SKU.io's on-hand quantities in step with another system (a WMS, a marketplace, a spreadsheet count). The pattern is: **read current state → diff against your source of truth → post adjustments for the differences**. This tutorial shows each step. You'll need a token with `inventory:read` and `inventory:write`.
+
+## 1. Read current stock
+
+Pull recent inventory movements with [`GET /api/v2/inventory-movements`](/docs/api/get-api-v-2-inventory-movements). This is a standard paginated, filterable list — narrow it to a warehouse and date window so you only fetch what changed:
+
+```bash
+curl "https://acme.sku.io/api/v2/inventory-movements?filter[warehouse_id]=1&per_page=100&sort=-created_at" \
+  -H "Authorization: Bearer $SKU_TOKEN" \
+  -H "Accept: application/json"
+```
+
+Walk the pages via `next_page_url` until it's `null` — see [Pagination](/docs/guides/pagination). For the filter and sort keys this endpoint accepts, see [Filtering & Sorting](/docs/guides/filtering-and-sorting) and the [reference page](/docs/api/get-api-v-2-inventory-movements).
+
+## 2. Diff against your source of truth
+
+This step is yours, not an API call. For each SKU, compare SKU.io's current on-hand against the authoritative count from your other system and build a list of deltas:
+
+```
+WDG-001: SKU.io says 448, WMS says 450  → +2
+WDG-002: SKU.io says 120, WMS says 118  → -2
+```
+
+Only post adjustments where the delta is non-zero. Sending a no-op adjustment just creates noise in the audit trail.
+
+## 3. Post adjustments
+
+For each non-zero delta, create an adjustment with [`POST /api/inventory-adjustments`](/docs/api/post-api-inventory-adjustments). Always include a reason so the movement is auditable:
+
+```bash
+curl -X POST "https://acme.sku.io/api/inventory-adjustments" \
+  -H "Authorization: Bearer $SKU_TOKEN" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "warehouse_id": 1,
+    "reason": "WMS reconciliation",
+    "lines": [
+      { "sku": "WDG-001", "quantity_change": 2 },
+      { "sku": "WDG-002", "quantity_change": -2 }
+    ]
+  }'
+```
+
+Verify what posted with [`GET /api/v2/inventory-adjustments`](/docs/api/get-api-v-2-inventory-adjustments). The exact accepted body (per-line lot / expiry / cost fields) is on the [Create Inventory Adjustment](/docs/api/post-api-inventory-adjustments) reference.
+
+## 4. Make it incremental
+
+Re-scanning everything on a schedule works but is wasteful. Two better patterns:
+
+- **Cursor by timestamp** — remember the newest `created_at` you processed and filter `filter[created_at]` on the next run so you only pull new movements.
+- **React to events** — subscribe to inventory [Webhooks](/docs/guides/webhooks) and adjust in response to pushed changes instead of polling at all.
+
+## Where to next
+
+- [Allocations](/docs/api/get-api-v-2-inventory-allocations) — see what stock is committed vs. available
+- [Import Products](/docs/guides/tutorials/import-products) — get SKUs into the catalog before you can count them
+- [Inventory reference](/docs/api/inventory) — movements, adjustments, holds, expiry, and aging
