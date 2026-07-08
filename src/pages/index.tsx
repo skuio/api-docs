@@ -32,6 +32,14 @@ function HomepageHeader() {
           >
             Get API Token
           </Link>
+          <Link
+            className="button button--outline button--secondary button--lg"
+            href="pathname:///skuio-api.postman_collection.json"
+            download
+            style={{ marginLeft: "1rem" }}
+          >
+            Postman Collection
+          </Link>
         </div>
       </div>
     </header>
