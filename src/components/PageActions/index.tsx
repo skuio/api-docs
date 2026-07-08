@@ -20,14 +20,51 @@ function loadScopeIndex(url: string): Promise<Record<string, string>> {
   return scopeIndexPromise;
 }
 
+// Rate-limit lookup (static/rate-limit-index.json): a `_default` platform limit
+// plus per-endpoint overrides keyed by slug. Each entry's `limits` are sorted
+// most-restrictive-first by the build-time generator, so limits[0] is the badge
+// headline and the rest (if any) stack and appear in the tooltip.
+type RateLimit = { n: number; w: string };
+type RateLimitEntry = { limits: RateLimit[] };
+type RateLimitIndex = Record<string, RateLimitEntry>;
+
+let rateLimitIndexPromise: Promise<RateLimitIndex> | null = null;
+
+function loadRateLimitIndex(url: string): Promise<RateLimitIndex> {
+  if (!rateLimitIndexPromise) {
+    rateLimitIndexPromise = fetch(url)
+      .then((r) => (r.ok ? r.json() : {}))
+      .catch(() => ({}));
+  }
+  return rateLimitIndexPromise;
+}
+
+const WINDOW_SHORT: Record<string, string> = {
+  second: "sec",
+  minute: "min",
+  hour: "hour",
+  day: "day",
+};
+
+function formatLimit(limit: RateLimit): string {
+  return `${limit.n.toLocaleString("en-US")}/${WINDOW_SHORT[limit.w] ?? limit.w}`;
+}
+
+function formatLimitLong(limit: RateLimit): string {
+  return `${limit.n.toLocaleString("en-US")} requests per ${limit.w}`;
+}
+
 type CopyState = "idle" | "copied" | "error";
 
 export default function PageActions(): React.ReactElement | null {
   const { pathname } = useLocation();
   const scopeIndexUrl = useBaseUrl("/scope-index.json");
+  const rateLimitIndexUrl = useBaseUrl("/rate-limit-index.json");
 
   const [mounted, setMounted] = useState(false);
   const [scope, setScope] = useState<string | null>(null);
+  const [rateLimit, setRateLimit] = useState<RateLimitEntry | null>(null);
+  const [rateLimitIsDefault, setRateLimitIsDefault] = useState(true);
   const [copyState, setCopyState] = useState<CopyState>("idle");
   const [menuOpen, setMenuOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -56,6 +93,26 @@ export default function PageActions(): React.ReactElement | null {
       active = false;
     };
   }, [slug, isOperationPage, scopeIndexUrl]);
+
+  useEffect(() => {
+    if (!isOperationPage) {
+      setRateLimit(null);
+      return;
+    }
+    let active = true;
+    loadRateLimitIndex(rateLimitIndexUrl).then((index) => {
+      if (!active) {
+        return;
+      }
+      const override = index[slug];
+      const entry = override ?? index._default ?? null;
+      setRateLimit(entry && entry.limits?.length ? entry : null);
+      setRateLimitIsDefault(!override);
+    });
+    return () => {
+      active = false;
+    };
+  }, [slug, isOperationPage, rateLimitIndexUrl]);
 
   // Close the dropdown on outside click / Escape.
   useEffect(() => {
@@ -111,28 +168,53 @@ export default function PageActions(): React.ReactElement | null {
   const copyLabel =
     copyState === "copied" ? "Copied!" : copyState === "error" ? "Copy failed" : "Copy page";
 
+  const rateHeadline = rateLimit ? formatLimit(rateLimit.limits[0]) : null;
+  const rateTitle = !rateLimit
+    ? undefined
+    : rateLimitIsDefault
+      ? `Platform rate limit: ${formatLimitLong(rateLimit.limits[0])} per API token (and per IP). On HTTP 429, honor the Retry-After header.`
+      : rateLimit.limits.length === 1
+        ? `This endpoint is rate-limited to ${formatLimitLong(rateLimit.limits[0])} — tighter than the 1,000/min platform default. On HTTP 429, honor the Retry-After header.`
+        : `This endpoint stacks multiple rate limits: ${rateLimit.limits
+            .map(formatLimit)
+            .join(" and ")}. All apply; the most restrictive binds. On HTTP 429, honor the Retry-After header.`;
+
   return (
     <div className={styles.bar} ref={rootRef}>
       {isOperationPage && (
-        <span
-          className={scope ? styles.badgeScoped : styles.badgePublic}
-          title={
-            scope
-              ? `This endpoint requires the ${scope} scope on the API token.`
-              : "Any valid API token can call this endpoint — no specific scope required."
-          }
-        >
-          <span className={styles.badgeIcon} aria-hidden="true">
-            {scope ? "🔒" : "🔓"}
+        <div className={styles.badgeGroup}>
+          <span
+            className={scope ? styles.badgeScoped : styles.badgePublic}
+            title={
+              scope
+                ? `This endpoint requires the ${scope} scope on the API token.`
+                : "Any valid API token can call this endpoint — no specific scope required."
+            }
+          >
+            <span className={styles.badgeIcon} aria-hidden="true">
+              {scope ? "🔒" : "🔓"}
+            </span>
+            {scope ? (
+              <>
+                Requires <code className={styles.badgeCode}>{scope}</code>
+              </>
+            ) : (
+              "Public — any token"
+            )}
           </span>
-          {scope ? (
-            <>
-              Requires <code className={styles.badgeCode}>{scope}</code>
-            </>
-          ) : (
-            "Public — any token"
+
+          {rateHeadline && (
+            <span
+              className={rateLimitIsDefault ? styles.badgeRate : styles.badgeRateTight}
+              title={rateTitle}
+            >
+              <span className={styles.badgeIcon} aria-hidden="true">
+                ⏱
+              </span>
+              {rateHeadline}
+            </span>
           )}
-        </span>
+        </div>
       )}
 
       <div className={styles.actions}>
