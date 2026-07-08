@@ -19398,9 +19398,7 @@ paths:
                   role: Admin
                   features:
                     granular_permissions: false
-                    decoration: false
                     accounting_v2: true
-                    new_forecast_engine: false
                 is_production_server: false
         '429': *id001
         '401': *id002
@@ -20950,12 +20948,7 @@ paths:
         - `granular_permissions` (boolean) — granular role/permission authorization
         is enabled.
 
-        - `decoration` (boolean) — decoration/customization features are enabled.
-
         - `accounting_v2` (boolean) — the v2 accounting stack is enabled.
-
-        - `new_forecast_engine` (boolean) — the new demand-planning forecast engine
-        is enabled.
 
 
         A feature absent from the map (or any value other than `true`) should be treated
@@ -20976,9 +20969,7 @@ paths:
               example:
                 data:
                   granular_permissions: false
-                  decoration: false
                   accounting_v2: true
-                  new_forecast_engine: true
                 status: success
         '401':
           description: Unauthorized
@@ -30652,7 +30643,6 @@ paths:
                   is_super_admin: false
                   features:
                     granular_permissions: false
-                    decoration: false
                     accounting_v2: false
                   role: Admin
                   roles:
@@ -167685,6 +167675,63 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-trackstar-integration-instances-integration-instance-orders-refresh-order
+  /api/trackstar/integration-instances/{integration_instance}/orders/{order}/activity-log:
+    get:
+      tags:
+      - Trackstar
+      summary: Order Activity Log
+      description: Paginated activity log for a single order (order detail page Activity
+        Log tab). Supports `filter[search]`, `per_page`. Requires Bearer token.
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      - name: order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Order database ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  description: updated
+                  event: updated
+                  subject_type: TrackstarOrder
+                  subject_id: 1
+                  properties:
+                    attributes:
+                      status: fulfilled
+                  causer_name: System
+                  created_at: '2026-07-08T12:00:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 15
+                total: 1
+                from: 1
+                to: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-orders-order-activity-log
   /api/trackstar/integration-instances/{integration_instance}/order-shipments:
     get:
       tags:
@@ -167977,8 +168024,8 @@ paths:
       tags:
       - Trackstar
       summary: Sync Inventory
-      description: 'Pull current inventory levels from the Trackstar API and update
-        the local database. Requires Bearer token.
+      description: 'Queue a inventory sync from Trackstar (tracked job). Returns the
+        tracked job log id. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -168010,8 +168057,9 @@ paths:
               schema:
                 type: object
               example:
-                message: Inventory synced successfully
-                synced_count: 320
+                message: Sync has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
@@ -168541,8 +168589,8 @@ paths:
       tags:
       - Trackstar
       summary: Sync Inventory Ledger
-      description: 'Pull inventory ledger entries from the Trackstar API and sync
-        to the local database. Requires Bearer token.
+      description: 'Queue a inventory ledger sync from Trackstar (tracked job). Returns
+        the tracked job log id. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -168574,10 +168622,9 @@ paths:
               schema:
                 type: object
               example:
-                message: Inventory ledger synced successfully
-                synced: 150
-                created: 80
-                updated: 70
+                message: Sync has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
@@ -168763,8 +168810,10 @@ paths:
       tags:
       - Trackstar
       summary: Sync Products
-      description: 'Pull all products from the Trackstar API and sync to the local
-        database. Requires Bearer token.
+      description: 'Queue a products sync from Trackstar (tracked job). Accepts the
+        Refresh Products modal payload: `mode` (since_latest | date_range | full_catalog)
+        with `date_from` / `date_to` (YYYY-MM-DD) and `date_method` (created | updated).
+        Narrows the ingest to the resolved window. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -168774,7 +168823,15 @@ paths:
 
         :::'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                mode: date_range
+                date_from: '2026-06-01'
+                date_to: '2026-06-30'
+                date_method: updated
       parameters:
       - name: integration_instance
         in: path
@@ -168796,8 +168853,9 @@ paths:
               schema:
                 type: object
               example:
-                message: Products synced successfully
-                synced_count: 180
+                message: Product sync has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
@@ -169045,6 +169103,101 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-trackstar-integration-instances-integration-instance-products-product-raw
+  /api/trackstar/integration-instances/{integration_instance}/products/sync-info:
+    get:
+      tags:
+      - Trackstar
+      summary: Get Products Sync Info
+      description: 'Baseline for the Refresh Products modal: latest synced product
+        + total count. Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                  latest_product_title: Rouge Max G3 Wall Mounted
+                  latest_product_date: '2026-07-08T15:05:00.000000Z'
+                  total_products: 19
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-products-sync-info
+  /api/trackstar/integration-instances/{integration_instance}/products/{product}/activity-log:
+    get:
+      tags:
+      - Trackstar
+      summary: Product Activity Log
+      description: Paginated activity log for a single product (product detail page
+        Activity Log tab). Supports `filter[search]`, `per_page`. Requires Bearer
+        token.
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product database ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                data:
+                - id: 1
+                  description: updated
+                  event: updated
+                  subject_type: TrackstarOrder
+                  subject_id: 1
+                  properties:
+                    attributes:
+                      status: fulfilled
+                  causer_name: System
+                  created_at: '2026-07-08T12:00:00.000000Z'
+                current_page: 1
+                last_page: 1
+                per_page: 15
+                total: 1
+                from: 1
+                to: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-products-product-activity-log
   /api/trackstar/integration-instances/{integration_instance}/bills:
     get:
       tags:
@@ -169656,8 +169809,8 @@ paths:
       tags:
       - Trackstar
       summary: Sync Inbound Shipments
-      description: 'Pull inbound shipments from the Trackstar API and sync to the
-        local database. Requires Bearer token.
+      description: 'Queue a inbound shipments sync from Trackstar (tracked job). Returns
+        the tracked job log id. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -169689,8 +169842,9 @@ paths:
               schema:
                 type: object
               example:
-                message: Inbound shipments synced successfully
-                synced_count: 72
+                message: Sync has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
@@ -169894,8 +170048,8 @@ paths:
       tags:
       - Trackstar
       summary: Sync Returns
-      description: 'Pull returns from the Trackstar API and sync to the local database.
-        Requires Bearer token.
+      description: 'Queue a returns sync from Trackstar (tracked job). Returns the
+        tracked job log id. Requires Bearer token.
 
 
         :::info[Authorization]
@@ -169927,8 +170081,9 @@ paths:
               schema:
                 type: object
               example:
-                message: Returns synced successfully
-                synced_count: 55
+                message: Sync has been queued
+                data:
+                  tracked_job_log_id: 12345
         '429': *id001
         '401': *id002
         '403': *id003
