@@ -35,6 +35,18 @@ const config: Config = {
     apiOperationCount,
   },
 
+  // Branded apple-touch-icon (iOS home-screen / bookmark). The standard
+  // favicon is wired via `favicon` above; OG/Twitter card via themeConfig.image.
+  headTags: [
+    {
+      tagName: "link",
+      attributes: {
+        rel: "apple-touch-icon",
+        href: "/img/apple-touch-icon.png",
+      },
+    },
+  ],
+
   onBrokenLinks: "throw",
   onBrokenMarkdownLinks: "warn",
 
@@ -266,6 +278,9 @@ const config: Config = {
   ],
 
   themeConfig: {
+    // Default preview image for shared links (OG / Twitter). Brand card lives
+    // at static/img/sku-social-card.png (1200×630).
+    image: "img/sku-social-card.png",
     // docusaurus-plugin-image-zoom: click any image to open a full-size lightbox.
     zoom: {
       selector: ".markdown img",
