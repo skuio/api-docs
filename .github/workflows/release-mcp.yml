@@ -49,21 +49,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # NOTE: deliberately NO `registry-url:` here. setup-node's registry-url
-      # writes an `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}` line into
-      # .npmrc; with Trusted Publishing there is no token, so npm would use that
-      # empty token and skip the OIDC exchange → `npm publish` 404s. Leaving it
-      # out means npm finds no registry credential and performs the OIDC trusted-
-      # publishing handshake instead. Default registry is already npmjs.org.
+      # registry-url is the documented Trusted-Publishing setup — npm 11.5.1+
+      # detects the OIDC context and does the trusted-publish exchange itself.
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
 
-      # Trusted Publishing needs npm >= 11.5.1; Node 22 ships npm 10.x. Pin to the
-      # 11.x line — `npm@latest` is now 12.x, which requires Node >= 22.22/24 and
-      # fails EBADENGINE on the runner's Node.
+      # Trusted Publishing needs npm >= 11.5.1; pin to the 11.x line (npm@latest
+      # is 12.x and needs a newer Node). Print the resolved versions so a failed
+      # run makes it obvious whether an OIDC-capable npm actually ran.
       - name: Upgrade npm to a Trusted-Publishing-capable version
-        run: npm install -g 'npm@^11.5.1'
+        run: |
+          npm install -g 'npm@^11.5.1'
+          echo "node: $(node -v)  npm: $(npm -v)  registry: $(npm config get registry)"
 
       # On a tag push, the tag must match mcp/package.json — stops a stale
       # publish (e.g. tagging docs-mcp-v0.2.0 while package.json still says 0.1.0).
@@ -80,7 +79,8 @@ jobs:
 
       # No `npm ci` — the package ships only server.mjs + README.md (see "files")
       # with no build/prepare step, so publishing needs no installed dependencies.
-
-      # --provenance records a signed link from the published tarball back to
-      # this exact repo + commit + workflow run (public-repo supply-chain attestation).
-      - run: npm publish --provenance --access public
+      #
+      # --provenance records a signed link from the published tarball back to this
+      # exact repo + commit + workflow run. --loglevel verbose surfaces the OIDC
+      # trusted-publishing handshake so failures are diagnosable.
+      - run: npm publish --provenance --access public --loglevel verbose
