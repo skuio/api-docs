@@ -286010,6 +286010,103 @@ paths:
         '404': *id004
       x-required-scope: products:read
       operationId: get-api-products-product-last-purchase-price
+  /api/consignment/inventory:
+    get:
+      tags:
+      - Products
+      summary: List Consignment Inventory
+      description: 'Consigned (supplier-owned) stock on hand that hasn''t sold yet,
+        one row per cost layer, with unit cost, total value, and days-on-consignment
+        aging, plus the supplier and purchase order it came from. Drives the return-unsold
+        workflow.
+
+
+        Authentication: Requires a Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        sku:
+                          type: string
+                        product_id:
+                          type: integer
+                        product_name:
+                          type: string
+                        supplier_id:
+                          type: integer
+                        supplier_name:
+                          type: string
+                        warehouse_id:
+                          type: integer
+                        warehouse_name:
+                          type: string
+                        purchase_order_id:
+                          type: integer
+                        purchase_order_number:
+                          type: string
+                        on_hand_quantity:
+                          type: integer
+                        unit_cost:
+                          type: integer
+                        total_value:
+                          type: integer
+                        days_on_consignment:
+                          type: integer
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                example:
+                  data:
+                  - id: 40122
+                    sku: WIDGET-1
+                    product_id: 881
+                    product_name: Blue Widget
+                    supplier_id: 44
+                    supplier_name: Acme Wholesale
+                    warehouse_id: 12
+                    warehouse_name: Acme Consignment
+                    purchase_order_id: 10432
+                    purchase_order_number: PO-10432
+                    on_hand_quantity: 40
+                    unit_cost: 4
+                    total_value: 160
+                    days_on_consignment: 52
+                  current_page: 1
+                  last_page: 1
+                  per_page: 15
+                  total: 1
+                  from: 1
+                  to: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-consignment-inventory
   /api/products/{productId}/attributes:
     get:
       tags:
@@ -399151,6 +399248,721 @@ paths:
         '403': *id003
       x-required-scope: purchase-orders:write
       operationId: post-api-purchase-orders-purchase-order-expected-vendor-deposit-milestones-milestonekey-create-deposit
+  /api/purchase-orders/{purchaseOrder}/consignment/settlement-preview:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get Consignment Settlement Preview
+      description: 'For a consignment purchase order, list each line''s consigned
+        stock that has sold but has not yet been settled with the supplier, priced
+        at the consignment cost. Lines with nothing left to settle are omitted.
+
+
+        Authentication: Requires a Bearer token.'
+      parameters:
+      - name: purchaseOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        purchase_order_line_id:
+                          type: integer
+                        sku:
+                          type: string
+                        sold_quantity:
+                          type: integer
+                        settled_quantity:
+                          type: integer
+                        sold_unsettled_quantity:
+                          type: integer
+                        unit_cost:
+                          type: integer
+                        amount:
+                          type: integer
+                example:
+                  data:
+                  - purchase_order_line_id: 5501
+                    sku: WIDGET-1
+                    sold_quantity: 12
+                    settled_quantity: 0
+                    sold_unsettled_quantity: 12
+                    unit_cost: 4
+                    amount: 48
+                  - purchase_order_line_id: 5502
+                    sku: WIDGET-2
+                    sold_quantity: 5
+                    settled_quantity: 0
+                    sold_unsettled_quantity: 5
+                    unit_cost: 6.5
+                    amount: 32.5
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-orders-purchaseorder-consignment-settlement-preview
+  /api/purchase-orders/{purchaseOrder}/consignment/settlements:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Create Consignment Settlement
+      description: 'Generate a settlement bill for a consignment purchase order, covering
+        the consigned stock that has sold but not yet been settled. The bill is created
+        for the supplier and the purchase order stays open so further sales can be
+        settled later.
+
+
+        Request body (all optional):
+
+        - settlement_date (date): the report/settlement date. Defaults to today.
+
+        - line_quantities (object): map of purchase order line ID to the quantity
+        to settle for that line. Each value is clamped to what is still unsettled.
+        Omit to settle every sold-but-unsettled unit.
+
+
+        Returns 422 when the purchase order is not a consignment order, or when there
+        is nothing left to settle.
+
+
+        Authentication: Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                settlement_date:
+                  type: string
+                line_quantities:
+                  type: object
+                  properties:
+                    '5501':
+                      type: integer
+                    '5502':
+                      type: integer
+              example:
+                settlement_date: '2026-07-08'
+                line_quantities:
+                  '5501': 12
+                  '5502': 5
+      parameters:
+      - name: purchaseOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '123'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_id:
+                    type: integer
+                  purchase_order_number:
+                    type: string
+                  supplier_invoice_number:
+                    type: string
+                  supplier_id:
+                    type: integer
+                  supplier_name:
+                    type: string
+                  purchase_invoice_date:
+                    type: string
+                  due_date:
+                    type: string
+                  status:
+                    type: string
+                  is_consignment_settlement:
+                    type: boolean
+                  purchase_invoice_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        purchase_order_line_id:
+                          type: integer
+                        quantity_invoiced:
+                          type: integer
+                        unit_price:
+                          type: integer
+                example:
+                  id: 9001
+                  purchase_order_id: 123
+                  purchase_order_number: PO-10432
+                  supplier_invoice_number: CONSIGN-PO-10432-20260708-1
+                  supplier_id: 44
+                  supplier_name: Acme Wholesale
+                  purchase_invoice_date: '2026-07-08'
+                  due_date: '2026-08-07'
+                  status: unpaid
+                  is_consignment_settlement: true
+                  purchase_invoice_lines:
+                  - id: 71001
+                    purchase_order_line_id: 5501
+                    quantity_invoiced: 12
+                    unit_price: 4
+                  - id: 71002
+                    purchase_order_line_id: 5502
+                    quantity_invoiced: 5
+                    unit_price: 6.5
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Nothing to settle — no sold consigned units are outstanding.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-orders-purchaseorder-consignment-settlements
+  /api/purchase-orders/{purchaseOrder}/consignment/returns:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Return Unsold Consigned Stock
+      description: 'Return unsold consigned stock to the supplier for a consignment
+        purchase order. This removes the returned units from sellable stock; it creates
+        no bill and no credit, because unsold consigned stock was never owed for.
+        Returning stock also updates the purchase order''s consignment settlement
+        status, and a purchase order whose stock is now entirely sold-and-settled
+        or returned is automatically closed.
+
+
+        Request body (all optional):
+
+        - line_quantities (object): map of purchase order line ID to the quantity
+        to return for that line. Each value is clamped to the units still unsold on
+        hand. Omit to return every unsold unit across all lines.
+
+
+        Returns 422 when the purchase order is not a consignment order.
+
+
+        Authentication: Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                line_quantities:
+                  type: object
+                  properties:
+                    '5501':
+                      type: integer
+              example:
+                line_quantities:
+                  '5501': 3
+      parameters:
+      - name: purchaseOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        purchase_order_line_id:
+                          type: integer
+                        returned:
+                          type: integer
+                  consignment_status:
+                    type: string
+                example:
+                  data:
+                  - purchase_order_line_id: 5501
+                    returned: 3
+                  consignment_status: fully_settled
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-purchase-orders-purchaseorder-consignment-returns
+  /api/consignment/settlements/{settlement}/share:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Share Consignment Settlement Report
+      description: 'Share a consignment settlement''s Account Sales Report with the
+        supplier. The report is term-aware — it states how much is owed and when it
+        is due, derived from the consignment payment term on the purchase order.
+
+
+        Request body:
+
+        - channel (required): how to share — email, portal, or both.
+
+        - recipient_email (optional): the address to email the report to. When omitted,
+        the supplier''s own contact email is used. Ignored when channel is portal.
+
+
+        A public, unauthenticated portal link is always returned so it can be copied
+        and shared directly. The portal page shows the supplier the amount owed, the
+        due date, the line items that sold, and the payment terms.
+
+
+        Authentication: Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                channel:
+                  type: string
+                recipient_email:
+                  type: string
+              example:
+                channel: both
+                recipient_email: ap@supplier.com
+      parameters:
+      - name: settlement
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Consignment settlement bill (purchase invoice) ID
+        example: '9001'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  portal_url:
+                    type: string
+                  emailed:
+                    type: boolean
+                  recipient:
+                    type: string
+                  report:
+                    type: object
+                    properties:
+                      supplier_name:
+                        type: string
+                      purchase_order_number:
+                        type: string
+                      settlement_reference:
+                        type: string
+                      report_date:
+                        type: string
+                      due_date:
+                        type: string
+                      currency_code:
+                        type: string
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sku:
+                              type: string
+                            product_name:
+                              type: string
+                            quantity:
+                              type: integer
+                            unit_price:
+                              type: integer
+                            amount:
+                              type: integer
+                      total_units:
+                        type: integer
+                      amount_owed:
+                        type: integer
+                      payment_term:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          settlement_frequency:
+                            type: string
+                          net_days:
+                            type: integer
+                          summary:
+                            type: string
+                example:
+                  portal_url: https://acme.example.com/consignment-report/hULzoBcZJh1nlGzqx3Rgp732pEfWwXfZKZ9huJ12S9W
+                  emailed: true
+                  recipient: ap@supplier.com
+                  report:
+                    supplier_name: Acme Wholesale Co.
+                    purchase_order_number: PO-CONSIGN-1001
+                    settlement_reference: CONSIGN-PO-CONSIGN-1001-20260709-1
+                    report_date: '2026-07-09'
+                    due_date: '2026-08-08'
+                    currency_code: USD
+                    lines:
+                    - sku: WIDGET-BLUE
+                      product_name: Blue Widget
+                      quantity: 15
+                      unit_price: 4
+                      amount: 60
+                    total_units: 15
+                    amount_owed: 60
+                    payment_term:
+                      name: Consignment — Monthly, Net 30
+                      settlement_frequency: Monthly
+                      net_days: 30
+                      summary: Consignment — Monthly, Net 30, payment due 30 days
+                        after this report
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This bill is not a consignment settlement.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-consignment-settlements-settlement-share
+  /api/consignment/suppliers/{supplier}/statement:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get Consignment Statement of Account
+      description: 'A rolling balance-forward statement of account for a supplier''s
+        consignment settlements: opening balance, each settlement with amount / paid
+        / outstanding and a running balance, and the closing balance. The summary
+        also reports the consignment liability that has accrued from sales but has
+        not yet been settled.
+
+
+        Optionally window the statement with date_from / date_to (m/d/Y or Y-m-d):
+        settlements before date_from roll into the opening balance; settlements after
+        date_to are excluded.
+
+
+        Authentication: Requires a Bearer token.'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  supplier_id:
+                    type: integer
+                  supplier_name:
+                    type: string
+                  currency_code:
+                    type: string
+                  date_from:
+                    type: string
+                    nullable: true
+                  date_to:
+                    type: string
+                    nullable: true
+                  opening_balance:
+                    type: integer
+                  closing_balance:
+                    type: integer
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        settlement_id:
+                          type: integer
+                        date:
+                          type: string
+                        due_date:
+                          type: string
+                        reference:
+                          type: string
+                        purchase_order_id:
+                          type: integer
+                        purchase_order_number:
+                          type: string
+                        amount:
+                          type: integer
+                        paid:
+                          type: integer
+                        outstanding:
+                          type: integer
+                        running_balance:
+                          type: integer
+                        status:
+                          type: string
+                  summary:
+                    type: object
+                    properties:
+                      settlement_count:
+                        type: integer
+                      total_settled:
+                        type: integer
+                      total_paid:
+                        type: integer
+                      total_outstanding:
+                        type: integer
+                      accrued_unsettled:
+                        type: integer
+                example:
+                  supplier_id: 42
+                  supplier_name: Acme Wholesale Co.
+                  currency_code: USD
+                  date_from: null
+                  date_to: null
+                  opening_balance: 0
+                  closing_balance: 60
+                  lines:
+                  - settlement_id: 9001
+                    date: '2026-01-15'
+                    due_date: '2026-02-14'
+                    reference: CONSIGN-PO-CONSIGN-1001-20260115-1
+                    purchase_order_id: 1001
+                    purchase_order_number: PO-CONSIGN-1001
+                    amount: 40
+                    paid: 10
+                    outstanding: 30
+                    running_balance: 30
+                    status: partially_paid
+                  - settlement_id: 9014
+                    date: '2026-02-15'
+                    due_date: '2026-03-17'
+                    reference: CONSIGN-PO-CONSIGN-1001-20260215-1
+                    purchase_order_id: 1001
+                    purchase_order_number: PO-CONSIGN-1001
+                    amount: 30
+                    paid: 0
+                    outstanding: 30
+                    running_balance: 60
+                    status: unpaid
+                  summary:
+                    settlement_count: 2
+                    total_settled: 70
+                    total_paid: 10
+                    total_outstanding: 60
+                    accrued_unsettled: 45
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-consignment-suppliers-supplier-statement
+  /api/consignment/settings:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get Consignment Aging Settings
+      description: 'The consignment aging-alert configuration: whether aging alerts
+        are sent, the age (in days on consignment) at which unsold consigned stock
+        is flagged, and whether flagged stock is automatically returned to the supplier.
+
+
+        Authentication: Requires a Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  aging_alerts_enabled:
+                    type: boolean
+                  aging_threshold_days:
+                    type: integer
+                  aging_auto_return_enabled:
+                    type: boolean
+                example:
+                  aging_alerts_enabled: true
+                  aging_threshold_days: 90
+                  aging_auto_return_enabled: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-consignment-settings
+    put:
+      tags:
+      - Purchase Orders
+      summary: Update Consignment Aging Settings
+      description: 'Update the consignment aging-alert configuration. All fields are
+        optional; only the provided fields are changed.
+
+
+        Fields:
+
+        - aging_alerts_enabled (boolean): send aging alerts when consigned stock ages
+        past the threshold.
+
+        - aging_threshold_days (integer, 1-3650): age in days on consignment at which
+        unsold stock is flagged.
+
+        - aging_auto_return_enabled (boolean): automatically return flagged stock
+        to the supplier. Off by default — returning consigned stock is irreversible.
+
+
+        Authentication: Requires a Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                aging_alerts_enabled:
+                  type: boolean
+                aging_threshold_days:
+                  type: integer
+                aging_auto_return_enabled:
+                  type: boolean
+              example:
+                aging_alerts_enabled: true
+                aging_threshold_days: 120
+                aging_auto_return_enabled: false
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  aging_alerts_enabled:
+                    type: boolean
+                  aging_threshold_days:
+                    type: integer
+                  aging_auto_return_enabled:
+                    type: boolean
+                example:
+                  aging_alerts_enabled: true
+                  aging_threshold_days: 120
+                  aging_auto_return_enabled: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      aging_threshold_days:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The aging threshold must be at least 1 day.
+                  errors:
+                    aging_threshold_days:
+                    - The aging threshold must be at least 1 day.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-consignment-settings
   /api/purchase-invoices:
     get:
       tags:
