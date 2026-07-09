@@ -17,29 +17,47 @@ const yaml = require("js-yaml") as { load: (src: string) => unknown };
 // rotted: 65 of 114 tags were unmapped and piled into a flat "Core API".)
 // ---------------------------------------------------------------------------
 
-// Optional visual nesting inside groups. Safe to leave incomplete.
+// Optional visual nesting inside groups. Safe to leave incomplete — any tag
+// without an entry sits directly under its group (from x-tagGroups), never lost.
 const TAG_TO_AREA: Record<string, string> = {
-  // ── Core API ─────────────────────────────────────────────────────────
+  // ══ Core API ═════════════════════════════════════════════════════════
+  // ── Orders ───────────────────────────────────────────────────────────
   "Sales Orders":            "Orders",
   "Sales Order Lines":       "Orders",
   "Fulfillments":            "Orders",
+  "Fulfillment Orders":      "Orders",
+  "Merged Shipments":        "Orders",
   "Sales Credits":           "Orders",
   "Returns & RMAs":          "Orders",
   "Discount Codes":          "Orders",
+  "Quotes":                  "Orders",
+  "Product Pro Forma":       "Orders",
+  // ── Manufacturing ────────────────────────────────────────────────────
+  "Manufacturing Orders":    "Manufacturing",
+  "MO Operations":           "Manufacturing",
+  "MRP Planning":            "Manufacturing",
+  "BOMs":                    "Manufacturing",
+  "Work Centers":            "Manufacturing",
+  "Outsourced Production":   "Manufacturing",
+  "Contractors":             "Manufacturing",
+  "Simple Assembly":         "Manufacturing",
+  "Scheduler":               "Manufacturing",
+  // ── Decoration ───────────────────────────────────────────────────────
+  "Decoration Orders":       "Decoration",
+  "Decoration Methods":      "Decoration",
+  "Decoration Placements":   "Decoration",
+  "Decoration Cost Rules":   "Decoration",
+  "Line Decorations":        "Decoration",
+  "Artwork":                 "Decoration",
+  // ── Purchasing ───────────────────────────────────────────────────────
   "Purchase Orders":         "Purchasing",
   "Purchase Invoices":       "Purchasing",
   "Purchase Receipts":       "Purchasing",
   "Purchase Order Shipments": "Purchasing",
   "Inbound Shipments":       "Purchasing",
   "Suppliers":               "Purchasing",
-  "Products":                "Products",
-  "Product Listings":        "Products",
-  "Product Listings (V2)":   "Products",
-  "Listings":                "Products",
-  "Custom Fields":           "Products",
-  "CSV Templates":           "Products",
-  "Organization":            "Products",
-  "Product Import":          "Products",
+  "Landed Cost Breakdown":   "Purchasing",
+  // ── Inventory ────────────────────────────────────────────────────────
   "Inventory":               "Inventory",
   "Adjustments & Transfers": "Inventory",
   "Inventory Adjustments":   "Inventory",
@@ -51,6 +69,26 @@ const TAG_TO_AREA: Record<string, string> = {
   "Pricing":                 "Inventory",
   "FIFO Layers":             "Inventory",
   "Warehouses":              "Inventory",
+  "Lots":                    "Inventory",
+  "Lot Genealogy":           "Inventory",
+  "Inventory Expiry & Shelf-Life": "Inventory",
+  "Demand Suggestions":      "Inventory",
+  // ── Products ─────────────────────────────────────────────────────────
+  "Products":                "Products",
+  "Product Listings":        "Products",
+  "Product Listings (V2)":   "Products",
+  "Listings":                "Products",
+  "Custom Fields":           "Products",
+  "CSV Templates":           "Products",
+  "Organization":            "Products",
+  "Product Import":          "Products",
+  "Units of Measure":        "Products",
+  // ── Contacts ─────────────────────────────────────────────────────────
+  "Customers":               "Contacts",
+  "Sales Reps":              "Contacts",
+  "Channel Partners":        "Contacts",
+  "Sub Sales Channels":      "Contacts",
+  // ── Accounting ───────────────────────────────────────────────────────
   "Accounting":              "Accounting",
   "Ledger (Accounting v2)":  "Accounting",
   "Financial Alerts":        "Accounting",
@@ -62,16 +100,27 @@ const TAG_TO_AREA: Record<string, string> = {
   "Financials":              "Accounting",
   "Bills":                   "Accounting",
   "Vendor Credits":          "Accounting",
-  "Customers":               "Contacts",
-  "Sales Reps":              "Contacts",
-  "Channel Partners":        "Contacts",
-  "Sub Sales Channels":      "Contacts",
+  "Vendor Deposits":         "Accounting",
+  "Amortization Schedules":  "Accounting",
+  // ── Retail & Payments ────────────────────────────────────────────────
+  "POS / Register":          "Retail & Payments",
+  "Gift Cards":              "Retail & Payments",
+  "Loyalty":                 "Retail & Payments",
+  "House Accounts":          "Retail & Payments",
+  "Card on File":            "Retail & Payments",
+  // ── Documents & OCR ──────────────────────────────────────────────────
+  "Document Inbox":          "Documents & OCR",
+  "Sales Order OCR":         "Documents & OCR",
+  "Purchase Invoice OCR":    "Documents & OCR",
+  "Landed Cost Invoice OCR": "Documents & OCR",
+  // ── Insights & Analytics ─────────────────────────────────────────────
   "Reporting":               "Insights & Analytics",
   "Export":                  "Insights & Analytics",
   "Data Feeds":              "Insights & Analytics",
   "Inventory Intelligence":  "Insights & Analytics",
+  "Custom Report Builder":   "Insights & Analytics",
 
-  // ── Integrations (per-provider tags) ─────────────────────────────────
+  // ══ Integrations (per-provider tags) ═════════════════════════════════
   "Amazon":                  "Sales Channels",
   "Shopify":                 "Sales Channels",
   "eBay":                    "Sales Channels",
@@ -79,6 +128,8 @@ const TAG_TO_AREA: Record<string, string> = {
   "WooCommerce":             "Sales Channels",
   "Walmart":                 "Sales Channels",
   "Magento":                 "Sales Channels",
+  "Magento 1":               "Sales Channels",
+  "Square":                  "Sales Channels",
   "TikTok Shop":             "Sales Channels",
   "Temu":                    "Sales Channels",
   "Faire":                   "Sales Channels",
@@ -93,20 +144,44 @@ const TAG_TO_AREA: Record<string, string> = {
   "3PL":                     "Shipping & 3PL",
   "Trackstar":               "Shipping & 3PL",
   "Starshipit":              "Shipping & 3PL",
+  "Shippit":                 "Shipping & 3PL",
   "API Shipping Provider":   "Shipping & 3PL",
-  "Shipping Providers":      "Shipping & 3PL",
   "17TRACK":                 "Shipping & 3PL",
   "QuickBooks Online":       "Accounting & Payments",
   "Xero":                    "Accounting & Payments",
   "Stripe":                  "Accounting & Payments",
-  "Accounting Integrations": "Accounting & Payments",
+
+  // ══ Platform ═════════════════════════════════════════════════════════
+  "Authentication":          "Access & Security",
+  "Users":                   "Access & Security",
+  "Roles & Permissions":     "Access & Security",
+  "Settings":                "Configuration",
+  "Feature Flags":           "Configuration",
+  "Tags":                    "Configuration",
+  "Reference Data (Read-Only)": "Configuration",
+  "Data Imports":            "Configuration",
+  "Report Templates":        "Configuration",
+  "Workflows":               "Automation",
+  "Workflow Actions":        "Automation",
+  "Workflow Executions":     "Automation",
+  "Workflow Node Types":     "Automation",
+  "Workflow Templates":      "Automation",
+  "Workflow Credentials":    "Automation",
+  "Jobs & Logs":             "Monitoring & Jobs",
+  "Tracked Job Logs":        "Monitoring & Jobs",
+  "Horizon":                 "Monitoring & Jobs",
+  "Alerts":                  "Monitoring & Jobs",
 };
 
 // Area display order inside each group; unlisted areas append alphabetically.
 const AREA_ORDER: Record<string, string[]> = {
-  "Core API": ["Orders", "Purchasing", "Inventory", "Products", "Contacts", "Accounting", "Insights & Analytics"],
+  "Core API": [
+    "Orders", "Manufacturing", "Decoration", "Purchasing", "Inventory",
+    "Products", "Contacts", "Accounting", "Retail & Payments",
+    "Documents & OCR", "Insights & Analytics",
+  ],
   "Integrations": ["Sales Channels", "Shipping & 3PL", "Accounting & Payments"],
-  "Platform": [],
+  "Platform": ["Access & Security", "Configuration", "Automation", "Monitoring & Jobs"],
 };
 
 type RawItem = { type: string; label?: string; items?: unknown[]; [k: string]: unknown };
