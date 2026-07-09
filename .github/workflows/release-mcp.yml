@@ -1,0 +1,78 @@
+name: Publish docs MCP to npm
+
+# Publishes @skuio/docs-mcp (the MCP server in mcp/) to the public npm registry
+# using npm Trusted Publishing (OIDC) — no stored npm token, no 2FA/passkey.
+# GitHub mints a short-lived OIDC token, npm exchanges it for publish auth.
+#
+# Fires when a tag matching `docs-mcp-v*` is pushed (cut from a commit whose
+# mcp/package.json version matches the tag). Also runnable by hand for re-runs.
+#
+# ── ONE-TIME SETUP on npmjs.com (required before the first run succeeds) ──
+# npmjs.com → your avatar → Packages → @skuio/docs-mcp → Settings →
+# "Trusted Publisher" → GitHub Actions, with:
+#     Organization or user:  skuio
+#     Repository:            api-docs
+#     Workflow filename:     release-mcp.yml
+#     Environment name:      (leave blank)
+# Until that trusted publisher exists, `npm publish` below fails with an OIDC
+# auth error — that is expected. Add it once, then re-run this workflow.
+#
+# ── HOW TO CUT A RELEASE afterwards ──
+#   1. Bump "version" in mcp/package.json and commit to main.
+#   2. Tag that commit:  git tag docs-mcp-v<version> && git push origin docs-mcp-v<version>
+#   The tag push triggers this workflow, which verifies the tag matches
+#   package.json and publishes with provenance.
+
+on:
+  push:
+    tags:
+      - 'docs-mcp-v*'
+  workflow_dispatch:
+
+# id-token: write is what enables the OIDC handshake for Trusted Publishing.
+# contents: read is the standard checkout scope.
+permissions:
+  contents: read
+  id-token: write
+
+# Never run two publishes of this package at once.
+concurrency:
+  group: publish-docs-mcp
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+
+      # Trusted Publishing needs npm >= 11.5.1; Node 20 ships npm 10.
+      - name: Upgrade npm to a Trusted-Publishing-capable version
+        run: npm install -g npm@latest
+
+      # On a tag push, the tag must match mcp/package.json — stops a stale
+      # publish (e.g. tagging docs-mcp-v0.2.0 while package.json still says 0.1.0).
+      - name: Verify tag matches package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${GITHUB_REF_NAME#docs-mcp-v}"
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME implies version $TAG_VERSION but mcp/package.json is $PKG_VERSION"
+            exit 1
+          fi
+          echo "Publishing @skuio/docs-mcp@$PKG_VERSION"
+
+      - run: npm ci
+
+      # --provenance records a signed link from the published tarball back to
+      # this exact repo + commit + workflow run (public-repo supply-chain attestation).
+      - run: npm publish --provenance --access public
