@@ -7355,6 +7355,29 @@ paths:
                             warehouse_transfer_line:
                               type: string
                               nullable: true
+                      ledger:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          entries:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                status:
+                                  type: string
+                                reference:
+                                  type: string
+                                total:
+                                  type: number
+                                posted_at:
+                                  type: string
+                                  nullable: true
+                                effective_at:
+                                  type: string
                 example:
                   data:
                     id: 1
@@ -7405,6 +7428,15 @@ paths:
                           name: Product A
                           sku: PROD-A-001
                       warehouse_transfer_line: null
+                    ledger:
+                      enabled: true
+                      entries:
+                      - id: 9954
+                        status: draft
+                        reference: BILL-319
+                        total: 250.0
+                        posted_at: null
+                        effective_at: '2026-03-30T00:00:00+00:00'
         '404':
           description: Not Found
           headers:
@@ -8449,8 +8481,10 @@ paths:
       tags:
       - Bills
       summary: Generate Accounting Transaction
-      description: 'Generates (or regenerates) the accounting transaction for this
-        bill. Uses the bill''s nominal codes and totals to create journal entries.
+      description: 'Generates (or regenerates) the accounting posting for a landed-cost
+        bill. On tenants using the v2 ledger, this synchronously rebuilds the bill''s
+        ledger journal entry; on legacy tenants it creates the accounting transaction.
+        Safe to call repeatedly — an existing entry is superseded, not duplicated.
 
 
         :::info[Required scope: `purchase-orders:write`]
@@ -8484,61 +8518,39 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
-                    type: string
                   data:
                     type: object
                     properties:
-                      id:
-                        type: integer
-                      reference:
-                        type: string
-                      transaction_date:
-                        type: string
-                      total:
-                        type: number
-                      accounting_transaction_lines:
+                      ledger_entries:
                         type: array
                         items:
                           type: object
                           properties:
                             id:
                               type: integer
-                            debit:
+                            status:
+                              type: string
+                            reference:
+                              type: string
+                            total:
                               type: number
-                            credit:
-                              type: number
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                name:
-                                  type: string
-                                code:
-                                  type: string
+                            posted_at:
+                              type: string
+                              nullable: true
+                            effective_at:
+                              type: string
+                  message:
+                    type: string
                 example:
-                  message: Accounting transaction generated successfully.
                   data:
-                    id: 100
-                    reference: BILL-1
-                    transaction_date: '2024-01-15'
-                    total: 550.0
-                    accounting_transaction_lines:
-                    - id: 201
-                      debit: 550.0
-                      credit: 0.0
-                      nominal_code:
-                        id: 10
-                        name: Cost of Goods Sold
-                        code: '5000'
-                    - id: 202
-                      debit: 0.0
-                      credit: 550.0
-                      nominal_code:
-                        id: 20
-                        name: Accounts Payable
-                        code: '2000'
+                    ledger_entries:
+                    - id: 9954
+                      status: draft
+                      reference: BILL-319
+                      total: 250.0
+                      posted_at: null
+                      effective_at: '2026-03-30T00:00:00+00:00'
+                  message: Ledger entry generated successfully.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -43700,7 +43712,8 @@ paths:
       tags:
       - Suppliers
       summary: List Suppliers
-      description: 'Returns a paginated list of suppliers.
+      description: 'List all suppliers with list support. Supports filtering, sorting,
+        and pagination.
 
 
         :::info[Required scope: `suppliers:read`]
@@ -43711,23 +43724,59 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.
+
+
+        Sort fields: name, email, company_name, leadtime, created_at, updated_at,
+        archived_at.'
       parameters:
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        example: '10'
-        description: Results per page (default 10).
       - name: page
         in: query
         schema:
           type: integer
+        description: 'Page number (default: 1)'
         example: '1'
-        description: Page number (default 1).
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Search by supplier name, email, company name
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: Sort field. Prefix with - for descending (e.g. -name, created_at,
+          leadtime)
+      - name: archived
+        in: query
+        schema:
+          type: integer
+        description: 0 = active only, 1 = archived only
+        example: '0'
+      - name: included[]
+        in: query
+        schema:
+          type: string
+        description: Columns to include in response
+      - name: excluded[]
+        in: query
+        schema:
+          type: string
+        description: Columns to exclude from response
       responses:
         '200':
           description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
             application/json:
               schema:
@@ -43742,14 +43791,80 @@ paths:
                           type: integer
                         name:
                           type: string
+                        company_name:
+                          type: string
                         email:
                           type: string
-                        phone:
+                        primary_contact_name:
                           type: string
+                        purchase_order_email:
+                          type: string
+                        website:
+                          type: string
+                        leadtime:
+                          type: integer
+                        minimum_order_quantity:
+                          type: integer
+                        target_stock_days:
+                          type: integer
+                        minimum_purchase_order:
+                          type: number
+                        purchase_order_format:
+                          type: string
+                          nullable: true
+                        po_processing_method:
+                          type: string
+                        auto_fulfill_dropship:
+                          type: boolean
+                        auto_submit_dropship_po:
+                          type: boolean
+                        auto_generate_backorder_po:
+                          type: boolean
+                        auto_submit_backorder_po:
+                          type: boolean
+                        auto_split_backorder_po_by_brand:
+                          type: boolean
+                        auto_receive_backorder_po:
+                          type: boolean
+                        default_warehouse_id:
+                          type: integer
+                        default_store_id:
+                          type: string
+                          nullable: true
+                        default_tax_rate_id:
+                          type: string
+                          nullable: true
+                        default_payment_term_id:
+                          type: string
+                          nullable: true
+                        timezone:
+                          type: string
+                        products_count:
+                          type: integer
+                        address:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            label:
+                              type: string
+                            address1:
+                              type: string
+                            city:
+                              type: string
+                            zip:
+                              type: string
+                            country:
+                              type: string
+                            country_code:
+                              type: string
                         created_at:
                           type: string
                         updated_at:
                           type: string
+                        archived_at:
+                          type: string
+                          nullable: true
                   current_page:
                     type: integer
                   last_page:
@@ -43760,16 +43875,46 @@ paths:
                     type: integer
                 example:
                   data:
-                  - id: 3
-                    name: Global Supplies Inc
-                    email: orders@globalsupplies.com
-                    phone: +1-555-0200
-                    created_at: '2023-01-10T08:00:00.000000Z'
-                    updated_at: '2024-02-01T10:00:00.000000Z'
+                  - id: 1
+                    name: Acme Supplier
+                    company_name: Acme Wholesale Co
+                    email: orders@acmewholesale.com
+                    primary_contact_name: Bob Johnson
+                    purchase_order_email: po@acmewholesale.com
+                    website: https://acmewholesale.com
+                    leadtime: 7
+                    minimum_order_quantity: 10
+                    target_stock_days: 30
+                    minimum_purchase_order: 500.0
+                    purchase_order_format: null
+                    po_processing_method: email
+                    auto_fulfill_dropship: false
+                    auto_submit_dropship_po: false
+                    auto_generate_backorder_po: false
+                    auto_submit_backorder_po: false
+                    auto_split_backorder_po_by_brand: false
+                    auto_receive_backorder_po: false
+                    default_warehouse_id: 2
+                    default_store_id: null
+                    default_tax_rate_id: null
+                    default_payment_term_id: null
+                    timezone: Australia/Sydney
+                    products_count: 45
+                    address:
+                      id: 3
+                      label: Default
+                      address1: 100 Supplier Lane
+                      city: Sydney
+                      zip: '2000'
+                      country: Australia
+                      country_code: AU
+                    created_at: '2024-01-01T00:00:00.000000Z'
+                    updated_at: '2024-01-15T09:00:00.000000Z'
+                    archived_at: null
                   current_page: 1
-                  last_page: 2
+                  last_page: 3
                   per_page: 10
-                  total: 12
+                  total: 28
         '429': *id001
         '401': *id002
         '403': *id003
@@ -44593,9 +44738,10 @@ paths:
   /api/v2/return-reasons:
     get:
       tags:
-      - Reference Data (Read-Only)
+      - Returns & RMAs
       summary: List Return Reasons
-      description: 'Returns all return reasons.
+      description: 'List all return reasons using the standard list interface. Supports
+        filtering, sorting, search and pagination.
 
 
         :::warning[Not yet available to API tokens]
@@ -44606,11 +44752,50 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
-      parameters: []
+        Authentication: Requires Bearer token.
+
+
+        Sort fields: id, name, created_at, updated_at.'
+      parameters:
+      - name: archived
+        in: query
+        schema:
+          type: integer
+        description: 'Filter by archived status: 0 (active) or 1 (archived). Default:
+          0'
+        example: '0'
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Search return reasons by name
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field. Prefix with - for descending. Allowed: id, name,
+          created_at, updated_at'
+        example: name
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number for pagination
+        example: '1'
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: Records per page
+        example: '25'
       responses:
         '200':
           description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
             application/json:
               schema:
@@ -44625,12 +44810,37 @@ paths:
                           type: integer
                         name:
                           type: string
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                        archived_at:
+                          type: string
+                          nullable: true
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
                 example:
                   data:
                   - id: 1
-                    name: Defective
+                    name: Defective Item
+                    created_at: '2024-01-01T00:00:00Z'
+                    updated_at: '2024-01-01T00:00:00Z'
+                    archived_at: null
                   - id: 2
-                    name: Wrong Item
+                    name: Wrong Item Shipped
+                    created_at: '2024-01-01T00:00:00Z'
+                    updated_at: '2024-01-01T00:00:00Z'
+                    archived_at: null
+                  current_page: 1
+                  last_page: 1
+                  per_page: 25
+                  total: 2
         '429': *id001
         '401': *id002
         '403': *id003
@@ -47297,7 +47507,8 @@ paths:
       tags:
       - Sales Credits
       summary: List Sales Credits
-      description: 'Returns a paginated list of sales credits.
+      description: 'Returns a paginated list of sales credits using the standard list
+        interface. Supports search, archiving filter, and column selection.
 
 
         :::info[Required scope: `orders:read`]
@@ -47308,28 +47519,89 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        This endpoint uses the standard list interface. Common filters are passed
+        as query parameters directly.
+
+
+        Response is wrapped with table_specifications metadata when table_specifications
+        parameter is provided.
+
+
+        Totals fields:
+
+        - total: total credit amount
+
+        - refund_payments_total: sum of cash/card refunds against the credit (always
+        positive)
+
+        - applied_to_other_total: sum of credit consumed by Loop Returns EXC-* exchange
+        orders (always positive)
+
+        - fees_retained_total: sum of fees Loop withheld out of the customer''s credit
+        — return shipping, restocking, etc. (always positive)
+
+        - outstanding_amount: total minus (refund_payments_total + applied_to_other_total
+        + fees_retained_total), clamped to zero (i.e., the unrefunded, unapplied balance
+        still owed back to the customer)'
       parameters:
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        example: '10'
-        description: Results per page (default 10).
       - name: page
         in: query
         schema:
           type: integer
+        description: 'Page number (default: 1)'
         example: '1'
-        description: Page number (default 1).
+      - name: limit
+        in: query
+        schema:
+          type: integer
+        description: 'Items per page (default: 10)'
+        example: '10'
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: 'Sort field and direction (prefix with - for descending). Common
+          fields: id, credit_date, sales_credit_number, created_at, updated_at, archived_at'
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Full-text search across sales credit number, customer name, order
+          number, SKU
+      - name: archived
+        in: query
+        schema:
+          type: integer
+        description: 0 = active only (default), 1 = archived only
+        example: '0'
+      - name: included[]
+        in: query
+        schema:
+          type: string
+        description: IDs to force include in results
+      - name: excluded[]
+        in: query
+        schema:
+          type: string
+        description: IDs to force exclude from results
       responses:
         '200':
           description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
                     type: array
                     items:
@@ -47337,33 +47609,90 @@ paths:
                       properties:
                         id:
                           type: integer
-                        credit_number:
+                        sales_credit_number:
                           type: string
-                        amount:
+                        credit_date:
                           type: string
-                        status:
-                          type: string
+                        is_for_overpayment:
+                          type: boolean
                         created_at:
                           type: string
-                  current_page:
-                    type: integer
-                  last_page:
-                    type: integer
+                        updated_at:
+                          type: string
+                        archived_at:
+                          type: string
+                          nullable: true
+                        statuses:
+                          type: object
+                          properties:
+                            credit_status:
+                              type: string
+                            return_status:
+                              type: string
+                        additional_credit:
+                          type: number
+                        tax_credit:
+                          type: number
+                        product_total:
+                          type: number
+                        total:
+                          type: number
+                        refund_payments_total:
+                          type: number
+                        applied_to_other_total:
+                          type: number
+                        fees_retained_total:
+                          type: number
+                        outstanding_amount:
+                          type: number
+                        currency_code:
+                          type: string
+                        sales_order_id:
+                          type: integer
+                        has_products:
+                          type: boolean
+                        has_rma:
+                          type: boolean
+                        payments:
+                          type: array
+                        exchange_orders:
+                          type: array
                   per_page:
                     type: integer
                   total:
                     type: integer
+                  last_page:
+                    type: integer
                 example:
-                  data:
-                  - id: 1
-                    credit_number: SC-0001
-                    amount: '50.00'
-                    status: issued
-                    created_at: '2024-03-01T00:00:00.000000Z'
                   current_page: 1
-                  last_page: 5
+                  data:
+                  - id: 55
+                    sales_credit_number: SC-00055
+                    credit_date: '2025-04-10'
+                    is_for_overpayment: false
+                    created_at: '2025-04-10T09:00:00.000000Z'
+                    updated_at: '2025-04-10T09:00:00.000000Z'
+                    archived_at: null
+                    statuses:
+                      credit_status: open
+                      return_status: pending
+                    additional_credit: 0.0
+                    tax_credit: 0.0
+                    product_total: 150.0
+                    total: 150.0
+                    refund_payments_total: 0.0
+                    applied_to_other_total: 0.0
+                    fees_retained_total: 0.0
+                    outstanding_amount: 150.0
+                    currency_code: USD
+                    sales_order_id: 100
+                    has_products: true
+                    has_rma: false
+                    payments: []
+                    exchange_orders: []
                   per_page: 10
-                  total: 42
+                  total: 5
+                  last_page: 1
         '429': *id001
         '401': *id002
         '403': *id003
@@ -107863,6 +108192,13 @@ paths:
         payloads manageable on large accounts.
 
 
+        Large result sets are exported asynchronously: when the filtered dataset exceeds
+        1000 rows the endpoint dispatches a background CSV export job and responds
+        with a tracked_job_log_id (queued=true) instead of the inline rows. Poll the
+        job by its tracked_job_log_id and fetch the finished file from GET /api/export/download?file={filename}.
+        Smaller result sets return the rows inline as shown below.
+
+
         Authentication: Requires Bearer token.'
       parameters: []
       responses:
@@ -107877,125 +108213,72 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        date:
-                          type: string
-                        reportable:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            type:
-                              type: string
-                            product:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                sku:
-                                  type: string
-                                brand:
-                                  type: string
-                        quantity:
-                          type: integer
-                        quantity_returned:
-                          type: integer
-                        num_orders:
-                          type: integer
-                        revenue:
-                          type: number
-                        revenue_allocated:
-                          type: integer
-                        revenue_credits:
-                          type: number
-                        revenue_discount:
-                          type: number
-                        total_revenue:
-                          type: number
-                        cost:
-                          type: number
-                        cost_allocated:
-                          type: number
-                        cost_invoices:
-                          type: integer
-                        cost_returned:
-                          type: number
-                        cost_breakdown:
-                          type: string
-                          nullable: true
-                        total_cost:
-                          type: number
-                        profit:
-                          type: number
-                        profit_margin:
-                          type: number
-                        created_at:
-                          type: string
-                        updated_at:
-                          type: string
-                example:
-                  data:
-                  - id: 5012
-                    date: '2026-06-15T00:00:00.000000Z'
-                    reportable:
-                      id: 101
-                      type: App\Models\Product
-                      product:
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                    - id: 5012
+                      date: '2026-06-15T00:00:00.000000Z'
+                      reportable:
                         id: 101
-                        sku: TSHIRT-BLK-M
-                        brand: Acme
-                    quantity: 14
-                    quantity_returned: 1
-                    num_orders: 12
-                    revenue: 349.86
-                    revenue_allocated: 0
-                    revenue_credits: -24.99
-                    revenue_discount: -10.0
-                    total_revenue: 314.87
-                    cost: 126.0
-                    cost_allocated: 8.4
-                    cost_invoices: 0
-                    cost_returned: -9.0
-                    cost_breakdown: null
-                    total_cost: 125.4
-                    profit: 189.47
-                    profit_margin: 60.17
-                    created_at: '2026-06-16T02:10:00.000000Z'
-                    updated_at: '2026-06-16T02:10:00.000000Z'
-                  - id: 5013
-                    date: '2026-06-15T00:00:00.000000Z'
-                    reportable:
-                      id: 7
-                      type: App\Models\FinancialLineType
-                      financial_line_type:
+                        type: App\Models\Product
+                        product:
+                          id: 101
+                          sku: TSHIRT-BLK-M
+                          brand: Acme
+                      quantity: 14
+                      quantity_returned: 1
+                      num_orders: 12
+                      revenue: 349.86
+                      revenue_allocated: 0
+                      revenue_credits: -24.99
+                      revenue_discount: -10.0
+                      total_revenue: 314.87
+                      cost: 126.0
+                      cost_allocated: 8.4
+                      cost_invoices: 0
+                      cost_returned: -9.0
+                      cost_breakdown: null
+                      total_cost: 125.4
+                      profit: 189.47
+                      profit_margin: 60.17
+                      created_at: '2026-06-16T02:10:00.000000Z'
+                      updated_at: '2026-06-16T02:10:00.000000Z'
+                    - id: 5013
+                      date: '2026-06-15T00:00:00.000000Z'
+                      reportable:
                         id: 7
-                        name: Shipping Revenue
-                        classification: revenue
-                    quantity: 0
-                    quantity_returned: 0
-                    num_orders: 12
-                    revenue: 58.8
-                    revenue_allocated: 0
-                    revenue_credits: 0
-                    revenue_discount: 0
-                    total_revenue: 58.8
-                    cost: 0
-                    cost_allocated: 0
-                    cost_invoices: 0
-                    cost_returned: 0
-                    cost_breakdown: null
-                    total_cost: 0
-                    profit: 58.8
-                    profit_margin: 100
-                    created_at: '2026-06-16T02:10:00.000000Z'
-                    updated_at: '2026-06-16T02:10:00.000000Z'
+                        type: App\Models\FinancialLineType
+                        financial_line_type:
+                          id: 7
+                          name: Shipping Revenue
+                          classification: revenue
+                      quantity: 0
+                      quantity_returned: 0
+                      num_orders: 12
+                      revenue: 58.8
+                      revenue_allocated: 0
+                      revenue_credits: 0
+                      revenue_discount: 0
+                      total_revenue: 58.8
+                      cost: 0
+                      cost_allocated: 0
+                      cost_invoices: 0
+                      cost_returned: 0
+                      cost_breakdown: null
+                      total_cost: 0
+                      profit: 58.8
+                      profit_margin: 100
+                      created_at: '2026-06-16T02:10:00.000000Z'
+                      updated_at: '2026-06-16T02:10:00.000000Z'
+                example-1:
+                  summary: 200 Queued (large export)
+                  value:
+                    data:
+                      tracked_job_log_id: 5123
+                      queued: true
+                    message: Export started — track progress in the job tray
         '429': *id001
         '401': *id002
         '403': *id003
@@ -256492,8 +256775,9 @@ paths:
       tags:
       - Trackstar
       summary: List Shipping Methods
-      description: 'List paginated Trackstar shipping methods (with their SKU.io shipping
-        method mappings) for an integration instance.
+      description: 'List every Trackstar shipping method for this integration instance
+        together with the SKU.io shipping methods available to map onto. Drives the
+        mapping editor. Requires a Bearer token.
 
 
         :::info[Authorization]
@@ -256501,59 +256785,8 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::
-
-
-        Authentication: Requires Bearer token.
-
-
-        Server-side paginated, filterable, and sortable (Spatie QueryBuilder). Default
-        page size is 15.
-
-
-        Filters (Spatie QueryBuilder):
-
-        - filter[search]: Partial match on name, carrier, carrier_name, scac, trackstar_shipping_method_id
-
-        - filter[id]: Numeric filter on id
-
-        - filter[trackstar_shipping_method_id]: Text filter on trackstar_shipping_method_id
-
-        - filter[name]: Text filter on name
-
-        - filter[carrier]: Text filter on carrier
-
-        - filter[carrier_name]: Text filter on carrier_name
-
-        - filter[carrier_id]: Text filter on carrier_id
-
-        - filter[scac]: Text filter on scac
-
-        - filter[trackstar_created_at] / filter[trackstar_updated_at] / filter[created_at]
-        / filter[updated_at]: Datetime filters (support operator suffixes, e.g. filter[created_at.gte])
-
-
-        Allowed sorts: id, name, carrier, carrier_name, carrier_id, scac, trackstar_created_at,
-        trackstar_updated_at, created_at
-
-        Default sort: -id
-
-
-        Each item includes shipping_method_id and a nested sku_shipping_method object
-        (the mapped SKU.io method, or null when unmapped).'
+        :::'
       parameters:
-      - name: page
-        in: query
-        schema:
-          type: integer
-        description: 'Page number (default: 1)'
-        example: '1'
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        description: 'Items per page (default: 15)'
-        example: '15'
       - name: integration_instance
         in: path
         schema:
@@ -256575,29 +256808,34 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        integration_instance_id:
-                          type: integer
-                        trackstar_shipping_method_id:
-                          type: string
-                        name:
-                          type: string
-                        carrier:
-                          type: string
-                        carrier_id:
-                          type: string
-                        carrier_name:
-                          type: string
-                        scac:
-                          type: string
-                        shipping_method_id:
-                          type: integer
-                        sku_shipping_method:
+                    type: object
+                    properties:
+                      services:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            trackstar_shipping_method_id:
+                              type: string
+                            name:
+                              type: string
+                            carrier:
+                              type: string
+                            carrier_name:
+                              type: string
+                            carrier_id:
+                              type: string
+                            scac:
+                              type: string
+                            shipping_method_id:
+                              type: integer
+                            sku_shipping_method_name:
+                              type: string
+                      sku_shipping_methods:
+                        type: array
+                        items:
                           type: object
                           properties:
                             id:
@@ -256606,62 +256844,38 @@ paths:
                               type: string
                             full_name:
                               type: string
-                            carrier_name:
+                            type:
                               type: string
-                        additional_fields:
-                          type: string
-                          nullable: true
-                        json_object:
-                          type: string
-                          nullable: true
-                        trackstar_created_at:
-                          type: string
-                        trackstar_updated_at:
-                          type: string
-                        created_at:
-                          type: string
-                        updated_at:
-                          type: string
-                  current_page:
-                    type: integer
-                  last_page:
-                    type: integer
-                  per_page:
-                    type: integer
-                  total:
-                    type: integer
-                  from:
-                    type: integer
-                  to:
-                    type: integer
                 example:
                   data:
-                  - id: 701
-                    integration_instance_id: 10
-                    trackstar_shipping_method_id: sm_001
-                    name: UPS Ground
-                    carrier: UPS
-                    carrier_id: ups
-                    carrier_name: United Parcel Service
-                    scac: UPSN
-                    shipping_method_id: 12
-                    sku_shipping_method:
-                      id: 12
-                      name: UPS Ground
-                      full_name: UPS Ground - Standard
+                    services:
+                    - id: 12
+                      trackstar_shipping_method_id: sm_9f3a2b7c
+                      name: Ground
+                      carrier: UPS
                       carrier_name: UPS
-                    additional_fields: null
-                    json_object: null
-                    trackstar_created_at: '2024-01-01T00:00:00.000Z'
-                    trackstar_updated_at: '2024-01-01T00:00:00.000Z'
-                    created_at: '2024-01-01T00:00:00.000Z'
-                    updated_at: '2024-01-01T00:00:00.000Z'
-                  current_page: 1
-                  last_page: 4
-                  per_page: 15
-                  total: 52
-                  from: 1
-                  to: 15
+                      carrier_id: ups
+                      scac: UPSN
+                      shipping_method_id: 5
+                      sku_shipping_method_name: UPS Ground
+                    - id: 13
+                      trackstar_shipping_method_id: sm_1a2b3c4d
+                      name: Priority Mail
+                      carrier: USPS
+                      carrier_name: USPS
+                      carrier_id: usps
+                      scac: USPS
+                      shipping_method_id: null
+                      sku_shipping_method_name: null
+                    sku_shipping_methods:
+                    - id: 5
+                      name: Ground
+                      full_name: UPS Ground
+                      type: domestic
+                    - id: 6
+                      name: Priority Mail
+                      full_name: USPS Priority Mail
+                      type: domestic
         '429': *id001
         '401': *id002
         '403': *id003
@@ -256899,6 +257113,261 @@ paths:
         '403': *id003
         '404': *id004
       operationId: put-api-trackstar-integration-instances-integration-instance-shipping-methods-trackstar-shipping-method-mapping
+  /api/trackstar/integration-instances/{integration_instance}/shipping-methods/bulk-map:
+    put:
+      tags:
+      - Trackstar
+      summary: Bulk Map Shipping Methods
+      description: 'Map many Trackstar shipping methods (by their SKU.io record id)
+        to a single SKU.io shipping method in one call. Set shipping_method_id to
+        null to clear the mappings. Requires a Bearer token.
+
+
+        Body: ids (array of integers, required) — the Trackstar shipping-method ids;
+        shipping_method_id (integer, nullable) — the SKU.io shipping method to assign,
+        or null to unmap.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                shipping_method_id:
+                  type: integer
+              example:
+                ids:
+                - 12
+                - 13
+                - 14
+                shipping_method_id: 5
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      updated_count:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    updated_count: 3
+                  message: 3 mapping(s) saved
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The ids field is required.
+                  errors:
+                    ids:
+                    - The ids field is required.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-trackstar-integration-instances-integration-instance-shipping-methods-bulk-map
+  /api/trackstar/integration-instances/{integration_instance}/shipping-methods/auto-match:
+    post:
+      tags:
+      - Trackstar
+      summary: Auto-match Shipping Methods
+      description: Auto-link unmapped Trackstar shipping methods to SKU.io shipping
+        methods whose name matches (case, spacing and punctuation are ignored; also
+        tries carrier + name). Never overwrites an existing mapping. Runs automatically
+        on sync; this endpoint re-runs it on demand. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      matched_count:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    matched_count: 5
+                  message: 5 method(s) auto-matched
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-trackstar-integration-instances-integration-instance-shipping-methods-auto-match
+  /api/trackstar/integration-instances/{integration_instance}/shipping-methods/export:
+    get:
+      tags:
+      - Trackstar
+      summary: Export Shipping Method Mappings
+      description: 'Download the current shipping-method mappings as a re-importable
+        CSV (columns: trackstar_shipping_method_id, name, carrier, carrier_name, scac,
+        shipping_method_id, shipping_method_name). A row with a blank shipping method
+        clears that mapping on import. Requires a Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'trackstar_shipping_method_id,name,carrier,carrier_name,scac,shipping_method_id,shipping_method_name
+
+                  sm_9f3a2b7c,Ground,UPS,UPS,UPSN,5,UPS Ground
+
+                  sm_1a2b3c4d,Priority Mail,USPS,USPS,USPS,,
+
+                  '
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-trackstar-integration-instances-integration-instance-shipping-methods-export
+  /api/trackstar/integration-instances/{integration_instance}/shipping-methods/import:
+    post:
+      tags:
+      - Trackstar
+      summary: Import Shipping Method Mappings
+      description: Import shipping-method mappings from a CSV. Each row is matched
+        to a Trackstar method by trackstar_shipping_method_id and resolves the SKU.io
+        method by shipping_method_id (preferred) or shipping_method_name. Requires
+        a Bearer token.
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: 'CSV file (max 2MB). Columns: trackstar_shipping_method_id
+                    (required), and either shipping_method_id or shipping_method_name.
+                    Leave both blank to clear a mapping.'
+                  format: binary
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                      updated:
+                        type: integer
+                      deleted:
+                        type: integer
+                      errors:
+                        type: array
+                        items:
+                          type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    created: 2
+                    updated: 1
+                    deleted: 0
+                    errors:
+                    - 'Line 4: SKU shipping method id ''99999'' not found'
+                  message: Import processed
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-trackstar-integration-instances-integration-instance-shipping-methods-import
   /api/trackstar/integration-instances/{integration_instance}/inbound-shipments:
     get:
       tags:
@@ -299630,6 +300099,200 @@ paths:
         '422': *id005
       x-required-scope: products:write
       operationId: post-api-product-brands-import
+  /api/v2/brands/{brand}:
+    get:
+      tags:
+      - Organization
+      summary: Get Brand Detail Summary
+      description: 'Returns a single brand with lightweight aggregate stats for the
+        Brand detail page header. Includes archived brands (a deep-link to an archived
+        brand still resolves).
+
+
+        Response fields: id, name, archived_at, created_at, updated_at, products_count
+        (count of products assigned to the brand).
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: brand
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand ID (archived brands are resolvable)
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      archived_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      products_count:
+                        type: integer
+                example:
+                  data:
+                    id: 1
+                    name: Nike
+                    archived_at: null
+                    created_at: '2024-01-15T10:00:00.000000Z'
+                    updated_at: '2024-03-20T14:30:00.000000Z'
+                    products_count: 128
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: No query results for model [App\Models\ProductBrand] 999
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-brands-brand
+  /api/v2/brands/{brand}/activity-log:
+    get:
+      tags:
+      - Organization
+      summary: Get Brand Activity Log
+      description: 'Paginated, filterable activity log for a brand. Surfaces two signals:
+        the brand''s own events (rename, archive, restore) and product brand-assignment
+        changes (a product''s brand being set to or cleared from this brand).
+
+
+        Each entry: id, description, event, subject_type (ProductBrand or Product),
+        subject_id, properties (attributes/old change diff), causer_name, created_at.'
+      parameters:
+      - name: brand
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand ID (archived brands are resolvable)
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        description:
+                          type: string
+                          nullable: true
+                        event:
+                          type: string
+                        subject_type:
+                          type: string
+                        subject_id:
+                          type: integer
+                        properties:
+                          type: object
+                          properties:
+                            attributes:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                            old:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                        causer_name:
+                          type: string
+                        created_at:
+                          type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                example:
+                  data:
+                  - id: 5012
+                    description: null
+                    event: updated
+                    subject_type: ProductBrand
+                    subject_id: 1
+                    properties:
+                      attributes:
+                        name: Nike
+                      old:
+                        name: Nike Inc
+                    causer_name: Jane Doe
+                    created_at: '2024-03-20T14:30:00.000000Z'
+                  - id: 5008
+                    description: null
+                    event: created
+                    subject_type: Product
+                    subject_id: 44
+                    properties:
+                      attributes:
+                        brand_id: 1
+                        sku: AIRMAX-90
+                    causer_name: System
+                    created_at: '2024-03-19T09:15:00.000000Z'
+                  current_page: 1
+                  last_page: 1
+                  per_page: 15
+                  total: 2
+                  from: 1
+                  to: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-v2-brands-brand-activity-log
   /api/categories/{category}:
     get:
       tags:
@@ -336053,6 +336716,9 @@ paths:
 
         Also returns the product''s per-unit `cogs_breakdown` from open FIFO layers
         (falls back to a single average-cost line) and its saved `proforma_assumptions`.
+        The `product` object includes `default_price` — the price at the product default
+        pricing tier, used as the selling-price fallback when a channel has no listing
+        price (null when no default-tier price is set).
 
 
         Channel families with no sync-active instance are excluded unless the product
@@ -336089,6 +336755,8 @@ paths:
                             type: string
                           average_cost:
                             type: integer
+                          default_price:
+                            type: number
                       cogs_breakdown:
                         type: array
                         items:
@@ -336206,6 +336874,7 @@ paths:
                       sku: GSS342
                       name: Grow Light Panel GSS342
                       average_cost: 70
+                      default_price: 129.99
                     cogs_breakdown:
                     - cost_category_id: 1
                       name: Base Product
@@ -391440,6 +392109,189 @@ paths:
         '404': *id004
       x-required-scope: purchase-orders:write
       operationId: post-api-suppliers-supplier-request-invoices
+  /api/purchase-orders/{purchase_order}/invoice-reminders:
+    patch:
+      tags:
+      - Suppliers
+      summary: Manage Invoice Reminders
+      description: 'Set the automated invoice-reminder mode for a purchase order:
+        inherit (use the supplier/tenant setting), on, or off. Setting on arms the
+        recurring chase when the PO is still awaiting its invoice; off stops it.
+
+
+        Authentication: Requires Bearer token.
+
+        Requires permission: purchase_orders.update. Throttled: 60 requests/min.
+
+
+        Body fields:
+
+        - mode (string, required) — one of: inherit, on, off'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+              example:
+                mode: 'on'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase Order ID
+        example: '4521'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_number:
+                    type: string
+                  invoice_status:
+                    type: string
+                  invoice_requested_at:
+                    type: string
+                  invoice_request_count:
+                    type: integer
+                  invoice_reminder_state:
+                    type: string
+                  invoice_reminder_next_at:
+                    type: string
+                  invoice_reminder_paused_reason:
+                    type: string
+                    nullable: true
+                  invoice_reply_received_at:
+                    type: string
+                    nullable: true
+                  invoice_reminders_enabled:
+                    type: boolean
+                  invoice_reminders_mode:
+                    type: string
+                example:
+                  id: 4521
+                  purchase_order_number: PO-004521
+                  invoice_status: uninvoiced
+                  invoice_requested_at: '2026-07-09T09:30:00+00:00'
+                  invoice_request_count: 1
+                  invoice_reminder_state: active
+                  invoice_reminder_next_at: '2026-07-16T09:30:00+00:00'
+                  invoice_reminder_paused_reason: null
+                  invoice_reply_received_at: null
+                  invoice_reminders_enabled: true
+                  invoice_reminders_mode: 'on'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: patch-api-purchase-orders-purchase-order-invoice-reminders
+  /api/suppliers/{supplier}/invoice-reminders:
+    put:
+      tags:
+      - Suppliers
+      summary: Update Supplier Invoice Reminders
+      description: 'Update a supplier''s automated invoice-reminder settings — the
+        mode plus optional cadence overrides. These resolve above the tenant default
+        and below any per-PO override.
+
+
+        Authentication: Requires Bearer token.
+
+        Requires permission: purchase_orders.update.
+
+
+        Body fields:
+
+        - invoice_reminders_mode (string, required) — inherit | on | off
+
+        - invoice_reminder_interval_days (int, nullable, 1-90) — days between reminders
+        (blank = tenant default)
+
+        - invoice_reminder_max_count (int, nullable, 1-12) — total requests (blank
+        = tenant default)
+
+        - invoice_reminder_start_after_days (int, nullable, 0-90) — delay before the
+        first reminder (blank = tenant default)'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                invoice_reminders_mode:
+                  type: string
+                invoice_reminder_interval_days:
+                  type: integer
+                invoice_reminder_max_count:
+                  type: integer
+                invoice_reminder_start_after_days:
+                  type: integer
+              example:
+                invoice_reminders_mode: 'on'
+                invoice_reminder_interval_days: 10
+                invoice_reminder_max_count: 4
+                invoice_reminder_start_after_days: 3
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  invoice_reminders_mode:
+                    type: string
+                  invoice_reminder_interval_days:
+                    type: integer
+                  invoice_reminder_max_count:
+                    type: integer
+                  invoice_reminder_start_after_days:
+                    type: integer
+                example:
+                  id: 12
+                  name: Acme Co
+                  invoice_reminders_mode: 'on'
+                  invoice_reminder_interval_days: 10
+                  invoice_reminder_max_count: 4
+                  invoice_reminder_start_after_days: 3
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: put-api-suppliers-supplier-invoice-reminders
   /api/supplier-products:
     post:
       tags:
@@ -424113,6 +424965,101 @@ paths:
         '404': *id004
       x-required-scope: orders:write
       operationId: post-api-fulfillment-orders-fulfillmentorder-sync-to-provider
+  /api/fulfillment-orders/{fulfillmentOrder}/apply-line-update:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Apply Fulfillment Order Line Update
+      description: 'Apply a quantity change to a submitted fulfillment order in place.
+        When a quantity increase created a separate fulfillment order for the extra
+        units, this absorbs that fulfillment order back into this one and pushes the
+        enlarged line set to the shipping provider as an update.
+
+
+        The provider update is attempted first: if the provider rejects it (for example,
+        the order can no longer be edited), the change is rolled back and the response
+        reports `provider_ineligible` so you can keep the separate fulfillment order
+        instead.
+
+
+        Always returns 200 with an `outcome` of `success` (grown and confirmed by
+        the provider), `provider_ineligible` (provider rejected the update; rolled
+        back), or `not_update_capable` (no registered provider order, a shipment already
+        exists, or the provider has no in-place update). `data` is the refreshed fulfillment
+        order and `message` is a human-readable summary.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Fulfillment order ID
+        example: '451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      status:
+                        type: string
+                      request_status:
+                        type: string
+                      warehouse_id:
+                        type: integer
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sales_order_line_id:
+                              type: integer
+                            quantity:
+                              type: integer
+                            remaining_quantity:
+                              type: integer
+                  outcome:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 451
+                    status: open
+                    request_status: submitted
+                    warehouse_id: 12
+                    lines:
+                    - id: 8801
+                      sales_order_line_id: 33021
+                      quantity: 3
+                      remaining_quantity: 3
+                  outcome: success
+                  message: Odoo 3PL order updated in place.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-fulfillment-orders-fulfillmentorder-apply-line-update
   /api/fulfillment-orders/bulk-sync-from-provider:
     post:
       tags:
