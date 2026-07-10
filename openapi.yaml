@@ -432921,8 +432921,8 @@ paths:
       - Fulfillment Orders
       summary: Print Packing Slips
       description: 'Render (and combine, when several) packing slips for the given
-        FulfillmentOrders and return the resulting file URL. The FO is the warehouse
-        work package, so its slip lists the FO''s planned line quantities.
+        FulfillmentOrders. The FO is the warehouse work package, so its slip lists
+        the FO''s planned line quantities.
 
 
         :::info[Authorization]
@@ -432950,9 +432950,27 @@ paths:
         render, they are combined into a single PDF and a `reports` disk URL is returned.
 
 
-        **Errors:** If the selected engine''s renderer fails, the endpoint returns
-        HTTP 500 with a JSON `message` describing which engine failed (details are
-        written to the application logs).'
+        **Two response shapes depending on selection size:**
+
+        - **10 or fewer FOs** — rendered synchronously in the request. Responds `{
+        "data": { "file": "<pdf-url>" } }` with the ready-to-open PDF URL (unchanged
+        legacy behavior).
+
+        - **More than 10 FOs** — rendering + merge is moved onto a background queue
+        to avoid request timeouts on large batches. Responds `{ "data": { "queued":
+        true, "tracked_job_log_id": <id> } }` with a message confirming generation
+        has started. Poll the tracked-job-log endpoints with the returned id to follow
+        progress; the finished job''s results carry the PDF download URL and per-FO
+        failures. If the job happens to finish before the response is sent (small
+        overflow / fast queue), the response additionally includes `file` (the PDF
+        URL), `printed_count`, and `failed_count` so it can be opened right away.
+
+
+        **Errors:** If the selected engine''s renderer fails on the synchronous path,
+        the endpoint returns HTTP 500 with a JSON `message` describing which engine
+        failed (details are written to the application logs). On the queued path,
+        per-FO render failures are recorded on the tracked job rather than failing
+        the request.'
       parameters:
       - name: ids
         in: query
@@ -432975,13 +432993,22 @@ paths:
                 type: object
               examples:
                 example-0:
-                  summary: 200 Success
+                  summary: 200 Success (10 or fewer FOs — synchronous)
                   value:
                     data:
                       file: https://{{domain}}/storage/fulfillment_order_packing_slips/6.pdf
                     status: success
                     message: null
                 example-1:
+                  summary: 200 Queued (more than 10 FOs — tracked job)
+                  value:
+                    data:
+                      queued: true
+                      tracked_job_log_id: 84732
+                    status: success
+                    message: Packing slip generation started — track progress in the
+                      job tray.
+                example-2:
                   summary: 200 No Slips
                   value:
                     data: []
