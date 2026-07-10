@@ -1,39 +1,61 @@
 ---
 title: API changes — 2026-05-25
-description: This release 192 added API endpoint(s).
+description: This release includes 310 additions, 1 change.
 authors: [product-team]
-tags: [added]
+tags: [added, changed]
 date: 2026-05-25
 ---
 
-This release 192 added API endpoint(s).
+This release includes 310 additions, 1 change.
 
 <!-- truncate -->
 
+> 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
 ## Added
 
+### Configuration
 - `DELETE //{domain}/api/financial-line-types` — Bulk Delete Financial Line Types
-- `DELETE //{domain}/api/financial-line-types/{financial_line_type}` — Delete Financial Line Type
-- `DELETE //{domain}/api/payment-terms` — Bulk Delete Payment Terms
-- `DELETE //{domain}/api/payment-terms/3` — Delete Payment Term
-- `DELETE //{domain}/api/shopify/webhook-events/bulk-delete` — Bulk Delete Events
-- `DELETE //{domain}/api/shopify/{integrationInstance}/orders/{order}` — Delete Single Order
-- `DELETE //{domain}/api/shopify/{integrationInstance}/orders/{order}/sku-order` — Delete SKU Order (Keep Shopify Order)
-- `DELETE //{domain}/api/shopify/{integrationInstance}/products/{product}/map` — Unmap Product
-- `DELETE //{domain}/api/shopify/{integrationInstance}/webhook-events/delete-all` — Delete All Events for Integration
-- `DELETE //{domain}/api/table-views/{table_view}` — Delete Table View
-- `DELETE //{domain}/api/tags` — Bulk Delete Tags
-- `DELETE //{domain}/api/tags/5` — Delete Tag
-- `DELETE //{domain}/api/tracked-job-logs/{tracked_job_log}` — Delete Tracked Job Log
-- `DELETE //{domain}/api/users/{user}` — Delete (Deactivate) / Restore User
-- `DELETE /api/v2/custom-reports/1` — Delete Custom Report
-- `DELETE /api/v2/custom-reports/1/schedules/1` — Delete Schedule
-- `DELETE /api/v2/custom-reports/1/shares/2` — Remove Share
-- `DELETE /api/v2/queue-admin/paused-classes/{pausedClass}` — Unpause Class
 - `GET //{domain}/api/financial-line-types` — List Financial Line Types
+- `DELETE //{domain}/api/financial-line-types/{financial_line_type}` — Delete Financial Line Type
 - `GET //{domain}/api/financial-line-types/{financial_line_type}` — Show Financial Line Type
+- `DELETE //{domain}/api/payment-terms` — Bulk Delete Payment Terms
 - `GET //{domain}/api/payment-terms` — List Payment Terms
 - `GET //{domain}/api/payment-terms/1` — Show Payment Term
+- `DELETE //{domain}/api/payment-terms/3` — Delete Payment Term
+
+### Custom Report Schedules
+- `DELETE /api/v2/custom-reports/1/schedules/1` — Delete Schedule
+
+### Custom Report Shares
+- `DELETE /api/v2/custom-reports/1/shares/2` — Remove Share
+
+### Custom Reports (CRUD)
+- `DELETE /api/v2/custom-reports/1` — Delete Custom Report
+
+### Jobs & Logs
+- `GET //{domain}/api/tracked-job-logs` — List Tracked Job Logs
+- `GET //{domain}/api/tracked-job-logs/retry/{trackedJobLog}` — Retry Job
+- `DELETE //{domain}/api/tracked-job-logs/{tracked_job_log}` — Delete Tracked Job Log
+- `GET //{domain}/api/tracked-job-logs/{tracked_job_log}` — Show Tracked Job Log
+
+### Payments
+- `GET /api/stripe/integrations/{id}` — Show Integration Instance
+- `GET /api/stripe/integrations/{id}/invoices` — List Invoices by Instance
+- `GET /api/stripe/sales-orders/{salesOrderId}/invoices` — List Invoices for Sales Order
+- `GET /api/stripe/webhook-events` — List Webhook Events
+- `GET /api/stripe/webhook-events/{id}` — Show Webhook Event
+
+### Purchase Orders
+- `GET //{domain}/api/purchase-orders/{purchase_order}/shipment-line-options` — Get PO Lines for Shipment Picker
+- `GET /api/purchase-orders/{purchase_order}/lines-for-receiving` — Get PO Lines for Receiving
+- `GET /api/purchase-orders/{purchase_order}/shipment-line-options` — Get PO Lines for Shipment Picker
+
+### Queue Admin
+- `DELETE /api/v2/queue-admin/paused-classes/{pausedClass}` — Unpause Class
+
+### Sales Channels
+- `DELETE //{domain}/api/shopify/webhook-events/bulk-delete` — Bulk Delete Events
 - `GET //{domain}/api/shopify/webhook-events/{eventId}` — Get Webhook Event Details
 - `GET //{domain}/api/shopify/{integrationInstance}/fulfillments` — List Shopify Fulfillments
 - `GET //{domain}/api/shopify/{integrationInstance}/fulfillments/mismatches` — List Fulfillment Mismatches
@@ -52,6 +74,7 @@ This release 192 added API endpoint(s).
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/metafield-keys` — Get Metafield Keys
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/note-attribute-names` — Get Note Attribute Names
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/refresh-progress/{trackedJobLogId}` — Get Refresh Progress
+- `DELETE //{domain}/api/shopify/{integrationInstance}/orders/{order}` — Delete Single Order
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/detailed` — Get Order Detail
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/fulfillments` — Get Order Fulfillments
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/line-items` — Get Order Line Items
@@ -59,150 +82,68 @@ This release 192 added API endpoint(s).
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/raw-graphql` — Get Raw Order (GraphQL)
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/refunds` — Get Order Refunds
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/shipping-lines` — Get Order Shipping Lines
+- `DELETE //{domain}/api/shopify/{integrationInstance}/orders/{order}/sku-order` — Delete SKU Order (Keep Shopify Order)
 - `GET //{domain}/api/shopify/{integrationInstance}/orders/{order}/transactions` — Get Order Transactions
 - `GET //{domain}/api/shopify/{integrationInstance}/products` — List Products
 - `GET //{domain}/api/shopify/{integrationInstance}/products/bulk-progress/{trackedJobLogId}` — Get Bulk Progress
 - `GET //{domain}/api/shopify/{integrationInstance}/products/filter-options` — Get Filter Options
 - `GET //{domain}/api/shopify/{integrationInstance}/products/latest-sync-info` — Get Latest Sync Info
 - `GET //{domain}/api/shopify/{integrationInstance}/products/refresh-progress/{trackedJobLogId}` — Get Refresh Progress
+- `DELETE //{domain}/api/shopify/{integrationInstance}/products/{product}/map` — Unmap Product
 - `GET //{domain}/api/shopify/{integrationInstance}/products/{product}/orders` — Get Orders for Product
 - `GET //{domain}/api/shopify/{integrationInstance}/products/{product}/raw` — Get Raw Product from Shopify
 - `GET //{domain}/api/shopify/{integrationInstance}/webhook-events` — List Webhook Events
+- `DELETE //{domain}/api/shopify/{integrationInstance}/webhook-events/delete-all` — Delete All Events for Integration
 - `GET //{domain}/api/shopify/{integrationInstance}/webhook-events/stats` — Get Processing Stats
-- `GET //{domain}/api/table-views` — List Table Views
-- `GET //{domain}/api/table-views/{table_view}` — Get Table View
-- `GET //{domain}/api/tags` — List Tags
-- `GET //{domain}/api/tags/1` — Show Tag
-- `GET //{domain}/api/tracked-job-logs` — List Tracked Job Logs
-- `GET //{domain}/api/tracked-job-logs/retry/{trackedJobLog}` — Retry Job
-- `GET //{domain}/api/tracked-job-logs/{tracked_job_log}` — Show Tracked Job Log
-- `GET //{domain}/api/users` — List Users (DataTable)
-- `GET //{domain}/api/users/list` — Get User Lookup List
-- `GET //{domain}/api/users/{user}` — Show User
 - `GET /api/amazon/{integrationInstance}/removal-orders/order-details` — Get Order Details (by Query)
-- `GET /api/purchase-orders/{purchase_order}/shipment-line-options` — Get PO Lines for Shipment Picker
 - `GET /api/shopify/{integrationInstance}/access-scopes` — List Access Scopes
 - `GET /api/shopify/{integrationInstance}/shop-plan` — Get Shop Plan
-- `GET /api/stripe/integrations/{id}` — Show Integration Instance
-- `GET /api/stripe/integrations/{id}/invoices` — List Invoices by Instance
-- `GET /api/stripe/sales-orders/{salesOrderId}/invoices` — List Invoices for Sales Order
-- `GET /api/stripe/webhook-events` — List Webhook Events
-- `GET /api/stripe/webhook-events/{id}` — Show Webhook Event
-- `GET /api/v2/custom-reports` — List Custom Reports
-- `GET /api/v2/custom-reports/1` — Show Custom Report
-- `GET /api/v2/custom-reports/1/schedules` — List Schedules
-- `GET /api/v2/custom-reports/1/shares` — List Shares
-- `GET /api/v2/financials/sales-order-lines/export` — Export Sales Order Line Financials
-- `GET /api/v2/financials/sales-order-lines/export/download` — Download Sales Order Line Financials Export
-- `GET /api/v2/queue-admin/actions` — List Audit Actions
-- `GET /api/v2/queue-admin/failed-jobs` — List Failed Jobs
-- `GET /api/v2/queue-admin/failed-jobs/class-breakdown` — Get Failed Class Breakdown
-- `GET /api/v2/queue-admin/failed-jobs/{id}` — Get Failed Job Detail
-- `GET /api/v2/queue-admin/job-metrics` — Get Job Runtime Metrics
-- `GET /api/v2/queue-admin/jobs/completed` — List Completed Jobs
-- `GET /api/v2/queue-admin/jobs/completed/class-breakdown` — Get Completed Class Breakdown
-- `GET /api/v2/queue-admin/jobs/pending` — List Pending Jobs
-- `GET /api/v2/queue-admin/jobs/pending/class-breakdown` — Get Pending Class Breakdown
-- `GET /api/v2/queue-admin/jobs/{id}/payload` — Get Job Payload
-- `GET /api/v2/queue-admin/overview` — Get Overview
-- `GET /api/v2/queue-admin/paused-classes` — List Paused Classes
-- `GET /api/v2/queue-admin/supervisors/{name}/drain-status` — Get Drain Status
-- `GET /api/v2/report-builder/field-values/sales_orders/order_status` — Get Distinct Field Values (Autocomplete)
-- `GET /api/v2/report-builder/metadata` — Get Metadata (Domains, Entities, Columns)
-- `GET /api/v2/report-builder/users` — Search Users (for Sharing)
-- `POST //{domain}/api/financial-line-types` — Create Financial Line Type
-- `POST //{domain}/api/payment-terms` — Create Payment Term
-- `POST //{domain}/api/payment-terms/deletable` — Check Deletable
-- `POST //{domain}/api/shopify/webhook-events/bulk-reprocess` — Bulk Reprocess Events
-- `POST //{domain}/api/shopify/webhook-events/{eventId}/process` — Process Event by ID
-- `POST //{domain}/api/shopify/webhook-events/{eventId}/reprocess` — Reprocess Event by ID
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/submit-all` — Submit All Pending Fulfillments
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/submit-bulk` — Submit Bulk Fulfillments
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/create-from-shopify/{shopifyFulfillment}` — Delete SKU Create from Shopify
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/link/{shopifyFulfillment}` — Link Fulfillments
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/submit` — Submit Single Fulfillment
-- `POST //{domain}/api/shopify/{integrationInstance}/fulfillments/{salesOrderFulfillment}/update-shopify/{shopifyFulfillment}` — Update Shopify Fulfillment from SKU
-- `POST //{domain}/api/shopify/{integrationInstance}/inventory/fetch-live` — Fetch Live Inventory
-- `POST //{domain}/api/shopify/{integrationInstance}/inventory/recache` — Trigger Inventory Recache
-- `POST //{domain}/api/shopify/{integrationInstance}/inventory/sync` — Trigger Inventory Sync
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/bulk-archive` — Bulk Archive Orders
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/bulk-delete` — Bulk Delete Orders
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/bulk-delete-sku-orders` — Bulk Delete SKU Orders
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/bulk-unarchive` — Bulk Unarchive Orders
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/refresh-tracked` — Refresh Orders (Tracked)
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/search-shopify` — Search Shopify Orders
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/{order}/archive` — Archive Single Order
-- `POST //{domain}/api/shopify/{integrationInstance}/orders/{order}/unarchive` — Unarchive Single Order
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk` — Bulk Operation
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-archive` — Bulk Archive
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-delete` — Bulk Delete
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-mapping-csv/apply` — Apply Bulk Mapping CSV
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-mapping-csv/download` — Download Bulk Mapping CSV Template
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-mapping-csv/validate` — Validate Bulk Mapping CSV
-- `POST //{domain}/api/shopify/{integrationInstance}/products/bulk-tracked` — Bulk Operation (Tracked)
-- `POST //{domain}/api/shopify/{integrationInstance}/products/refresh-product` — Refresh Single Product from Shopify
-- `POST //{domain}/api/shopify/{integrationInstance}/products/refresh-sync` — Refresh from Shopify (Enhanced)
-- `POST //{domain}/api/shopify/{integrationInstance}/products/refresh-tracked` — Refresh Products (Tracked)
-- `POST //{domain}/api/shopify/{integrationInstance}/products/search-shopify` — Search Shopify Products
-- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/archive` — Archive Single Product
-- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/create-sku-product` — Create SKU Product
-- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/map` — Map Product
-- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/smart-match` — Smart Match
-- `POST //{domain}/api/shopify/{integrationInstance}/products/{product}/unarchive` — Unarchive Single Product
-- `POST //{domain}/api/shopify/{integrationInstance}/webhook-events/process` — Process Pending Events
-- `POST //{domain}/api/shopify/{integrationInstance}/webhook-events/retry-failed` — Retry Failed Events
-- `POST //{domain}/api/table-views` — Create Table View
-- `POST //{domain}/api/tags` — Create Tag
-- `POST //{domain}/api/tags/deletable` — Check Deletable
-- `POST //{domain}/api/tags/import` — Import Tags
-- `POST //{domain}/api/tags/import/preview` — Preview Import Tags
-- `POST //{domain}/api/tracked-job-logs` — Create Tracked Job Log
-- `POST //{domain}/api/users` — Register User (Self-registration)
-- `POST //{domain}/api/users/store-user` — Invite User
-- `POST /api/stripe/integrations` — Create Stripe Integration
-- `POST /api/stripe/integrations/{id}/authorize` — Start Authorization (OAuth)
-- `POST /api/stripe/integrations/{id}/disconnect` — Disconnect Integration
-- `POST /api/stripe/invoices` — Send Invoice
-- `POST /api/stripe/invoices/{id}/refunds` — Issue Refund
-- `POST /api/stripe/invoices/{id}/void` — Void Invoice
-- `POST /api/stripe/webhook-events/{id}/replay` — Replay Webhook Event
-- `POST /api/v2/custom-reports` — Create Custom Report
-- `POST /api/v2/custom-reports/1/duplicate` — Duplicate Custom Report
-- `POST /api/v2/custom-reports/1/export` — Export Custom Report
-- `POST /api/v2/custom-reports/1/run` — Run Saved Report
-- `POST /api/v2/custom-reports/1/schedules` — Create Schedule
-- `POST /api/v2/custom-reports/1/shares` — Add Share
-- `POST /api/v2/custom-reports/1/toggle-favorite` — Toggle Favorite
-- `POST /api/v2/queue-admin/failed-jobs/delete` — Bulk Delete Failed Jobs
-- `POST /api/v2/queue-admin/failed-jobs/retry` — Bulk Retry Failed Jobs
-- `POST /api/v2/queue-admin/failed-jobs/{id}/retry-modified` — Retry Failed With Modified Args
-- `POST /api/v2/queue-admin/jobs/kill-pending` — Bulk Kill Pending Jobs
-- `POST /api/v2/queue-admin/jobs/{id}/cancel` — Cancel Running Job
-- `POST /api/v2/queue-admin/metrics/reset` — Reset Metrics
-- `POST /api/v2/queue-admin/paused-classes` — Pause Class
-- `POST /api/v2/queue-admin/supervisors/{name}/drain-restart` — Drain & Restart Supervisor
-- `POST /api/v2/report-builder/drill-down` — Drill Down Into Aggregated Row
-- `POST /api/v2/report-builder/run` — Run Ad-Hoc Report
-- `POST /api/v2/report-builder/validate-formula` — Validate Formula Expression
-- `POST /api/webhooks/stripe` — Platform Webhook
-- `POST /api/webhooks/stripe/{integration_instance_id}` — Connect Account Webhook
-- `PUT //{domain}/api/financial-line-types/{financial_line_type}` — Update Financial Line Type
-- `PUT //{domain}/api/payment-terms/1/archive` — Archive Payment Term
-- `PUT //{domain}/api/payment-terms/1/unarchived` — Unarchive Payment Term
-- `PUT //{domain}/api/payment-terms/3` — Update Payment Term
-- `PUT //{domain}/api/payment-terms/archive` — Bulk Archive Payment Terms
-- `PUT //{domain}/api/payment-terms/unarchive` — Bulk Unarchive Payment Terms
-- `PUT //{domain}/api/table-views/set-default-view/{viewId}` — Set Default View
-- `PUT //{domain}/api/table-views/{table_view}` — Update Table View
-- `PUT //{domain}/api/tags/1/archive` — Archive Tag
-- `PUT //{domain}/api/tags/1/unarchived` — Unarchive Tag
-- `PUT //{domain}/api/tags/5` — Update Tag
-- `PUT //{domain}/api/tags/archive` — Bulk Archive Tags
-- `PUT //{domain}/api/tags/unarchive` — Bulk Unarchive Tags
-- `PUT //{domain}/api/tracked-job-logs/{tracked_job_log}` — Update Tracked Job Log
-- `PUT //{domain}/api/users/{user}` — Update User
-- `PUT /api/shopify/{integrationInstance}/returns-access` — Set Returns Access
-- `PUT /api/v2/custom-reports/1` — Update Custom Report
-- `PUT /api/v2/custom-reports/1/schedules/1` — Update Schedule
+- `GET /api/tiktok-shop/config` — Get Config
+- `GET /api/tiktok-shop/integration-instances` — List Integration Instances
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}` — Disconnect Integration Instance
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}` — Get Integration Instance
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/pending` — List Pending Fulfillments
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/stats` — Fulfillment Sync Stats
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}/locations` — List TikTok Warehouses
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}/mappings` — Get Field Mappings
+- `GET /api/tiktok-shop/integration-instances/{integration_instance_id}/orders/filter-options` — Get Filter Options
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}` — Delete Order
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/orders/{order_id}/sku-order` — Delete Linked SKU Order
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/payment-method-mappings` — Delete Payment Method Mapping
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}` — Delete Product
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/map` — Unmap Product SKU
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/shipping-method-mappings/{skuShippingMethodId}` — Delete Shipping Method Mapping
+- `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/warehouse-mappings/{tiktokShopWarehouseId}` — Delete Warehouse Mapping
+- `DELETE /api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}` — Delete Integration Instance
+- `DELETE /api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/payment-method-mappings` — Delete Payment Method Mapping
+- `DELETE /api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/shipping-method-mappings/{skuShippingMethodId}` — Delete Shipping Method Mapping
+- `DELETE /api/tiktok-shop/integration-instances/{tikTokShopIntegrationInstance}/warehouse-mappings/{tiktokShopWarehouseId}` — Delete Warehouse Mapping
+- `DELETE /api/tiktok-shop/webhook-events` — Delete All Webhook Events
+- `DELETE /api/tiktok-shop/webhook-events/{tikTokShopWebhookEvent}` — Delete Webhook Event
+
+### Tags
+- `DELETE //{domain}/api/tags` — Bulk Delete Tags
+- `GET //{domain}/api/tags` — List Tags
+- `GET //{domain}/api/tags/1` — Show Tag
+- `DELETE //{domain}/api/tags/5` — Delete Tag
+
+### UI Utilities
+- `GET //{domain}/api/table-views` — List Table Views
+- `DELETE //{domain}/api/table-views/{table_view}` — Delete Table View
+- `GET //{domain}/api/table-views/{table_view}` — Get Table View
+
+### Users
+- `GET //{domain}/api/users` — List Users (DataTable)
+- `GET //{domain}/api/users/list` — Get User Lookup List
+- `DELETE //{domain}/api/users/{user}` — Delete (Deactivate) / Restore User
+- `GET //{domain}/api/users/{user}` — Show User
+
+_…plus 210 more (see the API reference)._
+
+## Changed
+
+### Purchase Order Shipments
+- `POST /api/inbound-shipments/receive` — Receive Shipment
+  - new response code(s): `202`, `409`
 
 _Spec version 1.0.0 → 1.0.0._
