@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-10
-description: This release includes 120 additions, 5 changes. 4 breaking changes — action required.
+description: This release includes 129 additions, 5 changes. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-10
 ---
 
-This release includes 120 additions, 5 changes. 4 breaking changes — action required.
+This release includes 129 additions, 5 changes. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -45,7 +45,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/accounting/payments` — Create Payment
 - `DELETE /api/accounting/payments/{id}` — Delete Payment
 - `GET /api/accounting/payments/{id}` — Get Payment
-- `PUT /api/accounting/payments/{id}` — Update Payment
 
 ### Adjustments & Transfers
 - `GET /api/inventory-adjustments` — List Inventory Adjustments
@@ -62,10 +61,19 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/bills/{id}/notes` — List Bill Notes
 - `POST /api/bills/{id}/notes` — Add Bill Note
 - `DELETE /api/bills/{id}/notes/{id2}` — Delete Bill Note
-- `PUT /api/bills/{id}/notes/{id2}/toggle-pin` — Toggle Bill Note Pin
 - `GET /api/bills/{id}/payments` — List Bill Payments
 - `POST /api/bills/{id}/payments` — Add Bill Payment
 - `DELETE /api/bills/{id}/payments/{id2}` — Delete Bill Payment
+
+### Cost Categories
+- `GET /api/cost-categories` — List Cost Categories
+- `POST /api/cost-categories` — Create Cost Category
+- `GET /api/cost-categories/fuzzy-match` — Fuzzy Match Cost Category
+- `DELETE /api/cost-categories/{cost_category}` — Delete Cost Category
+- `GET /api/cost-categories/{cost_category}` — Get Cost Category
+- `POST /api/cost-categories/{cost_category}/archive` — Archive Cost Category
+- `POST /api/cost-categories/{cost_category}/merge` — Merge Cost Category
+- `POST /api/cost-categories/{cost_category}/unarchive` — Unarchive Cost Category
 
 ### Costing
 - `GET /api/fifo-layers` — List FIFO Layers
@@ -169,17 +177,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/v2/product-warehouse-locations` — Create Product Warehouse Location
 - `DELETE /api/v2/product-warehouse-locations/{productWarehouseLocation}` — Delete Product Warehouse Location
 - `GET /api/v2/warehouse-locations` — List Warehouse Locations
-- `POST /api/v2/warehouse-locations` — Create Warehouse Location
-- `POST /api/v2/warehouse-locations/bulk-generate` — Bulk Generate Warehouse Locations
-- `POST /api/v2/warehouse-locations/import` — Import Warehouse Locations
-- `POST /api/v2/warehouse-locations/labels` — Generate Location Labels
 - `GET /api/v2/warehouse-locations/slotting-suggestions` — Get Slotting Suggestions
 - `DELETE /api/v2/warehouse-locations/{warehouseLocation}` — Delete Warehouse Location
 - `GET /api/v2/warehouse-locations/{warehouseLocation}` — Get Warehouse Location
-- `POST /api/v2/warehouse-locations/{warehouseLocation}/deprecate` — Deprecate Warehouse Location
-- `POST /api/v2/warehouse-locations/{warehouseLocation}/restore` — Restore Warehouse Location
 
-_…plus 20 more (see the API reference)._
+_…plus 29 more (see the API reference)._
 
 ## Changed
 
