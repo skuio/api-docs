@@ -318,6 +318,11 @@ const config: Config = {
           position: "left",
         },
         {
+          to: "/agentic-skills",
+          label: "Agentic Skills",
+          position: "left",
+        },
+        {
           href: "https://sku.io",
           label: "SKU.io",
           position: "right",
