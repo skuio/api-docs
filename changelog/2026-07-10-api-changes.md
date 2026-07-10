@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-10
-description: This release includes 33 additions, 4 changes. 3 breaking changes — action required.
+description: This release includes 114 additions, 5 changes. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-10
 ---
 
-This release includes 33 additions, 4 changes. 3 breaking changes — action required.
+This release includes 114 additions, 5 changes. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -19,6 +19,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ## ⚠️ Breaking changes
 
 ### Incompatible changes
+
+#### Custom Fields
+- **Changed** `GET /api/custom-fields` — List Custom Fields
+  - new parameter(s): `limit`, `page`
+  - removed parameter(s): `entity_type`
 
 #### Sales Credits
 - **Changed** `GET /api/v2/sales-credits` — List Sales Credits
@@ -42,6 +47,15 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/accounting/payments/{id}` — Get Payment
 - `PUT /api/accounting/payments/{id}` — Update Payment
 
+### Adjustments & Transfers
+- `GET /api/inventory-adjustments` — List Inventory Adjustments
+- `POST /api/v2/inventory-allocations/evaluate-releases` — Evaluate Releases
+- `DELETE /api/v2/inventory-allocations/{inventoryAllocation}/pin-bin` — Clear Bin Reservation
+- `GET /api/v2/location-transfers` — List Location Transfers
+- `POST /api/v2/location-transfers` — Create Location Transfer
+- `GET /api/v2/location-transfers/{locationTransfer}` — Get Location Transfer
+- `GET /api/v2/put-away/queue` — Get Put-Away Queue
+
 ### Bills
 - `GET /api/bills/{id}/activity-log` — Get Bill Activity Log
 - `GET /api/bills/{id}/documents` — List Bill Documents
@@ -55,6 +69,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/bills/{id}/payments/{id2}` — Update Bill Payment
 - `PUT /api/bills/{id}/tags` — Sync Bill Tags
 
+### Costing
+- `GET /api/fifo-layers` — List FIFO Layers
+
+### CSV Templates
+- `GET /api/csv-templates` — List CSV Templates
+
 ### Financials
 - `POST /api/financials/daily-summary` — Create Daily Financial Summary
 - `DELETE /api/financials/daily-summary/{daily_summary}` — Delete Daily Financial Summary
@@ -64,9 +84,60 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Fulfillment Orders
 - `POST /api/fulfillment-orders/{fulfillmentOrder}/apply-line-update` — Apply Fulfillment Order Line Update
 
+### Initial Inventory
+- `GET /api/initial-inventory` — List Initial Inventory
+- `POST /api/initial-inventory` — Create Initial Inventory
+- `DELETE /api/initial-inventory/{id}` — Delete Initial Inventory
+- `GET /api/initial-inventory/{id}` — Get Initial Inventory
+- `PUT /api/initial-inventory/{id}` — Update Initial Inventory
+
+### Inventory
+- `GET /api/v2/inventory/location-quantities` — List Location Quantities
+- `GET /api/v2/inventory/location-quantities/export` — Export Location Quantities
+
+### Merchandise Planning
+- `GET /api/open-to-buy/merchandise-plans` — List Merchandise Plans
+- `POST /api/open-to-buy/merchandise-plans` — Create Merchandise Plan
+- `POST /api/open-to-buy/merchandise-plans/seed` — Seed Plan From Forecast / Last Year
+- `GET /api/open-to-buy/merchandise-plans/{merchandisePlan}` — Get Merchandise Plan
+- `PATCH /api/open-to-buy/merchandise-plans/{merchandisePlan}` — Update Merchandise Plan (cell save / cash cap)
+- `GET /api/open-to-buy/merchandise-plans/{merchandisePlan}/otb` — Get OTB Breakdown
+
 ### Organization
+- `GET /api/attribute-groups` — List Attribute Groups
+- `GET /api/attributes` — List Attributes
+- `GET /api/categories` — List Categories
+- `GET /api/product-brands` — List Product Brands
 - `GET /api/v2/brands/{brand}` — Get Brand Detail Summary
 - `GET /api/v2/brands/{brand}/activity-log` — Get Brand Activity Log
+
+### Pick Lists
+- `GET /api/export/pick-lists/{pickList}/pdf` — Download Pick List PDF
+- `GET /api/v2/pick-lists` — List Pick Lists
+- `POST /api/v2/pick-lists` — Create Pick List
+- `POST /api/v2/pick-lists/bulk-archive` — Bulk Archive Pick Lists
+- `POST /api/v2/pick-lists/bulk-delete` — Bulk Delete Pick Lists
+- `POST /api/v2/pick-lists/bulk-unarchive` — Bulk Unarchive Pick Lists
+- `GET /api/v2/pick-lists/export` — Export Pick Lists
+- `DELETE /api/v2/pick-lists/{pickList}` — Delete Pick List
+- `GET /api/v2/pick-lists/{pickList}` — Get Pick List
+- `POST /api/v2/pick-lists/{pickList}/fulfill` — Fulfill Pick List
+
+### Pricing
+- `GET /api/product-pricing-tiers` — List Pricing Tiers
+
+### Products
+- `GET /api/products` — List Products
+- `GET /api/products/create` — Get Create Product Form
+- `GET /api/products/import/fields` — Get Import Fields
+- `GET /api/products/import/template` — Download Import Template
+- `POST /api/products/import/validate` — Validate Import
+- `GET /api/products/{productId}/fifo-layers` — Get Product FIFO Layers
+- `GET /api/products/{productId}/inventory-movements` — Get Product Inventory Movements
+- `GET /api/products/{product}/edit` — Get Edit Product Form
+- `GET /api/products/{product}/listings` — List Product Listings
+- `GET /api/v2/products/{product}/active-reservations` — Get Product Active Reservations
+- `GET /api/v2/products/{product}/reservation-integrity` — Get Product Reservation Integrity
 
 ### Square
 - `POST /api/square/instances/{squareIntegrationInstance}/payouts/sync` — Sync payouts
@@ -84,6 +155,29 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/trackstar/integration-instances/{integration_instance}/shipping-methods/bulk-map` — Bulk Map Shipping Methods
 - `GET /api/trackstar/integration-instances/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
 - `POST /api/trackstar/integration-instances/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
+
+### Warehouses
+- `GET /api/lookup/warehouse-locations` — Lookup Warehouse Locations
+- `GET /api/v2/lpns` — List LPNs
+- `POST /api/v2/lpns` — Create LPN
+- `GET /api/v2/lpns/{warehouseLpn}` — Get LPN
+- `POST /api/v2/lpns/{warehouseLpn}/contents` — Add Stock to LPN
+- `POST /api/v2/lpns/{warehouseLpn}/contents/bulk` — Bulk Import Stock to LPN
+- `GET /api/v2/product-warehouse-locations` — List Product Warehouse Locations
+- `POST /api/v2/product-warehouse-locations` — Create Product Warehouse Location
+- `DELETE /api/v2/product-warehouse-locations/{productWarehouseLocation}` — Delete Product Warehouse Location
+- `GET /api/v2/warehouse-locations` — List Warehouse Locations
+- `POST /api/v2/warehouse-locations` — Create Warehouse Location
+- `POST /api/v2/warehouse-locations/bulk-generate` — Bulk Generate Warehouse Locations
+- `POST /api/v2/warehouse-locations/import` — Import Warehouse Locations
+- `POST /api/v2/warehouse-locations/labels` — Generate Location Labels
+- `GET /api/v2/warehouse-locations/slotting-suggestions` — Get Slotting Suggestions
+- `DELETE /api/v2/warehouse-locations/{warehouseLocation}` — Delete Warehouse Location
+- `GET /api/v2/warehouse-locations/{warehouseLocation}` — Get Warehouse Location
+- `POST /api/v2/warehouse-locations/{warehouseLocation}/deprecate` — Deprecate Warehouse Location
+- `POST /api/v2/warehouse-locations/{warehouseLocation}/restore` — Restore Warehouse Location
+
+_…plus 14 more (see the API reference)._
 
 ## Changed
 
