@@ -420417,9 +420417,9 @@ paths:
       tags:
       - Fulfillment Orders
       summary: Cancel Fulfillment Order
-      description: 'Cancels the FO, releases its line budgets back to the parent SOLs
-        (so a different FO can pick them up), and optionally records a rejection reason.
-        Sets `status=cancelled` + `cancelled_at`.
+      description: 'Cancels the fulfillment order, releases its line budgets back
+        to the parent sales-order lines (so a different fulfillment order can pick
+        them up), and optionally records a reason. Sets `status=cancelled` + `cancelled_at`.
 
 
         :::info[Required scope: `orders:write`]
@@ -420430,16 +420430,31 @@ paths:
         :::
 
 
-        **Mutability gate.** Rejected if the FO is already terminal (`status=closed`/`cancelled`)
-        OR if `request_status` is currently in-flight with the provider (`submitting`,
-        `cancellation_requested`). Use the cancel-request flow in Stage 2 to cancel
-        an in-flight FO.
+        **Provider recall.** If the fulfillment order has already been submitted to
+        a shipping provider, cancelling first attempts to recall (cancel) it at the
+        provider, then cancels it in SKU. Set `local_only=true` to skip the provider
+        recall and cancel only in SKU — leaving any live provider order in place (use
+        this when the provider can''t or won''t recall the order).
+
+
+        **Mutability gate.** Rejected if the fulfillment order is already terminal
+        (`status=closed`/`cancelled`) or is currently in-flight with the provider
+        (`request_status=submitting`/`cancellation_requested`).
 
 
         **Body fields:**
 
-        - `reason` (nullable, string, max 1000) — stored on `rejection_reason` for
-        audit.'
+        - `reason` (optional, string, max 1000) — stored for audit.
+
+        - `local_only` (optional, boolean, default false) — cancel only in SKU without
+        recalling the provider order.
+
+
+        **Recall failure (409).** When a provider recall fails, the response carries
+        `needs_local_only: true` so you can retry with `local_only=true`. `provider_unsupported`
+        is `true` when the provider has no cancel capability at all (the order can
+        never be recalled automatically), and `false` when the order may already have
+        shipped.'
       requestBody:
         content:
           application/json:
@@ -420448,8 +420463,11 @@ paths:
               properties:
                 reason:
                   type: string
+                local_only:
+                  type: boolean
               example:
                 reason: Customer requested change of address
+                local_only: false
       parameters:
       - name: fulfillmentOrder
         in: path
@@ -420578,13 +420596,22 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  error:
-                    type: string
-                example:
-                  error: 'Cannot cancel fulfillment_order 451: FO is in flight with
-                    the provider (request_status=submitting). Use the cancel-request
-                    flow to cancel an in-flight FO.'
+              examples:
+                example-0:
+                  summary: 409 Not Cancellable
+                  value:
+                    error: 'Cannot cancel fulfillment_order 451: FO is in flight with
+                      the provider (request_status=submitting). Use the cancel-request
+                      flow to cancel an in-flight FO.'
+                example-1:
+                  summary: 409 Provider Recall Failed
+                  value:
+                    error: Mintsoft UK doesn't support cancelling orders through its
+                      API, so this fulfillment order can't be recalled automatically.
+                      Void it in SKU only — the order stays live at the provider,
+                      so cancel it there directly if it still needs stopping.
+                    needs_local_only: true
+                    provider_unsupported: true
         '429': *id001
         '401': *id002
         '403': *id003
