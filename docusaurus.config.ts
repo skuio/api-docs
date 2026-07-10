@@ -248,6 +248,18 @@ const config: Config = {
         },
       },
     ],
+    // A second, breaking-ONLY feed alongside the full changelog feed above, at
+    // /changelog/breaking/{rss.xml,atom.xml,feed.json}. Integrators subscribe to
+    // this to be paged only when a change removes an endpoint or tightens a
+    // request requirement (posts the generator tags `breaking`), instead of the
+    // full additive firehose.
+    [
+      "./plugins/breaking-changes-feed",
+      {
+        path: "changelog",
+        routeBasePath: "changelog",
+      },
+    ],
   ],
 
   themes: [
