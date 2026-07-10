@@ -52,7 +52,22 @@ A handful of expensive or abuse-prone endpoints carry their own tighter throttle
 
 ## Handling 429s
 
-- **Always honor `Retry-After`** — it's present on every 429 and tells you exactly how many seconds to wait. (`retry_after_seconds` in the per-token body is the same value.)
+The two 429 bodies above look different — `{ "message": "Too Many Attempts." }` for the global/endpoint limits versus `{ "message": "Token rate limit exceeded.", "retry_after_seconds": N }` for the per-token cap — but **you never have to branch on the body.** `Retry-After` is present on *every* 429 and is the same value as the per-token body's `retry_after_seconds`. Read the header and ignore the shape:
+
+```js
+// One 429 handler covers all three limit layers — Retry-After is always present.
+async function withRetry(doRequest, maxRetries = 5) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await doRequest();
+    if (res.status !== 429 || attempt >= maxRetries) return res;
+    const retryAfter = Number(res.headers.get("Retry-After")) || 1;
+    const jitter = Math.random() * 0.3 * retryAfter; // spread out shared-token workers
+    await new Promise((r) => setTimeout(r, (retryAfter + jitter) * 1000));
+  }
+}
+```
+
+- **Always honor `Retry-After`** — it's present on every 429 and tells you exactly how many seconds to wait.
 - Add jitter when many workers share a token, so they don't all retry in the same second.
 - Watch `X-RateLimit-Remaining` on throttled routes to slow down *before* hitting the wall.
 - For bulk work (catalog syncs, backfills), prefer larger `per_page` values over more requests, and use [webhooks](/docs/guides/webhooks) instead of polling for changes.
