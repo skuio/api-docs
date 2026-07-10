@@ -1,0 +1,37 @@
+name: Search index
+
+# Rebuild the Typesense `api_docs` collection from the live site after every
+# successful deploy, so search always matches what's published. Also runnable
+# on demand. Uses the DocSearch scraper pointed at our Typesense Cloud cluster.
+#
+# NOTE: developer.sku.io is large (4,200+ auto-generated API-reference pages).
+# Confirm the resulting collection fits the cluster's RAM tier before relying on
+# this in production — see the PR discussion. Trigger the first run manually
+# (workflow_dispatch) and watch cluster memory.
+#
+# Secrets (repo → Settings → Secrets and variables → Actions):
+#   TYPESENSE_ADMIN_API_KEY  — admin key (write access; never exposed to the browser)
+#   TYPESENSE_HOST           — e.g. lnkop3txzmv2ic6up-1.a2.typesense.net
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  index:
+    # Only after a successful deploy (or a manual run). PR builds never reach here.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scrape developer.sku.io into the Typesense `api_docs` collection
+        run: |
+          docker run -i --rm \
+            -e TYPESENSE_API_KEY="${{ secrets.TYPESENSE_ADMIN_API_KEY }}" \
+            -e TYPESENSE_HOST="${{ secrets.TYPESENSE_HOST }}" \
+            -e TYPESENSE_PORT="443" \
+            -e TYPESENSE_PROTOCOL="https" \
+            -e CONFIG="$(jq -c . typesense-scraper-config.json)" \
+            typesense/docsearch-scraper:0.11.0
