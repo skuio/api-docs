@@ -264,32 +264,34 @@ const config: Config = {
 
   themes: [
     "docusaurus-theme-openapi-docs",
-    [
-      "@easyops-cn/docusaurus-search-local",
-      {
-        hashed: true,
-        indexDocs: true,
-        indexBlog: true,
-        indexPages: false,
-        docsRouteBasePath: "/docs",
-        blogRouteBasePath: ["/release-notes", "/changelog"],
-        searchBarPosition: "right",
-        highlightSearchTermsOnTargetPage: true,
-        explicitSearchResultPath: true,
-        // Split the monolithic search index by section. The 4,000+ API reference
-        // pages dominate the index (~17-19 MB); without this every first search —
-        // even from a guide — downloads the whole thing. The SearchBar auto-selects
-        // the context matching the current page path, so a guide reader downloads
-        // only the small guides index and an API reader only the API index.
-        // useAllContextsWithNoSearchContext keeps search working (full index) from
-        // pages outside these sections, e.g. the landing page.
-        searchContextByPaths: ["docs/api", "docs/guides", "release-notes", "changelog"],
-        useAllContextsWithNoSearchContext: true,
-      },
-    ],
+    // Typesense-backed search (replaces the local Lunr index). Crucially, the search
+    // index now lives server-side in Typesense instead of being shipped to the browser
+    // — which is what the 4,200+ API-reference pages needed all along (no more 17-19 MB
+    // client index, no more trim-search-index.mjs post-build hack). The `api_docs`
+    // collection is (re)built on every publish by .github/workflows/search-index.yml.
+    "docusaurus-theme-search-typesense",
   ],
 
   themeConfig: {
+    // Typesense search. The search-only API key is PUBLIC by design — search-action-only,
+    // never write — so it's safe in the static bundle (like an Algolia DocSearch key). The
+    // `api_docs` collection is populated by the search-index workflow. Same cluster as
+    // docs.sku.io, separate collection. To go keyword → semantic later, add an `embedding`
+    // field to the collection and include it in `typesenseSearchParameters.query_by`.
+    typesense: {
+      typesenseCollectionName: "api_docs",
+      typesenseServerConfig: {
+        nodes: [
+          {
+            host: "lnkop3txzmv2ic6up-1.a2.typesense.net",
+            port: 443,
+            protocol: "https",
+          },
+        ],
+        apiKey: "joMetD2UX5WlAisU4Vris1XyvQx0FSGV",
+      },
+      typesenseSearchParameters: {},
+    },
     // Default preview image for shared links (OG / Twitter). Brand card lives
     // at static/img/sku-social-card.png (1200×630).
     image: "img/sku-social-card.png",
