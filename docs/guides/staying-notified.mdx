@@ -1,0 +1,103 @@
+---
+id: staying-notified
+title: Staying Notified of API Changes
+sidebar_label: Staying Notified
+slug: /guides/staying-notified
+---
+
+# Staying Notified of API Changes
+
+The SKU.io API evolves continuously. **Additive changes** — new endpoints, new optional
+parameters, new response fields — ship without warning and never break a well-behaved
+client. **Breaking changes** — a removed endpoint or a newly-required request field — are
+rare, announced ahead of time, and are the ones worth wiring an alert to.
+
+There are three ways to keep up, from lowest to highest urgency:
+
+| Channel | Best for | Push or pull |
+|---------|----------|--------------|
+| [API Changelog](/changelog) + its feed | Seeing every change as it ships | Pull (feed) |
+| [Breaking-changes feed](#breaking-only-feed) | Being paged **only** when action is required | Pull (feed) → email |
+| [`Deprecation` / `Sunset` headers](#in-band-deprecation-headers) | Detecting a dying endpoint from your own traffic | Push (in-band) |
+
+:::tip
+If you only do one thing: subscribe the [breaking-changes feed](#breaking-only-feed) to
+email. It stays silent until something will actually break your integration.
+:::
+
+## The API Changelog
+
+Every change to the public API surface is published to the [**API Changelog**](/changelog),
+one entry per day, generated mechanically from the OpenAPI spec — so it reflects exactly
+what the API does, not a hand-written approximation. Breaking changes are pinned to the top
+of each entry.
+
+The changelog is also a standard feed. Point any reader at:
+
+```text
+https://developer.sku.io/changelog/rss.xml     # RSS 2.0
+https://developer.sku.io/changelog/atom.xml    # Atom 1.0
+https://developer.sku.io/changelog/feed.json   # JSON Feed
+```
+
+This is the **full** stream — additions, changes, deprecations, and removals.
+
+## Breaking-only feed
+
+Most integrations don't need the full firehose. The breaking-only feed carries **just the
+action-required entries** — releases that remove an endpoint or tighten a request
+requirement (the entries tagged `breaking` in the changelog):
+
+```text
+https://developer.sku.io/changelog/breaking/rss.xml     # RSS 2.0
+https://developer.sku.io/changelog/breaking/atom.xml    # Atom 1.0
+https://developer.sku.io/changelog/breaking/feed.json   # JSON Feed
+```
+
+Each item includes the full entry (the removed endpoints and tightened requirements),
+so your reader shows the whole change, not just a headline.
+
+### Get breaking changes by email
+
+A feed becomes an alert once you route it to email. Any **RSS-to-email** tool does this with
+no code — you give it the feed URL once, and it emails your team only when a new breaking
+entry appears:
+
+1. Create an audience/list in the tool.
+2. Add an **RSS campaign** pointing at
+   `https://developer.sku.io/changelog/breaking/rss.xml`.
+3. Set the check cadence to **daily**. Breaking changes are infrequent, so most days send
+   nothing; when one ships, subscribers hear within a day.
+
+Tools that do this out of the box include **Buttondown**, **Mailchimp** (RSS campaigns),
+and **Beehiiv**. For an internal-only heads-up, **Kill the Newsletter** turns the feed into
+a plain mailbox with zero setup.
+
+## In-band deprecation headers
+
+You don't have to read a changelog to know you're calling a dying endpoint — the API tells
+you in the response. When an endpoint is scheduled for removal, every response to it carries
+standard sunset headers:
+
+```http
+HTTP/1.1 200 OK
+Deprecation: Wed, 01 Jul 2026 00:00:00 GMT
+Sunset: Fri, 01 Oct 2026 00:00:00 GMT
+Link: <https://developer.sku.io/changelog>; rel="deprecation"; type="text/html"
+```
+
+- **`Deprecation`** ([RFC 9745](https://www.rfc-editor.org/rfc/rfc9745)) — the date the
+  endpoint became deprecated. Its presence is the signal; the date is informational.
+- **`Sunset`** ([RFC 8594](https://www.rfc-editor.org/rfc/rfc8594)) — the date the endpoint
+  will **stop working**. Migrate before this date.
+- **`Link; rel="deprecation"`** — where to read what changed and what to use instead.
+
+A robust client logs or alerts whenever a response carries a `Sunset` header, so a
+deprecation surfaces from your own traffic long before the endpoint is removed. Endpoints
+that aren't deprecated never send these headers.
+
+## Product release notes
+
+Looking for user-facing product updates rather than API-surface diffs? Those live in
+[**Release Notes**](/release-notes), which has its own feed at
+`https://developer.sku.io/release-notes/rss.xml`.

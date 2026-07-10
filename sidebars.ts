@@ -265,6 +265,7 @@ const sidebars: SidebarsConfig = {
     { type: "doc", id: "guides/dates-and-timezones", label: "Dates & Timezones" },
     { type: "doc", id: "guides/rate-limits", label: "Rate Limits" },
     { type: "doc", id: "guides/webhooks", label: "Webhooks" },
+    { type: "doc", id: "guides/staying-notified", label: "Staying Notified" },
     { type: "doc", id: "guides/common-operations", label: "Common Operations" },
     {
       type: "category",
