@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-10
-description: This release includes 129 additions, 5 changes. 4 breaking changes — action required.
+description: This release includes 145 additions, 5 changes. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-10
 ---
 
-This release includes 129 additions, 5 changes. 4 breaking changes — action required.
+This release includes 145 additions, 5 changes. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -48,10 +48,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Adjustments & Transfers
 - `GET /api/inventory-adjustments` — List Inventory Adjustments
-- `POST /api/v2/inventory-allocations/evaluate-releases` — Evaluate Releases
 - `DELETE /api/v2/inventory-allocations/{inventoryAllocation}/pin-bin` — Clear Bin Reservation
 - `GET /api/v2/location-transfers` — List Location Transfers
-- `POST /api/v2/location-transfers` — Create Location Transfer
 - `GET /api/v2/location-transfers/{locationTransfer}` — Get Location Transfer
 - `GET /api/v2/put-away/queue` — Get Put-Away Queue
 
@@ -125,14 +123,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Pick Lists
 - `GET /api/export/pick-lists/{pickList}/pdf` — Download Pick List PDF
 - `GET /api/v2/pick-lists` — List Pick Lists
-- `POST /api/v2/pick-lists` — Create Pick List
-- `POST /api/v2/pick-lists/bulk-archive` — Bulk Archive Pick Lists
-- `POST /api/v2/pick-lists/bulk-delete` — Bulk Delete Pick Lists
-- `POST /api/v2/pick-lists/bulk-unarchive` — Bulk Unarchive Pick Lists
 - `GET /api/v2/pick-lists/export` — Export Pick Lists
 - `DELETE /api/v2/pick-lists/{pickList}` — Delete Pick List
 - `GET /api/v2/pick-lists/{pickList}` — Get Pick List
-- `POST /api/v2/pick-lists/{pickList}/fulfill` — Fulfill Pick List
 
 ### Pricing
 - `GET /api/product-pricing-tiers` — List Pricing Tiers
@@ -151,9 +144,24 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/products/{product}/active-reservations` — Get Product Active Reservations
 - `GET /api/v2/products/{product}/reservation-integrity` — Get Product Reservation Integrity
 
+### Purchase Invoices
+- `GET /api/purchase-invoice-approval-levels` — List Purchase Invoice Approval Levels
+- `POST /api/purchase-invoice-approval-levels` — Create Purchase Invoice Approval Level
+- `DELETE /api/purchase-invoice-approval-levels/{purchaseInvoiceApprovalLevel}` — Delete Purchase Invoice Approval Level
+- `GET /api/purchase-invoices/payment-request-routing` — Preview Payment Approval Routing
+- `GET /api/purchase-invoices/{purchaseInvoice}/payment-approval-steps` — List Bill Payment Approval Steps
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-approval-steps/approve` — Approve Bill Payment Approval Step
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-approval-steps/reject` — Reject Bill Payment Approval Step
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/approve` — Approve and Pay Bill
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/approve-only` — Approve Bill Payment
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/record-payment` — Record Bill Payment
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/reject` — Reject Bill Payment Request
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/revert-to-draft` — Withdraw Bill Payment Request
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/scan-proof` — Scan Invoice Payment Proof
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/send-remittance` — Send Invoice Payment Remittance
+- `POST /api/purchase-invoices/{purchaseInvoice}/payment-request/submit` — Submit Bill Payment for Approval
+
 ### Square
-- `POST /api/square/instances/{squareIntegrationInstance}/payouts/sync` — Sync payouts
-- `POST /api/square/orders/submit-fulfillments` — Submit fulfillments
 - `GET /api/square/payouts` — List payouts
 - `GET /api/square/payouts/{squarePayout}` — Get payout
 - `GET /api/square/payouts/{squarePayout}/entries` — List payout entries
@@ -162,26 +170,20 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PATCH /api/purchase-orders/{purchase_order}/invoice-reminders` — Manage Invoice Reminders
 
 ### Trackstar
-- `POST /api/trackstar/integration-instances/{integration_instance}/shipping-methods/auto-match` — Auto-match Shipping Methods
 - `GET /api/trackstar/integration-instances/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
-- `POST /api/trackstar/integration-instances/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
 
 ### Warehouses
 - `GET /api/lookup/warehouse-locations` — Lookup Warehouse Locations
 - `GET /api/v2/lpns` — List LPNs
-- `POST /api/v2/lpns` — Create LPN
 - `GET /api/v2/lpns/{warehouseLpn}` — Get LPN
-- `POST /api/v2/lpns/{warehouseLpn}/contents` — Add Stock to LPN
-- `POST /api/v2/lpns/{warehouseLpn}/contents/bulk` — Bulk Import Stock to LPN
 - `GET /api/v2/product-warehouse-locations` — List Product Warehouse Locations
-- `POST /api/v2/product-warehouse-locations` — Create Product Warehouse Location
 - `DELETE /api/v2/product-warehouse-locations/{productWarehouseLocation}` — Delete Product Warehouse Location
 - `GET /api/v2/warehouse-locations` — List Warehouse Locations
 - `GET /api/v2/warehouse-locations/slotting-suggestions` — Get Slotting Suggestions
 - `DELETE /api/v2/warehouse-locations/{warehouseLocation}` — Delete Warehouse Location
 - `GET /api/v2/warehouse-locations/{warehouseLocation}` — Get Warehouse Location
 
-_…plus 29 more (see the API reference)._
+_…plus 45 more (see the API reference)._
 
 ## Changed
 
