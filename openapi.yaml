@@ -230867,9 +230867,34 @@ paths:
         is ignored.
 
 
+        Body (all optional): `mode` — one of `since_latest` (resume from the last
+        synced order; default), `from_start_date` (re-sweep from `dateFrom` up to
+        now), or `date_range` (only orders within `[dateFrom, dateTo]`). `dateFrom`/`dateTo`
+        — ISO-8601 dates, required for `from_start_date` (from) and `date_range` (both).
+        `dateMethod` — `created` or `updated`, which order timestamp a `date_range`
+        sweep filters on (default `updated`).
+
+
         Authentication: Requires Bearer token.'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                dateFrom:
+                  type: string
+                dateTo:
+                  type: string
+                dateMethod:
+                  type: string
+              example:
+                mode: date_range
+                dateFrom: '2026-01-01'
+                dateTo: '2026-02-01'
+                dateMethod: updated
       parameters:
       - name: integrationInstance
         in: path
@@ -231961,6 +231986,10 @@ paths:
         - ids (array of integers, required): Magento 1 order ids to archive.
 
 
+        Set `apply_to_all: true` (instead of `ids`) to archive EVERY non-archived
+        order for the instance — the "All Filtered" bulk scope.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -231972,11 +232001,14 @@ paths:
                   type: array
                   items:
                     type: integer
+                apply_to_all:
+                  type: boolean
               example:
                 ids:
                 - 3391
                 - 3392
                 - 3393
+                apply_to_all: false
       parameters:
       - name: integrationInstance
         in: path
@@ -232019,6 +232051,10 @@ paths:
         - ids (array of integers, required): Magento 1 order ids to unarchive.
 
 
+        Set `apply_to_all: true` (instead of `ids`) to unarchive EVERY archived order
+        for the instance — the "All Filtered" bulk scope.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -232030,11 +232066,14 @@ paths:
                   type: array
                   items:
                     type: integer
+                apply_to_all:
+                  type: boolean
               example:
                 ids:
                 - 3391
                 - 3392
                 - 3393
+                apply_to_all: false
       parameters:
       - name: integrationInstance
         in: path
@@ -232285,6 +232324,10 @@ paths:
         orders to update.
 
 
+        Set `apply_to_all: true` (instead of `ids`) to update EVERY order that has
+        a linked SKU sales order — the "All Filtered" bulk scope.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -232296,11 +232339,14 @@ paths:
                   type: array
                   items:
                     type: integer
+                apply_to_all:
+                  type: boolean
               example:
                 ids:
                 - 3391
                 - 3392
                 - 3393
+                apply_to_all: false
       parameters:
       - name: integrationInstance
         in: path
@@ -232338,6 +232384,78 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-magento1-instances-integrationinstance-orders-bulk-update-sku-orders
+  /api/magento1/instances/{integrationInstance}/orders/bulk-delete:
+    post:
+      tags:
+      - Magento 1
+      summary: Delete Orders
+      description: 'Permanently delete Magento 1 orders from SKU.io (the mirror records),
+        cascading to any linked SKU sales order + order items. This does NOT delete
+        anything in the Magento 1 store. Distinct from Delete SKU Orders, which only
+        unlinks.
+
+
+        Body: `ids` (integer array) OR `apply_to_all: true` to delete EVERY order
+        for the instance (the "All Filtered" scope). Deletes >1 order via a tracked
+        background job (returns `tracked_job_log_id`); a single order deletes synchronously.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                apply_to_all:
+                  type: boolean
+              example:
+                ids:
+                - 3391
+                - 3392
+                - 3393
+                apply_to_all: false
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Magento 1 integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  tracked_job_log_id:
+                    type: integer
+                  total_orders:
+                    type: integer
+                example:
+                  message: Bulk delete job started
+                  tracked_job_log_id: 7
+                  total_orders: 3
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-magento1-instances-integrationinstance-orders-bulk-delete
   /api/magento1/instances/{integrationInstance}/orders/{order}/sku-order:
     delete:
       tags:
@@ -232424,6 +232542,10 @@ paths:
         Magento 1 orders after deleting.
 
 
+        Set `apply_to_all: true` (instead of `ids`) to delete the linked SKU sales
+        order for EVERY order that has one — the "All Filtered" bulk scope.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -232435,6 +232557,8 @@ paths:
                   type: array
                   items:
                     type: integer
+                apply_to_all:
+                  type: boolean
                 archive_magento1_orders:
                   type: boolean
               example:
@@ -232442,6 +232566,7 @@ paths:
                 - 3391
                 - 3392
                 - 3393
+                apply_to_all: false
                 archive_magento1_orders: false
       parameters:
       - name: integrationInstance
@@ -232535,6 +232660,221 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-magento1-orders-order-submit-tracking
+  /api/magento1/instances/{integrationInstance}/orders/search:
+    post:
+      tags:
+      - Magento 1
+      summary: Search Orders
+      description: 'Live-search the connected Magento 1 store for orders by increment
+        id or customer email. Returns shallow matches, each flagged with whether it
+        already exists in SKU.io.
+
+
+        Body: `search_by` — `increment_id` or `email`. `query` — the search term (string,
+        max 255).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                search_by:
+                  type: string
+                query:
+                  type: string
+              example:
+                search_by: increment_id
+                query: '100000017'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Magento 1 integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        increment_id:
+                          type: string
+                        status:
+                          type: string
+                        customer_email:
+                          type: string
+                        customer_firstname:
+                          type: string
+                        customer_lastname:
+                          type: string
+                        created_at:
+                          type: string
+                        grand_total:
+                          type: string
+                        order_currency_code:
+                          type: string
+                        exists_in_database:
+                          type: boolean
+                        database_id:
+                          type: integer
+                example:
+                  data:
+                  - increment_id: '100000017'
+                    status: complete
+                    customer_email: jane@example.com
+                    customer_firstname: Jane
+                    customer_lastname: Doe
+                    created_at: '2026-07-07 13:55:58'
+                    grand_total: '129.9900'
+                    order_currency_code: USD
+                    exists_in_database: true
+                    database_id: 42
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-magento1-instances-integrationinstance-orders-search
+  /api/magento1/instances/{integrationInstance}/orders/fetch-single:
+    post:
+      tags:
+      - Magento 1
+      summary: Download Single Order
+      description: 'Fetch a single order from the Magento 1 store by its increment
+        id and persist it into SKU.io. Use this to import a specific order surfaced
+        by Search Orders.
+
+
+        Body: `increment_id` — the Magento order increment id (string, required).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                increment_id:
+                  type: string
+              example:
+                increment_id: '100000017'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Magento 1 integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      increment_id:
+                        type: string
+                      status:
+                        type: string
+                      state:
+                        type: string
+                      customer_email:
+                        type: string
+                      customer_firstname:
+                        type: string
+                      customer_lastname:
+                        type: string
+                      grand_total:
+                        type: string
+                      order_currency_code:
+                        type: string
+                      magento_created_at:
+                        type: string
+                      magento_updated_at:
+                        type: string
+                      sales_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sales_order_number:
+                            type: string
+                      order_items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            qty_ordered:
+                              type: string
+                            price:
+                              type: string
+                example:
+                  message: Order fetched from Magento 1
+                  data:
+                    id: 42
+                    integration_instance_id: 3
+                    increment_id: '100000017'
+                    status: complete
+                    state: complete
+                    customer_email: jane@example.com
+                    customer_firstname: Jane
+                    customer_lastname: Doe
+                    grand_total: '129.9900'
+                    order_currency_code: USD
+                    magento_created_at: '2026-07-07T13:55:58+00:00'
+                    magento_updated_at: '2026-07-07T13:55:58+00:00'
+                    sales_order:
+                      id: 8891
+                      sales_order_number: SO-100482
+                    order_items:
+                    - sku: ACME-HOODIE-M-BLU
+                      name: Acme Hoodie - Medium - Blue
+                      qty_ordered: '1.0000'
+                      price: '129.9900'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-magento1-instances-integrationinstance-orders-fetch-single
   /api/magento1/products:
     get:
       tags:
@@ -233011,18 +233351,27 @@ paths:
       tags:
       - Magento 1
       summary: Refresh Products (Tracked)
-      description: 'Starts a tracked product refresh from Magento 1. Magento 1''s
-        Core API has no incremental/date-range catalog query, so the job always advances
-        a watermark window (there is NO `mode` parameter, unlike Faire). Returns a
-        `tracked_job_log_id` you can poll for progress.
+      description: 'Starts a background product refresh from the Magento 1 store into
+        SKU.io. Returns a `tracked_job_log_id` you can poll for progress.
 
 
-        Body: none.
+        Body (optional): `mode` — either `since_latest` (resume from the last synced
+        product; default) or `full_catalog` (re-import the entire catalog). Magento
+        1''s catalog API has no date query, so date-range refresh is not supported
+        for products.
 
 
         Authentication: Requires Bearer token.'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+              example:
+                mode: since_latest
       parameters:
       - name: integrationInstance
         in: path
@@ -233991,6 +234340,216 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-magento1-instances-integrationinstance-products-product
+  /api/magento1/instances/{integrationInstance}/products/search:
+    post:
+      tags:
+      - Magento 1
+      summary: Search Products
+      description: 'Live-search the connected Magento 1 catalog by SKU or name. Returns
+        shallow matches, each flagged with whether it already exists in SKU.io.
+
+
+        Body: `search_by` — `sku` or `name`. `query` — the search term (string, max
+        255).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                search_by:
+                  type: string
+                query:
+                  type: string
+              example:
+                search_by: sku
+                query: ACME-HOODIE
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Magento 1 integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: string
+                        sku:
+                          type: string
+                        name:
+                          type: string
+                        type:
+                          type: string
+                        exists_in_database:
+                          type: boolean
+                        database_id:
+                          type: string
+                          nullable: true
+                example:
+                  data:
+                  - product_id: '8842'
+                    sku: ACME-HOODIE-M-BLU
+                    name: Acme Hoodie - Medium - Blue
+                    type: simple
+                    exists_in_database: false
+                    database_id: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-magento1-instances-integrationinstance-products-search
+  /api/magento1/instances/{integrationInstance}/products/fetch-single:
+    post:
+      tags:
+      - Magento 1
+      summary: Download Single Product
+      description: 'Fetch a single catalog product from the Magento 1 store by its
+        product id (deep data + live stock) and persist it into SKU.io. Use this to
+        import a specific product surfaced by Search Products.
+
+
+        Body: `product_id` — the Magento catalog product id (string, required).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id:
+                  type: string
+              example:
+                product_id: '8842'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Magento 1 integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      product_id:
+                        type: integer
+                      sku:
+                        type: string
+                      name:
+                        type: string
+                      type_id:
+                        type: string
+                      status:
+                        type: string
+                      visibility:
+                        type: string
+                      price:
+                        type: string
+                      weight:
+                        type: string
+                      qty:
+                        type: string
+                      is_in_stock:
+                        type: boolean
+                      magento_created_at:
+                        type: string
+                      magento_updated_at:
+                        type: string
+                      is_mapped:
+                        type: boolean
+                      product_listing:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          listing_sku:
+                            type: string
+                          product:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              sku:
+                                type: string
+                              name:
+                                type: string
+                              type:
+                                type: string
+                example:
+                  message: Product fetched from Magento 1
+                  data:
+                    id: 512
+                    integration_instance_id: 3
+                    product_id: 8842
+                    sku: ACME-HOODIE-M-BLU
+                    name: Acme Hoodie - Medium - Blue
+                    type_id: simple
+                    status: '1'
+                    visibility: '4'
+                    price: '49.9900'
+                    weight: '0.8000'
+                    qty: '124.0000'
+                    is_in_stock: true
+                    magento_created_at: '2026-01-04T09:12:00+00:00'
+                    magento_updated_at: '2026-07-02T14:33:00+00:00'
+                    is_mapped: true
+                    product_listing:
+                      id: 9001
+                      listing_sku: ACME-HOODIE-M-BLU
+                      product:
+                        id: 30412
+                        sku: ACME-HOODIE-M-BLU
+                        name: Acme Hoodie (Medium, Blue)
+                        type: simple
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-magento1-instances-integrationinstance-products-fetch-single
   /api/magento1/instances/{integrationInstance}/mappings:
     get:
       tags:

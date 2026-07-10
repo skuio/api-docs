@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-10
-description: This release includes 114 additions, 5 changes. 4 breaking changes — action required.
+description: This release includes 119 additions, 5 changes. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-10
 ---
 
-This release includes 114 additions, 5 changes. 4 breaking changes — action required.
+This release includes 119 additions, 5 changes. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -67,7 +67,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/bills/{id}/payments` — Add Bill Payment
 - `DELETE /api/bills/{id}/payments/{id2}` — Delete Bill Payment
 - `PUT /api/bills/{id}/payments/{id2}` — Update Bill Payment
-- `PUT /api/bills/{id}/tags` — Sync Bill Tags
 
 ### Costing
 - `GET /api/fifo-layers` — List FIFO Layers
@@ -79,7 +78,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/financials/daily-summary` — Create Daily Financial Summary
 - `DELETE /api/financials/daily-summary/{daily_summary}` — Delete Daily Financial Summary
 - `GET /api/financials/daily-summary/{daily_summary}` — Get Daily Financial Summary
-- `PUT /api/financials/daily-summary/{daily_summary}` — Update Daily Financial Summary
 
 ### Fulfillment Orders
 - `POST /api/fulfillment-orders/{fulfillmentOrder}/apply-line-update` — Apply Fulfillment Order Line Update
@@ -89,11 +87,17 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/initial-inventory` — Create Initial Inventory
 - `DELETE /api/initial-inventory/{id}` — Delete Initial Inventory
 - `GET /api/initial-inventory/{id}` — Get Initial Inventory
-- `PUT /api/initial-inventory/{id}` — Update Initial Inventory
 
 ### Inventory
 - `GET /api/v2/inventory/location-quantities` — List Location Quantities
 - `GET /api/v2/inventory/location-quantities/export` — Export Location Quantities
+
+### Magento 1
+- `POST /api/magento1/instances/{integrationInstance}/orders/bulk-delete` — Delete Orders
+- `POST /api/magento1/instances/{integrationInstance}/orders/fetch-single` — Download Single Order
+- `POST /api/magento1/instances/{integrationInstance}/orders/search` — Search Orders
+- `POST /api/magento1/instances/{integrationInstance}/products/fetch-single` — Download Single Product
+- `POST /api/magento1/instances/{integrationInstance}/products/search` — Search Products
 
 ### Merchandise Planning
 - `GET /api/open-to-buy/merchandise-plans` — List Merchandise Plans
@@ -148,11 +152,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Suppliers
 - `PATCH /api/purchase-orders/{purchase_order}/invoice-reminders` — Manage Invoice Reminders
-- `PUT /api/suppliers/{supplier}/invoice-reminders` — Update Supplier Invoice Reminders
 
 ### Trackstar
 - `POST /api/trackstar/integration-instances/{integration_instance}/shipping-methods/auto-match` — Auto-match Shipping Methods
-- `PUT /api/trackstar/integration-instances/{integration_instance}/shipping-methods/bulk-map` — Bulk Map Shipping Methods
 - `GET /api/trackstar/integration-instances/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
 - `POST /api/trackstar/integration-instances/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
 
@@ -177,7 +179,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/v2/warehouse-locations/{warehouseLocation}/deprecate` — Deprecate Warehouse Location
 - `POST /api/v2/warehouse-locations/{warehouseLocation}/restore` — Restore Warehouse Location
 
-_…plus 14 more (see the API reference)._
+_…plus 19 more (see the API reference)._
 
 ## Changed
 
