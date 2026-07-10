@@ -10,7 +10,11 @@ management / ERP platform for multichannel ecommerce brands).
 - Every request needs `Authorization: Bearer <personal-access-token>` and
   `Accept: application/json`.
 - Tokens are created by a human in the SKU.io app: Settings → Developer →
-  Personal Access Tokens. There is no OAuth flow for third parties today.
+  Personal Access Tokens. There is no OAuth or client-credentials flow — a PAT
+  is the credential for headless automation too. For unattended use a human
+  mints one long-lived, IP-allowlisted token per integration once; nothing at
+  runtime needs a person. See the Authentication guide → "Headless &
+  machine-to-machine access".
 - Tokens carry **scopes** (e.g. `orders:read`, `products:write`,
   `inventory:write`, `webhooks:manage`) and are **deny-by-default**: an
   endpoint outside the token's scopes returns 403 with "This endpoint is not
@@ -44,8 +48,12 @@ management / ERP platform for multichannel ecommerce brands).
 - Platform rate limit: 1,000 requests/min per token/IP; individual tokens can
   carry a lower per-token limit (429 + `Retry-After` — honor it). Some heavy
   endpoints have 30–60/min route limits.
-- Note: some endpoints return HTTP 200 even for creates (legacy envelope
-  behavior) — check the body's `status` field, not just the HTTP status.
+- Success codes: **most `/api` writes normalize success to HTTP 200** (the
+  platform envelope), including creates that would conventionally be 201. Treat
+  any 2xx as success and confirm with the body's `status` field (`"success"`, or
+  `"warning"` on a `299`) — never by expecting a specific code. Newer endpoints
+  (webhook subscriptions, etc.) do return 201/204. See the API Conventions guide:
+  https://developer.sku.io/docs/guides/api-conventions
 
 ## Safety rules
 
