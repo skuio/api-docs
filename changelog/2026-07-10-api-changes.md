@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-10
-description: This release includes 119 additions, 5 changes. 4 breaking changes — action required.
+description: This release includes 120 additions, 5 changes. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-10
 ---
 
-This release includes 119 additions, 5 changes. 4 breaking changes — action required.
+This release includes 120 additions, 5 changes. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -66,7 +66,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/bills/{id}/payments` — List Bill Payments
 - `POST /api/bills/{id}/payments` — Add Bill Payment
 - `DELETE /api/bills/{id}/payments/{id2}` — Delete Bill Payment
-- `PUT /api/bills/{id}/payments/{id2}` — Update Bill Payment
 
 ### Costing
 - `GET /api/fifo-layers` — List FIFO Layers
@@ -131,6 +130,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/product-pricing-tiers` — List Pricing Tiers
 
 ### Products
+- `GET /api/consignment/valuation-summary` — Get Consignment Valuation Summary
 - `GET /api/products` — List Products
 - `GET /api/products/create` — Get Create Product Form
 - `GET /api/products/import/fields` — Get Import Fields
@@ -179,7 +179,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/v2/warehouse-locations/{warehouseLocation}/deprecate` — Deprecate Warehouse Location
 - `POST /api/v2/warehouse-locations/{warehouseLocation}/restore` — Restore Warehouse Location
 
-_…plus 19 more (see the API reference)._
+_…plus 20 more (see the API reference)._
 
 ## Changed
 
