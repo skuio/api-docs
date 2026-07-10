@@ -19,13 +19,24 @@ As you grow, "which shelf is that on?" becomes the question that slows your whol
 - **Never pick from an empty face.** Replenishment watches your pick faces and tells you exactly which reserve bin to refill them from, and how much.
 - **Move a pallet, not one SKU at a time.** Group stock onto a License Plate Number (LPN) and relocate the whole load in a single step.
 
+## Turning it on
+
+Warehouse Locations turns on in two quick steps — it's a setting, not a migration:
+
+1. **Switch on the feature for your account.** Go to **Settings → Fulfillment → Warehouse Locations** and toggle **Warehouse Locations (Bins)** on. This unlocks the Locations tools across the app.
+2. **Enable it on each warehouse you want to use bins in.** Under **Contacts → Warehouses**, open a **direct** warehouse, go to its **Edit Details** tab, and flip **Warehouse Locations** on. On save, SKU.io seeds the operational bins, sweeps that warehouse's existing on-hand into an *Unassigned* location so nothing is lost, and hands you a **View Locations** link to start sorting stock into real bins at your own pace.
+
+![The account-level Warehouse Locations setting under Settings → Fulfillment: a single toggle that unlocks bins across the app](/img/release-notes/warehouse-locations/enable-setting.png)
+
+While you're enabling a warehouse you can also set two options: a **Receive Mode** — receive stock *directly to bins*, or *to a staging area and then put it away* — and a **Negative Bin Policy** (Block, Warn, or Allow) that decides what happens if a pick would take a bin below zero.
+
 ## Turn any warehouse into bins
 
 Open a warehouse and you'll find a new **Locations** tab. Each bin has a code, a type, and a barcode, plus optional zone / aisle / bay / shelf / bin coordinates so the address matches how your floor is actually laid out. The **type** is what makes SKU.io smart about each bin — a *Primary Pick* face behaves differently from *Bulk Reserve*, which behaves differently from a *Staging* dock — and small capability icons show at a glance whether a bin can receive stock, be picked from, or act as a put-away source. Live on-hand for every bin is shown in the **Units** column, kept current automatically as stock moves.
 
 ![The Locations tab on a warehouse: typed, barcoded bins — Storage, Reserve, Primary Pick, Staging, Returns, Shipping — each with capability icons and live unit counts](/img/release-notes/warehouse-locations/locations.png)
 
-You don't have to build bins one at a time: **Generate Range** creates a whole aisle of bins at once, **Import CSV** brings in an existing layout, and **Print Labels** produces scannable barcodes for the shelf. Turning locations on for a warehouse is a single toggle — SKU.io moves your current on-hand into an *Unassigned* bin so nothing is lost, and you sort it into real bins at your own pace.
+You don't have to build bins one at a time: **Generate Range** creates a whole aisle of bins at once, **Import CSV** brings in an existing layout, and **Print Labels** produces scannable barcodes for the shelf.
 
 ## Directed put-away
 
@@ -57,7 +68,7 @@ Sometimes you're not moving a single SKU — you're moving a pallet. **LPNs / Pa
 
 ## Where to find it
 
-Warehouse Locations is enabled **per warehouse**. Open a direct warehouse under **Contacts → Warehouses**, then use the **Locations** tab to turn it on and build your bins. Once a warehouse is location-enabled, the operational queues appear in the main menu:
+Warehouse Locations turns on in two steps. First switch the feature on for your account under **Settings → Fulfillment → Warehouse Locations** (toggle **Warehouse Locations (Bins)**). Then open a **direct** warehouse under **Contacts → Warehouses**, go to its **Edit Details** tab, and flip **Warehouse Locations** on to seed its bins. Once a warehouse is location-enabled, the operational queues appear in the main menu:
 
 - **Inventory → Put Away** — direct received stock to its home bin
 - **Inventory → Replenishment** — top up pick faces from reserve
