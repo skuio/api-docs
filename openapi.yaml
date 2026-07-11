@@ -6962,6 +6962,14 @@ paths:
                           type: string
                         invoice_date:
                           type: string
+                        due_date:
+                          type: string
+                        payment_status:
+                          type: string
+                        payment_due_status:
+                          type: string
+                        days_until_due:
+                          type: integer
                         supplier_id:
                           type: integer
                         supplier_name:
@@ -7065,6 +7073,10 @@ paths:
                   - id: 12
                     invoice_number: INV-2026-0042
                     invoice_date: '2026-05-28'
+                    due_date: '2026-06-27'
+                    payment_status: unpaid
+                    payment_due_status: not_due
+                    days_until_due: 30
                     supplier_id: 3
                     supplier_name: Global Freight Co
                     supplier_type: service
@@ -7262,6 +7274,14 @@ paths:
                         type: string
                       invoice_date:
                         type: string
+                      due_date:
+                        type: string
+                      due_date_source:
+                        type: string
+                      payment_due_status:
+                        type: string
+                      days_until_due:
+                        type: integer
                       link_type:
                         type: string
                       link_id:
@@ -7389,6 +7409,10 @@ paths:
                     supplier_type: service
                     invoice_number: INV-2024-001
                     invoice_date: '2024-01-15'
+                    due_date: '2024-02-14'
+                    due_date_source: derived
+                    payment_due_status: not_due
+                    days_until_due: 30
                     link_type: purchase_order
                     link_id: 42
                     currency_id: 1
@@ -271138,7 +271162,22 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Fields (all optional — send only what changes):
+
+        - is_automatic_sync_enabled (boolean) — master switch for the automatic sync
+        schedule.
+
+        - sync_due_dates (boolean, default true) — when true, each bill''s payment
+        due date is pushed to QuickBooks as DueDate; when false, QuickBooks derives
+        the due date from the vendor''s own terms.
+
+        - name (string, max 255) — display name for the integration instance.'
       requestBody:
         content:
           application/json:
@@ -271147,10 +271186,13 @@ paths:
               properties:
                 is_automatic_sync_enabled:
                   type: boolean
+                sync_due_dates:
+                  type: boolean
                 name:
                   type: string
               example:
                 is_automatic_sync_enabled: true
+                sync_due_dates: true
                 name: My Company QBO
       parameters:
       - name: id
@@ -271186,6 +271228,8 @@ paths:
                         type: string
                       is_auto_sync_enabled:
                         type: boolean
+                      sync_due_dates:
+                        type: boolean
                 example:
                   success: true
                   message: Settings updated successfully
@@ -271193,6 +271237,7 @@ paths:
                     id: 1
                     name: My Company QBO
                     is_auto_sync_enabled: true
+                    sync_due_dates: true
         '429': *id001
         '401': *id002
         '403': *id003
@@ -381444,6 +381489,70 @@ paths:
         '404': *id004
       x-required-scope: orders:read
       operationId: get-api-sales-orders-salesorder-document
+  /api/sales-orders/list/export/download:
+    get:
+      tags:
+      - Sales Orders
+      summary: Download Sales Orders Export
+      description: 'Downloads a completed background export produced by Export Sales
+        Orders (queued path). The filename is the one reported in the tracked job
+        log''s results.file field.
+
+
+        Authentication: Requires Bearer token. Scope: orders (read).
+
+
+        Response is the binary file (CSV or XLSX) with an attachment Content-Disposition
+        header. Returns 404 if the file param is empty or the file no longer exists.
+
+
+        **Requires permission:** `sales_orders.export`'
+      parameters:
+      - name: file
+        in: query
+        schema:
+          type: string
+        description: Filename returned in the completed tracked job's results.file.
+          The server basenames this value and serves the stored export; unknown filenames
+          yield 404.
+        example: sales-orders-2026-07-10-13-00-00.xlsx
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="sales-orders-2026-07-10-13-00-00.xlsx"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: <binary file>
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-sales-orders-list-export-download
   /api/sales-order-lines/{salesOrderLineId}:
     get:
       tags:
@@ -406529,8 +406638,6 @@ paths:
                   nullable: true
                 supplier_notes:
                   type: string
-                internal_notes:
-                  type: string
                 tracking_number:
                   type: string
                   nullable: true
@@ -406608,8 +406715,6 @@ paths:
                 estimated_delivery_date: '2024-02-01'
                 other_date: null
                 supplier_notes: Please ship ASAP
-                internal_notes: Internal only — never printed on the PO or sent to
-                  the supplier
                 tracking_number: null
                 is_tax_included: false
                 tax_rate_id: null
@@ -407732,8 +407837,6 @@ paths:
                   type: string
                 supplier_notes:
                   type: string
-                internal_notes:
-                  type: string
                 tracking_number:
                   type: string
                 approval_status:
@@ -407759,8 +407862,6 @@ paths:
                 purchase_order_date: '2024-01-15'
                 estimated_delivery_date: '2024-02-15'
                 supplier_notes: Updated notes
-                internal_notes: Internal only — never printed on the PO or sent to
-                  the supplier
                 tracking_number: TRACK123
                 approval_status: approved
                 tags:
@@ -408300,19 +408401,9 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        **Requires permission:** `purchase_orders.approve` Optionally include supplier_message
-        to set the vendor-facing note (saved before the PO is emailed); omit it to
-        keep the saved message, or send an empty string to clear it.'
+        **Requires permission:** `purchase_orders.approve`'
       requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                supplier_message:
-                  type: string
-              example:
-                supplier_message: Please ship in original cartons.
+        content: {}
       parameters:
       - name: purchase_order
         in: path
@@ -413142,6 +413233,11 @@ paths:
         Each expected payment row is built from the best available source, reported
         as `forecast_source`:
 
+        - `invoiced` — an actual outstanding supplier invoice or bill with its real
+        due date (highest confidence; once a purchase order has an outstanding invoice,
+        that invoice replaces the order''s forecasted final-invoice-balance milestone
+        so the balance is never double-counted)
+
         - `scheduled` — the PO''s own payment-term deposit schedule (high confidence)
 
         - `inferred` — the supplier''s default payment-term schedule or default deposit
@@ -413241,6 +413337,23 @@ paths:
                       sections:
                         type: object
                         properties:
+                          invoiced:
+                            type: object
+                            properties:
+                              rows:
+                                type: array
+                              row_count:
+                                type: integer
+                              purchase_order_count:
+                                type: integer
+                              amount_in_tenant_currency:
+                                type: integer
+                              dated_amount_in_tenant_currency:
+                                type: integer
+                              undated_amount_in_tenant_currency:
+                                type: integer
+                              overdue_amount_in_tenant_currency:
+                                type: integer
                           scheduled:
                             type: object
                             properties:
@@ -413438,6 +413551,14 @@ paths:
                       heuristic_amount_in_tenant_currency: 0
                       unscheduled_amount_in_tenant_currency: 0
                     sections:
+                      invoiced:
+                        rows: []
+                        row_count: 0
+                        purchase_order_count: 0
+                        amount_in_tenant_currency: 0
+                        dated_amount_in_tenant_currency: 0
+                        undated_amount_in_tenant_currency: 0
+                        overdue_amount_in_tenant_currency: 0
                       scheduled:
                         rows:
                         - purchase_order_id: 812
@@ -415121,6 +415242,8 @@ paths:
                           type: integer
                         supplier_name:
                           type: string
+                        supplier_email:
+                          type: string
                         status:
                           type: string
                         purchase_invoice_lines:
@@ -415133,6 +415256,14 @@ paths:
                           type: string
                         due_date:
                           type: string
+                        due_date_source:
+                          type: string
+                        payment_term_name:
+                          type: string
+                        payment_due_status:
+                          type: string
+                        days_until_due:
+                          type: integer
                         other_date:
                           type: string
                           nullable: true
@@ -415181,6 +415312,33 @@ paths:
                         approval_notes:
                           type: string
                           nullable: true
+                        payment_approval_status:
+                          type: string
+                          nullable: true
+                        payment_requested_by:
+                          type: string
+                          nullable: true
+                        payment_requested_by_name:
+                          type: string
+                          nullable: true
+                        payment_requested_at:
+                          type: string
+                          nullable: true
+                        payment_approved_by:
+                          type: string
+                          nullable: true
+                        payment_approved_by_name:
+                          type: string
+                          nullable: true
+                        payment_approved_at:
+                          type: string
+                          nullable: true
+                        payment_approval_notes:
+                          type: string
+                          nullable: true
+                        remittance_sent_at:
+                          type: string
+                          nullable: true
                         tags:
                           type: array
                         created_at:
@@ -415219,11 +415377,16 @@ paths:
                     supplier_invoice_number: INV-2024-001
                     supplier_id: 7
                     supplier_name: Acme Supplies Ltd
+                    supplier_email: ap@acmesupplies.example
                     status: open
                     purchase_invoice_lines: null
                     financial_lines: null
                     purchase_invoice_date: '2024-01-20'
                     due_date: '2024-02-20'
+                    due_date_source: derived
+                    payment_term_name: Net 30
+                    payment_due_status: due_soon
+                    days_until_due: 5
                     other_date: null
                     currency_id: 1
                     currency_rate: 1
@@ -415244,6 +415407,15 @@ paths:
                     approved_by_name: null
                     approved_at: null
                     approval_notes: null
+                    payment_approval_status: null
+                    payment_requested_by: null
+                    payment_requested_by_name: null
+                    payment_requested_at: null
+                    payment_approved_by: null
+                    payment_approved_by_name: null
+                    payment_approved_at: null
+                    payment_approval_notes: null
+                    remittance_sent_at: null
                     tags: []
                     created_at: '2024-01-20T10:30:00.000000Z'
                     updated_at: '2024-01-20T10:30:00.000000Z'
@@ -415285,7 +415457,13 @@ paths:
 
 
         When financial_lines are provided, each entry requires: id (an existing financial_lines.id),
-        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.'
+        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.
+
+
+        payment_term_id (optional, nullable): a payment term to derive this invoice''s
+        due date from — takes precedence over the purchase order''s term and the supplier''s
+        default. When no due date is sent, the due date is derived from this chain
+        automatically.'
       requestBody:
         content:
           application/json:
@@ -415298,6 +415476,8 @@ paths:
                   type: string
                 due_date:
                   type: string
+                payment_term_id:
+                  type: integer
                 other_date:
                   type: string
                   nullable: true
@@ -415341,6 +415521,7 @@ paths:
                 purchase_order_id: 15
                 purchase_invoice_date: '2024-01-20'
                 due_date: '2024-02-20'
+                payment_term_id: 3
                 other_date: null
                 supplier_invoice_number: INV-2024-001
                 status: open
@@ -415563,6 +415744,8 @@ paths:
                         type: integer
                       supplier_name:
                         type: string
+                      supplier_email:
+                        type: string
                       status:
                         type: string
                       purchase_invoice_lines:
@@ -415586,6 +415769,14 @@ paths:
                         type: string
                       due_date:
                         type: string
+                      due_date_source:
+                        type: string
+                      payment_term_name:
+                        type: string
+                      payment_due_status:
+                        type: string
+                      days_until_due:
+                        type: integer
                       other_date:
                         type: string
                         nullable: true
@@ -415633,6 +415824,39 @@ paths:
                       approval_notes:
                         type: string
                         nullable: true
+                      payment_approval_status:
+                        type: string
+                        nullable: true
+                      payment_requested_by:
+                        type: string
+                        nullable: true
+                      payment_requested_by_name:
+                        type: string
+                        nullable: true
+                      payment_requested_at:
+                        type: string
+                        nullable: true
+                      payment_approved_by:
+                        type: string
+                        nullable: true
+                      payment_approved_by_name:
+                        type: string
+                        nullable: true
+                      payment_approved_at:
+                        type: string
+                        nullable: true
+                      payment_approval_notes:
+                        type: string
+                        nullable: true
+                      remittance_sent_at:
+                        type: string
+                        nullable: true
+                      payment_approval_steps:
+                        type: array
+                      supplier_bank_details_verified:
+                        type: boolean
+                      outstanding_balance:
+                        type: integer
                       tags:
                         type: array
                       created_at:
@@ -415655,6 +415879,7 @@ paths:
                     supplier_invoice_number: INV-2024-001
                     supplier_id: 7
                     supplier_name: Acme Supplies Ltd
+                    supplier_email: ap@acmesupplies.example
                     status: open
                     purchase_invoice_lines:
                     - id: 201
@@ -415665,6 +415890,10 @@ paths:
                     financial_lines: []
                     purchase_invoice_date: '2024-01-20'
                     due_date: '2024-02-20'
+                    due_date_source: derived
+                    payment_term_name: Net 30
+                    payment_due_status: due_soon
+                    days_until_due: 5
                     other_date: null
                     currency_id: 1
                     currency_rate: 1
@@ -415685,6 +415914,18 @@ paths:
                     approved_by_name: null
                     approved_at: null
                     approval_notes: null
+                    payment_approval_status: null
+                    payment_requested_by: null
+                    payment_requested_by_name: null
+                    payment_requested_at: null
+                    payment_approved_by: null
+                    payment_approved_by_name: null
+                    payment_approved_at: null
+                    payment_approval_notes: null
+                    remittance_sent_at: null
+                    payment_approval_steps: []
+                    supplier_bank_details_verified: false
+                    outstanding_balance: 250
                     tags: []
                     created_at: '2024-01-20T10:30:00.000000Z'
                     updated_at: '2024-01-20T10:30:00.000000Z'
@@ -415729,7 +415970,13 @@ paths:
 
 
         When financial_lines are provided, each entry requires: id (an existing financial_lines.id),
-        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.'
+        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.
+
+
+        payment_term_id (optional, nullable): a payment term to derive this invoice''s
+        due date from — takes precedence over the purchase order''s term and the supplier''s
+        default. When no due date is sent, the due date is derived from this chain
+        automatically.'
       requestBody:
         content:
           application/json:
@@ -415740,6 +415987,8 @@ paths:
                   type: string
                 due_date:
                   type: string
+                payment_term_id:
+                  type: integer
                 supplier_invoice_number:
                   type: string
                 status:
@@ -415768,6 +416017,7 @@ paths:
               example:
                 purchase_invoice_date: '2024-01-22'
                 due_date: '2024-02-22'
+                payment_term_id: 3
                 supplier_invoice_number: INV-2024-001-REV
                 status: open
                 currency_id: 1
@@ -417328,6 +417578,198 @@ paths:
         '403': *id003
       x-required-scope: purchase-orders:read
       operationId: get-api-purchase-invoices-variance-report
+  /api/purchase-invoices/aging-report:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Get Payables Aging Report
+      description: 'Supplier payables aging report over outstanding (unpaid and partially
+        paid) purchase invoices and, optionally, bills.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Records are bucketed by days past the selected age-by date: current (not yet
+        past, or no date), 1-30, 31-60, 61-90, and 90+ days. Amounts are converted
+        to the tenant currency using each record''s exchange-rate snapshot. The summary
+        block reports total outstanding, total overdue (past due date), and the amount
+        due within the next 7 days. Rows are grouped by supplier, sorted by total
+        outstanding descending, and each row includes the individual invoice/bill
+        records that make up its buckets.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      summary:
+                        type: object
+                        properties:
+                          total_outstanding:
+                            type: integer
+                          total_overdue:
+                            type: integer
+                          due_this_week:
+                            type: integer
+                          currency:
+                            type: string
+                          age_by:
+                            type: string
+                      buckets:
+                        type: object
+                        properties:
+                          current:
+                            type: integer
+                          d1_30:
+                            type: integer
+                          d31_60:
+                            type: integer
+                          d61_90:
+                            type: integer
+                          d90_plus:
+                            type: integer
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            supplier_id:
+                              type: integer
+                            supplier_name:
+                              type: string
+                            current:
+                              type: integer
+                            d1_30:
+                              type: integer
+                            d31_60:
+                              type: integer
+                            d61_90:
+                              type: integer
+                            d90_plus:
+                              type: integer
+                            total:
+                              type: integer
+                            items:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  type:
+                                    type: string
+                                  number:
+                                    type: string
+                                  supplier_id:
+                                    type: integer
+                                  supplier_name:
+                                    type: string
+                                  invoice_date:
+                                    type: string
+                                  due_date:
+                                    type: string
+                                  days_overdue:
+                                    type: integer
+                                  bucket:
+                                    type: string
+                                  outstanding:
+                                    type: integer
+                                  currency_code:
+                                    type: string
+                                  outstanding_in_tenant_currency:
+                                    type: integer
+                example:
+                  data:
+                    summary:
+                      total_outstanding: 42300
+                      total_overdue: 9120
+                      due_this_week: 6540
+                      currency: USD
+                      age_by: due_date
+                    buckets:
+                      current: 33180
+                      d1_30: 5100
+                      d31_60: 2820
+                      d61_90: 700
+                      d90_plus: 500
+                    rows:
+                    - supplier_id: 12
+                      supplier_name: Acme Supplies Ltd
+                      current: 4120
+                      d1_30: 980
+                      d31_60: 0
+                      d61_90: 0
+                      d90_plus: 0
+                      total: 5100
+                      items:
+                      - id: 42
+                        type: invoice
+                        number: INV-2024-001
+                        supplier_id: 12
+                        supplier_name: Acme Supplies Ltd
+                        invoice_date: '2024-01-20'
+                        due_date: '2024-02-19'
+                        days_overdue: 12
+                        bucket: d1_30
+                        outstanding: 980
+                        currency_code: USD
+                        outstanding_in_tenant_currency: 980
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-purchase-invoices-aging-report
+  /api/purchase-invoices/{purchaseInvoice}/calendar.ics:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Download Due-Date Calendar Event
+      description: 'Download a single-event iCalendar (.ics) file for the invoice''s
+        payment due date, suitable for importing into Outlook, Apple Calendar, or
+        any calendar app.
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response is a text/calendar file download (not JSON) containing one all-day
+        VEVENT on the due date with a stable UID, so re-importing an updated file
+        replaces the earlier event. The event carries popup reminders 7 days and 1
+        day before the deadline.
+
+
+        Returns 422 when the invoice has no payment due date.'
+      parameters:
+      - name: purchaseInvoice
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase invoice ID
+        example: '42'
+      responses:
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: This invoice has no payment due date to add to a calendar.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-invoices-purchaseinvoice-calendar-ics
   /api/purchase-invoices/{purchaseInvoice}/three-way-match:
     get:
       tags:
@@ -418689,6 +419131,414 @@ paths:
         '404': *id004
       x-required-scope: purchase-orders:write
       operationId: delete-api-purchase-invoices-purchaseinvoiceid-payments-payment
+  /api/purchase-invoices/supplier-payments:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: List Supplier Payments
+      description: 'Paginated list of supplier payments, newest first.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        supplier_id:
+                          type: integer
+                        supplier_name:
+                          type: string
+                        payment_date:
+                          type: string
+                        payment_type_id:
+                          type: integer
+                        payment_type_name:
+                          type: string
+                        external_reference:
+                          type: string
+                        total_amount:
+                          type: integer
+                        currency_code:
+                          type: string
+                        created_at:
+                          type: string
+                        allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              purchase_invoice_id:
+                                type: integer
+                              reference:
+                                type: string
+                              amount:
+                                type: integer
+                              payment_id:
+                                type: integer
+                  current_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  data:
+                  - id: 1
+                    supplier_id: 12
+                    supplier_name: Acme Supplies Ltd
+                    payment_date: '2026-07-11'
+                    payment_type_id: 1
+                    payment_type_name: Cash
+                    external_reference: WIRE-42
+                    total_amount: 5000
+                    currency_code: USD
+                    created_at: '2026-07-11T12:00:00Z'
+                    allocations:
+                    - id: 1
+                      purchase_invoice_id: 42
+                      reference: INV-2026-101
+                      amount: 4120
+                      payment_id: 90
+                  current_page: 1
+                  per_page: 10
+                  total: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-purchase-invoices-supplier-payments
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Record Supplier Payment
+      description: 'Record one supplier-level payment allocated across multiple open
+        invoices. All-or-nothing: the run is rejected (422) if any allocation exceeds
+        its invoice''s outstanding balance, targets another supplier''s invoice, or
+        repeats an invoice.
+
+
+        Fields:
+
+        - supplier_id (required)
+
+        - payment_date (required, Y-m-d)
+
+        - payment_type_id (optional; defaults to Cash)
+
+        - external_reference (optional; stored on the payment run and suffixed per
+        invoice on the individual payment records)
+
+        - allocations (required, min 1): purchase_invoice_id + amount (> 0, at most
+        the invoice''s outstanding balance)
+
+
+        Each allocation creates a regular invoice payment, so invoice payment statuses
+        (paid / partially paid) update immediately.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                supplier_id:
+                  type: integer
+                payment_date:
+                  type: string
+                payment_type_id:
+                  type: integer
+                external_reference:
+                  type: string
+                allocations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      purchase_invoice_id:
+                        type: integer
+                      amount:
+                        type: integer
+              example:
+                supplier_id: 12
+                payment_date: '2026-07-11'
+                payment_type_id: 1
+                external_reference: WIRE-42
+                allocations:
+                - purchase_invoice_id: 42
+                  amount: 4120
+                - purchase_invoice_id: 43
+                  amount: 880
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      supplier_id:
+                        type: integer
+                      supplier_name:
+                        type: string
+                      payment_date:
+                        type: string
+                      payment_type_id:
+                        type: integer
+                      payment_type_name:
+                        type: string
+                      external_reference:
+                        type: string
+                      total_amount:
+                        type: integer
+                      currency_code:
+                        type: string
+                      created_at:
+                        type: string
+                      allocations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            purchase_invoice_id:
+                              type: integer
+                            reference:
+                              type: string
+                            amount:
+                              type: integer
+                            payment_id:
+                              type: integer
+                example:
+                  data:
+                    id: 1
+                    supplier_id: 12
+                    supplier_name: Acme Supplies Ltd
+                    payment_date: '2026-07-11'
+                    payment_type_id: 1
+                    payment_type_name: Cash
+                    external_reference: WIRE-42
+                    total_amount: 5000
+                    currency_code: USD
+                    created_at: '2026-07-11T12:00:00Z'
+                    allocations:
+                    - id: 1
+                      purchase_invoice_id: 42
+                      reference: INV-2026-101
+                      amount: 4120
+                      payment_id: 90
+                    - id: 2
+                      purchase_invoice_id: 43
+                      reference: INV-2026-102
+                      amount: 880
+                      payment_id: 91
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Allocation for invoice INV-2026-101 exceeds its outstanding
+                    balance of 4120.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-purchase-invoices-supplier-payments
+  /api/purchase-invoices/supplier-payments/allocation-suggestion:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Get Allocation Suggestion
+      description: 'The supplier''s open (unpaid or partially paid) invoices with
+        a suggested allocation of the given total, distributed oldest due date first
+        — the prefill for a payment run.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplier_id
+        in: query
+        schema:
+          type: integer
+        description: The supplier whose open invoices to allocate against
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoices:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            purchase_invoice_id:
+                              type: integer
+                            supplier_invoice_number:
+                              type: string
+                            purchase_order_number:
+                              type: string
+                            invoice_date:
+                              type: string
+                            due_date:
+                              type: string
+                            payment_due_status:
+                              type: string
+                            currency_code:
+                              type: string
+                            outstanding:
+                              type: integer
+                            suggested_amount:
+                              type: integer
+                      suggested_total:
+                        type: integer
+                example:
+                  data:
+                    invoices:
+                    - purchase_invoice_id: 42
+                      supplier_invoice_number: INV-2026-101
+                      purchase_order_number: PO-2026-0015
+                      invoice_date: '2026-04-27'
+                      due_date: '2026-05-27'
+                      payment_due_status: overdue
+                      currency_code: USD
+                      outstanding: 4120
+                      suggested_amount: 4120
+                    suggested_total: 4120
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-purchase-invoices-supplier-payments-allocation-suggestion
+  /api/purchase-invoices/supplier-payments/{supplierPayment}:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Get Supplier Payment
+      description: 'One supplier payment with its allocations.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The supplier payment ID.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      supplier_id:
+                        type: integer
+                      supplier_name:
+                        type: string
+                      payment_date:
+                        type: string
+                      total_amount:
+                        type: integer
+                      allocations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            purchase_invoice_id:
+                              type: integer
+                            reference:
+                              type: string
+                            amount:
+                              type: integer
+                            payment_id:
+                              type: integer
+                example:
+                  data:
+                    id: 1
+                    supplier_id: 12
+                    supplier_name: Acme Supplies Ltd
+                    payment_date: '2026-07-11'
+                    total_amount: 5000
+                    allocations:
+                    - id: 1
+                      purchase_invoice_id: 42
+                      reference: INV-2026-101
+                      amount: 4120
+                      payment_id: 90
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-invoices-supplier-payments-supplierpayment
+    delete:
+      tags:
+      - Purchase Invoices
+      summary: Reverse Supplier Payment
+      description: 'Reverse a supplier payment: deletes the individual invoice payments
+        it created and recomputes each invoice''s payment status.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The supplier payment ID.
+      responses:
+        '204':
+          description: No Content
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ''
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-purchase-invoices-supplier-payments-supplierpayment
   /api/purchase-invoices/import/template:
     get:
       tags:
