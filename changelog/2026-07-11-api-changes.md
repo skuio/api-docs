@@ -1,18 +1,24 @@
 ---
 title: API changes — 2026-07-11
-description: This release includes 8 additions.
+description: This release includes 12 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-11
 ---
 
-This release includes 8 additions.
+This release includes 12 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### eBay
+- `GET /api/ebay-global-reports/blemished-auto-list-instances` — List Blemished Auto-List eBay Instances
+- `POST /api/ebay-global-reports/uncovered-blemished-products/list` — Auto-List Blemished Products on eBay
+- `GET /api/ebay/{integrationInstance}/blemished-auto-list-settings` — Get Blemished Auto-List Settings
+- `PUT /api/ebay/{integrationInstance}/blemished-auto-list-settings` — Update Blemished Auto-List Settings
 
 ### Purchase Invoices
 - `GET /api/purchase-invoices/aging-report` — Get Payables Aging Report
