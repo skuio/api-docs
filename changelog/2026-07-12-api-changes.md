@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 2 additions, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 3 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 2 additions, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 3 additions, 1 change, 4 removals. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -27,6 +27,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/sales-orders/{salesOrder}/split-one-each-order` — Preview Sales Order Split into Single-Item Orders
 
 ## Added
+
+### Ledger (Accounting v2)
+- `POST /api/ledger/entries/{entry}/refresh` — Refresh Journal Entry
 
 ### Suppliers
 - `PUT /api/suppliers/{supplier}/unverify-bank-details` — Unverify Supplier Bank Details

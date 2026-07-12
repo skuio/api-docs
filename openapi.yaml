@@ -20054,6 +20054,125 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-ledger-entries-entry-rebuild
+  /api/ledger/entries/{entry}/refresh:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Refresh Journal Entry
+      description: 'Refresh this entry''s amounts from its SOURCE document IN PLACE
+        — the light counterpart to Rebuild. Where Rebuild corrects a posted entry
+        by writing a reversal + a replacement, Refresh re-derives the entry''s lines
+        and totals and writes them onto the SAME entry: its id, status and accounting-provider
+        link are all kept, so a posted, already-synced entry whose local figure drifted
+        is corrected WITHOUT creating a new entry and WITHOUT touching the linked
+        Xero / QuickBooks document. After the rewrite the sync state is re-graded
+        — a still-editable remote is offered an update, while a settled/locked or
+        voided remote is left as-is (nothing is pushed).
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Request body:** none.
+
+
+        **Response:** 200 with `data.refresh` ({ refreshed, reason, period_locked
+        }) and `data.entry` (the refreshed entry object). `refreshed` is false with
+        a `reason` when there is nothing to do: `already_current` (the entry already
+        matches its source), `batched` (the entry rolls into a batch aggregate — rebuild
+        the batch instead), `generation_disabled`, or `source_no_longer_produces_entry`
+        (the source stopped producing this entry — use Rebuild to reverse it). `period_locked`
+        is reported (never enforced): true when the entry is dated in a locked accounting
+        period, so the caller can warn that an in-place edit changes a closed period.
+        `message` summarises the outcome.
+
+
+        Permission: requires `accounting.sync` (granular permissions; admins bypass;
+        unenforced when the tenant''s granular_permissions feature flag is off). Returns
+        403 without it; 404 when the entry does not exist.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '1842'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — refreshed in place
+                  value:
+                    data:
+                      refresh:
+                        refreshed: true
+                        reason: null
+                        period_locked: false
+                      entry:
+                        id: 1842
+                        uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
+                        type:
+                          value: purchase_order_invoice
+                          label: Purchase Order Invoice
+                        status: posted
+                        display_status:
+                          key: locked
+                          label: Synced, Locked
+                          color: info
+                          reason: null
+                        can_sync_now: false
+                        effective_at: '2026-06-05T14:30:00+00:00'
+                        posted_at: '2026-06-05T14:35:12+00:00'
+                        currency_code: USD
+                        total_debit: '4631.0400'
+                        total_credit: '4631.0400'
+                        reference: BILL-10293
+                        sync_links:
+                        - id: 55
+                          provider: xero
+                          remote_type: xero_bill
+                          remote_id: 54bccb09-ffa1-4309-8caf-4f78a09b493a
+                          link_state: remote_locked
+                          remote_status: PAID
+                        operations: []
+                    message: Refreshed from its source document — the provider link
+                      was kept.
+                example-1:
+                  summary: 200 OK — nothing to refresh (already current)
+                  value:
+                    data:
+                      refresh:
+                        refreshed: false
+                        reason: already_current
+                        period_locked: false
+                      entry:
+                        id: 1842
+                        status: posted
+                        total_debit: '4631.0400'
+                        total_credit: '4631.0400'
+                        reference: BILL-10293
+                    message: This entry already matches its source document — nothing
+                      to refresh.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-entries-entry-refresh
   /api/ledger/entries/{entry}/sync:
     post:
       tags:
