@@ -20487,6 +20487,272 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-ledger-entries-entry-sync
+  /api/ledger/entries/{entry}/settlement-preview:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Preview Bill Settlement With Vendor Credits
+      description: 'Preview the plan to settle a bill (a purchase-invoice entry) using
+        the vendor credits already allocated against it — the read side of the "sync
+        & mark paid" flow. Reports whether the entry is a settleable bill, whether
+        the bill itself is synced to the accounting provider, and the state of each
+        applied vendor credit: `missing_transaction` (its accounting transaction has
+        not been generated yet), `unsynced` (generated but not pushed to the provider),
+        or `synced` (its credit note is pushed and its allocation applied). Use it
+        to show exactly what will happen before committing.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Request body:** none.
+
+
+        **Response:** 200 with `data.settlement`: `is_settleable_bill`, `bill_synced`,
+        `already_settled`, `needs_action`, `credit_count`, `allocated_total`, `outstanding_balance`,
+        `currency_code`, and `credits[]` (each carries `vendor_credit_id`, `allocation_id`,
+        `vendor_credit_number`, `vendor_credit_route`, `allocation_amount`, `state`,
+        `ledger_entry_id`, `ledger_entry_route`). When the entry is not a bill with
+        allocated vendor credits, `is_settleable_bill` is false and `credits` is empty.
+        Returns 404 when the entry does not exist.'
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric) — must be a bill (purchase
+          invoice) entry. Route-model bound — returns 404 if the entry does not exist.
+        example: '9609'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — settleable, action needed
+                  value:
+                    data:
+                      settlement:
+                        is_settleable_bill: true
+                        bill_synced: true
+                        already_settled: false
+                        needs_action: true
+                        credit_count: 4
+                        allocated_total: '2084.52'
+                        outstanding_balance: '2084.52'
+                        currency_code: USD
+                        credits:
+                        - vendor_credit_id: 312
+                          allocation_id: 907
+                          vendor_credit_number: VC-000312
+                          vendor_credit_route: /v2/vendor-credits/312
+                          allocation_amount: '500.00'
+                          state: unsynced
+                          ledger_entry_id: 9720
+                          ledger_entry_route: /ledger/entries/9720
+                        - vendor_credit_id: 313
+                          allocation_id: 908
+                          vendor_credit_number: VC-000313
+                          vendor_credit_route: /v2/vendor-credits/313
+                          allocation_amount: '600.00'
+                          state: missing_transaction
+                          ledger_entry_id: null
+                          ledger_entry_route: null
+                        - vendor_credit_id: 314
+                          allocation_id: 909
+                          vendor_credit_number: VC-000314
+                          vendor_credit_route: /v2/vendor-credits/314
+                          allocation_amount: '484.52'
+                          state: unsynced
+                          ledger_entry_id: 9721
+                          ledger_entry_route: /ledger/entries/9721
+                        - vendor_credit_id: 315
+                          allocation_id: 910
+                          vendor_credit_number: VC-000315
+                          vendor_credit_route: /v2/vendor-credits/315
+                          allocation_amount: '500.00'
+                          state: synced
+                          ledger_entry_id: 9722
+                          ledger_entry_route: /ledger/entries/9722
+                    message: This bill has 4 vendor credits allocated — 3 still need
+                      to be applied on the provider to mark it paid.
+                example-1:
+                  summary: 200 OK — not a settleable bill
+                  value:
+                    data:
+                      settlement:
+                        is_settleable_bill: false
+                        bill_synced: false
+                        already_settled: false
+                        needs_action: false
+                        credit_count: 0
+                        allocated_total: '0.00'
+                        outstanding_balance: '0.00'
+                        currency_code: null
+                        credits: []
+                    message: This entry is not a bill with vendor credits allocated.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-entries-entry-settlement-preview
+  /api/ledger/entries/{entry}/sync-and-settle:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Settle Bill With Vendor Credits
+      description: 'Settle a bill (a purchase-invoice entry) using the vendor credits
+        allocated against it so the connected accounting provider marks the bill PAID
+        — the missing half of two-way sync when the allocations exist here but were
+        never pushed. Dispatches a tracked background job that (1) syncs the bill
+        so its remote document exists, (2) for each applied vendor credit generates
+        its accounting transactions if missing, syncs its credit note, then pushes
+        the allocation (Xero credit-note allocation / QuickBooks zero-dollar bill
+        payment), and (3) re-reads the bill so its link re-grades to Synced, Locked
+        (paid). Idempotent — re-running skips work already done, so a partial failure
+        is safe to retry.
+
+
+        **Authentication:** Requires Bearer token + `accounting.sync` permission (403
+        without it).
+
+
+        **Request body:** none.
+
+
+        **Response:** 200 with `data.tracked_job_log_id` (poll for progress) and `data.settlement`
+        (the pre-run snapshot, same shape as Preview Bill Settlement). When the bill
+        is already settled by its credits, returns 200 with just `data.settlement`
+        and no job. Returns 422 when the entry is not a bill with vendor credits allocated.
+        Returns 404 when the entry does not exist.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric) — must be a bill (purchase
+          invoice) entry. Route-model bound — returns 404 if the entry does not exist.
+        example: '9609'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — settlement started
+                  value:
+                    data:
+                      tracked_job_log_id: 44821
+                      settlement:
+                        is_settleable_bill: true
+                        bill_synced: true
+                        already_settled: false
+                        needs_action: true
+                        credit_count: 4
+                        allocated_total: '2084.52'
+                        outstanding_balance: '2084.52'
+                        currency_code: USD
+                        credits:
+                        - vendor_credit_id: 312
+                          allocation_id: 907
+                          vendor_credit_number: VC-000312
+                          vendor_credit_route: /v2/vendor-credits/312
+                          allocation_amount: '500.00'
+                          state: unsynced
+                          ledger_entry_id: 9720
+                          ledger_entry_route: /ledger/entries/9720
+                        - vendor_credit_id: 313
+                          allocation_id: 908
+                          vendor_credit_number: VC-000313
+                          vendor_credit_route: /v2/vendor-credits/313
+                          allocation_amount: '600.00'
+                          state: missing_transaction
+                          ledger_entry_id: null
+                          ledger_entry_route: null
+                        - vendor_credit_id: 314
+                          allocation_id: 909
+                          vendor_credit_number: VC-000314
+                          vendor_credit_route: /v2/vendor-credits/314
+                          allocation_amount: '484.52'
+                          state: unsynced
+                          ledger_entry_id: 9721
+                          ledger_entry_route: /ledger/entries/9721
+                        - vendor_credit_id: 315
+                          allocation_id: 910
+                          vendor_credit_number: VC-000315
+                          vendor_credit_route: /v2/vendor-credits/315
+                          allocation_amount: '500.00'
+                          state: synced
+                          ledger_entry_id: 9722
+                          ledger_entry_route: /ledger/entries/9722
+                    message: Settling the bill with its vendor credits — track progress
+                      in the job tracker.
+                example-1:
+                  summary: 200 OK — already settled
+                  value:
+                    data:
+                      settlement:
+                        is_settleable_bill: true
+                        bill_synced: true
+                        already_settled: true
+                        needs_action: false
+                        credit_count: 4
+                        allocated_total: '2084.52'
+                        outstanding_balance: '0.00'
+                        currency_code: USD
+                        credits:
+                        - vendor_credit_id: 312
+                          allocation_id: 907
+                          vendor_credit_number: VC-000312
+                          vendor_credit_route: /v2/vendor-credits/312
+                          allocation_amount: '500.00'
+                          state: synced
+                          ledger_entry_id: 9720
+                          ledger_entry_route: /ledger/entries/9720
+                    message: This bill is already settled by its vendor credits —
+                      nothing to do.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This entry is not a bill with vendor credits allocated,
+                    so there is nothing to settle.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-ledger-entries-entry-sync-and-settle
   /api/ledger/entries/{entry}/clear-errors:
     post:
       tags:
