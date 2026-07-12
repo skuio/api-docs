@@ -20602,6 +20602,257 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-ledger-entries-entry-recreate
+  /api/ledger/entries/{entry}/relink-candidates:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Relink Candidates
+      description: 'Provider documents this voided or deleted entry could be linked
+        to INSTEAD of recreating one — the confidence-ranked "link to an existing
+        document" picker. Use this when the accounting document was voided in the
+        provider and a replacement already exists there (e.g. a bill was voided and
+        re-raised): rather than minting a duplicate, adopt the document that is already
+        in the provider.
+
+
+        Reads the provider-document cache for the connection of the entry''s voided
+        link and returns the unlinked documents of the same kind, ranked best-first.
+        Each candidate carries per-signal match flags — `amount_match`, `date_match`,
+        `reference_match`, and `confident` (amount AND date within tolerance) — so
+        the top result is usually the correct replacement. Documents already linked
+        to another entry, dismissed, or themselves voided/deleted are excluded. Returns
+        an empty list when the entry has no voided/deleted link to recover.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Query parameters:** `search` (optional) — free-text narrowing.
+
+
+        **Response:** 200 with `data` as an array of candidate documents ordered most-confident
+        first.'
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '1842'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        connection_id:
+                          type: integer
+                        remote_type:
+                          type: string
+                        remote_id:
+                          type: string
+                        reference:
+                          type: string
+                        total:
+                          type: string
+                        currency:
+                          type: string
+                        document_date:
+                          type: string
+                        status:
+                          type: string
+                        amount_match:
+                          type: boolean
+                        date_match:
+                          type: boolean
+                        reference_match:
+                          type: boolean
+                        confident:
+                          type: boolean
+                example:
+                  data:
+                  - connection_id: 30
+                    remote_type: xero_bill
+                    remote_id: 54f0b7b3-9537-447a-bda2-897f7da26e9f
+                    reference: 'PO-0327: INVCBUSA-2000001.1'
+                    total: '49063.4000'
+                    currency: USD
+                    document_date: '2025-09-22'
+                    status: AUTHORISED
+                    amount_match: true
+                    date_match: true
+                    reference_match: true
+                    confident: true
+                  - connection_id: 30
+                    remote_type: xero_bill
+                    remote_id: 11c2a7d0-882e-4a19-9f6b-73c0d9a1e2ff
+                    reference: PO-0299
+                    total: '1204.0000'
+                    currency: USD
+                    document_date: '2025-09-03'
+                    status: AUTHORISED
+                    amount_match: false
+                    date_match: false
+                    reference_match: false
+                    confident: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-entries-entry-relink-candidates
+  /api/ledger/entries/{entry}/relink:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Link Entry to Existing Document
+      description: 'Re-link a voided or deleted entry to an EXISTING provider document
+        — the replacement already re-created in the accounting provider — instead
+        of minting a fresh one. Repoints the entry''s voided link onto the chosen
+        document in place and records it so the NEXT sync pushes an update to that
+        existing document, never a duplicate create.
+
+
+        Use the candidate returned by `List Relink Candidates` to supply `remote_type`
+        and `remote_id`. The action is guarded: the entry must still be voided/deleted,
+        it must have a voided link on the given connection, and the target document
+        must not already be linked to another entry.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Request body:**
+
+        - `connection_id` (integer, required) — the accounting connection the document
+        belongs to.
+
+        - `remote_type` (string, required) — the document kind, e.g. `xero_bill`,
+        `xero_invoice`, `qbo_bill`.
+
+        - `remote_id` (string, required) — the provider document identifier to adopt.
+
+        - `remote_status` (string, optional) — the document''s current provider status
+        (e.g. `AUTHORISED`), recorded on the link.
+
+
+        **Response:** 200 with `data.relink` ({ relinked, status, reason }) and `data.entry`
+        (the refreshed entry). When `relinked` is false, `reason` is one of `not_voided`,
+        `no_parked_link`, or `already_linked_elsewhere`. Returns 404 when the entry
+        does not exist, 422 when the body is invalid.
+
+
+        Requires the `accounting.sync` permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+                remote_type:
+                  type: string
+                remote_id:
+                  type: string
+                remote_status:
+                  type: string
+              example:
+                connection_id: 30
+                remote_type: xero_bill
+                remote_id: 54f0b7b3-9537-447a-bda2-897f7da26e9f
+                remote_status: AUTHORISED
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '1842'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — linked
+                  value:
+                    data:
+                      relink:
+                        relinked: true
+                        status: update_pending
+                        reason: null
+                      entry:
+                        id: 1842
+                        uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
+                        type:
+                          value: purchase_order_invoice
+                          label: Purchase Order Invoice
+                        status: posted
+                        display_status:
+                          key: update_pending
+                          label: Synced, Pending Update
+                          color: warning
+                          reason: null
+                        can_sync_now: true
+                        currency_code: USD
+                        total_debit: '49063.4000'
+                        total_credit: '49063.4000'
+                        document_number: BILL-1842
+                        reference: 'PO-0327: INVCBUSA-2000001'
+                        sync_links:
+                        - remote_type: xero_bill
+                          remote_id: 54f0b7b3-9537-447a-bda2-897f7da26e9f
+                          link_state: linked_stale
+                          remote_status: AUTHORISED
+                        operations: []
+                    message: Linked to the existing provider document — it will update
+                      on the next sync.
+                example-1:
+                  summary: 200 OK — already linked to another entry
+                  value:
+                    data:
+                      relink:
+                        relinked: false
+                        status: voided
+                        reason: already_linked_elsewhere
+                      entry:
+                        id: 1842
+                        display_status:
+                          key: voided
+                          label: Synced, Voided
+                          color: warning
+                          reason: null
+                    message: That provider document is already linked to another entry.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-entries-entry-relink
   /api/ledger/entries/{entry}/fetch-remote:
     post:
       tags:
