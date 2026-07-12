@@ -1,16 +1,30 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 2 additions, 1 change.
+description: This release includes 2 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
-tags: [added, changed]
+tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 2 additions, 1 change.
+This release includes 2 additions, 1 change, 4 removals. 4 breaking changes — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Removed endpoints
+
+#### Sales Orders
+- **Removed** `GET /api/sales-orders/{salesOrder}/split-by-availability` — Preview Sales Order Split by Availability
+- **Removed** `GET /api/sales-orders/{salesOrder}/split-by-supplier` — Preview Sales Order Split by Supplier
+- **Removed** `GET /api/sales-orders/{salesOrder}/split-by-weight/{maxWeight}` — Preview Sales Order Split by Weight
+- **Removed** `GET /api/sales-orders/{salesOrder}/split-one-each-order` — Preview Sales Order Split into Single-Item Orders
 
 ## Added
 
