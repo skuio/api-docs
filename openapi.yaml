@@ -20997,9 +20997,12 @@ paths:
         RIGHT NOW. For each supported, still-linked connection it fetches the current
         remote truth via the same InboundChangeProcessor funnel the webhook + nightly
         sweep use — picking up drift (→ linked_conflict), a void/delete (→ remote_gone),
-        or a settled/paid lock (→ remote_locked) — and refreshes `last_remote_seen_at`.
-        A 404 at the provider degrades to a synthetic-deleted snapshot so the link
-        still parks remote_gone rather than silently staying Synced.
+        a settled/paid lock (→ remote_locked), or a previously settled lock that has
+        re-opened for edits — the paying payment / credit note was reversed at the
+        provider, e.g. Xero PAID → AUTHORISED — which un-parks the link (→ linked_stale)
+        so it is ready to resync — and refreshes `last_remote_seen_at`. A 404 at the
+        provider degrades to a synthetic-deleted snapshot so the link still parks
+        remote_gone rather than silently staying Synced.
 
 
         :::info[Authorization]
@@ -21032,10 +21035,10 @@ paths:
         outcomes }) and `data.entry` (the refreshed ledger entry object so the new
         link state renders without a second round-trip). `data.fetch.primary` is the
         most-notable settled outcome across the re-read links by severity (`remote_gone`
-        > `remote_locked` > `conflict` > `current`), or null when nothing was re-read.
-        `message` explains the outcome. Returns **502 Bad Gateway** when the provider
-        read itself fails (e.g. expired auth / network) — no link state is changed.
-        Returns 404 when the entry does not exist.'
+        > `remote_locked` > `conflict` > `remote_reopened` > `current`), or null when
+        nothing was re-read. `message` explains the outcome. Returns **502 Bad Gateway**
+        when the provider read itself fails (e.g. expired auth / network) — no link
+        state is changed. Returns 404 when the entry does not exist.'
       requestBody:
         content: {}
       parameters:
@@ -21119,6 +21122,31 @@ paths:
                           link_state: remote_gone
                     message: The provider document was voided or deleted — the entry
                       is now marked accordingly.
+                example-2:
+                  summary: 200 OK — remote lock re-opened
+                  value:
+                    data:
+                      fetch:
+                        checked: 1
+                        not_linked: false
+                        deferred: false
+                        primary: remote_reopened
+                        outcomes:
+                          remote_reopened: 1
+                      entry:
+                        id: 1842
+                        display_status:
+                          key: update_pending
+                          label: Synced, Pending Update
+                          reason: null
+                        sync_links:
+                        - connection_id: 7
+                          remote_type: xero_bill
+                          remote_id: 57406763-6b49-4be8-98b5-16750c106f6e
+                          link_state: linked_stale
+                          remote_status: AUTHORISED
+                    message: The provider document was re-opened for edits — the lock
+                      has been released and the entry is ready to resync.
         '502':
           description: Bad Gateway
           headers:
