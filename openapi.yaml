@@ -20714,6 +20714,117 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-ledger-entries-entry-relink-candidates
+  /api/ledger/entries/{entry}/link-candidates:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Document Link Candidates
+      description: 'Provider documents an unmatched ledger entry could be linked to
+        for the first time — the confidence-ranked picker for pointing a never-linked
+        SKU entry at the document it already corresponds to in the provider (e.g.
+        a bill that was imported into the provider some other way), instead of syncing
+        a duplicate. This is the sibling of List Relink Candidates, which recovers
+        a voided/deleted link; this one is for an entry that has never been linked.
+
+
+        Reads the provider-document cache for the tenant''s accounting connection
+        and returns the unlinked documents ranked best-first. Each candidate carries
+        per-signal match flags — `amount_match`, `date_match`, `reference_match`,
+        and `confident` (amount AND date within tolerance). Documents already linked
+        to another entry or dismissed are excluded. Returns an empty list when the
+        entry is already linked. Link the chosen document with POST /api/ledger/reconciliation/link.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Query parameters:** `search` (optional) — free-text narrowing.
+
+
+        **Response:** 200 with `data` as an array of candidate documents ordered most-confident
+        first.'
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '10927'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        connection_id:
+                          type: integer
+                        remote_type:
+                          type: string
+                        remote_id:
+                          type: string
+                        reference:
+                          type: string
+                        total:
+                          type: string
+                        currency:
+                          type: string
+                        document_date:
+                          type: string
+                        status:
+                          type: string
+                        amount_match:
+                          type: boolean
+                        date_match:
+                          type: boolean
+                        reference_match:
+                          type: boolean
+                        confident:
+                          type: boolean
+                example:
+                  data:
+                  - connection_id: 30
+                    remote_type: xero_bill
+                    remote_id: 85414bb6-6f88-4c0f-8c53-53e7c1f7128c
+                    reference: 'FBA181D492B4: 55641'
+                    total: '3950.0000'
+                    currency: USD
+                    document_date: '2024-05-23'
+                    status: PAID
+                    amount_match: true
+                    date_match: true
+                    reference_match: true
+                    confident: true
+                  - connection_id: 30
+                    remote_type: xero_bill
+                    remote_id: 11c2a7d0-882e-4a19-9f6b-73c0d9a1e2ff
+                    reference: PO-0299
+                    total: '1204.0000'
+                    currency: USD
+                    document_date: '2025-09-03'
+                    status: AUTHORISED
+                    amount_match: false
+                    date_match: false
+                    reference_match: false
+                    confident: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-entries-entry-link-candidates
   /api/ledger/entries/{entry}/relink:
     post:
       tags:
@@ -27438,6 +27549,138 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-excluded
+  /api/ledger/reconciliation/link-candidates:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Entry Link Candidates
+      description: 'The SKU ledger entries a provider-only document could be linked
+        to — the confidence-ranked picker for the reverse direction of the manual
+        link (pick the SKU entry that matches a provider document, identified by `remote_type`
+        + `remote_id`).
+
+
+        Ranks the connection''s unlinked entries against the target document, spanning
+        BOTH the eligible (`sku_only`) and the excluded (ineligible) entries — an
+        entry that will never sync can still be the real counterpart of a provider
+        document, and linking it is safe (it reconciles the document out of the provider-only
+        set without pushing anything). Each candidate carries per-signal match flags
+        — `amount_match`, `date_match`, `reference_match`, `confident` — plus its
+        sync eligibility: `eligible` (boolean) and `eligibility_reasons[]` (reason
+        codes such as `type_disabled`, `channel_disabled`) so ineligible candidates
+        can be flagged.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Query parameters:** `connection_id` (required), `remote_type` (required,
+        e.g. xero_bill), `remote_id` (required — the provider document id), `search`
+        (optional). Returns 404 when connection_id is not a supported accounting connection,
+        and 422 when a required parameter is missing.
+
+
+        **Response:** 200 with `data` as an array of candidate entries ordered most-confident
+        first. Link the chosen entry with POST /api/ledger/reconciliation/link.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '30'
+      - name: remote_type
+        in: query
+        schema:
+          type: string
+        description: The kind of provider document (e.g. xero_bill, xero_invoice,
+          qbo_invoice). Required.
+        example: xero_bill
+      - name: remote_id
+        in: query
+        schema:
+          type: string
+        description: The provider document id to find SKU entries for. Required.
+        example: 85414bb6-6f88-4c0f-8c53-53e7c1f7128c
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entry_id:
+                          type: integer
+                        reference:
+                          type: string
+                        document_number:
+                          type: string
+                        type_label:
+                          type: string
+                        date:
+                          type: string
+                        total:
+                          type: string
+                        currency:
+                          type: string
+                        amount_match:
+                          type: boolean
+                        date_match:
+                          type: boolean
+                        reference_match:
+                          type: boolean
+                        confident:
+                          type: boolean
+                        eligible:
+                          type: boolean
+                        eligibility_reasons:
+                          type: array
+                          items:
+                            type: string
+                example:
+                  data:
+                  - entry_id: 10927
+                    reference: 'FBA181D492B4: 55641'
+                    document_number: BILL-10927
+                    type_label: Purchase Order Invoice
+                    date: '2024-05-22T07:00:00+00:00'
+                    total: '3950.0000'
+                    currency: USD
+                    amount_match: true
+                    date_match: true
+                    reference_match: true
+                    confident: true
+                    eligible: false
+                    eligibility_reasons:
+                    - type_disabled
+                  - entry_id: 10930
+                    reference: FBA181D492B4
+                    document_number: BILL-10930
+                    type_label: Purchase Order Invoice
+                    date: '2024-06-01T07:00:00+00:00'
+                    total: '120.0000'
+                    currency: USD
+                    amount_match: false
+                    date_match: false
+                    reference_match: true
+                    confident: false
+                    eligible: true
+                    eligibility_reasons: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-link-candidates
   /api/ledger/reconciliation/report:
     get:
       tags:
