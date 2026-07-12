@@ -466255,7 +466255,8 @@ paths:
 
         **Response fields:**
 
-        - `mode` — `approval_levels` | `payer` | `threshold_approval` | `auto_approve`
+        - `mode` — `approval_levels` | `payer` | `self_payer` | `threshold_approval`
+        | `auto_approve`
 
         - `payer` — `{id, name, email}` of the resolved site-wide payer, or null
 
@@ -466266,7 +466267,12 @@ paths:
 
 
         `auto_approve` means nothing is configured: submitting will auto-approve without
-        notifying anyone — the UI warns and links to Accounting Settings.'
+        notifying anyone — the UI warns and links to Accounting Settings.
+
+
+        `self_payer` means the acting user is themselves the configured payer: there
+        is no one to send a request to, so submitting approves the deposit immediately
+        and the payment can be recorded directly.'
       parameters: []
       responses:
         '200':
@@ -466277,9 +466283,9 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
+                type: string
               examples:
                 example-0:
                   summary: 200 OK — routed to the configured payer
@@ -466298,6 +466304,33 @@ paths:
                     payer: null
                     payer_configured: false
                     levels_count: 0
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                  payer:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                  payer_configured:
+                    type: boolean
+                  levels_count:
+                    type: integer
+                example:
+                  mode: self_payer
+                  payer:
+                    id: 3
+                    name: Kalvin M.
+                    email: kalvin@example.com
+                  payer_configured: true
+                  levels_count: 0
         '429': *id001
         '401': *id002
         '403': *id003
@@ -466308,7 +466341,7 @@ paths:
       tags:
       - Vendor Deposits
       summary: Submit Vendor Deposit for Approval
-      description: 'Submit a draft deposit for approval.
+      description: 'Submit a draft deposit for payment approval.
 
 
         :::info[Required scope: `accounting:write`]
@@ -466316,7 +466349,28 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        **Routing precedence:** matching approval levels → the configured default
+        payer → the amount threshold → auto-approve.
+
+
+        - **Approval levels match** — the deposit enters the approval chain (status
+        `pending_approval`).
+
+        - **A default payer is configured** — the payment request is sent to that
+        payer (status `pending_approval`).
+
+        - **The acting user IS the configured payer** — there is no one to send a
+        request to, so the deposit is approved immediately (status `approved`) and
+        a payment can be recorded right away.
+
+        - **Nothing configured** — submission auto-approves without notifying anyone.
+
+
+        Deposits whose payee bank details differ from the supplier profile must have
+        those details verified before submission.'
       requestBody:
         content:
           application/json:
@@ -468082,7 +468136,8 @@ paths:
       tags:
       - Vendor Deposits
       summary: Record Payment
-      description: 'Record a payment against a vendor deposit. Validated by RecordVendorDepositPaymentRequest.
+      description: 'Record a payment against a vendor deposit (full or partial), with
+        the payment date, currency rate, and optional reference.
 
 
         :::info[Required scope: `accounting:write`]
@@ -468090,7 +468145,19 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Payments can also be recorded on a **draft** deposit — useful for capturing
+        a payment that was already made in the past. The deposit then moves directly
+        to Partially Paid / Paid without a payment request or approval step.
+
+
+        The payment amount cannot exceed the deposit''s outstanding balance (deposit
+        amount minus payments already recorded). Deposits whose payee bank details
+        differ from the supplier profile must have those details verified before payments
+        can be recorded. Payments cannot be recorded against cancelled, void, refunded,
+        or written-off deposits.'
       requestBody:
         content:
           application/json:
