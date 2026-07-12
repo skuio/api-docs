@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 17 additions, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 28 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 17 additions, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 28 additions, 1 change, 4 removals. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -50,6 +50,19 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Vendor Credits
 - `POST /api/vendor-credits/allocate-batch` — Batch Allocate to Purchase Invoice
+
+### Vendor Returns
+- `GET /api/vendor-returns` — List Vendor Returns
+- `POST /api/vendor-returns` — Create Vendor Return
+- `GET /api/vendor-returns/returnable-lines/{purchaseOrder}` — List Returnable Lines For Purchase Order
+- `DELETE /api/vendor-returns/{vendorReturn}` — Delete Vendor Return
+- `GET /api/vendor-returns/{vendorReturn}` — Get Vendor Return
+- `PUT /api/vendor-returns/{vendorReturn}` — Update Vendor Return
+- `POST /api/vendor-returns/{vendorReturn}/authorize` — Authorize Vendor Return
+- `POST /api/vendor-returns/{vendorReturn}/complete` — Complete Vendor Return
+- `POST /api/vendor-returns/{vendorReturn}/create-credit` — Create Vendor Credit From Return
+- `POST /api/vendor-returns/{vendorReturn}/ship` — Ship Vendor Return
+- `POST /api/vendor-returns/{vendorReturn}/void` — Void Vendor Return
 
 ## Changed
 
