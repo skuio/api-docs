@@ -18733,6 +18733,156 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-entries-needs-attention
+  /api/ledger/entries/stale-precutover:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Stale Pre-Cutover Entries
+      description: 'Imported pre-cutover journal entries whose SOURCE document was
+        edited after the entry was imported. Automatic generation deliberately never
+        rewrites frozen pre-cutover history, so these entries'' figures no longer
+        match their documents — this feed makes that drift visible so it can be fixed
+        deliberately with Rebuild Journal Entry (single) or Bulk Entry Action with
+        action `rebuild`.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:**
+
+        - `count` — total stale entries across all source types
+
+        - `capped` — true when `entries` holds only the first 200 rows (rebuild these,
+        then re-fetch for the rest)
+
+        - `entries` — up to 200 rows, most-recently-drifted first. Each row carries
+        the entry identity (`id`, `document_number`, `reference`, `type`, `display_status`),
+        its amounts (`total_debit`, `total_credit`, `currency_code`), its accounting
+        date (`effective_at`), the source document link (`source`), and the drift
+        facts: `source_updated_at` (when the document last changed) vs `imported_at`
+        (when the entry was imported).
+
+
+        Returns `count: 0` with an empty list for tenants without an accounting cutover
+        (no frozen history exists).'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      capped:
+                        type: boolean
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            reference:
+                              type: string
+                            reference_suffix:
+                              type: integer
+                            document_number:
+                              type: string
+                            type:
+                              type: object
+                              properties:
+                                value:
+                                  type: string
+                                label:
+                                  type: string
+                            display_status:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                label:
+                                  type: string
+                                color:
+                                  type: string
+                            currency_code:
+                              type: string
+                            total_debit:
+                              type: string
+                            total_credit:
+                              type: string
+                            effective_at:
+                              type: string
+                            source:
+                              type: object
+                              properties:
+                                type:
+                                  type: string
+                                id:
+                                  type: integer
+                                label:
+                                  type: string
+                                link_type_label:
+                                  type: string
+                                link_route:
+                                  type: string
+                                link_legacy_url:
+                                  type: string
+                                  nullable: true
+                                url:
+                                  type: string
+                            source_updated_at:
+                              type: string
+                            imported_at:
+                              type: string
+                  status:
+                    type: string
+                example:
+                  data:
+                    count: 3
+                    capped: false
+                    entries:
+                    - id: 8114
+                      reference: BILL-1042
+                      reference_suffix: 0
+                      document_number: BILL-8114
+                      type:
+                        value: bill
+                        label: Bill
+                      display_status:
+                        key: not_synced
+                        label: Not Synced
+                        color: grey
+                      currency_code: USD
+                      total_debit: '1250.0000'
+                      total_credit: '1250.0000'
+                      effective_at: '2025-11-14T00:00:00+00:00'
+                      source:
+                        type: App\Models\Bill
+                        id: 1042
+                        label: BILL-1042
+                        link_type_label: Bill
+                        link_route: /purchases/bills/1042
+                        link_legacy_url: null
+                        url: /purchases/bills/1042
+                      source_updated_at: '2026-07-08T15:21:44+00:00'
+                      imported_at: '2026-06-11T03:12:09+00:00'
+                  status: success
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-entries-stale-precutover
   /api/ledger/entries/source-types:
     get:
       tags:
@@ -20210,9 +20360,18 @@ paths:
         sync, or `eligible: false` when nothing can be pushed.
 
 
-        **Response:** 200 with `data.sync` ({ eligible, synced, failed, error }) and
-        `data.entry` (the refreshed ledger entry object). `error` carries the provider
-        rejection message when `failed` is true. `message` summarises the outcome.
+        **First-push regeneration:** when the entry is imported pre-cutover history
+        that has NEVER been synced (no link on any connection), it is first rebuilt
+        with the current posting rules so the provider''s first copy reflects current
+        logic rather than the migrated import. The rebuild may replace the entry with
+        a successor — `data.sync.entry_id` is the entry the push actually ran against
+        and `data.entry` is that (possibly new) entry.
+
+
+        **Response:** 200 with `data.sync` ({ eligible, synced, failed, error, regenerated,
+        entry_id }) and `data.entry` (the refreshed ledger entry object). `error`
+        carries the provider rejection message when `failed` is true. `message` summarises
+        the outcome.
 
 
         Permission: requires `accounting.sync` (granular permissions; admins bypass;
@@ -20251,6 +20410,8 @@ paths:
                         synced: true
                         failed: false
                         error: null
+                        regenerated: false
+                        entry_id: 8114
                       entry:
                         id: 8114
                         type:
@@ -20298,6 +20459,8 @@ paths:
                         synced: false
                         failed: true
                         error: Account code 200 is not a valid code for this document.
+                        regenerated: false
+                        entry_id: 8114
                       entry:
                         id: 8114
                         type:
@@ -26840,6 +27003,11 @@ paths:
         sweep (these documents are picked up automatically; a manual run just front-runs
         the schedule)
 
+        - `cutover_floor` — the tenant''s accounting cutover instant (ISO 8601), or
+        null when the tenant has none. Documents dated before this instant are frozen
+        imported history: scope runs skip them unless `include_frozen` is passed to
+        Run Generation Now.
+
         - `enabled` — the effective generation switch (tenant setting OR environment
         override); when false a run request would be rejected
 
@@ -26918,6 +27086,8 @@ paths:
                             type: string
                       enabled:
                         type: boolean
+                      cutover_floor:
+                        type: string
                   status:
                     type: string
                 example:
@@ -26954,6 +27124,7 @@ paths:
                       next_generation_run_at: '2026-06-12 20:21:00'
                       next_reconcile_run_at: '2026-06-13 00:00:00'
                     enabled: true
+                    cutover_floor: '2026-06-11T00:00:00+00:00'
                   status: success
         '422':
           description: Unprocessable Content
@@ -27024,6 +27195,14 @@ paths:
         - `date_from` / `date_to` (Y-m-d|null) — restrict by each document''s accounting
         date; `date_to` must be >= `date_from`
 
+        - `include_frozen` (boolean, default false) — scope runs normally skip documents
+        dated before the tenant''s accounting cutover (their imported history is frozen
+        so it is never rewritten by accident). Set true to deliberately re-derive
+        that frozen history with the current posting rules — this replaces the migrated
+        figures and can update linked, still-editable provider documents, so treat
+        it as a confirmed administrative action. Ignored when `candidates` is present
+        (hand-picked documents always regenerate).
+
 
         **Errors:** 422 with an `enabled` error when ledger generation is disabled
         for the tenant (enable it under Settings → Generation first); 422 for unknown
@@ -27049,6 +27228,8 @@ paths:
                         type: string
                       source_id:
                         type: integer
+                include_frozen:
+                  type: boolean
               example:
                 source_type: App\Models\Bill
                 date_from: '2026-06-01'
@@ -27058,6 +27239,7 @@ paths:
                   source_id: 4
                 - source_type: App\Models\SalesOrderFulfillment
                   source_id: 911
+                include_frozen: false
       parameters: []
       responses:
         '200':
