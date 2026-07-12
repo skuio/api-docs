@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 15 additions, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 17 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 15 additions, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 17 additions, 1 change, 4 removals. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -36,10 +36,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/ledger/reconciliation/auto-match/preview` — Preview Auto-Match
 - `GET /api/ledger/reconciliation/counts` — Get Reconciliation Counts
 - `POST /api/ledger/reconciliation/dismiss/bulk` — Bulk Dismiss Provider Documents
+- `GET /api/ledger/reconciliation/dismissed` — List Dismissed Documents
 - `GET /api/ledger/reconciliation/excluded` — List Excluded SKU Entries
 - `GET /api/ledger/reconciliation/link-candidates` — List Entry Link Candidates
 - `GET /api/ledger/reconciliation/matched` — List Matched Entries
 - `GET /api/ledger/reconciliation/provider-documents` — List Provider-only Documents
+- `POST /api/ledger/reconciliation/restore/bulk` — Bulk Restore Provider Documents
 - `GET /api/ledger/reconciliation/unlinked` — List Unlinked Entries
 
 ### Suppliers
