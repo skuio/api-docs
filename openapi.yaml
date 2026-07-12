@@ -27074,7 +27074,9 @@ paths:
 
 
         `from`/`to` (Y-m-d) override the default window. `meta.counts` carries the
-        bucket sizes. 404 when connection_id is not a supported accounting connection.'
+        bucket sizes, including `excluded` (the count of unlinked entries that are
+        not eligible to sync — fetched in full via the excluded endpoint). 404 when
+        connection_id is not a supported accounting connection.'
       parameters:
       - name: connection_id
         in: query
@@ -27236,6 +27238,8 @@ paths:
                             type: integer
                           provider_only:
                             type: integer
+                          excluded:
+                            type: integer
                 example:
                   data:
                     matched:
@@ -27299,10 +27303,119 @@ paths:
                       matched: 1
                       sku_only: 1
                       provider_only: 1
+                      excluded: 12
         '429': *id001
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-matches
+  /api/ledger/reconciliation/excluded:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Excluded SKU Entries
+      description: 'The SKU ledger entries that are excluded from sync for a connection
+        over the (optional) document-date window — unlinked entries that are not eligible
+        to sync, each with the reason(s) it''s blocked.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        These are exactly the entries hidden from the `sku_only` bucket of the matches
+        endpoint (an empty `sku_only` does not mean everything is synced — thousands
+        of entries can be excluded). Loaded on its own so the matches payload stays
+        light.
+
+
+        Each row carries `reasons[]` as `{code, label}` pairs. Common reason codes:
+        `override_disabled` (manually disabled), `type_disabled`, `channel_disabled`,
+        `before_provider_sync_start_date`, `before_type_sync_start_date`, `batch_member`,
+        `batch_open`, `connection_inactive`, `internal_only`, `granularity_off`.
+
+
+        `from`/`to` (Y-m-d) override the default window. 404 when connection_id is
+        not a supported accounting connection.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        reference:
+                          type: string
+                        type:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                        effective_at:
+                          type: string
+                        currency_code:
+                          type: string
+                        document_total:
+                          type: string
+                        reasons:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              code:
+                                type: string
+                              label:
+                                type: string
+                example:
+                  data:
+                  - id: 4830
+                    reference: INV-1050
+                    type:
+                      value: sales_order_invoice
+                      label: Sales Order Invoice
+                    effective_at: '2026-06-05T00:00:00+00:00'
+                    currency_code: USD
+                    document_total: '250.0000'
+                    reasons:
+                    - code: override_disabled
+                      label: Sync manually disabled
+                  - id: 4831
+                    reference: BILL-2201
+                    type:
+                      value: bill
+                      label: Bill
+                    effective_at: '2026-06-04T00:00:00+00:00'
+                    currency_code: USD
+                    document_total: '980.0000'
+                    reasons:
+                    - code: type_disabled
+                      label: Transaction type not synced
+                    - code: before_provider_sync_start_date
+                      label: Dated before the sync start date
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-excluded
   /api/ledger/reconciliation/report:
     get:
       tags:
