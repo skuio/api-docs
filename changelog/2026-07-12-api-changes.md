@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 31 additions, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 33 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 31 additions, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 33 additions, 1 change, 4 removals. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -46,6 +46,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/ledger/reconciliation/provider-documents` — List Provider-only Documents
 - `POST /api/ledger/reconciliation/restore/bulk` — Bulk Restore Provider Documents
 - `GET /api/ledger/reconciliation/unlinked` — List Unlinked Entries
+
+### Purchase Orders
+- `DELETE /api/purchase-orders/{purchase_order}/opening-balance` — Remove Opening-Balance Mark
+- `POST /api/purchase-orders/{purchase_order}/opening-balance` — Mark as Opening-Balance Purchase Order
 
 ### Suppliers
 - `PUT /api/suppliers/{supplier}/unverify-bank-details` — Unverify Supplier Bank Details
