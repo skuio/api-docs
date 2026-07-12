@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-12
-description: This release includes 6 additions, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 7 additions, 1 change, 4 removals. 4 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-12
 ---
 
-This release includes 6 additions, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 7 additions, 1 change, 4 removals. 4 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -32,6 +32,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/ledger/entries/{entry}/refresh` — Refresh Journal Entry
 - `POST /api/ledger/entries/{entry}/relink` — Link Entry to Existing Document
 - `GET /api/ledger/entries/{entry}/relink-candidates` — List Relink Candidates
+- `POST /api/ledger/reconciliation/auto-match/preview` — Preview Auto-Match
 - `GET /api/ledger/reconciliation/excluded` — List Excluded SKU Entries
 
 ### Suppliers

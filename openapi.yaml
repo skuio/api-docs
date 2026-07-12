@@ -27594,23 +27594,17 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-report
-  /api/ledger/reconciliation/auto-match:
+  /api/ledger/reconciliation/auto-match/preview:
     post:
       tags:
       - Ledger (Accounting v2)
-      summary: Run Auto-Match
-      description: 'Auto-link every SKU-only entry whose reference matches a provider-only
-        document with a confident amount (within tolerance) and date (within window).
-        Returns the number of new links forged; the links are recorded linked_stale
-        so the next sync pushes an Update.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::
+      summary: Preview Auto-Match
+      description: 'Compute the confident auto-match pairs for a connection WITHOUT
+        linking anything — the preview behind the reconcile Auto-Match confirmation.
+        Returns one row per proposed pairing of an unmatched SKU entry (SKU-only or
+        excluded) to a provider-only document whose reference, amount (within tolerance)
+        and date (within window) confidently match. Review the rows, then send the
+        ones you want to keep to Run Auto-Match to link them.
 
 
         **Authentication:** Requires Bearer token + `accounting.sync` permission.
@@ -27649,6 +27643,151 @@ paths:
                 type: object
                 properties:
                   data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        entry_id:
+                          type: integer
+                        entry_reference:
+                          type: string
+                        entry_document_number:
+                          type: string
+                        entry_type_label:
+                          type: string
+                        entry_date:
+                          type: string
+                        entry_total:
+                          type: string
+                        entry_currency:
+                          type: string
+                        remote_type:
+                          type: string
+                        remote_id:
+                          type: string
+                        remote_reference:
+                          type: string
+                        remote_status:
+                          type: string
+                        remote_date:
+                          type: string
+                        remote_total:
+                          type: string
+                        remote_currency:
+                          type: string
+                        remote_url:
+                          type: string
+                example:
+                  data:
+                  - entry_id: 8213
+                    entry_reference: INV-1042
+                    entry_document_number: INV-8213
+                    entry_type_label: Sales Order Invoice
+                    entry_date: '2026-06-02T00:00:00+00:00'
+                    entry_total: '200.00'
+                    entry_currency: USD
+                    remote_type: qbo_invoice
+                    remote_id: '142'
+                    remote_reference: INV-1042
+                    remote_status: Open
+                    remote_date: '2026-06-03'
+                    remote_total: '200.00'
+                    remote_currency: USD
+                    remote_url: https://app.qbo.intuit.com/app/invoice?txnId=142
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-ledger-reconciliation-auto-match-preview
+  /api/ledger/reconciliation/auto-match:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Run Auto-Match
+      description: 'Link the auto-match pairs confirmed from Preview Auto-Match. Send
+        a `matches` array of `{entry_id, remote_type, remote_id}` rows; the eligible
+        set is recomputed and only the intersection is linked, so a pairing that has
+        since become ineligible is skipped rather than force-linked. Returns the number
+        of links forged; each is recorded linked_stale so the next sync pushes an
+        Update. An empty `matches` array links nothing.
+
+
+        :::info[Authorization]
+
+        Any valid API token can call this endpoint — no specific scope required. [Manage
+        tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Authentication:** Requires Bearer token + `accounting.sync` permission.
+
+
+        **Body fields:**
+
+        - `connection_id` (integer, required) — the accounting connection.
+
+        - `matches` (array, required) — confirmed pairs; each `{entry_id, remote_type,
+        remote_id}`. May be empty.
+
+        - `matches[].entry_id` (integer, required) — the SKU ledger entry to link.
+
+        - `matches[].remote_type` (string, required) — provider document type, e.g.
+        `qbo_invoice`, `xero_invoice`.
+
+        - `matches[].remote_id` (string, required) — the provider document id.
+
+        - `from` / `to` (Y-m-d, optional) — window override; defaults to the connection''s
+        reconcile window.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+                matches:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      entry_id:
+                        type: integer
+                      remote_type:
+                        type: string
+                      remote_id:
+                        type: string
+                from:
+                  type: string
+                to:
+                  type: string
+              example:
+                connection_id: 5
+                matches:
+                - entry_id: 8213
+                  remote_type: qbo_invoice
+                  remote_id: '142'
+                - entry_id: 8214
+                  remote_type: qbo_invoice
+                  remote_id: '143'
+                from: '2026-01-01'
+                to: '2026-06-13'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
                     type: object
                     properties:
                       linked:
@@ -27657,8 +27796,8 @@ paths:
                     type: string
                 example:
                   data:
-                    linked: 3
-                  message: 3 documents auto-matched.
+                    linked: 2
+                  message: 2 documents auto-matched.
         '429': *id001
         '401': *id002
         '403': *id003
