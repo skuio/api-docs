@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-13
-description: This release includes 13 additions.
+description: This release includes 17 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-13
 ---
 
-This release includes 13 additions.
+This release includes 17 additions.
 
 <!-- truncate -->
 
@@ -36,5 +36,11 @@ This release includes 13 additions.
 
 ### Sales Order Lines
 - `POST /api/sales-order-lines/{salesOrderLine}/cancel-quantity` — Cancel Line Quantity
+
+### Suppliers
+- `GET /api/suppliers/{supplier}/ap-summary` — Get Supplier AP Summary
+- `GET /api/suppliers/{supplier}/payables` — List Supplier Payables
+- `GET /api/suppliers/{supplier}/statement` — Get Supplier Statement
+- `GET /api/suppliers/{supplier}/statement/export` — Export Supplier Statement
 
 _Spec version 1.0.0 → 1.0.0._
