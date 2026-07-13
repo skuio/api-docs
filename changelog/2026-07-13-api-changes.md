@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-13
-description: This release includes 12 additions.
+description: This release includes 13 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-13
 ---
 
-This release includes 12 additions.
+This release includes 13 additions.
 
 <!-- truncate -->
 
@@ -17,6 +17,9 @@ This release includes 12 additions.
 ### Amazon
 - `POST /api/amazon/{integrationInstance}/inbound/shipments/delete` — Bulk Delete Inbound Shipments
 - `DELETE /api/amazon/{integrationInstance}/inbound/shipments/{shipment}` — Delete Inbound Shipment
+
+### Cost Categories
+- `GET /api/cost-categories/list` — List Cost Categories (Paginated)
 
 ### Google Sheets
 - `DELETE /api/v2/google/connection` — Disconnect Google
