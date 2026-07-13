@@ -294220,6 +294220,10 @@ paths:
         - images[].operation — nullable|in:update_create,delete
 
 
+        **Optional field:** `mpn` (string, max 255, nullable) — manufacturer part
+        number.
+
+
         Returns 422 if product type change is invalid.
 
 
@@ -294287,6 +294291,8 @@ paths:
                 expiry_aware_availability:
                   type: boolean
                 barcode:
+                  type: string
+                mpn:
                   type: string
                 brand_name:
                   type: string
@@ -294356,6 +294362,7 @@ paths:
                 min_remaining_shelf_life_days: 105
                 expiry_aware_availability: true
                 barcode: '1234567890124'
+                mpn: MPN-12345
                 brand_name: Acme Co
                 weight: 0.6
                 weight_unit: kg
@@ -294455,17 +294462,12 @@ paths:
             application/json:
               schema:
                 type: object
-              examples:
-                example-0:
-                  summary: 422 Type Change Error
-                  value:
-                    message: Product has inventory movements. Cannot update product
-                      type
-                example-1:
-                  summary: 422 Type Conversion Error (inventory ledger present)
-                  value:
-                    message: Product has inventory history (stock layers or movements).
-                      Cannot convert it to a non-inventory product type.
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Product has inventory history (stock layers or movements).
+                    Cannot convert it to a non-inventory product type.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -294476,8 +294478,12 @@ paths:
       tags:
       - Products
       summary: Delete Product
-      description: 'Delete a product by ID. Deletion fails if the product is linked
-        to sales orders, purchase orders, inventory movements, or bundles.
+      description: 'Delete a product by ID. Deletion fails if the product (or, for
+        a matrix parent, any of its variations) is still referenced by a RESTRICT
+        foreign key: sales order lines, bundle sales order lines, purchase order lines,
+        inventory movements, FIFO layers, inventory adjustments, assembly lines, warehouse
+        transfer lines, return receipt lines, RMA lines, sales credit lines, inbound
+        shipment lines, blemished products, or subscription editions.
 
 
         :::info[Required scope: `products:write`]
@@ -294664,6 +294670,10 @@ paths:
         For matrix products (parent), include variations[] with sku and attributes.
 
 
+        **Optional field:** `mpn` (string, max 255, nullable) — manufacturer part
+        number.
+
+
         Returns 422 validation error if SKU already exists or other validation fails.
 
 
@@ -294722,6 +294732,8 @@ paths:
                 expiry_aware_availability:
                   type: boolean
                 barcode:
+                  type: string
+                mpn:
                   type: string
                 brand_name:
                   type: string
@@ -294865,6 +294877,7 @@ paths:
                 min_remaining_shelf_life_days: 105
                 expiry_aware_availability: true
                 barcode: '1234567890123'
+                mpn: MPN-12345
                 brand_name: Acme Co
                 weight: 0.5
                 weight_unit: kg
@@ -295025,62 +295038,6 @@ paths:
         '403': *id003
       x-required-scope: products:write
       operationId: post-api-products
-    delete:
-      tags:
-      - Products
-      summary: Bulk Delete Products
-      description: 'Bulk delete multiple products. For large datasets, deletion is
-        processed in the background via a queue.
-
-
-        :::info[Required scope: `products:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.
-
-
-        Body fields (one required):
-
-        - ids (array): specific product IDs to delete
-
-        - filters (object): filter criteria to select products for deletion
-
-
-        **Requires permission:** `products.delete`'
-      parameters: []
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-              examples:
-                example-0:
-                  summary: 200 Success
-                  value:
-                    message: Products deleted successfully
-                    status: success
-                example-1:
-                  summary: 200 Queued
-                  value:
-                    message: Added to the Queue, it will be process shortly
-                    status: success
-        '429': *id001
-        '401': *id002
-        '403': *id003
-      x-required-scope: products:write
-      operationId: delete-api-products
     get:
       tags:
       - Products
@@ -295366,6 +295323,62 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-products
+    delete:
+      tags:
+      - Products
+      summary: Bulk Delete Products
+      description: 'Bulk delete multiple products. For large datasets, deletion is
+        processed in the background via a queue.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields (one required):
+
+        - ids (array): specific product IDs to delete
+
+        - filters (object): filter criteria to select products for deletion
+
+
+        **Requires permission:** `products.delete`'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    message: Products deleted successfully
+                    status: success
+                example-1:
+                  summary: 200 Queued
+                  value:
+                    message: Added to the Queue, it will be process shortly
+                    status: success
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: products:write
+      operationId: delete-api-products
   /api/products/constants:
     get:
       tags:
@@ -295777,10 +295790,14 @@ paths:
 
 
         Usage relations include: salesOrderLines, bundleSalesOrderLines, purchaseOrderLines,
-        inventoryMovements. bundleSalesOrderLines appears when the product was sold
-        as a bundle parent (referenced via sales_order_lines.bundle_id, a RESTRICT
-        foreign key); such bundles are reported as not deletable so they can be archived
-        instead.'
+        inventoryMovements, fifoLayers, inventoryAdjustments, inventoryAssemblyLines,
+        warehouseTransferLines, returnReceiptLines, rmaLines, salesCreditLines, blemishedProducts,
+        inboundShipmentLines, and subscriptionEditions (each is a RESTRICT foreign
+        key, so any referencing row blocks deletion; product variations are checked
+        too, so a matrix parent is reported not deletable when any of its variants
+        is referenced). bundleSalesOrderLines appears when the product was sold as
+        a bundle parent (referenced via sales_order_lines.bundle_id, a RESTRICT foreign
+        key); such bundles are reported as not deletable so they can be archived instead.'
       requestBody:
         content:
           application/json:
@@ -305988,10 +306005,7 @@ paths:
 
         Validation:
 
-        - `name` (required, max 255, unique across product_brands)
-
-
-        **Requires permission:** `brands.create`'
+        - `name` (required, max 255, unique across product_brands)'
       requestBody:
         content:
           application/json:
@@ -306071,53 +306085,6 @@ paths:
         '403': *id003
       x-required-scope: products:write
       operationId: post-api-product-brands
-    delete:
-      tags:
-      - Organization
-      summary: Bulk Delete Product Brands
-      description: 'Bulk deletes multiple product brands by ID.
-
-
-        :::info[Required scope: `products:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.
-
-
-        Validation:
-
-        - `ids` (required, array of integers)
-
-
-        **Requires permission:** `brands.delete`'
-      parameters: []
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                example:
-                  message: 3 product brands have been deleted successfully
-        '429': *id001
-        '401': *id002
-        '403': *id003
-      x-required-scope: products:write
-      operationId: delete-api-product-brands
     get:
       tags:
       - Organization
@@ -306227,6 +306194,50 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-product-brands
+    delete:
+      tags:
+      - Organization
+      summary: Bulk Delete Product Brands
+      description: 'Bulk deletes multiple product brands by ID.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Validation:
+
+        - `ids` (required, array of integers)'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: 3 product brands have been deleted successfully
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: products:write
+      operationId: delete-api-product-brands
   /api/product-brands/{id}:
     get:
       tags:
@@ -306623,10 +306634,7 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.
-
-
-        **Requires permission:** `brands.archive`'
+        Authentication: Requires Bearer token.'
       requestBody:
         content:
           application/json:
@@ -306682,10 +306690,7 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.
-
-
-        **Requires permission:** `brands.archive`'
+        Authentication: Requires Bearer token.'
       requestBody:
         content:
           application/json:
@@ -306749,10 +306754,7 @@ paths:
 
         - `ids` (required, array of integers, each must exist in product_brands table)
 
-        - `ids.*` (integer)
-
-
-        **Requires permission:** `brands.delete`'
+        - `ids.*` (integer)'
       requestBody:
         content:
           application/json:
@@ -306911,10 +306913,7 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Content-Type: multipart/form-data
-
-
-        **Requires permission:** `brands.import`'
+        Content-Type: multipart/form-data'
       requestBody:
         content:
           multipart/form-data:
@@ -306996,10 +306995,7 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Content-Type: multipart/form-data
-
-
-        **Requires permission:** `brands.import`'
+        Content-Type: multipart/form-data'
       requestBody:
         content:
           multipart/form-data:
