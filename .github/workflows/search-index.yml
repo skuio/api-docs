@@ -19,6 +19,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Never index concurrently: the scraper's commit step reads the alias, swaps it,
+# and deletes the old collection — two overlapping runs can delete each other's
+# collections mid-commit. Queued (not cancelled) so an in-flight reindex always
+# finishes; GitHub keeps only the newest pending run in the group, which is what
+# we want (latest deploy wins).
+concurrency:
+  group: search-index
+  cancel-in-progress: false
+
 jobs:
   index:
     # Only after a successful deploy (or a manual run). PR builds never reach here.
@@ -26,6 +35,40 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # Self-heal cluster state before scraping (2026-07-13 incident): the cluster
+      # once dropped an alias upsert while persisting the old collection's delete,
+      # leaving `api_docs` pointing at a collection that no longer existed. The
+      # scraper handles a MISSING alias fine but crashes on a DANGLING one
+      # (_transfer_synonyms retrieves the alias target -> 404), and every failed
+      # run strands a full ~123k-doc tmp collection in cluster RAM. So: drop the
+      # alias if its target is gone, and delete stray api_docs_* collections the
+      # alias doesn't reference. `set -e` + `curl -f` means a transient API error
+      # aborts the step instead of misreading state and deleting a live collection.
+      - name: Heal dangling alias / delete stray collections
+        env:
+          TYPESENSE_ADMIN_API_KEY: ${{ secrets.TYPESENSE_ADMIN_API_KEY }}
+          TYPESENSE_HOST: ${{ secrets.TYPESENSE_HOST }}
+        run: |
+          set -euo pipefail
+          api() { curl -sf -H "X-TYPESENSE-API-KEY: $TYPESENSE_ADMIN_API_KEY" "$@"; }
+
+          aliases=$(api "https://$TYPESENSE_HOST/aliases")
+          collections=$(api "https://$TYPESENSE_HOST/collections?exclude_fields=fields")
+
+          target=$(jq -r '.aliases[] | select(.name == "api_docs") | .collection_name' <<< "$aliases")
+
+          if [ -n "$target" ] && ! jq -e --arg t "$target" 'any(.[].name; . == $t)' <<< "$collections" > /dev/null; then
+            echo "::warning::Alias api_docs points at missing collection '$target' — deleting the dangling alias so the scraper rebuilds cleanly."
+            api -X DELETE "https://$TYPESENSE_HOST/aliases/api_docs" > /dev/null
+            target=""
+          fi
+
+          for stray in $(jq -r --arg keep "$target" '.[].name | select(startswith("api_docs_")) | select(. != $keep)' <<< "$collections"); do
+            echo "::warning::Deleting stray collection '$stray' (leftover from a failed index run — frees cluster RAM)."
+            api -X DELETE "https://$TYPESENSE_HOST/collections/$stray" > /dev/null
+          done
+
+          echo "Cluster state healthy: alias api_docs -> ${target:-<none, scraper will create it>}"
       - name: Scrape developer.sku.io into the Typesense `api_docs` collection
         run: |
           docker run -i --rm \
