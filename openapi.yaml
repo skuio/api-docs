@@ -129,6 +129,7 @@ tags:
 - name: Xero
 - name: Stripe
 - name: Google Calendar
+- name: Google Sheets
 - name: Products
 - name: Organization
 - name: Pricing
@@ -126291,6 +126292,98 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-amazon-integrationinstance-inbound-shipments-shipment
+    delete:
+      tags:
+      - Amazon
+      summary: Delete Inbound Shipment
+      description: 'Permanently delete a legacy FBA inbound shipment and its downloaded
+        items. Deletion is blocked with a 422 response when the shipment is linked
+        to a purchase order or warehouse transfer — unprocess the shipment first to
+        remove the link. Deleting only removes the local record; the shipment on Amazon
+        is unaffected and an active shipment can reappear on the next refresh.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '6289'
+        description: The shipment ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: success
+                  message: Inbound shipment deleted
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      sku_link:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  errors:
+                    sku_link:
+                    - message: Cannot delete this inbound shipment — it is linked
+                        to a Purchase Order. Unprocess it first.
+                      code: IsLinked
+                      data: []
+                  status: failure
+                  message: Cannot delete this inbound shipment — it is linked to a
+                    Purchase Order. Unprocess it first.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-amazon-integrationinstance-inbound-shipments-shipment
   /api/amazon/{integrationInstance}/inbound/shipments/{shipment}/activity-log:
     get:
       tags:
@@ -127381,6 +127474,89 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-amazon-integrationinstance-inbound-shipments-shipment-process-with-stock-take
+  /api/amazon/{integrationInstance}/inbound/shipments/delete:
+    post:
+      tags:
+      - Amazon
+      summary: Bulk Delete Inbound Shipments
+      description: 'Bulk delete legacy FBA inbound shipments by ID. Shipments that
+        are linked to a purchase order or warehouse transfer are skipped and returned
+        in the blocked array; unprocess them first to remove the link. Deleting only
+        removes the local records; the shipments on Amazon are unaffected.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                ids:
+                - 6289
+                - 6290
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                      blocked:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            ShipmentId:
+                              type: string
+                            sku_link_type:
+                              type: string
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    deleted: 1
+                    blocked:
+                    - id: 6290
+                      ShipmentId: FBA17WHH38R2
+                      sku_link_type: Purchase Order
+                  status: success
+                  message: 1 inbound shipment(s) deleted — 1 skipped (linked to a
+                    purchase order / warehouse transfer)
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-amazon-integrationinstance-inbound-shipments-delete
   /api/amazon/{integrationInstance}/new-inbound/shipments/{shipment}:
     get:
       tags:
@@ -292936,6 +293112,685 @@ paths:
         '401': *id002
         '403': *id003
       operationId: delete-api-google-calendar-subscriptions-featurekey
+  /api/v2/google/connection:
+    get:
+      tags:
+      - Google Sheets
+      summary: Get Google Connection
+      description: 'Return the authenticated user''s Google connection status. The
+        connection is per-user and grants access only to sheets the app creates or
+        the user picks (drive.file scope).
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                      google_email:
+                        type: string
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+                      status:
+                        type: string
+                example:
+                  data:
+                    connected: true
+                    google_email: jane@acme.com
+                    scopes:
+                    - https://www.googleapis.com/auth/drive.file
+                    status: connected
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-google-connection
+    delete:
+      tags:
+      - Google Sheets
+      summary: Disconnect Google
+      description: 'Revoke and remove the authenticated user''s Google connection.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      connected:
+                        type: boolean
+                      google_email:
+                        type: string
+                        nullable: true
+                      scopes:
+                        type: array
+                      status:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    connected: false
+                    google_email: null
+                    scopes: []
+                    status: disconnected
+                  message: Google disconnected.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: delete-api-v2-google-connection
+  /api/v2/google/connection/initiate:
+    post:
+      tags:
+      - Google Sheets
+      summary: Connect Google
+      description: 'Start the Google authorization flow. Returns a consent URL to
+        open in the browser; after the user consents, the connection is stored server-side.
+        Only the non-sensitive drive.file scope is requested.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                example:
+                  data:
+                    url: https://accounts.google.com/o/oauth2/v2/auth?client_id=...&scope=https://www.googleapis.com/auth/drive.file&state=...
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-google-connection-initiate
+  /api/v2/google/sheets/export:
+    post:
+      tags:
+      - Google Sheets
+      summary: Export to Google Sheet
+      description: 'Create a new Google Sheet (or refresh an existing linked sheet
+        when sheet_link_id is provided) populated with the supplied rows. entity_type
+        must be a supported import entity (e.g. products). Include an `id` column
+        so edits pulled back are applied as updates; rows with a blank id are inserts.
+
+
+        Row sets above the sync limit are written as a background job — the response
+        returns tracked_job_log_id and no url until it completes.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entity_type:
+                  type: string
+                rows:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      sku:
+                        type: string
+                      name:
+                        type: string
+                title:
+                  type: string
+                filter_signature:
+                  type: string
+                  nullable: true
+                sheet_link_id:
+                  type: string
+                  nullable: true
+              example:
+                entity_type: products
+                rows:
+                - id: 5
+                  sku: ABC-123
+                  name: Blue Widget
+                - id: ''
+                  sku: NEW-001
+                  name: New Product
+                title: SKU Products
+                filter_signature: null
+                sheet_link_id: null
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      sheet_link_id:
+                        type: integer
+                      spreadsheet_id:
+                        type: string
+                      url:
+                        type: string
+                      row_count:
+                        type: integer
+                      tracked_job_log_id:
+                        type: string
+                        nullable: true
+                example:
+                  data:
+                    sheet_link_id: 12
+                    spreadsheet_id: 1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEFG
+                    url: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEFG/edit
+                    row_count: 2
+                    tracked_job_log_id: null
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      sheet_link_id:
+                        type: string
+                        nullable: true
+                      spreadsheet_id:
+                        type: string
+                        nullable: true
+                      url:
+                        type: string
+                        nullable: true
+                      row_count:
+                        type: integer
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    sheet_link_id: null
+                    spreadsheet_id: null
+                    url: null
+                    row_count: 25000
+                    tracked_job_log_id: 9876
+                  message: Exporting to Google Sheets — track progress with the returned
+                    tracked_job_log_id.
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  code:
+                    type: string
+                example:
+                  message: Google is not connected. Connect your Google account in
+                    Settings.
+                  code: google_not_connected
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-google-sheets-export
+  /api/v2/google/sheets/links:
+    get:
+      tags:
+      - Google Sheets
+      summary: List Linked Google Sheets
+      description: 'List the authenticated user''s linked Google Sheets for an entity
+        type.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: entity_type
+        in: query
+        schema:
+          type: string
+        description: Entity type to list linked sheets for (required).
+        example: products
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        entity_type:
+                          type: string
+                        spreadsheet_id:
+                          type: string
+                        url:
+                          type: string
+                        data_sheet_name:
+                          type: string
+                        title:
+                          type: string
+                        column_mapping:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            SKU:
+                              type: string
+                            Name:
+                              type: string
+                        filter_signature:
+                          type: string
+                          nullable: true
+                        row_count:
+                          type: integer
+                        is_stale:
+                          type: boolean
+                        last_pulled_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                example:
+                  data:
+                  - id: 12
+                    entity_type: products
+                    spreadsheet_id: 1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEFG
+                    url: https://docs.google.com/spreadsheets/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCDEFG/edit
+                    data_sheet_name: Data
+                    title: SKU Products
+                    column_mapping:
+                      id: id
+                      SKU: sku
+                      Name: name
+                    filter_signature: null
+                    row_count: 2
+                    is_stale: false
+                    last_pulled_at: null
+                    created_at: '2026-07-11T14:30:00.000000Z'
+                    updated_at: '2026-07-11T14:30:00.000000Z'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-google-sheets-links
+  /api/v2/google/sheets/{sheetLink}/pull:
+    post:
+      tags:
+      - Google Sheets
+      summary: Pull Changes From Google Sheet
+      description: 'Read a linked sheet''s current rows and start validation of the
+        changes. Rows are matched on the `id` column (blank id inserts a new record).
+        The response returns a data_import_id whose validation results and execution
+        are handled through the standard import endpoints.
+
+
+        Returns total_rows 0 with a null data_import_id when the sheet has only a
+        header row.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: sheetLink
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Linked sheet id (from List Linked Google Sheets).
+        example: '12'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      data_import_id:
+                        type: integer
+                      tracked_job_log_id:
+                        type: integer
+                      total_rows:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    data_import_id: 45
+                    tracked_job_log_id: 9881
+                    total_rows: 2
+                  message: Sheet read; validation started.
+        '410':
+          description: Gone
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  code:
+                    type: string
+                example:
+                  message: This Google Sheet no longer exists or is no longer accessible.
+                    Create a new one.
+                  code: sheet_unavailable
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  code:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      missing_headers:
+                        type: array
+                        items:
+                          type: string
+                      extra_headers:
+                        type: array
+                example:
+                  message: The sheet columns no longer match the linked mapping. Reconcile
+                    the columns before pulling.
+                  code: header_drift
+                  data:
+                    missing_headers:
+                    - SKU
+                    extra_headers: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-v2-google-sheets-sheetlink-pull
+  /api/v2/google/sheets/{sheetLink}:
+    patch:
+      tags:
+      - Google Sheets
+      summary: Rename Google Sheet
+      description: 'Rename a linked Google Sheet. Renames the Google Sheet in your
+        Drive and updates the stored label so the two stay in sync. Only the sheet''s
+        owner can rename it.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+              example:
+                title: Q3 reorder planning
+      parameters:
+      - name: sheetLink
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Linked sheet id (from List Linked Google Sheets).
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      entity_type:
+                        type: string
+                      spreadsheet_id:
+                        type: string
+                      url:
+                        type: string
+                      data_sheet_name:
+                        type: string
+                      title:
+                        type: string
+                      column_mapping:
+                        type: object
+                        properties:
+                          id:
+                            type: string
+                          SKU:
+                            type: string
+                          Name:
+                            type: string
+                      filter_signature:
+                        type: string
+                        nullable: true
+                      row_count:
+                        type: integer
+                      is_stale:
+                        type: boolean
+                      last_pulled_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  data:
+                    id: 12
+                    entity_type: products
+                    spreadsheet_id: 1ymf6PauZBgU0dWgLDWcZKUCBZ_bvPVVb1JOUWMTsM3A
+                    url: https://docs.google.com/spreadsheets/d/1ymf6PauZBgU0dWgLDWcZKUCBZ_bvPVVb1JOUWMTsM3A/edit
+                    data_sheet_name: Data
+                    title: Q3 reorder planning
+                    column_mapping:
+                      id: id
+                      SKU: sku
+                      Name: name
+                    filter_signature: null
+                    row_count: 27
+                    is_stale: false
+                    last_pulled_at: '2026-07-13T08:19:50.000000Z'
+                    created_at: '2026-07-13T08:10:00.000000Z'
+                    updated_at: '2026-07-13T09:02:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      title:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The title field is required.
+                  errors:
+                    title:
+                    - The title field is required.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: patch-api-v2-google-sheets-sheetlink
+    delete:
+      tags:
+      - Google Sheets
+      summary: Unlink Google Sheet
+      description: 'Unlink a Google Sheet from SKU. This removes the link only — the
+        Google Sheet itself stays untouched in your Google Drive. Only the sheet''s
+        owner can unlink it.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: sheetLink
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Linked sheet id (from List Linked Google Sheets).
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Sheet unlinked.
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '429': *id001
+        '401': *id002
+        '404': *id004
+      operationId: delete-api-v2-google-sheets-sheetlink
   /api/products/{id}:
     get:
       tags:
@@ -485483,6 +486338,7 @@ x-tagGroups:
   - Data Feeds
   - Inventory Intelligence
   - Inventory Expiry & Shelf-Life
+  - Google Sheets
   - Products
   - Organization
   - Pricing
