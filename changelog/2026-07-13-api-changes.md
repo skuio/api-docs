@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-13
-description: This release includes 10 additions.
+description: This release includes 11 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-13
 ---
 
-This release includes 10 additions.
+This release includes 11 additions.
 
 <!-- truncate -->
 
@@ -27,5 +27,8 @@ This release includes 10 additions.
 - `DELETE /api/v2/google/sheets/{sheetLink}` — Unlink Google Sheet
 - `PATCH /api/v2/google/sheets/{sheetLink}` — Rename Google Sheet
 - `POST /api/v2/google/sheets/{sheetLink}/pull` — Pull Changes From Google Sheet
+
+### Sales Order Lines
+- `POST /api/sales-order-lines/{salesOrderLine}/cancel-quantity` — Cancel Line Quantity
 
 _Spec version 1.0.0 → 1.0.0._
