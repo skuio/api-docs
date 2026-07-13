@@ -18753,8 +18753,9 @@ paths:
 
         - `count` — total stale entries across all source types
 
-        - `capped` — true when `entries` holds only the first 200 rows (rebuild these,
-        then re-fetch for the rest)
+        - `capped` — true when `entries` holds only the first 200 rows. To rebuild
+        everything in one call, use Bulk Entry Action with `action: "rebuild"` and
+        `scope: "all_stale"` — it targets the full stale set, not just this preview.
 
         - `entries` — up to 200 rows, most-recently-drifted first. Each row carries
         the entry identity (`id`, `document_number`, `reference`, `type`, `display_status`),
@@ -22018,13 +22019,15 @@ paths:
         operation history, and nulls any sibling reversal pointer; IRREVERSIBLE; unlike
         the other actions it runs even when ledger generation is disabled).
 
-        - `scope` (optional, `selected` default | `all`) — `all` targets every entry
-        matching the CURRENT filters (send the same `filter[...]` / `filter_groups`
-        query params as the list), resolved server-side and capped at 5000; `entry_ids`
-        is then optional/ignored.
+        - `scope` (optional, `selected` default | `all` | `all_stale`) — `all` targets
+        every entry matching the CURRENT filters (send the same `filter[...]` / `filter_groups`
+        query params as the list); `all_stale` targets every stale pre-cutover (frozen
+        history) entry, so one `rebuild` call drains the entire stale worklist rather
+        than only its preview page. Both are resolved server-side and capped at 5000;
+        `entry_ids` is then optional/ignored.
 
-        - `entry_ids` (array, required unless `scope=all`, max 1000) — the explicitly
-        selected entry ids.
+        - `entry_ids` (array, required unless `scope=all` or `scope=all_stale`, max
+        1000) — the explicitly selected entry ids.
 
         - `override` (required when `action=set_override`) — `force_enabled` | `force_disabled`
         | null (clear).
@@ -22045,7 +22048,7 @@ paths:
 
         **Response fields:** `tracked_job_log_id` (null when no job dispatched), `total`
         (entries the job will process), `eligible_count`, `excluded_count`. When `scope=all`
-        and the match set exceeds the cap (default 5000, `ledger.bulk.all_scope_cap`),
+        or `scope=all_stale` and the match set exceeds the cap (default 5000, `ledger.bulk.all_scope_cap`),
         the remainder is dropped and the response adds `all_scope_truncated: true`,
         `matched_total` (total entries matching the filters), and `cap` (the limit
         applied); the message then names how many of how many entries were started.
