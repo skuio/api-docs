@@ -21450,11 +21450,18 @@ paths:
         :::
 
 
-        **Eligibility gate:** the re-create only happens if the entry is still sync-eligible.
-        Eligibility encodes "accounting ready": if the SKU-side source (e.g. a purchase
-        invoice) is cancelled or not accounting-ready, the re-enqueue resolves the
-        entry to `excluded` and NOTHING is created — the response reports `recreated:
-        false` with the reason rather than silently minting a document.
+        **Eligibility gate (guarded):** severing the dead link is destructive and
+        irreversible, so the action first checks that a fresh document can actually
+        be created. Because clicking recreate is an explicit user action it uses the
+        *manual* verdict (like Sync Now): a bypassable settings opt-out (per-type
+        Sync toggle, granularity, per-type start date, force_disabled) does NOT block
+        it, but a *structural* wall does — connection inactive, batch member / open
+        batch, internal-only, or the entry dated before the provider’s conversion/start
+        date. When a structural blocker applies the action REFUSES without touching
+        the link: the response reports `recreated: false` with the real eligibility
+        reason (e.g. `before_provider_sync_start_date`) and the entry keeps its existing
+        `voided`/`removed_in_provider` status. When no accounting connection is configured
+        the reason is `no_accounting_connection`.
 
 
         **Authentication:** Requires Bearer token.
@@ -21535,13 +21542,13 @@ paths:
                     message: Creating a new accounting transaction — it will sync
                       to the provider shortly.
                 example-1:
-                  summary: 200 OK — not recreated (source not accounting-ready)
+                  summary: 200 OK — not recreated (blocked, link preserved)
                   value:
                     data:
                       recreate:
                         recreated: false
-                        status: excluded
-                        reason: source_cancelled
+                        status: voided
+                        reason: before_provider_sync_start_date
                       entry:
                         id: 1842
                         uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
@@ -21550,18 +21557,13 @@ paths:
                           label: Purchase Order Invoice
                         status: posted
                         display_status:
-                          key: excluded
-                          label: Excluded
-                          color: grey
-                          reason: source_cancelled
-                        can_sync_now: true
+                          key: voided
+                          label: Synced, Voided
+                          color: warning
+                          reason: before_provider_sync_start_date
+                        can_sync_now: false
                         locked_update_pending: false
                         locked_amend_blocked: false
-                        sync:
-                          key: enabled
-                          label: Enabled
-                          color: success
-                          reason: null
                         effective_at: '2026-06-05T14:30:00+00:00'
                         posted_at: '2026-06-05T14:35:12+00:00'
                         currency_code: USD
@@ -21569,10 +21571,22 @@ paths:
                         total_credit: '249.9900'
                         document_number: BILL-1842
                         reference: BILL-10293
-                        sync_links: []
+                        sync_links:
+                        - id: 4471
+                          provider: xero
+                          connection:
+                            id: 30
+                            name: Xero
+                          remote_type: xero_credit_note
+                          remote_id: 2643cbf7-ea33-460d-9d30-301fac99f609
+                          remote_url: https://go.xero.com/AccountsPayable/ViewCreditNote.aspx?creditNoteID=2643cbf7-ea33-460d-9d30-301fac99f609
+                          link_state: remote_gone
+                          remote_status: VOIDED
+                          last_remote_seen_at: '2026-07-13T22:40:00+00:00'
                         operations: []
-                    message: No new transaction was created — the source document
-                      is cancelled or not accounting-ready.
+                    message: Not created — this entry is dated before the accounting
+                      connection’s sync start date, so the provider won’t accept it.
+                      The existing link was left untouched.
         '429': *id001
         '401': *id002
         '403': *id003
