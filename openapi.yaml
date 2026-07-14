@@ -117727,13 +117727,7 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Get Inventory Aging Report
-      description: 'Get the paginated inventory aging report. Supports two view modes:
-
-        - product_summary: Aggregated by product, showing total quantity and average
-        age
-
-        - fifo_detail (default): Individual FIFO layers per product with detailed
-        age and cost information
+      description: 'Paginated inventory aging report.
 
 
         :::info[Required scope: `inventory:read`]
@@ -117744,27 +117738,40 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.
+        Two views:
+
+        - `view=product_summary` — one row per product aggregated across its FIFO
+        layers, enriched with listings, sales velocity (7/14/30/90 days), days of
+        supply, channel sales, margin, bracket-scoped `aged_value` (dollars in the
+        active bracket, or 181+ days when no bracket filter is set), an estimated
+        90-day `holding_cost_90d`, a rule-based `suggested_action`, and the recorded
+        `action` state.
+
+        - `view=fifo_detail` — raw cost layers (one row per layer) with age bracket,
+        layer date, source document and value.
 
 
-        Filters: warehouse_id, search, age_bracket (0-30, 31-60, 61-90, 91-180, 181-365,
-        365+), min_quantity, brand_id, supplier_id, view (product_summary|fifo_detail),
-        has_listings (yes|no), has_sales (yes|no), sales_period (7d|14d|30d|90d),
-        sales_channel_ids, excluded_sales_channel_ids, listing_filter, min_margin,
-        max_margin'
+        Sorting (product summary): pass `sort_by` + `sort_dir`; sorting runs server-side
+        over the full filtered dataset. Allowed sorts: sku, total_quantity, avg_unit_cost,
+        total_value, aged_value, max_days_old, holding_cost, velocity_30d.
+
+
+        Action scope (product summary): `action_scope` partitions rows by their recorded
+        action state; metrics and distribution deliberately ignore it so totals keep
+        counting accepted/resolved stock.
+
+
+        All other filters apply identically to this endpoint, the metrics, the distribution
+        and the CSV export. `sales_period` governs every sales-window filter (has_sales,
+        channel sold-on / no-sales-on, margin).'
       parameters:
-      - name: page
+      - name: view
         in: query
         schema:
-          type: integer
-        description: 'Page number (min: 1)'
-        example: '1'
-      - name: per_page
-        in: query
-        schema:
-          type: integer
-        description: 'Items per page (min: 1, max: 500, default: 50)'
-        example: '50'
+          type: string
+        description: product_summary (one row per product, enriched) or fifo_detail
+          (raw cost layers). Default fifo_detail
+        example: product_summary
       responses:
         '200':
           description: OK
@@ -117789,28 +117796,116 @@ paths:
                           type: string
                         product_name:
                           type: string
-                        fifo_layer_id:
-                          type: integer
-                        received_date:
+                        brand_name:
                           type: string
-                        age_days:
+                        brand_id:
                           type: integer
-                        age_bracket:
-                          type: string
-                        quantity:
-                          type: integer
-                        unit_cost:
-                          type: number
-                        total_cost:
-                          type: number
                         supplier_name:
                           type: string
-                        supplier_id:
-                          type: integer
-                        warehouse_id:
-                          type: integer
-                        warehouse_name:
+                        age_bracket:
                           type: string
+                        max_days_old:
+                          type: integer
+                        total_quantity:
+                          type: integer
+                        avg_unit_cost:
+                          type: number
+                        total_value:
+                          type: number
+                        warehouses:
+                          type: array
+                          items:
+                            type: string
+                        aged_value:
+                          type: number
+                        aged_quantity:
+                          type: integer
+                        aged_value_label:
+                          type: string
+                        holding_cost_90d:
+                          type: number
+                        listings:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              sales_channel_name:
+                                type: string
+                              integration_name:
+                                type: string
+                              listing_price:
+                                type: number
+                              default_tier_price:
+                                type: number
+                              discount_percentage:
+                                type: integer
+                              listing_sku:
+                                type: string
+                              listing_type:
+                                type: string
+                                nullable: true
+                              listing_status:
+                                type: string
+                                nullable: true
+                              condition:
+                                type: string
+                                nullable: true
+                        listing_count:
+                          type: integer
+                        has_listings:
+                          type: boolean
+                        all_full_price:
+                          type: boolean
+                        has_fba_layers:
+                          type: boolean
+                        sold_7d:
+                          type: integer
+                        sold_14d:
+                          type: integer
+                        sold_30d:
+                          type: integer
+                        sold_90d:
+                          type: integer
+                        days_of_supply:
+                          type: string
+                          nullable: true
+                        channel_sales_30d:
+                          type: array
+                        total_channel_sales_30d:
+                          type: integer
+                        total_channel_revenue_30d:
+                          type: integer
+                        default_retail_price:
+                          type: number
+                        avg_selling_price_30d:
+                          type: string
+                          nullable: true
+                        avg_cogs_per_unit_30d:
+                          type: string
+                          nullable: true
+                        total_revenue_30d:
+                          type: string
+                          nullable: true
+                        total_cogs_30d:
+                          type: string
+                          nullable: true
+                        margin_pct_30d:
+                          type: string
+                          nullable: true
+                        suggested_action:
+                          type: object
+                          properties:
+                            action:
+                              type: string
+                            label:
+                              type: string
+                            reason:
+                              type: string
+                        action:
+                          type: string
+                          nullable: true
                   current_page:
                     type: integer
                   last_page:
@@ -117825,24 +117920,62 @@ paths:
                     type: integer
                 example:
                   data:
-                  - product_id: 10
-                    sku: PROD-001
-                    product_name: Widget A
-                    fifo_layer_id: 42
-                    received_date: '2023-09-15'
-                    age_days: 75
-                    age_bracket: 61-90
-                    quantity: 25
-                    unit_cost: 12.5
-                    total_cost: 312.5
-                    supplier_name: ACME Distribution
-                    supplier_id: 42
-                    warehouse_id: 1
-                    warehouse_name: Main Warehouse
+                  - product_id: 1935
+                    sku: SZ909
+                    product_name: Brand New Hayg OEM Fuel Pump
+                    brand_name: Hayg
+                    brand_id: 12
+                    supplier_name: Hayg Distribution
+                    age_bracket: 365+
+                    max_days_old: 412
+                    total_quantity: 115
+                    avg_unit_cost: 13.51
+                    total_value: 1553.2
+                    warehouses:
+                    - FBA US
+                    - ShipMyOrders Warehouse
+                    aged_value: 1553.2
+                    aged_quantity: 115
+                    aged_value_label: 181+ days
+                    holding_cost_90d: 97.08
+                    listings:
+                    - id: 881
+                      sales_channel_name: AMZ partusa
+                      integration_name: amazon
+                      listing_price: 39.95
+                      default_tier_price: 39.95
+                      discount_percentage: 0
+                      listing_sku: SZ909-FBA
+                      listing_type: null
+                      listing_status: null
+                      condition: null
+                    listing_count: 1
+                    has_listings: true
+                    all_full_price: true
+                    has_fba_layers: true
+                    sold_7d: 0
+                    sold_14d: 0
+                    sold_30d: 0
+                    sold_90d: 5
+                    days_of_supply: null
+                    channel_sales_30d: []
+                    total_channel_sales_30d: 0
+                    total_channel_revenue_30d: 0
+                    default_retail_price: 39.95
+                    avg_selling_price_30d: null
+                    avg_cogs_per_unit_30d: null
+                    total_revenue_30d: null
+                    total_cogs_30d: null
+                    margin_pct_30d: null
+                    suggested_action:
+                      action: expand_channels
+                      label: Expand channels
+                      reason: Listed on 1 of 4 active channels
+                    action: null
                   current_page: 1
-                  last_page: 10
+                  last_page: 8
                   per_page: 50
-                  total: 487
+                  total: 382
                   from: 1
                   to: 50
         '422':
@@ -117862,22 +117995,15 @@ paths:
                   errors:
                     type: object
                     properties:
-                      age_bracket:
-                        type: array
-                        items:
-                          type: string
-                      per_page:
+                      sort_by:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The given data was invalid.
+                  message: Invalid sort column.
                   errors:
-                    age_bracket:
-                    - 'Invalid age bracket. Must be one of: 0-30, 31-60, 61-90, 91-180,
-                      181-365, 365+'
-                    per_page:
-                    - Maximum items per page is 500.
+                    sort_by:
+                    - Invalid sort column.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -117888,9 +118014,10 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Get Inventory Aging Metrics
-      description: 'Get summary metrics for the inventory aging report. Returns aggregate
-        statistics like total inventory value, average age, count by age bracket.
-        Accepts the same filter parameters as the index endpoint.
+      description: 'Summary metrics for the aging report: total inventory value at
+        cost, value-weighted average age, product counts (total, slow-moving 180+,
+        dead stock 365+), value at risk (181+ days), and per-bracket value/quantity/percentage
+        breakdowns.
 
 
         :::info[Required scope: `inventory:read`]
@@ -117901,7 +118028,10 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Honors every filter the report honors (warehouse, brand, supplier, search,
+        quantity, age bracket, listings, sales, channels, margin), so these figures
+        always describe the same population as the filtered report. `action_scope`
+        is deliberately ignored — accepted/resolved stock stays counted.'
       parameters: []
       responses:
         '200':
@@ -117916,101 +118046,91 @@ paths:
               schema:
                 type: object
                 properties:
+                  total_inventory_value:
+                    type: number
+                  average_age:
+                    type: integer
                   total_skus:
                     type: integer
-                  total_quantity:
+                  slow_moving_skus:
                     type: integer
-                  total_value:
+                  dead_stock_skus:
+                    type: integer
+                  value_at_risk:
                     type: number
-                  average_age_days:
-                    type: integer
-                  by_bracket:
+                  value_by_age_bracket:
                     type: object
                     properties:
                       0-30:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
                       31-60:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
                       61-90:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
                       91-180:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
                       181-365:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
                       365+:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          quantity:
-                            type: integer
-                          value:
-                            type: number
+                        type: number
+                  quantity_by_age_bracket:
+                    type: object
+                    properties:
+                      0-30:
+                        type: integer
+                      31-60:
+                        type: integer
+                      61-90:
+                        type: integer
+                      91-180:
+                        type: integer
+                      181-365:
+                        type: integer
+                      365+:
+                        type: integer
+                  percentage_by_age_bracket:
+                    type: object
+                    properties:
+                      0-30:
+                        type: number
+                      31-60:
+                        type: number
+                      61-90:
+                        type: number
+                      91-180:
+                        type: number
+                      181-365:
+                        type: number
+                      365+:
+                        type: number
                 example:
-                  total_skus: 243
-                  total_quantity: 5820
-                  total_value: 128450.75
-                  average_age_days: 87
-                  by_bracket:
-                    0-30:
-                      count: 45
-                      quantity: 1200
-                      value: 28000.0
-                    31-60:
-                      count: 62
-                      quantity: 1800
-                      value: 35000.0
-                    61-90:
-                      count: 38
-                      quantity: 950
-                      value: 21000.0
-                    91-180:
-                      count: 55
-                      quantity: 1100
-                      value: 24000.0
-                    181-365:
-                      count: 28
-                      quantity: 520
-                      value: 13000.0
-                    365+:
-                      count: 15
-                      quantity: 250
-                      value: 7450.75
+                  total_inventory_value: 716964.57
+                  average_age: 279
+                  total_skus: 569
+                  slow_moving_skus: 382
+                  dead_stock_skus: 177
+                  value_at_risk: 366573.77
+                  value_by_age_bracket:
+                    0-30: 249322.11
+                    31-60: 54210.09
+                    61-90: 46858.6
+                    91-180: 101243.4
+                    181-365: 158218.9
+                    365+: 208354.87
+                  quantity_by_age_bracket:
+                    0-30: 1204
+                    31-60: 310
+                    61-90: 280
+                    91-180: 642
+                    181-365: 801
+                    365+: 1388
+                  percentage_by_age_bracket:
+                    0-30: 34.8
+                    31-60: 7.6
+                    61-90: 6.5
+                    91-180: 14.1
+                    181-365: 22.1
+                    365+: 29.1
         '429': *id001
         '401': *id002
         '403': *id003
@@ -118021,9 +118141,9 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Get Inventory Aging Distribution
-      description: 'Get distribution chart data for inventory aging. Returns data
-        suitable for rendering age distribution charts. Accepts the same filter parameters
-        as the index endpoint.
+      description: 'Per-bracket distribution for the value-at-risk funnel: quantity,
+        value, percentage of total value and a display color per age bracket. Always
+        returns all six brackets (zeroed when empty).
 
 
         :::info[Required scope: `inventory:read`]
@@ -118034,7 +118154,83 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Honors the same filters as the report and metrics, so the funnel always reconciles
+        with both.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    age_bracket:
+                      type: string
+                    quantity:
+                      type: integer
+                    value:
+                      type: number
+                    percentage:
+                      type: number
+                    color:
+                      type: string
+                example:
+                - age_bracket: 0-30
+                  quantity: 1204
+                  value: 249322.11
+                  percentage: 34.8
+                  color: '#4CAF50'
+                - age_bracket: 31-60
+                  quantity: 310
+                  value: 54210.09
+                  percentage: 7.6
+                  color: '#8BC34A'
+                - age_bracket: 61-90
+                  quantity: 280
+                  value: 46858.6
+                  percentage: 6.5
+                  color: '#FFEB3B'
+                - age_bracket: 91-180
+                  quantity: 642
+                  value: 101243.4
+                  percentage: 14.1
+                  color: '#FF9800'
+                - age_bracket: 181-365
+                  quantity: 801
+                  value: 158218.9
+                  percentage: 22.1
+                  color: '#FF5722'
+                - age_bracket: 365+
+                  quantity: 1388
+                  value: 208354.87
+                  percentage: 29.1
+                  color: '#F44336'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: inventory:read
+      operationId: get-api-inventory-aging-distribution
+  /api/inventory-aging/trend:
+    get:
+      tags:
+      - Inventory Intelligence
+      summary: Get Inventory Aging Trend
+      description: 'Aged-value trend series from nightly snapshots: per-bracket inventory
+        value and quantity per snapshot date, for charting whether aged value is shrinking
+        over time.
+
+
+        Without `warehouse_id` the tenant-wide rollup series is returned. Snapshots
+        are recorded nightly going forward — history begins the day the feature is
+        enabled.'
       parameters: []
       responses:
         '200':
@@ -118049,58 +118245,50 @@ paths:
               schema:
                 type: object
                 properties:
-                  labels:
-                    type: array
-                    items:
-                      type: string
-                  datasets:
+                  data:
                     type: array
                     items:
                       type: object
                       properties:
-                        label:
+                        snapshot_date:
                           type: string
-                        data:
-                          type: array
-                          items:
-                            type: integer
+                        age_bracket:
+                          type: string
+                        total_value:
+                          type: number
+                        total_quantity:
+                          type: integer
                 example:
-                  labels:
-                  - 0-30
-                  - 31-60
-                  - 61-90
-                  - 91-180
-                  - 181-365
-                  - 365+
-                  datasets:
-                  - label: Quantity
-                    data:
-                    - 1200
-                    - 1800
-                    - 950
-                    - 1100
-                    - 520
-                    - 250
-                  - label: Value ($)
-                    data:
-                    - 28000
-                    - 35000
-                    - 21000
-                    - 24000
-                    - 13000
-                    - 7450.75
+                  data:
+                  - snapshot_date: '2026-07-12'
+                    age_bracket: 181-365
+                    total_value: 158218.9
+                    total_quantity: 801
+                  - snapshot_date: '2026-07-12'
+                    age_bracket: 365+
+                    total_value: 208354.87
+                    total_quantity: 1388
+                  - snapshot_date: '2026-07-13'
+                    age_bracket: 181-365
+                    total_value: 155102.4
+                    total_quantity: 788
+                  - snapshot_date: '2026-07-13'
+                    age_bracket: 365+
+                    total_value: 206220.11
+                    total_quantity: 1371
         '429': *id001
         '401': *id002
         '403': *id003
-      x-required-scope: inventory:read
-      operationId: get-api-inventory-aging-distribution
+      operationId: get-api-inventory-aging-trend
   /api/inventory-aging/export:
     get:
       tags:
       - Inventory Intelligence
       summary: Export Inventory Aging to CSV
-      description: 'Export the inventory aging report as a CSV file download. Accepts
-        the same filter parameters as the index endpoint. Returns a streamed CSV file.
+      description: 'Stream the aging report as a CSV download. `view=product_summary`
+        exports enriched product rows (including aged value, holding cost, suggested
+        action and recorded action state); the default view exports raw FIFO layer
+        detail.
 
 
         :::info[Required scope: `inventory:read`]
@@ -118111,31 +118299,22 @@ paths:
         :::
 
 
-        Response: text/csv file download (not JSON).
-
-
-        Authentication: Requires Bearer token.'
-      parameters: []
+        Honors every report filter plus `sort_by`/`sort_dir` and `action_scope`, so
+        the file matches what the filtered report shows. Response is a `text/csv`
+        attachment, not JSON.'
+      parameters:
+      - name: view
+        in: query
+        schema:
+          type: string
+        description: product_summary (one row per product, enriched) or fifo_detail
+          (raw cost layers). Default fifo_detail
+        example: product_summary
       responses:
         '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: text/csv; charset=UTF-8
-            Content-Disposition:
-              schema:
-                type: string
-                example: attachment; filename="inventory-aging.csv"
+          description: Successful response
           content:
-            text/plain:
-              schema:
-                type: string
-                example: 'SKU,Product Name,Received Date,Age (Days),Age Bracket,Quantity,Unit
-                  Cost,Total Cost,Warehouse
-
-                  PROD-001,Widget A,2023-09-15,75,61-90,25,12.50,312.50,Main Warehouse'
+            application/json: {}
         '429': *id001
         '401': *id002
         '403': *id003
@@ -118146,8 +118325,8 @@ paths:
       tags:
       - Inventory Intelligence
       summary: List Sales Channels (Aging Report Filter Values)
-      description: 'Get the list of sales channels available for use in the inventory
-        aging sales channel filter. Returns integration instance IDs and names.
+      description: 'Sales channels that have had sales in the last 90 days — the option
+        list for the sold-on / no-sales-on / not-listed-on channel filters.
 
 
         :::info[Required scope: `inventory:read`]
@@ -118155,10 +118334,7 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::
-
-
-        Authentication: Requires Bearer token.'
+        :::'
       parameters: []
       responses:
         '200':
@@ -118177,62 +118353,78 @@ paths:
                   properties:
                     id:
                       type: integer
-                    name:
+                    channelName:
+                      type: string
+                    integrationName:
                       type: string
                 example:
-                - id: 1
-                  name: Shopify - Main Store
                 - id: 2
-                  name: Amazon
-                - id: 3
-                  name: eBay
+                  channelName: AMZ partusa
+                  integrationName: amazon
+                - id: 5
+                  channelName: EBAY fuelpumpsusa
+                  integrationName: ebay
         '429': *id001
         '401': *id002
         '403': *id003
       x-required-scope: inventory:read
       operationId: get-api-inventory-aging-sales-channels
-  /api/inventory-aging/notes/{product}:
+  /api/inventory-aging/actions/{product}:
     put:
       tags:
       - Inventory Intelligence
-      summary: Update Product Note
-      description: 'Create or update a note for a product in the inventory aging report.
-        Notes are used to track aging strategy decisions (e.g., liquidation plans,
-        review dates).
+      summary: Record Product Aging Action
+      description: 'Create or update the aging action state for a product. One state
+        per product:
 
 
-        :::info[Required scope: `inventory:write`]
+        - `needs_action` — default; nothing recorded yet
 
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
+        - `in_progress` — a clearance action was recorded (`action_type` required:
+        price_reduced, listed_on_channel, promotion, bundled, transferred, removal_ordered,
+        written_down, other)
 
-        :::
+        - `resolved` — the aged stock was dealt with (`resolution` required: sold_through,
+        cleared, written_off)
+
+        - `accepted` — deliberate long-tail stock; optional `snooze_until` (today
+        or later) keeps it out of the needs-attention scope until that date
 
 
-        Authentication: Requires Bearer token.
+        `note` (max 1000 chars) and `assigned_to` (an active user belonging to the
+        current account) are optional on every status; `action_type` is rejected for
+        accepted/needs_action and `resolution` outside resolved. Each write stamps
+        who acted and when.
 
 
-        Fields:
-
-        - note (required): Note text (max 1000 chars)'
+        When granular permissions are enabled for the account, this endpoint requires
+        the `inventory.manage_aging` permission.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                status:
+                  type: string
+                action_type:
+                  type: string
                 note:
                   type: string
+                assigned_to:
+                  type: integer
               example:
-                note: Considering liquidation through eBay. Review in Q2.
+                status: in_progress
+                action_type: price_reduced
+                note: Dropped price 15% on Amazon and eBay
+                assigned_to: 4
       parameters:
       - name: product
         in: path
         schema:
-          type: integer
+          type: string
         required: true
-        description: Product ID
-        example: '10'
+        description: The product ID.
       responses:
         '200':
           description: OK
@@ -118248,48 +118440,97 @@ paths:
                 properties:
                   product_id:
                     type: integer
+                  status:
+                    type: string
+                  action_type:
+                    type: string
+                  resolution:
+                    type: string
+                    nullable: true
                   note:
                     type: string
-                  updated_at:
+                  assigned_to:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  snooze_until:
+                    type: string
+                    nullable: true
+                  acted_at:
                     type: string
                   updated_by:
-                    type: string
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
                 example:
-                  product_id: 10
-                  note: Considering liquidation through eBay. Review in Q2.
-                  updated_at: '2024-01-15T10:30:00+00:00'
-                  updated_by: Jane Smith
+                  product_id: 1935
+                  status: in_progress
+                  action_type: price_reduced
+                  resolution: null
+                  note: Dropped price 15% on Amazon and eBay
+                  assigned_to:
+                    id: 4
+                    name: Jo Merchant
+                  snooze_until: null
+                  acted_at: '2026-07-13T14:05:22+00:00'
+                  updated_by:
+                    id: 1
+                    name: Administrator
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      action_type:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: An action type is required when recording an in-progress
+                    action.
+                  errors:
+                    action_type:
+                    - An action type is required when recording an in-progress action.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
-      x-required-scope: inventory:write
-      operationId: put-api-inventory-aging-notes-product
+      operationId: put-api-inventory-aging-actions-product
     delete:
       tags:
       - Inventory Intelligence
-      summary: Delete Product Note
-      description: 'Delete the aging note for a product.
+      summary: Clear Product Aging Action
+      description: 'Remove a product''s recorded aging action state, returning it
+        to needs-action.
 
 
-        :::info[Required scope: `inventory:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.'
+        When granular permissions are enabled for the account, this endpoint requires
+        the `inventory.manage_aging` permission.'
       parameters:
       - name: product
         in: path
         schema:
-          type: integer
+          type: string
         required: true
-        description: Product ID
-        example: '10'
+        description: The product ID.
       responses:
         '204':
           description: No Content
@@ -118302,8 +118543,159 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
-      x-required-scope: inventory:write
-      operationId: delete-api-inventory-aging-notes-product
+      operationId: delete-api-inventory-aging-actions-product
+  /api/inventory-aging/actions/bulk:
+    post:
+      tags:
+      - Inventory Intelligence
+      summary: Bulk Record Product Aging Actions
+      description: 'Record the same aging action state for up to 50 products in one
+        call. Field rules match the single-product endpoint (`action_type` required
+        for in_progress, `resolution` required for resolved, `snooze_until` only for
+        accepted).
+
+
+        Returns a per-product result list; a failure on one product does not roll
+        back the others.
+
+
+        When granular permissions are enabled for the account, this endpoint requires
+        the `inventory.manage_aging` permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_ids:
+                  type: array
+                  items:
+                    type: integer
+                status:
+                  type: string
+                note:
+                  type: string
+                snooze_until:
+                  type: string
+              example:
+                product_ids:
+                - 1935
+                - 1994
+                - 2017
+                status: accepted
+                note: Evergreen replacement-part stock
+                snooze_until: '2026-10-01'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        ok:
+                          type: boolean
+                example:
+                  results:
+                  - product_id: 1935
+                    ok: true
+                  - product_id: 1994
+                    ok: true
+                  - product_id: 2017
+                    ok: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      product_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Bulk actions are limited to 50 products at a time.
+                  errors:
+                    product_ids:
+                    - Bulk actions are limited to 50 products at a time.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-inventory-aging-actions-bulk
+  /api/inventory-aging/actions/generate-ai-suggestions:
+    post:
+      tags:
+      - Inventory Intelligence
+      summary: Generate AI Aging Suggestions
+      description: 'Start a background process that scores aged products with AI and
+        caches a recommended next action on each. Returns a tracked job id you can
+        poll for completion; when the job finishes, the aging report shows the AI-scored
+        suggestions in place of the rule-based ones. If AI is disabled or unavailable
+        for the account, the job completes immediately and rows keep their rule-based
+        suggestions.
+
+
+        Takes no request body.
+
+
+        When granular permissions are enabled for the account, this endpoint requires
+        the `inventory.manage_aging` permission.'
+      requestBody:
+        content: {}
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 84213
+                  message: AI aging suggestions are being generated.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-inventory-aging-actions-generate-ai-suggestions
   /api/inventory-expiry:
     get:
       tags:
