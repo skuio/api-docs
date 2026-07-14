@@ -427289,6 +427289,498 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-purchase-invoices-supplier-payments-allocation-suggestion
+  /api/purchase-invoices/supplier-payments/scan-proof:
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Scan Payment Proof
+      description: 'Extract payment fields from an uploaded payment proof (a wire
+        confirmation or receipt) using OCR, to prefill the payment form. Stateless
+        — nothing is persisted. Returns the reference, amount, currency, value date,
+        and payee name when they can be read.
+
+
+        Rate limited to 40 requests/minute. Requires OCR to be enabled for the account.
+        Requires Bearer token.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: 'Payment proof image or PDF (wire confirmation / receipt).
+                    Max 10 MB. Types: pdf, jpg, jpeg, png, gif, webp, tiff, bmp.'
+                  format: binary
+                supplier_id:
+                  type: integer
+                  description: Optional. Scopes OCR-usage metering to the supplier.
+                    The payment run does not exist yet at scan time.
+                  example: '12'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reference:
+                        type: string
+                      amount:
+                        type: integer
+                      currency_code:
+                        type: string
+                      value_date:
+                        type: string
+                      payee_name:
+                        type: string
+                example:
+                  data:
+                    reference: WIRE-20260711-42
+                    amount: 5000
+                    currency_code: USD
+                    value_date: '2026-07-11'
+                    payee_name: Acme Supplies Ltd
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: OCR is not enabled for this account. Enable it in Settings
+                    → Accounting → Invoice OCR to scan payment proofs.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-purchase-invoices-supplier-payments-scan-proof
+  /api/purchase-invoices/supplier-payments/{supplierPaymentId}/send-remittance:
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Send Supplier Payment Remittance
+      description: 'Email a statement-style remittance advice to the supplier for
+        a recorded payment run. Lists every invoice and bill the payment covered with
+        its amount, plus the total — bank and account numbers are never included.
+        Optionally attaches previously uploaded documents (e.g. the payment proof)
+        and stamps the payment as remittance-sent.
+
+
+        Rate limited to 60 requests/minute. Requires Bearer token.
+
+
+        Body fields:
+
+        - to (required, email): recipient address.
+
+        - cc (optional, array of emails, max 10).
+
+        - subject (required, string, max 255).
+
+        - note (optional, string, max 2000): added to the email body. Do not include
+        bank details.
+
+        - attachment_ids (optional, array of integers): ids of attachments on this
+        payment to include.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: string
+                cc:
+                  type: array
+                  items:
+                    type: string
+                subject:
+                  type: string
+                note:
+                  type: string
+                attachment_ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                to: ap@acme-supplies.com
+                cc:
+                - controller@acme-supplies.com
+                subject: Remittance Advice — Payment 2026-07-11
+                note: Payment sent via wire today. Please confirm receipt.
+                attachment_ids:
+                - 7
+      parameters:
+      - name: supplierPaymentId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The supplier payment run to send remittance for
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      supplier_id:
+                        type: integer
+                      supplier_name:
+                        type: string
+                      payment_date:
+                        type: string
+                      payment_type_id:
+                        type: integer
+                      payment_type_name:
+                        type: string
+                      external_reference:
+                        type: string
+                      total_amount:
+                        type: integer
+                      currency_code:
+                        type: string
+                      remittance_sent_at:
+                        type: string
+                      created_at:
+                        type: string
+                      allocations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            doc_type:
+                              type: string
+                            purchase_invoice_id:
+                              type: integer
+                            bill_id:
+                              type: string
+                              nullable: true
+                            reference:
+                              type: string
+                            amount:
+                              type: integer
+                            payment_id:
+                              type: integer
+                      attachments:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            original_filename:
+                              type: string
+                            mime_type:
+                              type: string
+                            size:
+                              type: integer
+                            description:
+                              type: string
+                              nullable: true
+                            category:
+                              type: string
+                            category_label:
+                              type: string
+                            uploaded_by:
+                              type: integer
+                            uploader_name:
+                              type: string
+                            created_at:
+                              type: string
+                example:
+                  data:
+                    id: 1
+                    supplier_id: 12
+                    supplier_name: Acme Supplies Ltd
+                    payment_date: '2026-07-11'
+                    payment_type_id: 1
+                    payment_type_name: Wire
+                    external_reference: WIRE-42
+                    total_amount: 5000
+                    currency_code: USD
+                    remittance_sent_at: '2026-07-13T14:05:00+00:00'
+                    created_at: '2026-07-11T12:00:00Z'
+                    allocations:
+                    - id: 1
+                      doc_type: purchase_invoice
+                      purchase_invoice_id: 42
+                      bill_id: null
+                      reference: INV-2026-101
+                      amount: 4120
+                      payment_id: 90
+                    attachments:
+                    - id: 7
+                      original_filename: wire-confirmation.pdf
+                      mime_type: application/pdf
+                      size: 84213
+                      description: null
+                      category: payment_proof
+                      category_label: Payment Proof
+                      uploaded_by: 3
+                      uploader_name: Jane Doe
+                      created_at: '2026-07-11T12:01:00+00:00'
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: One or more attachments do not belong to this payment.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-invoices-supplier-payments-supplierpaymentid-send-remittance
+  /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: List Supplier Payment Attachments
+      description: 'List the documents attached to a supplier payment run (e.g. the
+        scanned payment proof), newest first.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The supplier payment run
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        original_filename:
+                          type: string
+                        mime_type:
+                          type: string
+                        size:
+                          type: integer
+                        description:
+                          type: string
+                          nullable: true
+                        category:
+                          type: string
+                        category_label:
+                          type: string
+                        uploaded_by:
+                          type: integer
+                        uploader_name:
+                          type: string
+                        created_at:
+                          type: string
+                example:
+                  data:
+                  - id: 7
+                    original_filename: wire-confirmation.pdf
+                    mime_type: application/pdf
+                    size: 84213
+                    description: null
+                    category: payment_proof
+                    category_label: Payment Proof
+                    uploaded_by: 3
+                    uploader_name: Jane Doe
+                    created_at: '2026-07-11T12:01:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-invoices-supplier-payments-supplierpayment-attachments
+    post:
+      tags:
+      - Purchase Invoices
+      summary: Upload Supplier Payment Attachment
+      description: 'Attach a document to a supplier payment run — typically the payment
+        proof captured when recording the payment.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: 'Document to attach. Max 10 MB. Types: pdf, jpg, jpeg,
+                    png, gif, webp, doc, docx, xls, xlsx, csv, txt.'
+                  format: binary
+                category:
+                  type: string
+                  description: 'Classification: payment_proof or other (default: other).'
+                  example: payment_proof
+                description:
+                  type: string
+                  description: Optional note (max 500 chars).
+                  example: Wire confirmation
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The supplier payment run
+        example: '1'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      original_filename:
+                        type: string
+                      mime_type:
+                        type: string
+                      size:
+                        type: integer
+                      description:
+                        type: string
+                      category:
+                        type: string
+                      category_label:
+                        type: string
+                      uploaded_by:
+                        type: integer
+                      uploader_name:
+                        type: string
+                      created_at:
+                        type: string
+                example:
+                  data:
+                    id: 7
+                    original_filename: wire-confirmation.pdf
+                    mime_type: application/pdf
+                    size: 84213
+                    description: Wire confirmation
+                    category: payment_proof
+                    category_label: Payment Proof
+                    uploaded_by: 3
+                    uploader_name: Jane Doe
+                    created_at: '2026-07-11T12:01:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-purchase-invoices-supplier-payments-supplierpayment-attachments
+  /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments/{attachment}:
+    get:
+      tags:
+      - Purchase Invoices
+      summary: Download Supplier Payment Attachment
+      description: 'Download an attachment file from a supplier payment run. Returns
+        the raw file (not JSON).
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The supplier payment run
+        example: '1'
+      - name: attachment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The attachment to download
+        example: '7'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-invoices-supplier-payments-supplierpayment-attachments-attachment
+    delete:
+      tags:
+      - Purchase Invoices
+      summary: Delete Supplier Payment Attachment
+      description: 'Delete an attachment from a supplier payment run and remove the
+        file from storage.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: supplierPayment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The supplier payment run
+        example: '1'
+      - name: attachment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The attachment to delete
+        example: '7'
+      responses:
+        '204':
+          description: No Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                example: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-purchase-invoices-supplier-payments-supplierpayment-attachments-attachment
   /api/vendor-returns:
     get:
       tags:
