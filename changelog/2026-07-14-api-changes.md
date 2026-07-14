@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-14
-description: This release includes 10 additions, 5 changes, 5 removals. 5 breaking changes — action required.
+description: This release includes 12 additions, 7 removals. 7 breaking changes — action required.
 authors: [product-team]
-tags: [added, changed, removed, breaking]
+tags: [added, removed, breaking]
 date: 2026-07-14
 ---
 
-This release includes 10 additions, 5 changes, 5 removals. 5 breaking changes — action required.
+This release includes 12 additions, 7 removals. 7 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -19,6 +19,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ## ⚠️ Breaking changes
 
 ### Removed endpoints
+
+#### Outsourced Production
+- **Removed** `POST /api/manufacturing/manufacturing-orders/{id}/outsource` — Outsource MO
+- **Removed** `POST /api/manufacturing/manufacturing-orders/{id}/outsourced-receipt` — Record Outsourced Receipt
 
 #### Suppliers
 - **Removed** `GET /api/suppliers/{supplier}/ap-summary` — Get Supplier AP Summary
@@ -36,6 +40,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Outsourced Production
 - `GET /api/manufacturing/manufacturing-orders/{manufacturingOrder}/backflush-preview` — Get Backflush Preview
+- `POST /api/manufacturing/manufacturing-orders/{manufacturingOrder}/outsource` — Outsource MO
+- `POST /api/manufacturing/manufacturing-orders/{manufacturingOrder}/outsourced-receipt` — Record Outsourced Receipt
 
 ### Purchase Invoices
 - `POST /api/purchase-invoices/{purchaseInvoice}/reset-due-date` — Reset Invoice Due Date to Term
@@ -50,23 +56,5 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Vendor Credits
 - `GET /api/vendor-credits/{vendor_credit}/pdf` — Get Vendor Credit PDF
-
-## Changed
-
-### BOMs
-- `POST /api/manufacturing/boms/{id}/activate` — Activate BOM
-  - removed response code(s): `200`
-
-### Contractors
-- `DELETE /api/manufacturing/contractors/{supplier}` — Delete Contractor
-  - new response code(s): `422`
-
-### Manufacturing Orders
-- `POST /api/manufacturing/manufacturing-orders/{id}/confirm` — Confirm Manufacturing Order
-  - removed response code(s): `200`
-- `POST /api/manufacturing/manufacturing-orders/{id}/start` — Start Manufacturing Order
-  - removed response code(s): `200`
-- `GET /api/manufacturing/manufacturing-orders/{manufacturingOrder}/print` — Download Work Order PDF
-  - new response code(s): `500`
 
 _Spec version 1.0.0 → 1.0.0._
