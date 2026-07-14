@@ -18763,6 +18763,8 @@ paths:
                           type: boolean
                         locked_update_pending:
                           type: boolean
+                        locked_amend_blocked:
+                          type: boolean
                         routing:
                           type: object
                           properties:
@@ -18903,6 +18905,7 @@ paths:
                       reason: null
                     can_sync_now: true
                     locked_update_pending: false
+                    locked_amend_blocked: false
                     routing:
                       key: individual
                       label: Individual
@@ -18955,6 +18958,7 @@ paths:
                       reason: batch_member
                     can_sync_now: false
                     locked_update_pending: false
+                    locked_amend_blocked: false
                     routing:
                       key: daily
                       label: Daily
@@ -19601,6 +19605,8 @@ paths:
                         type: boolean
                       locked_update_pending:
                         type: boolean
+                      locked_amend_blocked:
+                        type: boolean
                       sync:
                         type: object
                         properties:
@@ -20009,6 +20015,7 @@ paths:
                       reason: null
                     can_sync_now: true
                     locked_update_pending: false
+                    locked_amend_blocked: false
                     sync:
                       key: enabled
                       label: Enabled
@@ -20770,7 +20777,12 @@ paths:
         and reports `amended: true`. The entry keeps its "Synced, Locked" status;
         if the reference change covered all the local drift, the pending-update flag
         clears. To push amount or date changes, remove the payment or credit note
-        on the provider document first, then Resync.
+        on the provider document first, then Resync. **Fully-locked documents:** some
+        provider document types (for example a credit note with a payment or allocation
+        applied) are locked so hard that even the reference cannot be pushed. For
+        those, Resync mints no operation and reports `locked_blocked: true`, and the
+        entry carries a `locked_amend_blocked` flag; nothing changes on the provider
+        until the payment or allocation is removed there.
 
 
         **Behaviour:** mints the entry''s manual push op (manual eligibility bypasses
@@ -20789,10 +20801,12 @@ paths:
         and `data.entry` is that (possibly new) entry.
 
 
-        **Response:** 200 with `data.sync` ({ eligible, synced, failed, error, regenerated,
-        entry_id }) and `data.entry` (the refreshed ledger entry object). `error`
-        carries the provider rejection message when `failed` is true. `message` summarises
-        the outcome.
+        **Response:** 200 with `data.sync` ({ eligible, synced, failed, amended, locked_blocked,
+        error, regenerated, entry_id }) and `data.entry` (the refreshed ledger entry
+        object, which includes a `locked_amend_blocked` flag). `error` carries the
+        provider rejection message when `failed` is true. `locked_blocked` is true
+        when the provider document is fully locked and not even the reference could
+        be pushed. `message` summarises the outcome.
 
 
         Permission: requires `accounting.sync` (granular permissions; admins bypass;
@@ -20847,6 +20861,7 @@ paths:
                           reason: null
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         counterparty_name: Amazon
                         currency_code: USD
                         total_debit: '842.6700'
@@ -20897,6 +20912,7 @@ paths:
                           reason: null
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         counterparty_name: Amazon
                         currency_code: USD
                         total_debit: '842.6700'
@@ -20923,6 +20939,60 @@ paths:
                           finished_at: '2026-06-30T01:41:05+00:00'
                     message: Pushed to the provider — this entry is up to date.
                 example-2:
+                  summary: 200 OK — fully locked, reference not pushable (locked_blocked)
+                  value:
+                    data:
+                      sync:
+                        eligible: true
+                        synced: false
+                        failed: false
+                        amended: false
+                        locked_blocked: true
+                        error: null
+                        regenerated: false
+                        entry_id: 11026
+                      entry:
+                        id: 11026
+                        type:
+                          value: vendor_credit
+                          label: Vendor Credit
+                        status: posted
+                        display_status:
+                          key: locked
+                          label: Synced, Locked
+                          color: warning
+                          reason: null
+                        can_sync_now: true
+                        locked_update_pending: false
+                        locked_amend_blocked: true
+                        counterparty_name: Amazon
+                        currency_code: USD
+                        total_debit: '600.0000'
+                        total_credit: '600.0000'
+                        document_number: VC-9512
+                        reference: VC-9512-updated
+                        sync_provider: Xero
+                        sync_links:
+                        - id: 6033
+                          provider: Xero
+                          remote_type: credit_note
+                          remote_id: 9f2b7c41-2d5a-4a8e-b1c0-77a2e6d51a90
+                          link_state: remote_locked
+                          remote_status: PAID
+                          last_remote_seen_at: '2026-07-13T02:15:44+00:00'
+                        operations:
+                        - id: 90455
+                          state: succeeded
+                          operation: create
+                          direction: push
+                          error_class: null
+                          error_payload: null
+                          attempts: 1
+                          finished_at: '2026-07-01T09:12:30+00:00'
+                    message: This document is locked in the provider while a payment
+                      is applied — its reference can't be pushed until the payment
+                      is removed on the provider.
+                example-3:
                   summary: 200 OK — provider rejected (failed)
                   value:
                     data:
@@ -20947,6 +21017,7 @@ paths:
                           reason: Account code 200 is not a valid code for this document.
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         counterparty_name: Amazon
                         currency_code: USD
                         document_number: BILL-8114
@@ -21313,6 +21384,7 @@ paths:
                           reason: null
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         counterparty_name: Amazon
                         currency_code: USD
                         total_debit: '842.6700'
@@ -21445,6 +21517,7 @@ paths:
                           reason: null
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         sync:
                           key: enabled
                           label: Enabled
@@ -21483,6 +21556,7 @@ paths:
                           reason: source_cancelled
                         can_sync_now: true
                         locked_update_pending: false
+                        locked_amend_blocked: false
                         sync:
                           key: enabled
                           label: Enabled
@@ -22158,6 +22232,8 @@ paths:
                         type: boolean
                       locked_update_pending:
                         type: boolean
+                      locked_amend_blocked:
+                        type: boolean
                   message:
                     type: string
                 example:
@@ -22167,6 +22243,7 @@ paths:
                     display_status: excluded
                     can_sync_now: true
                     locked_update_pending: false
+                    locked_amend_blocked: false
                   message: Sync override updated.
         '422':
           description: Unprocessable Entity
@@ -23012,6 +23089,7 @@ paths:
                       display_status: excluded
                       can_sync_now: true
                       locked_update_pending: false
+                      locked_amend_blocked: false
                       total_debit: '5000.0000'
                       total_credit: '5000.0000'
                       effective_at: '2026-06-26T00:00:00Z'
