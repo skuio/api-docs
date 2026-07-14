@@ -413446,7 +413446,10 @@ paths:
 
         **Requires permission:** `purchase_orders.approve` Optionally include supplier_message
         to set the vendor-facing note (saved before the PO is emailed); omit it to
-        keep the saved message, or send an empty string to clear it.'
+        keep the saved message, or send an empty string to clear it. You may also
+        include an optional `reason` (string, max 255) describing why this revision
+        is being sent to the supplier; it is stored on the revision snapshot captured
+        for this send.'
       requestBody:
         content:
           application/json:
@@ -413455,8 +413458,11 @@ paths:
               properties:
                 supplier_message:
                   type: string
+                reason:
+                  type: string
               example:
                 supplier_message: Please ship in original cartons.
+                reason: Corrected quantities per supplier
       parameters:
       - name: purchase_order
         in: path
@@ -414195,6 +414201,830 @@ paths:
         '403': *id003
         '404': *id004
       operationId: delete-api-purchase-orders-purchase-order-opening-balance
+  /api/purchase-orders/{purchase_order}/snapshots:
+    get:
+      tags:
+      - Purchase Orders
+      summary: List Purchase Order Revisions
+      description: 'List the immutable revision snapshots captured for a purchase
+        order, newest first. A snapshot is recorded every time the order is sent to
+        the supplier, so this is the complete send history of the order.
+
+
+        Each snapshot preserves exactly what the supplier received at that revision
+        — the line quantities and costs, the order totals, a content hash of the sent
+        document, who sent it and when — together with the current acknowledgement
+        status of that revision.
+
+
+        Path params:
+
+        - `purchase_order` (required): id of the purchase order.
+
+
+        Response: a collection under `data`. Each item includes `revision_number`,
+        `reason`, `submission_format`, `sent_to_email`, `sent_by_name`, `sent_at`,
+        `acknowledgement_status` (one of `pending`, `acknowledged`, `changes_requested`,
+        `rejected`, `superseded`), `acknowledged_at`, `document_hash`, `total_quantity`
+        and `total_cost`.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.view`'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        purchase_order_id:
+                          type: integer
+                        revision_number:
+                          type: integer
+                        reason:
+                          type: string
+                        submission_format:
+                          type: string
+                        sent_to_email:
+                          type: string
+                        sent_by_name:
+                          type: string
+                        sent_at:
+                          type: string
+                        acknowledgement_status:
+                          type: string
+                        acknowledged_at:
+                          type: string
+                        document_hash:
+                          type: string
+                        total_quantity:
+                          type: integer
+                        total_cost:
+                          type: number
+                example:
+                  data:
+                  - id: 12
+                    purchase_order_id: 739
+                    revision_number: 2
+                    reason: Corrected qty per supplier
+                    submission_format: email_pdf_attachment
+                    sent_to_email: supplier@acme.com
+                    sent_by_name: K. Mizzi
+                    sent_at: '2026-07-12T09:03:00+00:00'
+                    acknowledgement_status: acknowledged
+                    acknowledged_at: '2026-07-12T14:00:00+00:00'
+                    document_hash: b659cce4f6fe9e5f...
+                    total_quantity: 124
+                    total_cost: 289.4
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-orders-purchase-order-snapshots
+  /api/purchase-orders/{purchase_order}/snapshots/{snapshot}:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get Purchase Order Revision
+      description: 'Retrieve a single purchase order revision snapshot with its full
+        header and line detail. The snapshot is a frozen copy of the order as it was
+        sent to the supplier for that revision.
+
+
+        Path params:
+
+        - `purchase_order` (required): id of the purchase order.
+
+        - `snapshot` (required): id of the revision snapshot to retrieve.
+
+
+        Response: a single snapshot object (not wrapped in `data`) with the header
+        summary, the captured `lines[]`, and the same top-level revision metadata
+        returned by the list endpoint (`revision_number`, `reason`, `submission_format`,
+        `sent_to_email`, `sent_by_name`, `sent_at`, `acknowledgement_status`, `acknowledged_at`,
+        `document_hash`, `total_quantity`, `total_cost`).
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.view`'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      - name: snapshot
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '12'
+        description: The snapshot ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_id:
+                    type: integer
+                  revision_number:
+                    type: integer
+                  reason:
+                    type: string
+                  submission_format:
+                    type: string
+                  sent_to_email:
+                    type: string
+                  sent_by_name:
+                    type: string
+                  sent_at:
+                    type: string
+                  acknowledgement_status:
+                    type: string
+                  acknowledged_at:
+                    type: string
+                  document_hash:
+                    type: string
+                  total_quantity:
+                    type: integer
+                  total_cost:
+                    type: number
+                  lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        purchase_order_line_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        description:
+                          type: string
+                        quantity:
+                          type: integer
+                        amount:
+                          type: number
+                        discount_rate:
+                          type: integer
+                        tax_rate:
+                          type: string
+                          nullable: true
+                        line_total:
+                          type: number
+                  header:
+                    type: object
+                    properties:
+                      purchase_order_number:
+                        type: string
+                      supplier_id:
+                        type: integer
+                      supplier_name:
+                        type: string
+                      currency_code:
+                        type: string
+                      currency_rate:
+                        type: integer
+                      estimated_delivery_date:
+                        type: string
+                        nullable: true
+                      etd:
+                        type: string
+                        nullable: true
+                      incoterm_code:
+                        type: string
+                        nullable: true
+                      payment_term_name:
+                        type: string
+                        nullable: true
+                      supplier_notes:
+                        type: string
+                        nullable: true
+                      total_quantity:
+                        type: integer
+                      total_cost:
+                        type: number
+                example:
+                  id: 12
+                  purchase_order_id: 739
+                  revision_number: 2
+                  reason: Corrected qty per supplier
+                  submission_format: email_pdf_attachment
+                  sent_to_email: supplier@acme.com
+                  sent_by_name: K. Mizzi
+                  sent_at: '2026-07-12T09:03:00+00:00'
+                  acknowledgement_status: acknowledged
+                  acknowledged_at: '2026-07-12T14:00:00+00:00'
+                  document_hash: b659cce4...
+                  total_quantity: 124
+                  total_cost: 289.4
+                  lines:
+                  - purchase_order_line_id: 7
+                    product_id: 7
+                    sku: SKU-1042
+                    description: Widget A
+                    quantity: 74
+                    amount: 3.1
+                    discount_rate: 0
+                    tax_rate: null
+                    line_total: 229.4
+                  header:
+                    purchase_order_number: PO-000739
+                    supplier_id: 14
+                    supplier_name: Acme Supply
+                    currency_code: USD
+                    currency_rate: 1
+                    estimated_delivery_date: null
+                    etd: null
+                    incoterm_code: null
+                    payment_term_name: null
+                    supplier_notes: null
+                    total_quantity: 124
+                    total_cost: 289.4
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-orders-purchase-order-snapshots-snapshot
+  /api/purchase-orders/{purchase_order}/changes-since-sent:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get Changes Since Last Sent
+      description: 'Compare the live purchase order against the most recent revision
+        snapshot and return a line-level and header-level diff. Use it to detect when
+        an order has been edited after it was last sent to the supplier, so those
+        pending changes can be reviewed and re-sent.
+
+
+        Path params:
+
+        - `purchase_order` (required): id of the purchase order.
+
+
+        Response under `data`:
+
+        - `latest_revision_number` / `latest_sent_at` — the revision the live order
+        is compared against.
+
+        - `has_pending_changes` — `true` when the live order differs from that revision.
+
+        - `changes_pending_since` — when the order first diverged from the sent revision.
+
+        - `line_changes[]` — each entry has a `change_type` of `added`, `removed`
+        or `modified`, and (for `modified`) a `fields[]` array of `{ field, from,
+        to }`.
+
+        - `header_changes[]` — same shape for header-level fields.
+
+
+        If the order has never been sent there is no revision to compare against.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.view`'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      latest_revision_number:
+                        type: integer
+                      latest_sent_at:
+                        type: string
+                      has_pending_changes:
+                        type: boolean
+                      changes_pending_since:
+                        type: string
+                      line_changes:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            purchase_order_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            description:
+                              type: string
+                            change_type:
+                              type: string
+                            fields:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  field:
+                                    type: string
+                                  from:
+                                    type: integer
+                                  to:
+                                    type: integer
+                      header_changes:
+                        type: array
+                example:
+                  data:
+                    latest_revision_number: 1
+                    latest_sent_at: '2026-07-10T14:14:00+00:00'
+                    has_pending_changes: true
+                    changes_pending_since: '2026-07-11T10:00:00+00:00'
+                    line_changes:
+                    - purchase_order_line_id: 7
+                      sku: SKU-1042
+                      description: Widget A
+                      change_type: modified
+                      fields:
+                      - field: quantity
+                        from: 76
+                        to: 74
+                    header_changes: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-orders-purchase-order-changes-since-sent
+  /api/purchase-orders/{purchase_order}/supplier-responses:
+    get:
+      tags:
+      - Purchase Orders
+      summary: List Supplier Responses
+      description: 'List the supplier responses recorded against a purchase order''s
+        sent revisions, newest first. A response captures how the supplier replied
+        to a revision they received — accepting it, requesting changes, or rejecting
+        it — optionally with per-line confirmed quantities, costs and dates.
+
+
+        Path params:
+
+        - `purchase_order` (required): id of the purchase order.
+
+
+        Response: a collection under `data`. Each item includes `response_type` (`accepted`,
+        `changes_requested` or `rejected`), `source`, `responder`, `note`, `recorded_by_name`,
+        `responded_at`, the `purchase_order_snapshot_id` the response applies to,
+        and a `lines[]` array of the supplier-confirmed line detail.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.view`'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        purchase_order_id:
+                          type: integer
+                        purchase_order_snapshot_id:
+                          type: integer
+                        response_type:
+                          type: string
+                        source:
+                          type: string
+                        responder:
+                          type: string
+                        note:
+                          type: string
+                        recorded_by_name:
+                          type: string
+                        responded_at:
+                          type: string
+                        lines:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              purchase_order_line_id:
+                                type: integer
+                              sku:
+                                type: string
+                              ordered_quantity:
+                                type: integer
+                              confirmed_quantity:
+                                type: integer
+                              confirmed_unit_cost:
+                                type: string
+                                nullable: true
+                              confirmed_date:
+                                type: string
+                                nullable: true
+                              exception_code:
+                                type: string
+                              status:
+                                type: string
+                              note:
+                                type: string
+                example:
+                  data:
+                  - id: 5
+                    purchase_order_id: 739
+                    purchase_order_snapshot_id: 11
+                    response_type: changes_requested
+                    source: internal
+                    responder: Jane @ Acme
+                    note: MOQ is 74
+                    recorded_by_name: K. Mizzi
+                    responded_at: '2026-07-11T12:00:00+00:00'
+                    lines:
+                    - id: 9
+                      purchase_order_line_id: 7
+                      sku: SKU-1042
+                      ordered_quantity: 76
+                      confirmed_quantity: 74
+                      confirmed_unit_cost: null
+                      confirmed_date: null
+                      exception_code: MIN
+                      status: changed
+                      note: MOQ is 74
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-purchase-orders-purchase-order-supplier-responses
+    post:
+      tags:
+      - Purchase Orders
+      summary: Record Supplier Response
+      description: "Record a supplier's response to a sent purchase order revision.\
+        \ Use it to log that the supplier accepted the order, requested changes, or\
+        \ rejected it, optionally capturing the quantities, costs and dates the supplier\
+        \ confirmed for individual lines.\n\nRecording an `accepted` response stamps\
+        \ the order's last supplier confirmation time. Recording a `changes_requested`\
+        \ response moves the order into a supplier-change state so the confirmed quantities\
+        \ can be reviewed and applied.\n\nPath params:\n- `purchase_order` (required):\
+        \ id of the purchase order.\n\nBody:\n- `response_type` (required): one of\
+        \ `accepted`, `changes_requested`, `rejected`.\n- `source` (optional): one\
+        \ of `internal`, `supplier_portal`, `email`.\n- `responder` (nullable string):\
+        \ name of the person on the supplier side.\n- `note` (nullable string, max\
+        \ 5000).\n- `snapshot_id` (nullable integer): id of the revision snapshot\
+        \ the response applies to.\n- `lines` (optional array). For each line:\n \
+        \   - `purchase_order_line_id` (required with `lines`, integer).\n    - `ordered_quantity`\
+        \ (nullable numeric).\n    - `confirmed_quantity` (nullable numeric).\n  \
+        \  - `confirmed_unit_cost` (nullable numeric).\n    - `confirmed_date` (nullable\
+        \ date).\n    - `exception_code` (nullable): one of `CAP`, `MAT`, `LOG`, `PRI`,\
+        \ `UOM`, `SUB`, `MIN`, `DOC`.\n    - `status` (required with `lines`): one\
+        \ of `accepted`, `changed`, `rejected`.\n    - `note` (nullable string).\n\
+        \nReturns the recorded response and the refreshed purchase order under `data`.\n\
+        \nAuthentication: Requires Bearer token.\n\n**Requires permission:** `purchase_orders.update`"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                response_type:
+                  type: string
+                source:
+                  type: string
+                responder:
+                  type: string
+                note:
+                  type: string
+                snapshot_id:
+                  type: integer
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      purchase_order_line_id:
+                        type: integer
+                      ordered_quantity:
+                        type: integer
+                      confirmed_quantity:
+                        type: integer
+                      confirmed_unit_cost:
+                        type: string
+                        nullable: true
+                      confirmed_date:
+                        type: string
+                        nullable: true
+                      exception_code:
+                        type: string
+                      status:
+                        type: string
+                      note:
+                        type: string
+              example:
+                response_type: changes_requested
+                source: internal
+                responder: Jane @ Acme
+                note: MOQ is 74
+                snapshot_id: 11
+                lines:
+                - purchase_order_line_id: 7
+                  ordered_quantity: 76
+                  confirmed_quantity: 74
+                  confirmed_unit_cost: null
+                  confirmed_date: null
+                  exception_code: MIN
+                  status: changed
+                  note: MOQ is 74
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      response:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          purchase_order_id:
+                            type: integer
+                          purchase_order_snapshot_id:
+                            type: integer
+                          response_type:
+                            type: string
+                          source:
+                            type: string
+                          responder:
+                            type: string
+                          note:
+                            type: string
+                          recorded_by_name:
+                            type: string
+                          responded_at:
+                            type: string
+                          lines:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                purchase_order_line_id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                ordered_quantity:
+                                  type: integer
+                                confirmed_quantity:
+                                  type: integer
+                                confirmed_unit_cost:
+                                  type: string
+                                  nullable: true
+                                confirmed_date:
+                                  type: string
+                                  nullable: true
+                                exception_code:
+                                  type: string
+                                status:
+                                  type: string
+                                note:
+                                  type: string
+                      purchase_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          purchase_order_number:
+                            type: string
+                          submission_status:
+                            type: string
+                          last_supplier_confirmed_at:
+                            type: string
+                            nullable: true
+                example:
+                  message: Supplier response recorded.
+                  data:
+                    response:
+                      id: 5
+                      purchase_order_id: 739
+                      purchase_order_snapshot_id: 11
+                      response_type: changes_requested
+                      source: internal
+                      responder: Jane @ Acme
+                      note: MOQ is 74
+                      recorded_by_name: K. Mizzi
+                      responded_at: '2026-07-11T12:00:00+00:00'
+                      lines:
+                      - id: 9
+                        purchase_order_line_id: 7
+                        sku: SKU-1042
+                        ordered_quantity: 76
+                        confirmed_quantity: 74
+                        confirmed_unit_cost: null
+                        confirmed_date: null
+                        exception_code: MIN
+                        status: changed
+                        note: MOQ is 74
+                    purchase_order:
+                      id: 739
+                      purchase_order_number: PO-000739
+                      submission_status: change_supplier
+                      last_supplier_confirmed_at: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-purchase-orders-purchase-order-supplier-responses
+  /api/purchase-orders/{purchase_order}/supplier-responses/{response}/apply:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Apply Supplier Confirmed Changes
+      description: 'Apply a `changes_requested` supplier response''s confirmed line
+        quantities back onto the live purchase order. Each confirmed quantity is written
+        to its line, respecting the floors already received or invoiced on that line
+        so committed quantities are never reduced below what has already happened.
+
+
+        Applying the confirmed changes creates a divergence between the live order
+        and the last revision the supplier received, which the buyer then re-sends
+        as a new revision.
+
+
+        Path params:
+
+        - `purchase_order` (required): id of the purchase order.
+
+        - `response` (required): id of the supplier response to apply.
+
+
+        No request body.
+
+
+        Response under `data`: the refreshed `purchase_order`, an `applied` count
+        of lines updated, and a `skipped[]` array describing any lines that could
+        not be changed.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.update`'
+      requestBody:
+        content: {}
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '739'
+        description: The purchase order ID.
+      - name: response
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '5'
+        description: The response ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      purchase_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          submission_status:
+                            type: string
+                          changes_pending_since:
+                            type: string
+                      applied:
+                        type: integer
+                      skipped:
+                        type: array
+                example:
+                  message: Applied 1 supplier-confirmed line change(s).
+                  data:
+                    purchase_order:
+                      id: 739
+                      submission_status: change_buyer
+                      changes_pending_since: '2026-07-11T12:05:00+00:00'
+                    applied: 1
+                    skipped: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-purchase-orders-purchase-order-supplier-responses-response-apply
   /api/purchase-orders/{purchase_order}/lines-for-invoice:
     get:
       tags:

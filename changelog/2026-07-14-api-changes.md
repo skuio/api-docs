@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-14
-description: This release includes 4 additions, 5 changes, 5 removals. 5 breaking changes — action required.
+description: This release includes 10 additions, 5 changes, 5 removals. 5 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-14
 ---
 
-This release includes 4 additions, 5 changes, 5 removals. 5 breaking changes — action required.
+This release includes 10 additions, 5 changes, 5 removals. 5 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -39,6 +39,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Purchase Invoices
 - `POST /api/purchase-invoices/{purchaseInvoice}/reset-due-date` — Reset Invoice Due Date to Term
+
+### Purchase Orders
+- `GET /api/purchase-orders/{purchase_order}/changes-since-sent` — Get Changes Since Last Sent
+- `GET /api/purchase-orders/{purchase_order}/snapshots` — List Purchase Order Revisions
+- `GET /api/purchase-orders/{purchase_order}/snapshots/{snapshot}` — Get Purchase Order Revision
+- `GET /api/purchase-orders/{purchase_order}/supplier-responses` — List Supplier Responses
+- `POST /api/purchase-orders/{purchase_order}/supplier-responses` — Record Supplier Response
+- `POST /api/purchase-orders/{purchase_order}/supplier-responses/{response}/apply` — Apply Supplier Confirmed Changes
 
 ### Vendor Credits
 - `GET /api/vendor-credits/{vendor_credit}/pdf` — Get Vendor Credit PDF
