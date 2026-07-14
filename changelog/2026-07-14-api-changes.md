@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-14
-description: This release includes 17 additions, 2 changes, 9 removals. 10 breaking changes — action required.
+description: This release includes 18 additions, 2 changes, 9 removals. 10 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-14
 ---
 
-This release includes 17 additions, 2 changes, 9 removals. 10 breaking changes — action required.
+This release includes 18 additions, 2 changes, 9 removals. 10 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -45,6 +45,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `page`, `per_page`
 
 ## Added
+
+### 17TRACK
+- `GET /api/integrations/17track/instances/{instance}/trackable-channels` — Get Trackable Channels
 
 ### Bills
 - `POST /api/bills/{bill}/reset-due-date` — Reset Bill Due Date to Term
