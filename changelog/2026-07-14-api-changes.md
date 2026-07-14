@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-14
-description: This release includes 10 additions, 4 removals. 4 breaking changes — action required.
+description: This release includes 4 additions, 5 changes, 5 removals. 5 breaking changes — action required.
 authors: [product-team]
-tags: [added, removed, breaking]
+tags: [added, changed, removed, breaking]
 date: 2026-07-14
 ---
 
-This release includes 10 additions, 4 removals. 4 breaking changes — action required.
+This release includes 4 additions, 5 changes, 5 removals. 5 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -20,12 +20,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Removed endpoints
 
-#### Purchase Orders
-- **Removed** `POST /api/purchase-orders/import-lines` — Import Lines from CSV
-- **Removed** `POST /api/purchase-orders/import/preview` — Preview Purchase Order Import
-
-#### Sales Credits
-- **Removed** `GET /api/sales-credits/{sales_credit}/invoice/preview` — Preview Invoice
+#### Suppliers
+- **Removed** `GET /api/suppliers/{supplier}/ap-summary` — Get Supplier AP Summary
+- **Removed** `GET /api/suppliers/{supplier}/payables` — List Supplier Payables
+- **Removed** `GET /api/suppliers/{supplier}/statement` — Get Supplier Statement
+- **Removed** `GET /api/suppliers/{supplier}/statement/export` — Export Supplier Statement
 
 #### Vendor Credits
 - **Removed** `GET /api/vendor-credits/{vendor_credit}/invoice/preview` — Preview Credit Note
@@ -35,19 +34,31 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Bills
 - `POST /api/bills/{bill}/reset-due-date` — Reset Bill Due Date to Term
 
-### Purchase Invoices
-- `POST /api/purchase-invoices/supplier-payments/scan-proof` — Scan Payment Proof
-- `POST /api/purchase-invoices/supplier-payments/{supplierPaymentId}/send-remittance` — Send Supplier Payment Remittance
-- `GET /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments` — List Supplier Payment Attachments
-- `POST /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments` — Upload Supplier Payment Attachment
-- `DELETE /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments/{attachment}` — Delete Supplier Payment Attachment
-- `GET /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments/{attachment}` — Download Supplier Payment Attachment
-- `POST /api/purchase-invoices/{purchaseInvoice}/reset-due-date` — Reset Invoice Due Date to Term
+### Outsourced Production
+- `GET /api/manufacturing/manufacturing-orders/{manufacturingOrder}/backflush-preview` — Get Backflush Preview
 
-### Sales Credits
-- `GET /api/sales-credits/{sales_credit}/pdf` — Get Sales Credit PDF
+### Purchase Invoices
+- `POST /api/purchase-invoices/{purchaseInvoice}/reset-due-date` — Reset Invoice Due Date to Term
 
 ### Vendor Credits
 - `GET /api/vendor-credits/{vendor_credit}/pdf` — Get Vendor Credit PDF
+
+## Changed
+
+### BOMs
+- `POST /api/manufacturing/boms/{id}/activate` — Activate BOM
+  - removed response code(s): `200`
+
+### Contractors
+- `DELETE /api/manufacturing/contractors/{supplier}` — Delete Contractor
+  - new response code(s): `422`
+
+### Manufacturing Orders
+- `POST /api/manufacturing/manufacturing-orders/{id}/confirm` — Confirm Manufacturing Order
+  - removed response code(s): `200`
+- `POST /api/manufacturing/manufacturing-orders/{id}/start` — Start Manufacturing Order
+  - removed response code(s): `200`
+- `GET /api/manufacturing/manufacturing-orders/{manufacturingOrder}/print` — Download Work Order PDF
+  - new response code(s): `500`
 
 _Spec version 1.0.0 → 1.0.0._
