@@ -1,16 +1,30 @@
 ---
 title: API changes — 2026-07-14
-description: This release includes 6 additions.
+description: This release includes 8 additions, 2 removals. 2 breaking changes — action required.
 authors: [product-team]
-tags: [added]
+tags: [added, removed, breaking]
 date: 2026-07-14
 ---
 
-This release includes 6 additions.
+This release includes 8 additions, 2 removals. 2 breaking changes — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Removed endpoints
+
+#### Sales Credits
+- **Removed** `GET /api/sales-credits/{sales_credit}/invoice/preview` — Preview Invoice
+
+#### Vendor Credits
+- **Removed** `GET /api/vendor-credits/{vendor_credit}/invoice/preview` — Preview Credit Note
 
 ## Added
 
@@ -21,5 +35,11 @@ This release includes 6 additions.
 - `POST /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments` — Upload Supplier Payment Attachment
 - `DELETE /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments/{attachment}` — Delete Supplier Payment Attachment
 - `GET /api/purchase-invoices/supplier-payments/{supplierPayment}/attachments/{attachment}` — Download Supplier Payment Attachment
+
+### Sales Credits
+- `GET /api/sales-credits/{sales_credit}/pdf` — Get Sales Credit PDF
+
+### Vendor Credits
+- `GET /api/vendor-credits/{vendor_credit}/pdf` — Get Vendor Credit PDF
 
 _Spec version 1.0.0 → 1.0.0._
