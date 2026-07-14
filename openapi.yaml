@@ -21433,13 +21433,12 @@ paths:
       tags:
       - Ledger (Accounting v2)
       summary: Recreate Accounting Transaction
-      description: '"Create a new accounting transaction" for an entry whose remote
-        document was VOIDED or DELETED in the accounting provider (display_status
-        `voided` — "Synced, Voided" — or `removed_in_provider` — "Synced, Deleted").
-        Once a provider document is voided there is nothing left to update on it,
-        so this action unlinks the dead document (severs the remote_gone sync link
-        + supersedes its open ops) and re-enqueues a fresh Create operation — a brand-new
-        provider document on the next sync drain.
+      description: '"Recreate document" for an entry whose remote document was VOIDED
+        or DELETED in the accounting provider (display_status `voided` — "Synced,
+        Voided" — or `removed_in_provider` — "Synced, Deleted"). Once a provider document
+        is voided/deleted there is nothing left to update on it, so this reverse+replaces
+        the entry into a fresh UNLINKED draft replacement and mints it from the same
+        source, even though the source itself never changed.
 
 
         :::info[Authorization]
@@ -21450,18 +21449,11 @@ paths:
         :::
 
 
-        **Eligibility gate (guarded):** severing the dead link is destructive and
-        irreversible, so the action first checks that a fresh document can actually
-        be created. Because clicking recreate is an explicit user action it uses the
-        *manual* verdict (like Sync Now): a bypassable settings opt-out (per-type
-        Sync toggle, granularity, per-type start date, force_disabled) does NOT block
-        it, but a *structural* wall does — connection inactive, batch member / open
-        batch, internal-only, or the entry dated before the provider’s conversion/start
-        date. When a structural blocker applies the action REFUSES without touching
-        the link: the response reports `recreated: false` with the real eligibility
-        reason (e.g. `before_provider_sync_start_date`) and the entry keeps its existing
-        `voided`/`removed_in_provider` status. When no accounting connection is configured
-        the reason is `no_accounting_connection`.
+        The dead provider link is RETAINED on the reversed original as the historical
+        record; the replacement starts with NO provider link and is chained via replaced_by_id,
+        so the detail view shows a "Replaces …" link. This action does NOT push and
+        does NOT touch the dead document — the user syncs the fresh draft to push
+        a brand-new document on demand.
 
 
         **Authentication:** Requires Bearer token.
@@ -21470,14 +21462,15 @@ paths:
         **Request body:** none.
 
 
-        **Response:** 200 with `data.recreate` ({ recreated, status, reason }) and
-        `data.entry` (the refreshed ledger entry object). `message` explains the outcome.
-        Returns 404 when the entry does not exist.
+        **Response:** 200 with `data.recreate` ({ recreated, status, reason, replacement_id
+        }) and `data.entry` (the now-reversed original). `replacement_id` is the id
+        of the fresh unlinked draft. `recreated` is false with reason `not_voided`
+        (nothing voided to replace), `generation_disabled`, or `source_not_accounting_ready`
+        (the source no longer produces an entry). Returns 404 when the entry does
+        not exist.
 
 
-        Permission: requires `accounting.sync` (granular permissions; admins bypass;
-        unenforced when the tenant''s granular_permissions feature flag is off). Returns
-        403 without it.'
+        Permission: requires `accounting.sync`.'
       requestBody:
         content: {}
       parameters:
@@ -21503,76 +21496,39 @@ paths:
                 type: object
               examples:
                 example-0:
-                  summary: 200 OK — new transaction queued
+                  summary: 200 OK — reversed + fresh unlinked replacement
                   value:
                     data:
                       recreate:
                         recreated: true
-                        status: pending_sync
-                        reason: null
-                      entry:
-                        id: 1842
-                        uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
-                        type:
-                          value: purchase_order_invoice
-                          label: Purchase Order Invoice
-                        status: posted
-                        display_status:
-                          key: pending_sync
-                          label: Pending sync
-                          color: grey
-                          reason: null
-                        can_sync_now: true
-                        locked_update_pending: false
-                        locked_amend_blocked: false
-                        sync:
-                          key: enabled
-                          label: Enabled
-                          color: success
-                          reason: null
-                        effective_at: '2026-06-05T14:30:00+00:00'
-                        posted_at: '2026-06-05T14:35:12+00:00'
-                        currency_code: USD
-                        total_debit: '249.9900'
-                        total_credit: '249.9900'
-                        document_number: BILL-1842
-                        reference: BILL-10293
-                        sync_links: []
-                        operations: []
-                    message: Creating a new accounting transaction — it will sync
-                      to the provider shortly.
-                example-1:
-                  summary: 200 OK — not recreated (blocked, link preserved)
-                  value:
-                    data:
-                      recreate:
-                        recreated: false
                         status: voided
-                        reason: before_provider_sync_start_date
+                        reason: null
+                        replacement_id: 1843
                       entry:
                         id: 1842
                         uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
                         type:
-                          value: purchase_order_invoice
-                          label: Purchase Order Invoice
-                        status: posted
+                          value: vendor_credit
+                          label: Vendor Credit
+                        status: reversed
                         display_status:
                           key: voided
                           label: Synced, Voided
                           color: warning
-                          reason: before_provider_sync_start_date
+                          reason: null
                         can_sync_now: false
                         locked_update_pending: false
                         locked_amend_blocked: false
-                        effective_at: '2026-06-05T14:30:00+00:00'
-                        posted_at: '2026-06-05T14:35:12+00:00'
+                        effective_at: '2026-02-28T08:00:00+00:00'
+                        posted_at: '2026-02-28T08:05:00+00:00'
                         currency_code: USD
-                        total_debit: '249.9900'
-                        total_credit: '249.9900'
-                        document_number: BILL-1842
-                        reference: BILL-10293
+                        total_debit: '600.0000'
+                        total_credit: '600.0000'
+                        document_number: VC-11036
+                        reference: 0001668/R1
+                        replaced_by_id: 1843
                         sync_links:
-                        - id: 4471
+                        - id: 819
                           provider: xero
                           connection:
                             id: 30
@@ -21584,9 +21540,45 @@ paths:
                           remote_status: VOIDED
                           last_remote_seen_at: '2026-07-13T22:40:00+00:00'
                         operations: []
-                    message: Not created — this entry is dated before the accounting
-                      connection’s sync start date, so the provider won’t accept it.
-                      The existing link was left untouched.
+                    message: Created a fresh draft that replaces this entry — the
+                      voided document stays on the original for the record. Sync the
+                      new draft when you are ready to push a brand-new document.
+                example-1:
+                  summary: 200 OK — not recreated (source no longer produces an entry)
+                  value:
+                    data:
+                      recreate:
+                        recreated: false
+                        status: voided
+                        reason: source_not_accounting_ready
+                        replacement_id: null
+                      entry:
+                        id: 1842
+                        uuid: 9c2f1b7e-4a6d-4f0e-9b1a-2d8c5e7f3a10
+                        type:
+                          value: vendor_credit
+                          label: Vendor Credit
+                        status: posted
+                        display_status:
+                          key: voided
+                          label: Synced, Voided
+                          color: warning
+                          reason: null
+                        can_sync_now: false
+                        locked_update_pending: false
+                        locked_amend_blocked: false
+                        effective_at: '2026-02-28T08:00:00+00:00'
+                        posted_at: '2026-02-28T08:05:00+00:00'
+                        currency_code: USD
+                        total_debit: '600.0000'
+                        total_credit: '600.0000'
+                        document_number: VC-11036
+                        reference: 0001668/R1
+                        replaced_by_id: null
+                        sync_links: []
+                        operations: []
+                    message: No replacement was created — this entry's source no longer
+                      produces an accounting entry.
         '429': *id001
         '401': *id002
         '403': *id003
