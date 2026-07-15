@@ -412103,7 +412103,16 @@ paths:
         is_free_of_charge, free_of_charge_reason, linked_backorders all optional
 
 
-        **Requires permission:** `purchase_orders.create`'
+        **Requires permission:** `purchase_orders.create`
+
+
+        The optional approval_status field acts as an inline approve command: sending
+        the value approved approves the purchase order in the same request. This requires
+        the purchase_orders.approve permission — without it the order is saved but
+        not approved, and a warning is returned. The command is skipped when the payload
+        also sets order_status to draft, and it is a no-op on an already-open purchase
+        order. Other approval_status values (not_requested, pending_approval, rejected)
+        are accepted and ignored, so resources can be round-tripped safely.'
       requestBody:
         content:
           application/json:
@@ -413358,7 +413367,16 @@ paths:
         Cannot reduce line quantity below received or invoiced quantity.
 
 
-        **Requires permission:** `purchase_orders.update`'
+        **Requires permission:** `purchase_orders.update`
+
+
+        The optional approval_status field acts as an inline approve command: sending
+        the value approved approves the purchase order in the same request. This requires
+        the purchase_orders.approve permission — without it the order is saved but
+        not approved, and a warning is returned. The command is skipped when the payload
+        also sets order_status to draft, and it is a no-op on an already-open purchase
+        order. Other approval_status values (not_requested, pending_approval, rejected)
+        are accepted and ignored, so resources can be round-tripped safely.'
       requestBody:
         content:
           application/json:
@@ -414686,6 +414704,454 @@ paths:
         '403': *id003
         '404': *id004
       operationId: delete-api-purchase-orders-purchase-order-opening-balance
+  /api/purchase-orders/{purchase_order}/request-approval:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Request Purchase Order Approval
+      description: 'Submit a draft purchase order for approval. Notifies every user
+        who holds the purchase_orders.approve permission. The purchase order must
+        be a draft with at least one line, and must not already have a pending request.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.update`
+
+
+        The optional notes field (max 1000 characters) is shown to approvers with
+        the request. The response includes notified_approvers — the number of users
+        notified.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+              example:
+                notes: Urgent restock for July promotion.
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      purchase_order_number:
+                        type: string
+                      order_status:
+                        type: string
+                      approval_status:
+                        type: string
+                      approval_requested_at:
+                        type: string
+                      approval_requested_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      approval_request_notes:
+                        type: string
+                      approval_actioned_at:
+                        type: string
+                        nullable: true
+                      approval_actioned_by:
+                        type: string
+                        nullable: true
+                      approval_action_notes:
+                        type: string
+                        nullable: true
+                  notified_approvers:
+                    type: integer
+                example:
+                  data:
+                    id: 101
+                    purchase_order_number: PO-101
+                    order_status: draft
+                    approval_status: pending_approval
+                    approval_requested_at: '2026-07-14T09:12:33+00:00'
+                    approval_requested_by:
+                      id: 7
+                      name: Jane Clerk
+                    approval_request_notes: Urgent restock for July promotion.
+                    approval_actioned_at: null
+                    approval_actioned_by: null
+                    approval_action_notes: null
+                  notified_approvers: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: This purchase order already has a pending approval request.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-orders-purchase-order-request-approval
+  /api/purchase-orders/{purchase_order}/approval-request:
+    delete:
+      tags:
+      - Purchase Orders
+      summary: Withdraw Purchase Order Approval Request
+      description: 'Withdraw a pending approval request, returning the purchase order
+        to the not-requested state. Only the user who requested approval (or an admin)
+        can withdraw it.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.update`'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_number:
+                    type: string
+                  order_status:
+                    type: string
+                  approval_status:
+                    type: string
+                  approval_requested_at:
+                    type: string
+                    nullable: true
+                  approval_requested_by:
+                    type: string
+                    nullable: true
+                  approval_request_notes:
+                    type: string
+                    nullable: true
+                  approval_actioned_at:
+                    type: string
+                    nullable: true
+                  approval_actioned_by:
+                    type: string
+                    nullable: true
+                  approval_action_notes:
+                    type: string
+                    nullable: true
+                example:
+                  id: 101
+                  purchase_order_number: PO-101
+                  order_status: draft
+                  approval_status: not_requested
+                  approval_requested_at: null
+                  approval_requested_by: null
+                  approval_request_notes: null
+                  approval_actioned_at: null
+                  approval_actioned_by: null
+                  approval_action_notes: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: This purchase order has no pending approval request to withdraw.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-purchase-orders-purchase-order-approval-request
+  /api/purchase-orders/{purchase_order}/approval-request/approve:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Approve Purchase Order Approval Request
+      description: 'Approve a pending approval request. Runs the standard purchase
+        order approval: the order moves to open, inventory becomes inbound, and backorder
+        coverage is applied. The requester is notified that their purchase order was
+        approved.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.approve`
+
+
+        Returns 422 if the request was already approved, rejected, or withdrawn (for
+        example by another approver acting first).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_number:
+                    type: string
+                  order_status:
+                    type: string
+                  approval_status:
+                    type: string
+                  approval_requested_at:
+                    type: string
+                  approval_requested_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  approval_request_notes:
+                    type: string
+                  approval_actioned_at:
+                    type: string
+                  approval_actioned_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  approval_action_notes:
+                    type: string
+                    nullable: true
+                example:
+                  id: 101
+                  purchase_order_number: PO-101
+                  order_status: open
+                  approval_status: approved
+                  approval_requested_at: '2026-07-14T09:12:33+00:00'
+                  approval_requested_by:
+                    id: 7
+                    name: Jane Clerk
+                  approval_request_notes: Urgent restock for July promotion.
+                  approval_actioned_at: '2026-07-14T10:05:00+00:00'
+                  approval_actioned_by:
+                    id: 3
+                    name: John Manager
+                  approval_action_notes: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: This approval request has already been actioned or withdrawn.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-orders-purchase-order-approval-request-approve
+  /api/purchase-orders/{purchase_order}/approval-request/reject:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Reject Purchase Order Approval Request
+      description: 'Reject a pending approval request with a reason. The purchase
+        order stays in draft, and the requester is notified with the reason so they
+        can amend the order and request approval again.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `purchase_orders.approve`
+
+
+        The notes field (rejection reason) is required, max 1000 characters.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                notes:
+                  type: string
+              example:
+                notes: Quantities are wrong — should be 74, not 76.
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  purchase_order_number:
+                    type: string
+                  order_status:
+                    type: string
+                  approval_status:
+                    type: string
+                  approval_requested_at:
+                    type: string
+                  approval_requested_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  approval_request_notes:
+                    type: string
+                  approval_actioned_at:
+                    type: string
+                  approval_actioned_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  approval_action_notes:
+                    type: string
+                example:
+                  id: 101
+                  purchase_order_number: PO-101
+                  order_status: draft
+                  approval_status: rejected
+                  approval_requested_at: '2026-07-14T09:12:33+00:00'
+                  approval_requested_by:
+                    id: 7
+                    name: Jane Clerk
+                  approval_request_notes: Urgent restock for July promotion.
+                  approval_actioned_at: '2026-07-14T10:05:00+00:00'
+                  approval_actioned_by:
+                    id: 3
+                    name: John Manager
+                  approval_action_notes: Quantities are wrong — should be 74, not
+                    76.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      notes:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: A rejection reason is required so the requester knows what
+                    to fix.
+                  errors:
+                    notes:
+                    - A rejection reason is required so the requester knows what to
+                      fix.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-orders-purchase-order-approval-request-reject
   /api/purchase-orders/{purchase_order}/lines-for-invoice:
     get:
       tags:
