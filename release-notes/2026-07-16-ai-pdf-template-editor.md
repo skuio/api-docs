@@ -3,7 +3,7 @@ title: "AI-Assisted PDF Template Editor — redesign your documents by describin
 description: "A new code editor with live PDF preview for your document templates — plus a built-in AI assistant that makes layout changes from plain-English instructions."
 authors: [product-team]
 tags: [major-feature, new, orders, purchasing, fulfillment]
-date: 2026-06-04
+date: 2026-07-16
 ---
 
 Customizing your PDF documents — invoices, purchase orders, packing slips, quotes, credit notes — used to mean wrestling a word-processor-style editor that had its own ideas about your layout. Simple requests like "make the items table span the full page" were surprisingly hard, and anyone comfortable with HTML had to fight the editor's constant reformatting. The **new PDF Template Editor** replaces all of that with a proper split-pane workspace: your template's HTML on one side, a live PDF preview on the other, and a built-in **Template AI** assistant that can make layout changes for you from a plain-English instruction — "make the items table full width", "add a Supplier SKU column", "match a clean Stripe-style invoice". Every AI edit is validated, shown as a reviewable diff, and never saved until you say so.
