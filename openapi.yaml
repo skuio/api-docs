@@ -125,6 +125,7 @@ tags:
 - name: Starshipit
 - name: API Shipping Provider
 - name: Shippit
+- name: Odoo 3PL
 - name: QuickBooks Online
 - name: Xero
 - name: Stripe
@@ -276305,6 +276306,527 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-shippit-instances-integration-instance-activity
+  /api/odoo-3pl/{integration_instance}/shipping-methods:
+    get:
+      tags:
+      - Odoo 3PL
+      summary: List Shipping Methods
+      description: List the available Odoo 3PL carriers for this integration instance
+        together with the SKU.io shipping methods available to map onto. Each carrier
+        row includes its current SKU shipping-method mapping (if any). Requires a
+        Bearer token.
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      services:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            odoo_3pl_carrier_id:
+                              type: integer
+                            name:
+                              type: string
+                            delivery_type:
+                              type: string
+                            shipping_method_id:
+                              type: string
+                              nullable: true
+                            sku_shipping_method_name:
+                              type: string
+                              nullable: true
+                      sku_shipping_methods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            full_name:
+                              type: string
+                            type:
+                              type: string
+                      last_synced_at:
+                        type: string
+                example:
+                  data:
+                    services:
+                    - id: 1
+                      odoo_3pl_carrier_id: 5
+                      name: Fedex Canada Ground
+                      delivery_type: fedex_rest
+                      shipping_method_id: null
+                      sku_shipping_method_name: null
+                    - id: 3
+                      odoo_3pl_carrier_id: 10
+                      name: ups ground
+                      delivery_type: ups_rest
+                      shipping_method_id: 5
+                      sku_shipping_method_name: UPS Ground
+                    sku_shipping_methods:
+                    - id: 5
+                      name: Ground
+                      full_name: UPS Ground
+                      type: domestic
+                    - id: 16
+                      name: 1 Day Freight
+                      full_name: FedEx 1 Day Freight
+                      type: domestic
+                    last_synced_at: '2026-07-15T14:05:00.000000Z'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-odoo-3pl-integration-instance-shipping-methods
+  /api/odoo-3pl/{integration_instance}/shipping-methods/sync:
+    post:
+      tags:
+      - Odoo 3PL
+      summary: Sync Shipping Methods
+      description: Refresh the carrier catalog from Odoo 3PL, then auto-link any unmapped
+        carriers to SKU.io shipping methods whose name matches. Returns how many carriers
+        were fetched and how many were auto-matched. Requires a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      carriers_fetched:
+                        type: integer
+                      auto_matched:
+                        type: integer
+                example:
+                  message: Synced 3 shipping method(s); 1 auto-matched.
+                  data:
+                    carriers_fetched: 3
+                    auto_matched: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-odoo-3pl-integration-instance-shipping-methods-sync
+  /api/odoo-3pl/{integration_instance}/shipping-methods/export:
+    get:
+      tags:
+      - Odoo 3PL
+      summary: Export Shipping Method Mappings
+      description: Download the current carrier-to-SKU shipping-method mappings as
+        a re-importable CSV. A row with a blank shipping_method_id and shipping_method_name
+        clears that mapping on import. Requires a Bearer token.
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "odoo_3pl_carrier_id,name,delivery_type,shipping_method_id,shipping_method_name\r\
+                  \n5,Fedex Canada Ground,fedex_rest,,\r\n10,ups ground,ups_rest,5,UPS\
+                  \ Ground\r\n"
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-odoo-3pl-integration-instance-shipping-methods-export
+  /api/odoo-3pl/{integration_instance}/shipping-methods/import:
+    post:
+      tags:
+      - Odoo 3PL
+      summary: Import Shipping Method Mappings
+      description: Upload a CSV of carrier-to-SKU shipping-method mappings. Each row
+        is keyed by odoo_3pl_carrier_id and resolves the SKU.io method by shipping_method_id
+        (authoritative) or shipping_method_name (fallback). Both blank clears that
+        mapping. Content-Type is multipart/form-data; the file must be a CSV (max
+        2 MB). Requires a Bearer token.
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: 'CSV file with columns: odoo_3pl_carrier_id, name,
+                    delivery_type, shipping_method_id, shipping_method_name'
+                  format: binary
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: integer
+                      updated:
+                        type: integer
+                      deleted:
+                        type: integer
+                      errors:
+                        type: array
+                example:
+                  message: Import processed
+                  data:
+                    created: 1
+                    updated: 1
+                    deleted: 0
+                    errors: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-odoo-3pl-integration-instance-shipping-methods-import
+  /api/odoo-3pl/{integration_instance}/shipping-methods/auto-match:
+    post:
+      tags:
+      - Odoo 3PL
+      summary: Auto-Match Shipping Methods
+      description: Auto-link unmapped Odoo 3PL carriers to SKU.io shipping methods
+        whose name matches (case, spacing and punctuation insensitive). Never overwrites
+        an existing mapping. Returns how many carriers were newly linked. Requires
+        a Bearer token.
+      requestBody:
+        content: {}
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      matched_count:
+                        type: integer
+                example:
+                  message: 1 shipping method(s) auto-matched
+                  data:
+                    matched_count: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-odoo-3pl-integration-instance-shipping-methods-auto-match
+  /api/odoo-3pl/{integration_instance}/shipping-methods/bulk-map:
+    put:
+      tags:
+      - Odoo 3PL
+      summary: Bulk Map Shipping Methods
+      description: Map many Odoo 3PL carriers to a single SKU.io shipping method at
+        once, or clear them by sending a null shipping_method_id. Requires a Bearer
+        token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                shipping_method_id:
+                  type: integer
+              example:
+                ids:
+                - 1
+                - 3
+                shipping_method_id: 5
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      updated_count:
+                        type: integer
+                example:
+                  message: 2 mapping(s) saved
+                  data:
+                    updated_count: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The ids field is required.
+                  errors:
+                    ids:
+                    - The ids field is required.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-odoo-3pl-integration-instance-shipping-methods-bulk-map
+  /api/odoo-3pl/{integration_instance}/shipping-methods/{shippingMethodId}/mapping:
+    put:
+      tags:
+      - Odoo 3PL
+      summary: Update Shipping Method Mapping
+      description: Set or clear the SKU.io shipping-method mapping for a single Odoo
+        3PL carrier. Send a null shipping_method_id to unmap. Once mapped, orders
+        using that SKU shipping method submit to Odoo 3PL with the carrier's name
+        as the requested shipping method. Requires a Bearer token.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                shipping_method_id:
+                  type: integer
+              example:
+                shipping_method_id: 5
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '3'
+      - name: shippingMethodId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Odoo 3PL shipping-method (carrier) row ID
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      odoo_3pl_carrier_id:
+                        type: integer
+                      name:
+                        type: string
+                      delivery_type:
+                        type: string
+                      shipping_method_id:
+                        type: integer
+                      is_mapped:
+                        type: boolean
+                      sku_shipping_method:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          full_name:
+                            type: string
+                          carrier_name:
+                            type: string
+                      last_synced_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  message: Shipping method mapped.
+                  data:
+                    id: 3
+                    integration_instance_id: 3
+                    odoo_3pl_carrier_id: 10
+                    name: ups ground
+                    delivery_type: ups_rest
+                    shipping_method_id: 5
+                    is_mapped: true
+                    sku_shipping_method:
+                      id: 5
+                      name: Ground
+                      full_name: UPS Ground
+                      carrier_name: UPS
+                    last_synced_at: '2026-07-15T14:05:00.000000Z'
+                    created_at: '2026-07-15T14:05:00.000000Z'
+                    updated_at: '2026-07-15T14:06:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      shipping_method_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected shipping method id is invalid.
+                  errors:
+                    shipping_method_id:
+                    - The selected shipping method id is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-odoo-3pl-integration-instance-shipping-methods-shippingmethodid-mapping
   /api/qbo/integrations:
     get:
       tags:
@@ -491631,6 +492153,7 @@ x-tagGroups:
   - Data Feeds
   - Inventory Intelligence
   - Inventory Expiry & Shelf-Life
+  - Odoo 3PL
   - Google Sheets
   - Products
   - Organization
