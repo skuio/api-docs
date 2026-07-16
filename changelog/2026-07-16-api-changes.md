@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 85 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+description: This release includes 86 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 85 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+This release includes 86 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -153,6 +153,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
+- `POST /api/purchase-orders/{purchase_order}/changes-since-sent/dismiss` — Dismiss Pending Changes
 - `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines
 
 ### Reference Data (Read-Only)
