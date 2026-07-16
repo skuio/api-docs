@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 117 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+description: This release includes 117 additions, 4 changes, 26 removals. 28 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 117 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+This release includes 117 additions, 4 changes, 26 removals. 28 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -38,6 +38,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `PUT /api/integration-instances/{integration_instance}/orders/create-sku` — Create SKU Orders from Channel Orders
 - **Removed** `PUT /api/integration-instances/{integration_instance}/orders/unarchived` — Bulk Unarchive Channel Orders
 - **Removed** `PUT /api/integration-instances/{integration_instance}/unmap-listing` — Unmap Listing from SKU Product
+
+#### Product Listings
+- **Removed** `GET /api/product-listings/{product_listing}` — Get Product Listing
+- **Removed** `PUT /api/product-listings/{product_listing}` — Update Product Listing
 
 #### Reporting
 - **Removed** `GET /api/reporting/most-profitable-products` — Get Most Profitable Products
