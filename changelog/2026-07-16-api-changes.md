@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 17 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+description: This release includes 85 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 17 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+This release includes 85 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -70,6 +70,22 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ## Added
 
+### Connection
+- `POST /api/magento2/install` — Install
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/test-connection` — Test Instance Connection
+- `POST /api/magento2/test-connection` — Test Connection
+
+### Customers
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/customers` — List Customers
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/customers/filter-options` — Get Customer Filter Options
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/customers/refresh` — Refresh Customers
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/customers/search` — Search Customers
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/customers/{customer}` — Get Customer
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/customers/{customer}/refresh` — Refresh Single Customer
+
+### Dashboard
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/dashboard` — Get Instance Dashboard
+
 ### Data Imports
 - `GET /api/v2/data-imports/template` — Download Import Template
 
@@ -78,7 +94,62 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/ebay/{integrationInstance}/orders/unarchive` — Bulk Unarchive eBay Orders
 - `POST /api/ebay/{integrationInstance}/orders/update-sku-orders` — Update SKU Orders from Channel Orders
 
+### Integration Instances
+- `GET /api/magento2/integration-instances` — List Instances
+- `DELETE /api/magento2/integration-instances/{instanceId}` — Delete Instance
+- `GET /api/magento2/integration-instances/{instanceId}` — Get Instance
+- `PATCH /api/magento2/integration-instances/{instanceId}` — Update Instance
+
+### Inventory Sources (MSI)
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources-cache` — List Cached MSI Sources
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/refresh` — Refresh MSI Sources from Magento
+- `PATCH /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/{sourceCode}/master-of-stock` — Update Master of Stock for a Source
+
+### Magento 2
+- `POST /api/magento2/integration-instances/{instanceId}/inventory/compare` — Fetch From Magento (Compare)
+- `GET /api/magento2/integration-instances/{instanceId}/inventory/items` — List Inventory Items
+- `POST /api/magento2/integration-instances/{instanceId}/inventory/pull-from-magento` — Pull From Magento
+- `POST /api/magento2/integration-instances/{instanceId}/inventory/push-to-magento` — Sync To Magento (Push)
+- `POST /api/magento2/integration-instances/{instanceId}/inventory/recache` — Recache SKU Quantities
+- `GET /api/magento2/integration-instances/{instanceId}/inventory/summary` — Inventory Summary
+- `GET /api/magento2/integration-instances/{instanceId}/webhooks` — List Sync Runs
+- `GET /api/magento2/integration-instances/{instanceId}/webhooks/schedule` — Polling Schedule
+- `GET /api/magento2/integration-instances/{instanceId}/webhooks/summary` — Run Summary
+- `GET /api/magento2/integration-instances/{instanceId}/webhooks/{runId}` — Show Sync Run
+
+### OAuth
+- `POST /api/magento2/oauth/callback` — OAuth Callback
+
+### Orders
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/import-pre-start-date` — Pre-Start-Date Orders — Import
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/pre-start-date-search` — Pre-Start-Date Orders — Search Specific Order
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/refresh` — Refresh Orders
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/{magento2Order}` — Get Order By ID
+
 ### Products
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products` — List Products
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-archive` — Bulk Archive Products
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-delete-magento-records` — Bulk Delete Magento Records
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-map` — Bulk Map Products
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-unarchive` — Bulk Unarchive Products
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-unmap` — Bulk Unmap Products
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/field-mappings` — Get Field Mappings
+- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/products/field-mappings` — Update Field Mappings
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/filter-options` — Get Products Filter Options
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/latest-sync-info` — Get Products Latest Sync Info
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/refresh` — Refresh Products
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/search` — Search Products (Magento live)
+- `DELETE /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}` — Delete Product
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}` — Get Product
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/archive` — Archive Product
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/create-sku-product` — Create SKU Product From Magento
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/map` — Map Product
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/orders` — Get Orders For Product
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/raw` — Get Raw Product Payload
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/refresh-single` — Refresh Single Product
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/smart-match` — Smart Match SKU Product
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/unarchive` — Unarchive Product
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/{product}/unmap` — Unmap Product
 - `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
@@ -89,6 +160,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/incoterms/{incoterm}` — Get Incoterm
 - `GET /api/v2/incoterms/{incoterm}/activity-log` — Get Incoterm Activity Log
 
+### Shipments
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/shipments` — List Shipments
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/shipments/{shipment}` — Get Shipment
+
+### Shipping Method Mappings
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/shipping-method-mappings` — List Shipping Method Mappings
+- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/shipping-method-mappings` — Bulk Replace Shipping Method Mappings
+
 ### ShipStation
 - `GET /api/odoo-3pl/{integration_instance}/shipping-methods` — List Shipping Methods
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/auto-match` — Auto-Match Shipping Methods
@@ -98,8 +177,21 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
 - `PUT /api/odoo-3pl/{integration_instance}/shipping-methods/{shippingMethodId}/mapping` — Update Shipping Method Mapping
 
+### Transactions
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions` — List Transactions
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/filter-options` — Get Transaction Filter Options
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/refresh` — Refresh Transactions
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}` — Get Transaction
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}/push-to-accounting` — Push Transaction to Accounting
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}/reconcile` — Toggle Reconciliation
+- `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}/refresh` — Refresh Single Transaction
+
 ### Units of Measure
 - `POST /api/manufacturing/products/{product}/units-of-measure/enable` — Enable Product Unit of Measure
+
+### Warehouse Mappings
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
+- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — Bulk Replace Warehouse Mappings
 
 ## Changed
 
