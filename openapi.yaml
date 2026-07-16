@@ -19794,7 +19794,13 @@ paths:
         status (draft|posted|reversed), role (original|reversal|replacement), is_current,
         is_viewed, reversal_of_id, replaced_by_id, effective_at, provider_link ({
         remote_type, remote_id, remote_url, link_state, remote_status, badge } or
-        null) }. `[]` when the entry has never been reversed or replaced.'
+        null) }. `[]` when the entry has never been reversed or replaced.
+
+
+        Also returns `sync_override_provenance` (who/what/when set the sync override:
+        `source` = `user` | `legacy_cutover` | `system`, `set_at`, `set_by`; null
+        when no override) and `is_settlement_sourced` (boolean — a marketplace settlement
+        posting, exempt from per-channel sync toggles).'
       parameters:
       - name: entry
         in: path
@@ -19945,6 +19951,22 @@ paths:
                       sync_override:
                         type: string
                         nullable: true
+                      sync_override_provenance:
+                        type: object
+                        properties:
+                          source:
+                            type: string
+                          set_at:
+                            type: string
+                          set_by:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                      is_settlement_sourced:
+                        type: boolean
                       sync_provider:
                         type: string
                       integrity_flag:
@@ -20344,6 +20366,13 @@ paths:
                       link_route: /crm/customers/5821
                     batch_id: null
                     sync_override: null
+                    sync_override_provenance:
+                      source: user
+                      set_at: '2026-07-16T14:00:00+00:00'
+                      set_by:
+                        id: 12
+                        name: Julia T
+                    is_settlement_sourced: false
                     sync_provider: Xero
                     integrity_flag: null
                     reversal_of_id: null
@@ -22501,6 +22530,126 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-ledger-entries-entry-fetch-remote
+  /api/ledger/entries/{entry}/sync-inspection:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Entry Sync Inspection
+      description: 'Explain why a journal entry is (or is not) syncing to the accounting
+        provider. Read-only — never writes.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:**
+
+        - `eligible` (boolean) — the entry will sync automatically as it stands
+
+        - `enableable` (boolean) — the entry won''t auto-sync, but a manual sync (or
+        a `force_enabled` override) will push it: its only blockers are settings opt-outs
+
+        - `can_sync_now` (boolean) — `eligible OR enableable`; whether a manual sync
+        would succeed right now
+
+        - `reasons` (array of strings) — why automatic sync is blocked (empty when
+        eligible). Possible codes: `override_disabled`, `type_disabled`, `channel_disabled`,
+        `granularity_off`, `before_type_sync_start_date`, `before_provider_sync_start_date`,
+        `batch_member`, `batch_open`, `internal_only`, `connection_inactive`, `no_accounting_connection`
+
+        - `structural_reasons` (array of strings) — the subset that blocks even a
+        manual sync (empty when the entry is eligible or enableable)
+
+        - `sync_override` (string|null) — the entry''s durable override (`force_enabled`
+        / `force_disabled`), if any
+
+        - `sync_override_provenance` (object|null) — who or what set the override:
+        `source` (`user`, `legacy_cutover`, or `system`), `set_at` (ISO 8601), `set_by`
+        (`{id, name}` of the user, or null)
+
+
+        Notes: `channel_disabled` blocks scheduled sync only — a manual sync still
+        pushes the entry. Structural codes (`connection_inactive`, `batch_member`,
+        `batch_open`, `internal_only`, `before_provider_sync_start_date`) cannot be
+        bypassed.
+
+
+        Returns 404 when the entry does not exist.'
+      parameters:
+      - name: entry
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Ledger journal entry ID (numeric). Route-model bound — returns
+          404 if the entry does not exist.
+        example: '1842'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      entry_id:
+                        type: integer
+                      eligible:
+                        type: boolean
+                      enableable:
+                        type: boolean
+                      can_sync_now:
+                        type: boolean
+                      reasons:
+                        type: array
+                        items:
+                          type: string
+                      structural_reasons:
+                        type: array
+                      sync_override:
+                        type: string
+                      sync_override_provenance:
+                        type: object
+                        properties:
+                          source:
+                            type: string
+                          set_at:
+                            type: string
+                          set_by:
+                            type: string
+                            nullable: true
+                  message:
+                    type: string
+                    nullable: true
+                example:
+                  data:
+                    entry_id: 1842
+                    eligible: false
+                    enableable: true
+                    can_sync_now: true
+                    reasons:
+                    - channel_disabled
+                    - override_disabled
+                    structural_reasons: []
+                    sync_override: force_disabled
+                    sync_override_provenance:
+                      source: legacy_cutover
+                      set_at: '2026-07-16T14:00:00+00:00'
+                      set_by: null
+                  message: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-entries-entry-sync-inspection
   /api/ledger/entries/{entry}/sync-override:
     post:
       tags:
@@ -22522,7 +22671,9 @@ paths:
         \ and the recomputed display_status. Returns 404 when the entry does not exist.\n\
         \nPermission: requires `accounting.sync` (granular permissions; admins bypass;\
         \ unenforced when the tenant's granular_permissions feature flag is off).\
-        \ Returns 403 without it."
+        \ Returns 403 without it.\n\nEvery write records provenance (who set the override\
+        \ and when), returned as `sync_override_provenance` on the entry; clearing\
+        \ the override clears the provenance with it."
       requestBody:
         content:
           application/json:
@@ -26037,7 +26188,12 @@ paths:
 
         - `open_operations` — open sync-operation counts keyed by state (pending,
         queued, in_flight, failed_retryable, needs_action); empty object when no open
-        work'
+        work
+
+        - `capabilities` — per-provider feature flags used to show/hide reconciliation
+        lanes: `supports_trial_balance` (Starting Balances lane — true for both Xero
+        and QuickBooks Online), `supports_bank_statement_lines` (Statement Match lane
+        — Xero only), `supports_webhooks` (inbound change events — Xero only)'
       parameters: []
       responses:
         '200':
@@ -26093,6 +26249,15 @@ paths:
                                   type: integer
                                 failed_retryable:
                                   type: integer
+                            capabilities:
+                              type: object
+                              properties:
+                                supports_trial_balance:
+                                  type: boolean
+                                supports_bank_statement_lines:
+                                  type: boolean
+                                supports_webhooks:
+                                  type: boolean
                 example:
                   data:
                     connections:
@@ -26111,6 +26276,10 @@ paths:
                         in_flight: 1
                         needs_action: 3
                         failed_retryable: 1
+                      capabilities:
+                        supports_trial_balance: true
+                        supports_bank_statement_lines: false
+                        supports_webhooks: false
                     - id: 7
                       provider: xero
                       name: Xero AU
@@ -26121,6 +26290,10 @@ paths:
                       rate_budget_remaining: 4120
                       last_inbound_event_at: '2026-06-09T02:15:40+00:00'
                       open_operations: {}
+                      capabilities:
+                        supports_trial_balance: true
+                        supports_bank_statement_lines: true
+                        supports_webhooks: true
         '429': *id001
         '401': *id002
         '403': *id003
@@ -26924,8 +27097,10 @@ paths:
       summary: Preview Opening Balances from Provider
       description: 'Reads the selected connection''s Trial Balance "as at" the snapshot
         date and proposes opening-balance lines mapped onto SKU''s chart of accounts.
-        Read-only — nothing is persisted; the frontend uses the result to seed the
-        opening-balance draft editor, which the user then reviews and applies.
+        Works for both QuickBooks Online and Xero connections — the trial balance
+        is fetched from whichever provider the connection belongs to. Read-only —
+        nothing is persisted; the frontend uses the result to seed the opening-balance
+        draft editor, which the user then reviews and applies.
 
 
         :::info[Authorization]
@@ -26953,6 +27128,11 @@ paths:
         returned in `unmatched` so the user can map them and re-fetch.
 
 
+        **Errors:** returns `422` with a friendly message when the connection''s provider
+        cannot produce a trial balance report, and `404` when `connection_id` is not
+        a supported accounting connection.
+
+
         **Authentication:** Requires Bearer token. (Read-only route — no extra permission
         middleware; the mutating apply/upsert routes enforce `accounting.manage_settings`.)
 
@@ -26968,8 +27148,8 @@ paths:
         in: query
         schema:
           type: integer
-        description: REQUIRED. Integer ID of the accounting integration instance (e.g.
-          the Xero connection) whose trial balance is read.
+        description: REQUIRED. Integer ID of the accounting connection (QuickBooks
+          Online or Xero) whose trial balance is read.
         example: '12'
       responses:
         '200':
@@ -30124,7 +30304,13 @@ paths:
         **Authentication:** Requires Bearer token + `accounting.sync` permission.
 
 
-        422 when the entry already has a link on this connection.'
+        422 when the entry already has a link on this connection.
+
+
+        **Ownership validation:** the (remote_type, remote_id) pair must be a cached
+        provider document belonging to the given connection. A document from another
+        connection (or one not yet pulled into the local cache) is rejected with HTTP
+        422 — pull provider documents for the connection first, then link.'
       requestBody:
         content:
           application/json:
@@ -30190,10 +30376,27 @@ paths:
                     remote_status: Active
                     last_remote_seen_at: '2026-06-12T02:00:00+00:00'
                   message: Linked to the provider document.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Document qbo_invoice:184 is not a cached provider document
+                    of this connection — refresh the provider cache or re-check the
+                    selected connection.
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       operationId: post-api-ledger-reconciliation-link
   /api/ledger/reconciliation/dismiss:
     post:

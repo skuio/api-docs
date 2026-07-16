@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 117 additions, 4 changes, 26 removals. 28 breaking changes — action required.
+description: This release includes 118 additions, 4 changes, 26 removals. 28 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 117 additions, 4 changes, 26 removals. 28 breaking changes — action required.
+This release includes 118 additions, 4 changes, 26 removals. 28 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -113,6 +113,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/refresh` — Refresh MSI Sources from Magento
 - `PATCH /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/{sourceCode}/master-of-stock` — Update Master of Stock for a Source
 
+### Ledger (Accounting v2)
+- `GET /api/ledger/entries/{entry}/sync-inspection` — Get Entry Sync Inspection
+
 ### OAuth
 - `POST /api/magento2/oauth/callback` — OAuth Callback
 
@@ -192,7 +195,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/walmart/{integrationInstance}/oauth/authorization-url` — Get Authorization URL
 - `POST /api/walmart/{integrationInstance}/oauth/disconnect` — Disconnect OAuth Connection
 - `POST /api/walmart/{integrationInstance}/orders/{order}/acknowledge` — Acknowledge Order
-- `POST /api/walmart/{integrationInstance}/orders/{order}/cancel-lines` — Cancel Order Lines
 - `GET /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — List Order Shipping Labels
 - `GET /api/walmart/{integrationInstance}/platform-status` — Get API Platform Status
 - `GET /api/walmart/{integrationInstance}/reports/payment-statement` — Get Payment Statement
@@ -214,7 +216,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Warehouse Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
 
-_…plus 17 more (see the API reference)._
+_…plus 18 more (see the API reference)._
 
 ## Changed
 
