@@ -1,0 +1,57 @@
+name: Sync public Postman collection
+
+# Keeps the public "SKU.io API" Postman collection — the one the "Run in
+# Postman" badge forks — in lockstep with what developer.sku.io renders.
+#
+# This runs AFTER a successful "Deploy to GitHub Pages" run instead of as a
+# trailing step inside it. Postman applies a collection this large (~4,500
+# requests, ~8 MB) as a slow async "deepupdate" (several minutes), which kept
+# the deploy job alive long enough for a queued newer deploy to supersede it:
+# GitHub then cancelled the run mid-PUT and a green Pages deploy was reported
+# as a red failure. Decoupled here, only the deploy that actually succeeded
+# triggers a sync, and a superseded build never touches the collection.
+#
+# Secret (repo → Settings → Secrets and variables → Actions):
+#   POSTMAN_API_KEY — Postman API key with write access to the public workspace
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queue syncs instead of cancelling: a cancelled PUT can leave Postman's async
+# deepupdate running server-side, which the next PUT collides with (409). With
+# cancel-in-progress:false GitHub keeps only the running sync + the newest
+# pending one, so a burst collapses to "finish current, then sync latest".
+concurrency:
+  group: postman-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Only after a successful deploy (or a manual run). PR builds, and
+    # superseded/cancelled/failed deploys, never reach here.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Regenerate the collection from the exact spec that was deployed, not
+          # whatever is newest on main (a still-building newer push syncs itself).
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Rebuild static/skuio-api.postman_collection.json from openapi.yaml — the
+      # same generator `npm run build` chains, without the full Docusaurus build.
+      - run: node scripts/gen-postman-collection.mjs
+      - name: Sync public Postman collection
+        run: node scripts/publish-postman.mjs
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
