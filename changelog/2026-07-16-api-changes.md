@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 121 additions, 3 changes, 22 removals. 23 breaking changes — action required.
+description: This release includes 121 additions, 3 changes, 23 removals. 24 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 121 additions, 3 changes, 22 removals. 23 breaking changes — action required.
+This release includes 121 additions, 3 changes, 23 removals. 24 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -43,6 +43,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/reporting/top-selling-products` — Get Top Selling Products
 
 #### UI Utilities
+- **Removed** `GET /api/data-tables` — Query list view Model
 - **Removed** `GET /api/table-views` — List Table Views
 - **Removed** `POST /api/table-views` — Create Table View
 - **Removed** `PUT /api/table-views/set-default-view/{viewId}` — Set Default View
