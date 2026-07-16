@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 111 additions, 4 changes, 25 removals. 27 breaking changes — action required.
+description: This release includes 117 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 111 additions, 4 changes, 25 removals. 27 breaking changes — action required.
+This release includes 117 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -49,7 +49,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/temu/{integrationInstance}/orders/export` — Export Orders
 
 #### UI Utilities
-- **Removed** `GET /api/data-tables` — Query list view Model
 - **Removed** `GET /api/table-views` — List Table Views
 - **Removed** `POST /api/table-views` — Create Table View
 - **Removed** `PUT /api/table-views/set-default-view/{viewId}` — Set Default View
@@ -70,6 +69,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `excluded[]`, `included[]`
 
 ## Added
+
+### Alerts
+- `GET /api/alert-preferences/mine` — Get My Notification Preferences
+- `POST /api/alert-preferences/mine/preset` — Apply My Notification Preset
+- `GET /api/alert-subscriptions` — Get Alert Audience
+- `GET /api/alert-subscriptions/counts` — Get Alert Audience Counts
 
 ### Connection
 - `POST /api/magento2/install` — Install
@@ -184,17 +189,13 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/walmart/{integrationInstance}/oauth/disconnect` — Disconnect OAuth Connection
 - `POST /api/walmart/{integrationInstance}/orders/{order}/acknowledge` — Acknowledge Order
 - `POST /api/walmart/{integrationInstance}/orders/{order}/cancel-lines` — Cancel Order Lines
-- `POST /api/walmart/{integrationInstance}/orders/{order}/shipping/estimates` — Get Shipping Estimates
 - `GET /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — List Order Shipping Labels
-- `POST /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — Purchase Shipping Label
 - `GET /api/walmart/{integrationInstance}/platform-status` — Get API Platform Status
-- `POST /api/walmart/{integrationInstance}/prices/push` — Push Prices
 - `GET /api/walmart/{integrationInstance}/reports/payment-statement` — Get Payment Statement
 - `GET /api/walmart/{integrationInstance}/reports/performance` — Get Partner Performance Report
 - `GET /api/walmart/{integrationInstance}/reports/recon/dates` — List Settlement Report Dates
 - `GET /api/walmart/{integrationInstance}/reports/recon/download` — Download Settlement Report
 - `GET /api/walmart/{integrationInstance}/reports/requests` — List Report Requests
-- `POST /api/walmart/{integrationInstance}/reports/requests` — Create Report Request
 - `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}` — Get Report Request Status
 - `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}/download` — Get Report Download URL
 - `GET /api/walmart/{integrationInstance}/shipping/carriers` — List Supported Carriers
@@ -209,7 +210,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Warehouse Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
 
-_…plus 11 more (see the API reference)._
+_…plus 17 more (see the API reference)._
 
 ## Changed
 

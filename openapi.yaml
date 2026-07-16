@@ -35550,8 +35550,7 @@ paths:
       tags:
       - Alerts
       summary: List Alerts
-      description: 'Returns a paginated list of alerts for the authenticated user.
-        Alerts are sorted by creation date descending (newest first).
+      description: 'Paginated list of the authenticated user''s alerts.
 
 
         :::info[Required scope: `settings:read`]
@@ -35562,35 +35561,19 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token
+        Alerts are deduplicated: repeat occurrences of the same condition update a
+        single alert (see `occurrences` and `last_seen_at`) instead of creating duplicates.
+        State-type alerts (`lifecycle: state`) describe an ongoing condition and are
+        automatically resolved when it clears — resolved alerts move out of the default
+        listing and are available via `filter[status]=resolved`.
 
 
-        Response fields:
+        Each alert carries a `reason` and human-readable `reason_label` explaining
+        why the user received it (for example, "You''re an administrator" or "You''re
+        subscribed to this alert type").
 
-        - id: Alert UUID
 
-        - priority: Alert priority — ''high'' or ''normal''
-
-        - category: Alert category — ''orders'', ''inventory'', ''purchase_orders'',
-        ''integrations'', ''system'', ''financial''
-
-        - title: Alert title
-
-        - message: Alert message body
-
-        - action_url: Optional URL to navigate to from the alert
-
-        - alertable_type: Polymorphic model class name (nullable)
-
-        - alertable_id: Polymorphic model ID (nullable)
-
-        - is_read: Whether the alert has been read
-
-        - read_at: ISO 8601 timestamp of when the alert was read (nullable)
-
-        - created_at: ISO 8601 timestamp of alert creation
-
-        - time_ago: Human-readable relative time (e.g. ''5 minutes ago'')'
+        Default listing excludes dismissed and resolved alerts. Default sort: -last_seen_at.'
       parameters: []
       responses:
         '200':
@@ -35605,8 +35588,6 @@ paths:
               schema:
                 type: object
                 properties:
-                  current_page:
-                    type: integer
                   data:
                     type: array
                     items:
@@ -35618,6 +35599,12 @@ paths:
                           type: string
                         category:
                           type: string
+                        alert_type:
+                          type: string
+                        lifecycle:
+                          type: string
+                        entity_tag:
+                          type: string
                         title:
                           type: string
                         message:
@@ -35626,17 +35613,39 @@ paths:
                           type: string
                         alertable_type:
                           type: string
+                          nullable: true
                         alertable_id:
+                          type: string
+                          nullable: true
+                        reason:
+                          type: string
+                        reason_label:
+                          type: string
+                        occurrences:
                           type: integer
+                        status:
+                          type: string
                         is_read:
                           type: boolean
                         read_at:
                           type: string
                           nullable: true
+                        resolved_at:
+                          type: string
+                          nullable: true
+                        resolved_ago:
+                          type: string
+                          nullable: true
+                        last_seen_at:
+                          type: string
                         created_at:
+                          type: string
+                        first_seen_ago:
                           type: string
                         time_ago:
                           type: string
+                  current_page:
+                    type: integer
                   last_page:
                     type: integer
                   per_page:
@@ -35648,26 +35657,37 @@ paths:
                   to:
                     type: integer
                 example:
-                  current_page: 1
                   data:
-                  - id: 550e8400-e29b-41d4-a716-446655440000
+                  - id: 9c2f4c1e-8a4e-4f7c-9a2b-1d2f3a4b5c6d
                     priority: high
-                    category: orders
-                    title: Sales order SO-1234 is overdue
-                    message: Sales order SO-1234 was due to ship 2 days ago and has
-                      not been fulfilled.
-                    action_url: /orders/1234
-                    alertable_type: App\Models\SalesOrder
-                    alertable_id: 1234
+                    category: integrations
+                    alert_type: amazon_missing_nominal_code
+                    lifecycle: state
+                    entity_tag: Amazon
+                    title: Missing Amazon Accounting Mappings
+                    message: 65 Amazon settlement codes need mapping for Amazon Leaf
+                      Shave.
+                    action_url: /integrations/amazon/finance/settlement-mappings
+                    alertable_type: null
+                    alertable_id: null
+                    reason: role:admin
+                    reason_label: You're an administrator
+                    occurrences: 4
+                    status: active
                     is_read: false
                     read_at: null
-                    created_at: '2024-01-15T10:30:00+00:00'
-                    time_ago: 5 minutes ago
-                  last_page: 3
-                  per_page: 15
-                  total: 42
+                    resolved_at: null
+                    resolved_ago: null
+                    last_seen_at: '2026-07-16T14:05:00+00:00'
+                    created_at: '2026-07-13T09:12:00+00:00'
+                    first_seen_ago: 3 days ago
+                    time_ago: 2 hours ago
+                  current_page: 1
+                  last_page: 1
+                  per_page: 20
+                  total: 1
                   from: 1
-                  to: 15
+                  to: 1
         '429': *id001
         '401': *id002
         '403': *id003
@@ -36387,6 +36407,522 @@ paths:
         '422': *id005
       x-required-scope: settings:write
       operationId: put-api-alerts-bulk-undismiss
+  /api/alert-subscriptions:
+    get:
+      tags:
+      - Alerts
+      summary: Get Alert Audience
+      description: 'Returns the resolved audience for one alert type: every user who
+        currently receives it and why. The audience is the type''s default audience
+        (administrators, all users, or holders of a permission) merged with explicit
+        subscribe/unsubscribe changes.
+
+
+        Each member''s `source` explains their inclusion: `role:admin`, `permission:<name>`,
+        `subscription`, or `all_users`.
+
+
+        Requires a token with permission to view alert preferences.'
+      parameters:
+      - name: alert_type
+        in: query
+        schema:
+          type: string
+        description: The alert type to inspect (required). One of the alert type identifiers
+          returned by List Alert Preferences.
+        example: amazon_missing_nominal_code
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      alert_type:
+                        type: string
+                      default_audience:
+                        type: string
+                      mandatory:
+                        type: boolean
+                      users:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            email:
+                              type: string
+                            source:
+                              type: string
+                example:
+                  data:
+                    alert_type: amazon_missing_nominal_code
+                    default_audience: all administrators
+                    mandatory: false
+                    users:
+                    - id: 7
+                      name: Jane Winters
+                      email: jane@acme.com
+                      source: role:admin
+                    - id: 42
+                      name: Sam Okafor
+                      email: sam@acme.com
+                      source: subscription
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-alert-subscriptions
+    put:
+      tags:
+      - Alerts
+      summary: Update Alert Audience
+      description: 'Applies audience changes for one alert type.
+
+
+        Actions per change:
+
+        - `subscribe` — add the user to the audience (beyond the default audience)
+
+        - `unsubscribe` — remove the user, including default-audience members
+
+        - `reset` — remove any explicit change so the user reverts to plain default-audience
+        membership
+
+
+        Returns the refreshed audience. Returns 422 when a change would leave a critical
+        alert type with an empty audience, or when a user does not belong to this
+        account.
+
+
+        Requires a token with permission to update alert preferences.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alert_type:
+                  type: string
+                changes:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      user_id:
+                        type: integer
+                      action:
+                        type: string
+              example:
+                alert_type: amazon_missing_nominal_code
+                changes:
+                - user_id: 42
+                  action: subscribe
+                - user_id: 7
+                  action: unsubscribe
+                - user_id: 13
+                  action: reset
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      alert_type:
+                        type: string
+                      default_audience:
+                        type: string
+                      mandatory:
+                        type: boolean
+                      users:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            email:
+                              type: string
+                            source:
+                              type: string
+                example:
+                  data:
+                    alert_type: amazon_missing_nominal_code
+                    default_audience: all administrators
+                    mandatory: false
+                    users:
+                    - id: 7
+                      name: Jane Winters
+                      email: jane@acme.com
+                      source: role:admin
+                    - id: 42
+                      name: Sam Okafor
+                      email: sam@acme.com
+                      source: subscription
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      changes:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: '"Integration Authorization Expired" is a critical alert
+                    — its audience cannot be emptied.'
+                  errors:
+                    changes:
+                    - '"Integration Authorization Expired" is a critical alert — its
+                      audience cannot be emptied.'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-alert-subscriptions
+  /api/alert-subscriptions/counts:
+    get:
+      tags:
+      - Alerts
+      summary: Get Alert Audience Counts
+      description: 'Audience size per alert type — how many users currently receive
+        each type after subscribe/unsubscribe changes are applied to the default audience.
+        A count of 0 means nobody will receive that alert.
+
+
+        Requires a token with permission to view alert preferences.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      export_completed:
+                        type: integer
+                      amazon_missing_nominal_code:
+                        type: integer
+                      integration_sync_inactive:
+                        type: integer
+                example:
+                  data:
+                    export_completed: 3
+                    amazon_missing_nominal_code: 4
+                    integration_sync_inactive: 3
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-alert-subscriptions-counts
+  /api/alert-preferences/mine:
+    get:
+      tags:
+      - Alerts
+      summary: Get My Notification Preferences
+      description: 'The authenticated user''s personal notification preference matrix.
+        Only alert types whose audience includes the user are returned, grouped by
+        category (and by integration for integration-specific types).
+
+
+        Each row shows the resolved value per channel plus an `inherited` marker —
+        `true` means the value comes from the account-wide preference or the built-in
+        default rather than a personal override. Rows with `mandatory: true` cannot
+        have their in-app channel disabled. `audience_reason` explains why the user
+        receives the type at all.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      groups:
+                        type: object
+                        properties:
+                          purchase_orders:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              icon:
+                                type: string
+                                nullable: true
+                              preferences:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    alert_type:
+                                      type: string
+                                    label:
+                                      type: string
+                                    description:
+                                      type: string
+                                    mandatory:
+                                      type: boolean
+                                    audience_reason:
+                                      type: string
+                                    audience_reason_label:
+                                      type: string
+                                    priority:
+                                      type: string
+                                    tenant_enabled:
+                                      type: boolean
+                                    in_app:
+                                      type: object
+                                      properties:
+                                        value:
+                                          type: boolean
+                                        inherited:
+                                          type: boolean
+                                    email:
+                                      type: object
+                                      properties:
+                                        value:
+                                          type: boolean
+                                        inherited:
+                                          type: boolean
+                                    frequency:
+                                      type: object
+                                      properties:
+                                        value:
+                                          type: string
+                                        inherited:
+                                          type: boolean
+                example:
+                  data:
+                    groups:
+                      purchase_orders:
+                        label: Purchase Orders
+                        icon: null
+                        preferences:
+                        - alert_type: purchase_order_approval_requested
+                          label: Purchase Order Approval Requested
+                          description: Triggered when a user without approval permission
+                            submits a purchase order for approval.
+                          mandatory: false
+                          audience_reason: permission:purchase_orders.approve
+                          audience_reason_label: You can approve purchase orders
+                          priority: high
+                          tenant_enabled: true
+                          in_app:
+                            value: true
+                            inherited: true
+                          email:
+                            value: false
+                            inherited: true
+                          frequency:
+                            value: instant
+                            inherited: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-alert-preferences-mine
+    put:
+      tags:
+      - Alerts
+      summary: Update My Notification Preferences
+      description: 'Updates the authenticated user''s personal notification overrides.
+        Fields are tri-state: send `null` to reset a field so it inherits the account-wide
+        preference / built-in default again; omit a field to leave it unchanged.
+
+
+        Fields per preference:
+
+        - `alert_type` (string, required)
+
+        - `in_app_enabled` (boolean or null) — whether this alert appears in your
+        in-app alert tray
+
+        - `email_enabled` (boolean or null) — whether this alert is emailed to your
+        own address
+
+        - `notification_frequency` (string or null) — `instant`, `daily_digest`, or
+        `weekly_digest`
+
+
+        Returns 422 when disabling the in-app channel for a critical (mandatory) alert
+        type.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preferences:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      alert_type:
+                        type: string
+                      in_app_enabled:
+                        type: boolean
+                      email_enabled:
+                        type: boolean
+                      notification_frequency:
+                        type: string
+              example:
+                preferences:
+                - alert_type: purchase_order_approval_requested
+                  in_app_enabled: true
+                  email_enabled: false
+                  notification_frequency: daily_digest
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Notification preferences updated.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      preferences:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: '"Integration Authorization Expired" is a critical alert
+                    and cannot be turned off.'
+                  errors:
+                    preferences:
+                    - '"Integration Authorization Expired" is a critical alert and
+                      cannot be turned off.'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-alert-preferences-mine
+  /api/alert-preferences/mine/preset:
+    post:
+      tags:
+      - Alerts
+      summary: Apply My Notification Preset
+      description: 'Applies a notification preset as a starting point for the authenticated
+        user''s preference matrix (individual rows stay editable afterwards).
+
+
+        Presets:
+
+        - `everything` — clear all personal overrides; every channel inherits the
+        defaults
+
+        - `important` — keep the in-app channel for high-priority and critical types
+        only
+
+        - `critical` — keep the in-app channel for critical types only'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                preset:
+                  type: string
+              example:
+                preset: important
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Preset applied.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-alert-preferences-mine-preset
   /api/tracked-job-logs/{tracked_job_log}:
     get:
       tags:
@@ -39694,7 +40230,10 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Requires a token with permission to view alert preferences.'
       parameters: []
       responses:
         '200':
@@ -39743,7 +40282,10 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Requires a token with permission to update alert preferences.'
       requestBody:
         content:
           application/json:
@@ -46947,11 +47489,8 @@ paths:
 
         Use the `with` query parameter (comma-separated) to include additional relations:
         `pricingTiers` (also aliased as `pricing`), `defaultStore`, `defaultIncoterm`,
-        `wireInstructionsVerifiedBy`, `customFieldValues`. Passing `customFieldValues`
-        adds `custom_field_values` to the response — each stored custom-field value
-        with its field metadata (`custom_field_id`, `name`, `slug`, `field_type`,
-        `options`, `description`, `is_visible_in_details`). Pass `bill_stats` to include
-        bill activity statistics for the supplier.'
+        `wireInstructionsVerifiedBy`. Pass `bill_stats` to include bill activity statistics
+        for the supplier.'
       parameters:
       - name: supplier
         in: path
@@ -56824,6 +57363,150 @@ paths:
         '404': *id004
       x-required-scope: subscriptions:read
       operationId: get-api-subscription-offerings-subscription-offering-export-override-audit-log
+  /api/data-tables:
+    get:
+      tags:
+      - UI Utilities
+      summary: Query list view Model
+      description: 'Execute a paginated list view query against a model. The model
+        must implement DataTableBlueprintInterface. Supports search, filtering (via
+        filter[] params or a saved_view_id), and pagination.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query Parameters:
+
+        - model (required, string): Fully qualified model class name
+
+        - search (optional, string): Full-text search query
+
+        - filter (optional, array): Filter conditions — mutually exclusive with saved_view_id
+
+        - saved_view_id (optional, integer): Load state from a saved view — mutually
+        exclusive with filter[]
+
+        - include_data_table_blueprint (optional, boolean): Include the blueprint
+        config in response
+
+        - include_saved_views (optional, boolean): Include all saved views for the
+        model
+
+
+        Errors:
+
+        - 400 ScopeFilterDoesNotExistException: Invalid filter scope
+
+        - 400 BadScopeFilterValueException: Invalid filter value'
+      parameters:
+      - name: model
+        in: query
+        schema:
+          type: string
+        description: Required. Fully qualified model class name (must implement DataTableBlueprintInterface)
+        example: App%5CModels%5CSalesOrder
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Optional. Full-text search query
+        example: C-1001
+      - name: include_data_table_blueprint
+        in: query
+        schema:
+          type: boolean
+        description: Optional boolean. Include blueprint config and searchable fields
+          in response
+        example: 'false'
+      - name: include_saved_views
+        in: query
+        schema:
+          type: boolean
+        description: Optional boolean. Include saved views for the model in response
+        example: 'false'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        sales_order_number:
+                          type: string
+                        status:
+                          type: string
+                        created_at:
+                          type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                example:
+                  data:
+                  - id: 1001
+                    sales_order_number: C-1001
+                    status: open
+                    created_at: '2024-04-15T10:00:00.000000Z'
+                  current_page: 1
+                  last_page: 5
+                  per_page: 15
+                  total: 73
+                  from: 1
+                  to: 15
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        code:
+                          type: string
+                        field:
+                          type: string
+                example:
+                  errors:
+                  - message: Scope filter 'invalid_scope' does not exist on this model.
+                    code: ScopeFilterDoesNotExistException
+                    field: invalid_filter
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-data-tables
   /api/pdf-templates:
     get:
       tags:
