@@ -77,6 +77,7 @@ tags:
 - name: Listings
 - name: Sales Credits
 - name: Reporting
+- name: Product Listings (V2)
 - name: Dashboard
 - name: Tags
 - name: Subscriptions
@@ -53123,6 +53124,114 @@ paths:
         '422': *id005
       x-required-scope: products:write
       operationId: put-api-v2-product-listings-productlisting
+  /api/v2/product-listings/{productListing}/end:
+    post:
+      tags:
+      - Product Listings (V2)
+      summary: End Listing on Channel
+      description: 'End a live listing on its sales channel (listing publishing).
+
+
+        Per-channel semantics:
+
+        - Amazon: deletes the SKU''s listings item (SP-API deleteListingsItem)
+
+        - BigCommerce: hides the product (is_visible=false, reversible)
+
+        - eBay: ends the item (Trading EndFixedPriceItem, EndingReason=NotAvailable)
+
+        - Walmart: retires the item (DELETE /v3/items/{sku}, async up to 48h)
+
+        - Shopify: archives the product (productUpdate status ARCHIVED, reversible)
+
+        - WooCommerce: trashes the product (DELETE without force, reversible)
+
+
+        On success the local ProductListing''s remote_status is stamped with the channel-side
+        state the listing was left in — `missing` for hard deletes/retires (Amazon,
+        eBay, Walmart) or `archived` for native unpublish (Shopify, BigCommerce, WooCommerce)
+        — so the catalog coverage matrix demotes the cell and offers a republish.
+
+
+        Authentication: Requires Bearer token. Gated by the per-tenant listing-publishing
+        feature flag (403 when disabled).
+
+
+        Idempotent: ending a listing that was already removed on the channel still
+        succeeds (remote_status becomes `missing`).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: productListing
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The ProductListing ID to end on its sales channel
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      remote_status:
+                        type: string
+                      remote_status_checked_at:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 55
+                    remote_status: archived
+                    remote_status_checked_at: '2026-07-03T08:15:42.000000Z'
+                  message: Listing ended on the channel.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                        message:
+                          type: string
+                example:
+                  message: This channel does not support listing publishing.
+                  errors:
+                  - code: not_supported
+                    message: This channel does not support listing publishing.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-v2-product-listings-productlisting-end
   /api/v2/dashboard/operational-kpis:
     get:
       tags:
@@ -74282,6 +74391,159 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: delete-api-sales-channel-product-templates-sales-channel-product-template
+  /api/v2/sales-channels/{salesChannel}/product-templates/preview:
+    post:
+      tags:
+      - Sales Channel Product Templates
+      summary: Preview Sales Channel Product Template Against Product
+      description: 'Resolves a set of field mappings against a specific product and
+        returns the value each channel field would receive — without saving a template.
+        Use it to preview how a template will map a product''s data (fields, attributes,
+        static values, and expressions) before you create or update it.
+
+
+        Body fields:
+
+        - product_id (required, integer) — the product to resolve values for.
+
+        - sales_channel_category_id (required, integer) — the channel category whose
+        fields are being mapped. Must belong to the sales channel in the path.
+
+        - field_mappings (optional, array) — the in-progress mappings to resolve.
+        Each item: sales_channel_category_field_id (integer), source_type (one of
+        product_field, product_attribute, static, expression), source_value (string).
+        Blank or empty mappings are ignored and fall through to any existing channel
+        mapping or default.
+
+
+        The response `values` object is keyed by channel field name; each entry has
+        the resolved value and its provenance (override, template, channel_mapping,
+        integration_mapping, channel_default, or blank).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id:
+                  type: integer
+                sales_channel_category_id:
+                  type: integer
+                field_mappings:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      sales_channel_category_field_id:
+                        type: integer
+                      source_type:
+                        type: string
+                      source_value:
+                        type: string
+              example:
+                product_id: 42
+                sales_channel_category_id: 88
+                field_mappings:
+                - sales_channel_category_field_id: 501
+                  source_type: product_field
+                  source_value: brand
+                - sales_channel_category_field_id: 502
+                  source_type: product_attribute
+                  source_value: '17'
+                - sales_channel_category_field_id: 503
+                  source_type: static
+                  source_value: Clear
+                - sales_channel_category_field_id: 504
+                  source_type: expression
+                  source_value: '{{product.brand}} - {{product.name}}'
+      parameters:
+      - name: salesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel ID the category belongs to.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          sku:
+                            type: string
+                      values:
+                        type: object
+                        properties:
+                          Brand:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              provenance:
+                                type: string
+                          Color:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              provenance:
+                                type: string
+                          Title:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              provenance:
+                                type: string
+                          Material:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                                nullable: true
+                              provenance:
+                                type: string
+                example:
+                  data:
+                    product:
+                      id: 42
+                      name: Gel Strengthener Base Coat
+                      sku: LL-GSB-15
+                    values:
+                      Brand:
+                        value: Lumen Lab
+                        provenance: override
+                      Color:
+                        value: Clear
+                        provenance: override
+                      Title:
+                        value: Lumen Lab - Gel Strengthener Base Coat
+                        provenance: override
+                      Material:
+                        value: null
+                        provenance: blank
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-v2-sales-channels-saleschannel-product-templates-preview
   /api/sub-sales-channels:
     get:
       tags:
@@ -74523,6 +74785,143 @@ paths:
         '403': *id003
       x-session-only: true
       operationId: post-api-sub-sales-channels
+  /api/sub-sales-channels/{subSalesChannel}/source-type:
+    patch:
+      tags:
+      - Sub Sales Channels
+      summary: Reclassify Source Type
+      description: 'Manually reclassify a sub sales channel''s source type (e.g. mark
+        an in-store source as Point of Sale). Sets `source_type_locked = true` so
+        future integration syncs never revert the operator''s choice.
+
+
+        Request body:
+
+        - `source_type` (required) — one of: online, point_of_sale, marketplace, draft,
+        other.
+
+
+        Returns the updated sub sales channel.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source_type:
+                  type: string
+              example:
+                source_type: point_of_sale
+      parameters:
+      - name: subSalesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sub sales channel ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      sales_channel_id:
+                        type: integer
+                      name:
+                        type: string
+                      external_identifier:
+                        type: string
+                      source_type:
+                        type: string
+                      source_type_label:
+                        type: string
+                      source_type_locked:
+                        type: boolean
+                      is_point_of_sale:
+                        type: boolean
+                      sales_nominal_code_id:
+                        type: string
+                        nullable: true
+                      cogs_nominal_code_id:
+                        type: string
+                        nullable: true
+                      shipping_revenue_nominal_code_id:
+                        type: string
+                        nullable: true
+                      shipping_refund_nominal_code_id:
+                        type: string
+                        nullable: true
+                      sales_returns_allowances_nominal_code_id:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 12
+                    sales_channel_id: 3
+                    name: POS
+                    external_identifier: pos
+                    source_type: point_of_sale
+                    source_type_label: Point of Sale
+                    source_type_locked: true
+                    is_point_of_sale: true
+                    sales_nominal_code_id: null
+                    cogs_nominal_code_id: null
+                    shipping_revenue_nominal_code_id: null
+                    shipping_refund_nominal_code_id: null
+                    sales_returns_allowances_nominal_code_id: null
+                    created_at: '2026-06-17T09:15:00.000000Z'
+                    updated_at: '2026-06-17T09:15:00.000000Z'
+                  message: Sub Sales Channel POS updated successfully.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      source_type:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected source type is invalid.
+                  errors:
+                    source_type:
+                    - The selected source type is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: patch-api-sub-sales-channels-subsaleschannel-source-type
   /api/customers:
     post:
       tags:
@@ -322767,6 +323166,1924 @@ paths:
         '422': *id005
       x-required-scope: products:write
       operationId: post-api-product-listings-productlisting-unlink-offering
+  /api/product-listings/{product_listing}:
+    get:
+      tags:
+      - Product Listings
+      summary: Show Product Listing
+      description: 'Returns a single product listing with its sales channel, integration,
+        pricing tier, inventory cache, and document relations loaded. The integration-specific
+        resource class is used based on the sales channel.
+
+
+        :::info[Required scope: `products:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: product_listing
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product listing ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  sales_channel_id:
+                    type: integer
+                  sales_channel_listing_id:
+                    type: string
+                  listing_sku:
+                    type: string
+                  title:
+                    type: string
+                  master_of_price:
+                    type: boolean
+                  master_of_stock:
+                    type: boolean
+                  product_pricing_tier_id:
+                    type: string
+                    nullable: true
+                  sales_channel:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      integration_instance:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          integration:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                  inventory_cache:
+                    type: object
+                    properties:
+                      available_quantity:
+                        type: integer
+                example:
+                  id: 1
+                  product_id: 42
+                  sales_channel_id: 5
+                  sales_channel_listing_id: '7823456789012'
+                  listing_sku: PROD-001
+                  title: Premium Widget
+                  master_of_price: true
+                  master_of_stock: true
+                  product_pricing_tier_id: null
+                  sales_channel:
+                    id: 5
+                    name: Shopify Store
+                    integration_instance:
+                      id: 2
+                      name: My Shopify
+                      integration:
+                        name: shopify
+                  inventory_cache:
+                    available_quantity: 150
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: products:read
+      operationId: get-api-product-listings-product-listing
+  /api/v2/products/{product}/publish-readiness:
+    get:
+      tags:
+      - Product Listings
+      summary: Get Publish-Readiness Snapshot
+      description: 'Per-product, multi-channel publish readiness snapshot. Returns
+        one entry per publish-capable, connected sales channel, grouped by bucket
+        (live / ready / warn / idle / publishing / scheduled / draft) so the publish
+        dialog can render confidence groups without orchestrating N parallel calls.
+
+
+        Read-only: does NOT speculatively create drafts. Channels with no draft and
+        no live listing land in `idle` and surface recommended next actions (pick
+        a template, create one, etc.).
+
+
+        Bucket resolution:
+
+        - `live` — a non-archived `ProductListing` exists for this product on the
+        channel
+
+        - `ready` — open draft in state `ready`
+
+        - `scheduled` — open draft in state `scheduled`
+
+        - `publishing` — open draft in state `publishing` or `validating`
+
+        - `warn` — open draft in state `error`, OR `draft` with validation errors
+
+        - `draft` — open draft in state `draft` with no validation errors
+
+        - `idle` — no open draft and no live listing
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.
+
+
+        **`quantity_to_push`** (int|null, per channel entry) — the stock a publish
+        to this channel would seed right now, computed through the same SalesChannelInventoryCalculator
+        rules the standing inventory sync uses (max/min/buffer, locations, bundles).
+        `null` when quantity seeding is gated off (listing-publishing `push_quantity_on_publish`
+        setting disabled, SKU.io not master of stock for the instance, no inventory
+        rules configured) or the bucket cannot publish (`live` / `publishing`).'
+      parameters:
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        channel:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            integration_name:
+                              type: string
+                            integration_instance_id:
+                              type: integer
+                        bucket:
+                          type: string
+                        existing_listing:
+                          type: string
+                          nullable: true
+                        draft:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            state:
+                              type: string
+                            sales_channel_category_id:
+                              type: integer
+                            sales_channel_product_template_id:
+                              type: integer
+                            sales_channel_listing_profile_id:
+                              type: integer
+                            scheduled_at:
+                              type: string
+                              nullable: true
+                            validation_errors_count:
+                              type: integer
+                            missing_required:
+                              type: array
+                            template:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            category:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                                path:
+                                  type: string
+                            updated_at:
+                              type: string
+                        available_templates_count:
+                          type: integer
+                        issues_count:
+                          type: integer
+                        quantity_to_push:
+                          type: integer
+                example:
+                  data:
+                  - channel:
+                      id: 12
+                      name: My Shopify Store
+                      integration_name: Shopify
+                      integration_instance_id: 3
+                    bucket: ready
+                    existing_listing: null
+                    draft:
+                      id: 88
+                      state: ready
+                      sales_channel_category_id: 41
+                      sales_channel_product_template_id: 5
+                      sales_channel_listing_profile_id: 2
+                      scheduled_at: null
+                      validation_errors_count: 0
+                      missing_required: []
+                      template:
+                        id: 5
+                        name: Hoodies — Standard
+                      category:
+                        id: 41
+                        name: Hoodies
+                        path: Apparel / Hoodies
+                      updated_at: '2026-06-22T14:31:22+00:00'
+                    available_templates_count: 3
+                    issues_count: 0
+                    quantity_to_push: 42
+                  - channel:
+                      id: 7
+                      name: My eBay Store
+                      integration_name: Ebay
+                      integration_instance_id: 1
+                    bucket: warn
+                    existing_listing: null
+                    draft:
+                      id: 92
+                      state: draft
+                      sales_channel_category_id: 318
+                      sales_channel_product_template_id: 11
+                      sales_channel_listing_profile_id: null
+                      scheduled_at: null
+                      validation_errors_count: 3
+                      missing_required:
+                      - field: Brand
+                        label: 'Item Specifics: Brand'
+                      - field: Condition
+                        label: Item Condition
+                      - field: Color
+                        label: Color
+                      template:
+                        id: 11
+                        name: eBay Hoodie — Default
+                      category:
+                        id: 318
+                        name: Hoodies
+                        path: Clothing / Men / Hoodies
+                      updated_at: '2026-06-22T14:18:04+00:00'
+                    available_templates_count: 2
+                    issues_count: 3
+                    quantity_to_push: 42
+                  - channel:
+                      id: 22
+                      name: Walmart US
+                      integration_name: Walmart
+                      integration_instance_id: 5
+                    bucket: idle
+                    existing_listing: null
+                    draft: null
+                    available_templates_count: 0
+                    issues_count: 0
+                    quantity_to_push: 42
+                  - channel:
+                      id: 4
+                      name: Etsy
+                      integration_name: Etsy
+                      integration_instance_id: 2
+                    bucket: live
+                    existing_listing:
+                      id: 9412
+                      sales_channel_listing_id: '1394820392'
+                      listing_sku: AC-HOODIE-BLK-M
+                      updated_at: '2026-06-22T14:27:11+00:00'
+                    draft: null
+                    available_templates_count: 0
+                    issues_count: 0
+                    quantity_to_push: null
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Listing publishing is disabled for this tenant.
+        '429': *id001
+        '401': *id002
+        '404': *id004
+      operationId: get-api-v2-products-product-publish-readiness
+  /api/v2/listings/coverage:
+    get:
+      tags:
+      - Product Listings
+      summary: Get Catalog Coverage Matrix
+      description: 'Catalog-wide publish coverage matrix. Returns a paginated list
+        of products with per-channel publish state (bucket) for each publish-capable
+        connected channel. Returns catalog-wide publish coverage per product across
+        channels.
+
+
+        **One row per product**, with `channels[]` listing all publish-capable channels
+        and their current bucket (`live` / `ready` / `warn` / `idle` / `scheduled`
+        / `publishing` / `draft`). The `channel_buckets` map is a convenience for
+        matrix cell rendering (channel_id → bucket string).
+
+
+        `page_totals` aggregates bucket counts across the visible rows — drives the
+        summary cards above the matrix. (Totals are page-scoped, not global; filter
+        the catalog to narrow them.)
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            brand:
+                              type: string
+                            primary_image_url:
+                              type: string
+                        channels:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              channel:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                                  integration_name:
+                                    type: string
+                                  integration_instance_id:
+                                    type: integer
+                              bucket:
+                                type: string
+                              existing_listing:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  sales_channel_listing_id:
+                                    type: string
+                                  listing_sku:
+                                    type: string
+                                  updated_at:
+                                    type: string
+                              draft:
+                                type: string
+                                nullable: true
+                              available_templates_count:
+                                type: integer
+                              issues_count:
+                                type: integer
+                        channel_buckets:
+                          type: object
+                          properties:
+                            '3':
+                              type: string
+                            '25':
+                              type: string
+                            '26':
+                              type: string
+                            '30':
+                              type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  page_totals:
+                    type: object
+                    properties:
+                      live:
+                        type: integer
+                      ready:
+                        type: integer
+                      warn:
+                        type: integer
+                      idle:
+                        type: integer
+                      scheduled:
+                        type: integer
+                      publishing:
+                        type: integer
+                      draft:
+                        type: integer
+                example:
+                  data:
+                  - product:
+                      id: 4
+                      sku: BB004
+                      name: Baby Bumble Hoodie
+                      brand: Baby Bumble
+                      primary_image_url: https://cdn.example.com/img/beanie-1.jpg
+                    channels:
+                    - channel:
+                        id: 3
+                        name: My Shopify Store
+                        integration_name: Shopify
+                        integration_instance_id: 1
+                      bucket: live
+                      existing_listing:
+                        id: 9412
+                        sales_channel_listing_id: abc123
+                        listing_sku: BB004
+                        updated_at: '2026-06-22T14:27:11+00:00'
+                      draft: null
+                      available_templates_count: 2
+                      issues_count: 0
+                    - channel:
+                        id: 25
+                        name: Amazon
+                        integration_name: Amazon
+                        integration_instance_id: 3
+                      bucket: ready
+                      existing_listing: null
+                      draft:
+                        id: 88
+                        state: ready
+                        sales_channel_category_id: 41
+                        sales_channel_product_template_id: 5
+                        sales_channel_listing_profile_id: null
+                        scheduled_at: null
+                        validation_errors_count: 0
+                        missing_required: []
+                        template:
+                          id: 5
+                          name: Amazon Hoodie — FBA
+                        category:
+                          id: 41
+                          name: Hoodies
+                          path: Apparel / Hoodies
+                        updated_at: '2026-06-22T14:31:22+00:00'
+                      available_templates_count: 4
+                      issues_count: 0
+                    - channel:
+                        id: 30
+                        name: eBay Store
+                        integration_name: Ebay
+                        integration_instance_id: 1
+                      bucket: warn
+                      existing_listing: null
+                      draft:
+                        id: 92
+                        state: draft
+                        sales_channel_category_id: 318
+                        sales_channel_product_template_id: 11
+                        sales_channel_listing_profile_id: null
+                        scheduled_at: null
+                        validation_errors_count: 3
+                        missing_required:
+                        - field: Brand
+                          label: Brand
+                        - field: Color
+                          label: Color
+                        - field: Item_Condition
+                          label: Item Condition
+                        template:
+                          id: 11
+                          name: eBay Hoodie — Default
+                        category:
+                          id: 318
+                          name: Hoodies
+                          path: Clothing / Men / Hoodies
+                        updated_at: '2026-06-22T14:18:04+00:00'
+                      available_templates_count: 2
+                      issues_count: 3
+                    - channel:
+                        id: 26
+                        name: Walmart US
+                        integration_name: Walmart
+                        integration_instance_id: 5
+                      bucket: idle
+                      existing_listing: null
+                      draft: null
+                      available_templates_count: 0
+                      issues_count: 0
+                    channel_buckets:
+                      '3': live
+                      '25': ready
+                      '26': idle
+                      '30': warn
+                  current_page: 1
+                  last_page: 11
+                  per_page: 20
+                  total: 218
+                  from: 1
+                  to: 20
+                  first_page_url: https://example.test/api/v2/listings/coverage?page=1
+                  last_page_url: https://example.test/api/v2/listings/coverage?page=11
+                  next_page_url: https://example.test/api/v2/listings/coverage?page=2
+                  prev_page_url: null
+                  path: https://example.test/api/v2/listings/coverage
+                  page_totals:
+                    live: 41
+                    ready: 6
+                    warn: 8
+                    idle: 25
+                    scheduled: 0
+                    publishing: 0
+                    draft: 0
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Listing publishing is disabled for this tenant.
+        '429': *id001
+        '401': *id002
+      operationId: get-api-v2-listings-coverage
+  /api/v2/listing-drafts:
+    get:
+      tags:
+      - Product Listings
+      summary: List Drafts
+      description: 'Paginated listing drafts for the drafts list. Slim payload — the
+        heavy `fields[]` array is only served by show/update/validate.
+
+
+        Search covers draft ID, product name/SKU, and channel name (resolved through
+        the channel''s integration instance). Advanced `filter_groups` trees support
+        nested AND/OR groups over the columns listed on the parameter.
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number.
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Items per page (max 100, default 25).
+        example: '25'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        sales_channel_id:
+                          type: integer
+                        sales_channel_category_id:
+                          type: integer
+                        sales_channel_product_template_id:
+                          type: string
+                          nullable: true
+                        sales_channel_listing_profile_id:
+                          type: string
+                          nullable: true
+                        product_listing_id:
+                          type: string
+                          nullable: true
+                        purpose:
+                          type: string
+                        state:
+                          type: string
+                        scheduled_at:
+                          type: string
+                          nullable: true
+                        image_urls:
+                          type: array
+                        validation_errors:
+                          type: string
+                          nullable: true
+                        channel_errors:
+                          type: string
+                          nullable: true
+                        published_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            sku:
+                              type: string
+                        sales_channel:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            integration_name:
+                              type: string
+                        category:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            path:
+                              type: string
+                            external_id:
+                              type: string
+                        variation_theme:
+                          type: string
+                          nullable: true
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                example:
+                  data:
+                  - id: 181
+                    product_id: 99
+                    sales_channel_id: 34
+                    sales_channel_category_id: 26
+                    sales_channel_product_template_id: null
+                    sales_channel_listing_profile_id: null
+                    product_listing_id: null
+                    purpose: create
+                    state: ready
+                    scheduled_at: null
+                    image_urls: []
+                    validation_errors: null
+                    channel_errors: null
+                    published_at: null
+                    created_at: '2026-07-06T05:16:00+00:00'
+                    updated_at: '2026-07-06T07:19:00+00:00'
+                    product:
+                      id: 99
+                      name: Tiny Threads Cardigan
+                      sku: TT019
+                    sales_channel:
+                      id: 34
+                      name: BigCommerce2
+                      integration_name: BigCommerce
+                    category:
+                      id: 26
+                      name: General (Baseline)
+                      path: General (Baseline)
+                      external_id: '23'
+                    variation_theme: null
+                  current_page: 1
+                  last_page: 11
+                  per_page: 25
+                  total: 259
+                  from: 1
+                  to: 25
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-listing-drafts
+    post:
+      tags:
+      - Product Listings
+      summary: Create Draft
+      description: 'Create a listing draft.
+
+
+        Fields:
+
+        - `purpose` (required, `create` | `update`) — `create` builds a new-listing
+        draft; `update` seeds a draft from an existing live listing.
+
+        - `product_id` (required if purpose=create, integer) — product to list.
+
+        - `sales_channel_id` (required if purpose=create, integer) — target channel.
+
+        - `sales_channel_category_id` (nullable, integer) — channel category driving
+        the field schema. A draft without a category records a `missing_category`
+        validation error and stays in `draft` state — it can never reach `ready` until
+        a category is set.
+
+        - `sales_channel_product_template_id` (nullable, integer) — template pre-mapping
+        category fields. Optional: a draft is fully publishable without one (fill
+        fields via overrides).
+
+        - `sales_channel_listing_profile_id` (nullable, integer) — channel listing
+        profile.
+
+        - `product_listing_id` (required if purpose=update, integer) — live listing
+        to seed from.
+
+
+        The draft is resolved + validated on creation; the response includes `fields[]`
+        (schema + resolved value + provenance + raw `override`), `resolved_values`
+        and `validation_errors`.
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                purpose:
+                  type: string
+                product_id:
+                  type: integer
+                sales_channel_id:
+                  type: integer
+                sales_channel_category_id:
+                  type: integer
+                sales_channel_product_template_id:
+                  type: string
+                  nullable: true
+                sales_channel_listing_profile_id:
+                  type: string
+                  nullable: true
+              example:
+                purpose: create
+                product_id: 88
+                sales_channel_id: 30
+                sales_channel_category_id: 7
+                sales_channel_product_template_id: null
+                sales_channel_listing_profile_id: null
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 201 Created
+                  value:
+                    id: 42
+                    product_id: 88
+                    sales_channel_id: 30
+                    sales_channel_category_id: 7
+                    sales_channel_product_template_id: null
+                    sales_channel_listing_profile_id: null
+                    product_listing_id: null
+                    purpose: create
+                    state: ready
+                    scheduled_at: null
+                    image_urls:
+                    - https://cdn.example.com/img/beanie-1.jpg
+                    validation_errors: null
+                    channel_errors: null
+                    published_at: null
+                    created_at: '2026-07-06T12:00:00+00:00'
+                    updated_at: '2026-07-06T12:05:00+00:00'
+                    product:
+                      id: 88
+                      name: Tiny Threads Beanie
+                      sku: TT008
+                    sales_channel:
+                      id: 30
+                      name: eBay Store
+                      integration_name: Ebay
+                    category:
+                      id: 7
+                      name: Hoodies
+                      path: QA / Hoodies
+                      external_id: '155184'
+                    template: null
+                    listing_profile: null
+                    variation_theme: null
+                    variation_data: null
+                    fields:
+                    - name: Brand
+                      label: Brand
+                      schema:
+                        type: text
+                        usage: required
+                        cardinality: 1
+                        allowed_values: null
+                        allows_custom_value: true
+                      value: Tiny Threads
+                      provenance: override
+                      has_override: true
+                      override:
+                        source_type: product_field
+                        source_value: brand
+                      errors: []
+                    - name: Color
+                      label: Color
+                      schema:
+                        type: text
+                        usage: required
+                        cardinality: 1
+                        allowed_values: null
+                        allows_custom_value: true
+                      value: Sage
+                      provenance: template
+                      has_override: false
+                      override: null
+                      errors: []
+                    field_overrides:
+                      Brand:
+                        source_type: product_field
+                        source_value: brand
+                    resolved_values:
+                      Brand:
+                        value: Tiny Threads
+                        provenance: override
+                      Color:
+                        value: Sage
+                        provenance: template
+                example-1:
+                  summary: 201 Created (no category — missing_category error)
+                  value:
+                    id: 43
+                    product_id: 88
+                    sales_channel_id: 30
+                    sales_channel_category_id: null
+                    sales_channel_product_template_id: null
+                    sales_channel_listing_profile_id: null
+                    product_listing_id: null
+                    purpose: create
+                    state: draft
+                    scheduled_at: null
+                    image_urls:
+                    - https://cdn.example.com/img/beanie-1.jpg
+                    validation_errors:
+                    - field: _global
+                      code: missing_category
+                      message: Pick a channel category before this draft can be validated.
+                    channel_errors: null
+                    published_at: null
+                    created_at: '2026-07-06T12:00:00+00:00'
+                    updated_at: '2026-07-06T12:05:00+00:00'
+                    product:
+                      id: 88
+                      name: Tiny Threads Beanie
+                      sku: TT008
+                    sales_channel:
+                      id: 30
+                      name: eBay Store
+                      integration_name: Ebay
+                    category: null
+                    template: null
+                    listing_profile: null
+                    variation_theme: null
+                    variation_data: null
+                    fields: []
+                    field_overrides: null
+                    resolved_values: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-listing-drafts
+  /api/v2/listing-drafts/mappable-product-fields:
+    get:
+      tags:
+      - Product Listings
+      summary: List Mappable Product Fields
+      description: 'Product columns usable as a `product_field` mapping source in
+        draft field_overrides and template field defaults. Served from the resolver
+        whitelist (ListingValueResolver) so pickers never offer a column the resolver
+        won''t read.
+
+
+        `brand` resolves through the product''s brand relation (ProductBrand::name);
+        `price` resolves through the default pricing tier accessor; all other values
+        are direct product columns.
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        value:
+                          type: string
+                        label:
+                          type: string
+                example:
+                  data:
+                  - value: name
+                    label: Name
+                  - value: sku
+                    label: SKU
+                  - value: barcode
+                    label: Barcode (UPC / EAN)
+                  - value: mpn
+                    label: MPN
+                  - value: brand
+                    label: Brand
+                  - value: price
+                    label: Price (default tier)
+                  - value: weight
+                    label: Weight
+                  - value: weight_unit
+                    label: Weight unit
+                  - value: length
+                    label: Length
+                  - value: width
+                    label: Width
+                  - value: height
+                    label: Height
+                  - value: dimension_unit
+                    label: Dimension unit
+                  - value: case_quantity
+                    label: Case quantity
+                  - value: fba_prep_instructions
+                    label: FBA prep instructions
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-listing-drafts-mappable-product-fields
+  /api/v2/listing-drafts/{draft}:
+    get:
+      tags:
+      - Product Listings
+      summary: Get Draft
+      description: 'Show a draft with the full per-field payload.
+
+
+        Each `fields[]` row merges the cached category schema with the draft''s resolved
+        value:
+
+        - `value` — resolved value after the precedence chain (override > template
+        > channel mapping > integration mapping > blank)
+
+        - `provenance` — where the value came from (`override`, `template`, `channel_mapping`,
+        `integration_mapping`, `blank`)
+
+        - `has_override` — whether the draft overrides this field
+
+        - `override` — the raw override: a literal value, or a mapped source object
+        `{source_type, source_value}`
+
+        - `errors` — validation/channel errors scoped to this field
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      parameters:
+      - name: draft
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Listing draft ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  sales_channel_id:
+                    type: integer
+                  sales_channel_category_id:
+                    type: integer
+                  sales_channel_product_template_id:
+                    type: string
+                    nullable: true
+                  sales_channel_listing_profile_id:
+                    type: string
+                    nullable: true
+                  product_listing_id:
+                    type: string
+                    nullable: true
+                  purpose:
+                    type: string
+                  state:
+                    type: string
+                  scheduled_at:
+                    type: string
+                    nullable: true
+                  image_urls:
+                    type: array
+                    items:
+                      type: string
+                  validation_errors:
+                    type: string
+                    nullable: true
+                  channel_errors:
+                    type: string
+                    nullable: true
+                  published_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                  product:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      sku:
+                        type: string
+                  sales_channel:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      integration_name:
+                        type: string
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      external_id:
+                        type: string
+                  template:
+                    type: string
+                    nullable: true
+                  listing_profile:
+                    type: string
+                    nullable: true
+                  variation_theme:
+                    type: string
+                    nullable: true
+                  variation_data:
+                    type: string
+                    nullable: true
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        label:
+                          type: string
+                        schema:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            usage:
+                              type: string
+                            cardinality:
+                              type: integer
+                            allowed_values:
+                              type: string
+                              nullable: true
+                            allows_custom_value:
+                              type: boolean
+                        value:
+                          type: string
+                        provenance:
+                          type: string
+                        has_override:
+                          type: boolean
+                        override:
+                          type: object
+                          properties:
+                            source_type:
+                              type: string
+                            source_value:
+                              type: string
+                        errors:
+                          type: array
+                  field_overrides:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          source_type:
+                            type: string
+                          source_value:
+                            type: string
+                  resolved_values:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                      Color:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                example:
+                  id: 42
+                  product_id: 88
+                  sales_channel_id: 30
+                  sales_channel_category_id: 7
+                  sales_channel_product_template_id: null
+                  sales_channel_listing_profile_id: null
+                  product_listing_id: null
+                  purpose: create
+                  state: ready
+                  scheduled_at: null
+                  image_urls:
+                  - https://cdn.example.com/img/beanie-1.jpg
+                  validation_errors: null
+                  channel_errors: null
+                  published_at: null
+                  created_at: '2026-07-06T12:00:00+00:00'
+                  updated_at: '2026-07-06T12:05:00+00:00'
+                  product:
+                    id: 88
+                    name: Tiny Threads Beanie
+                    sku: TT008
+                  sales_channel:
+                    id: 30
+                    name: eBay Store
+                    integration_name: Ebay
+                  category:
+                    id: 7
+                    name: Hoodies
+                    path: QA / Hoodies
+                    external_id: '155184'
+                  template: null
+                  listing_profile: null
+                  variation_theme: null
+                  variation_data: null
+                  fields:
+                  - name: Brand
+                    label: Brand
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Tiny Threads
+                    provenance: override
+                    has_override: true
+                    override:
+                      source_type: product_field
+                      source_value: brand
+                    errors: []
+                  - name: Color
+                    label: Color
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Sage
+                    provenance: template
+                    has_override: false
+                    override: null
+                    errors: []
+                  field_overrides:
+                    Brand:
+                      source_type: product_field
+                      source_value: brand
+                  resolved_values:
+                    Brand:
+                      value: Tiny Threads
+                      provenance: override
+                    Color:
+                      value: Sage
+                      provenance: template
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-v2-listing-drafts-draft
+    put:
+      tags:
+      - Product Listings
+      summary: Update Draft (overrides, images, structure)
+      description: 'Update a draft — saves `field_overrides`, `image_urls`, and structural
+        changes (`sales_channel_category_id`, `sales_channel_product_template_id`,
+        `sales_channel_listing_profile_id`), then re-resolves and re-validates. The
+        draft transitions to `ready` when no validation errors remain.
+
+
+        `field_overrides` values come in two shapes:
+
+        - **Literal value** (string / number / bool / array for multiselect) — used
+        verbatim, provenance `override`.
+
+        - **Mapped source** — an object `{"source_type": ..., "source_value": ...}`
+        that re-resolves from product data on every validate/publish. `source_type`
+        must be one of `product_field` (whitelisted product columns — see GET /api/v2/listing-drafts/mappable-product-fields),
+        `product_attribute` (an Attribute id), `static` (literal string), or `expression`
+        (mustache tokens, e.g. `{{product.sku}} - {{product.name}}`). A mapped override
+        that resolves to null stays null (no fall-through to template/mapping values)
+        so required-field validation can flag it.
+
+
+        Passing an invalid `source_type`, or a `source_value` that is not a scalar,
+        returns 422.
+
+
+        Fields:
+
+        - `field_overrides` (nullable, object) — map of field name to literal value
+        or mapped source (see above).
+
+        - `sales_channel_category_id` (nullable, integer)
+
+        - `sales_channel_product_template_id` (nullable, integer)
+
+        - `sales_channel_listing_profile_id` (nullable, integer)
+
+        - `image_urls` (nullable, array of strings)
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                field_overrides:
+                  type: object
+                  properties:
+                    Brand:
+                      type: object
+                      properties:
+                        source_type:
+                          type: string
+                        source_value:
+                          type: string
+                    Color:
+                      type: string
+                    Title:
+                      type: object
+                      properties:
+                        source_type:
+                          type: string
+                        source_value:
+                          type: string
+                image_urls:
+                  type: array
+                  items:
+                    type: string
+              example:
+                field_overrides:
+                  Brand:
+                    source_type: product_field
+                    source_value: brand
+                  Color: Sage
+                  Title:
+                    source_type: expression
+                    source_value: '{{product.sku}} - {{product.name}}'
+                image_urls:
+                - https://cdn.example.com/img/beanie-1.jpg
+      parameters:
+      - name: draft
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Listing draft ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  sales_channel_id:
+                    type: integer
+                  sales_channel_category_id:
+                    type: integer
+                  sales_channel_product_template_id:
+                    type: string
+                    nullable: true
+                  sales_channel_listing_profile_id:
+                    type: string
+                    nullable: true
+                  product_listing_id:
+                    type: string
+                    nullable: true
+                  purpose:
+                    type: string
+                  state:
+                    type: string
+                  scheduled_at:
+                    type: string
+                    nullable: true
+                  image_urls:
+                    type: array
+                    items:
+                      type: string
+                  validation_errors:
+                    type: string
+                    nullable: true
+                  channel_errors:
+                    type: string
+                    nullable: true
+                  published_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                  product:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      sku:
+                        type: string
+                  sales_channel:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      integration_name:
+                        type: string
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      external_id:
+                        type: string
+                  template:
+                    type: string
+                    nullable: true
+                  listing_profile:
+                    type: string
+                    nullable: true
+                  variation_theme:
+                    type: string
+                    nullable: true
+                  variation_data:
+                    type: string
+                    nullable: true
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        label:
+                          type: string
+                        schema:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            usage:
+                              type: string
+                            cardinality:
+                              type: integer
+                            allowed_values:
+                              type: string
+                              nullable: true
+                            allows_custom_value:
+                              type: boolean
+                        value:
+                          type: string
+                        provenance:
+                          type: string
+                        has_override:
+                          type: boolean
+                        override:
+                          type: object
+                          properties:
+                            source_type:
+                              type: string
+                            source_value:
+                              type: string
+                        errors:
+                          type: array
+                  field_overrides:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          source_type:
+                            type: string
+                          source_value:
+                            type: string
+                  resolved_values:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                      Color:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                example:
+                  id: 42
+                  product_id: 88
+                  sales_channel_id: 30
+                  sales_channel_category_id: 7
+                  sales_channel_product_template_id: null
+                  sales_channel_listing_profile_id: null
+                  product_listing_id: null
+                  purpose: create
+                  state: ready
+                  scheduled_at: null
+                  image_urls:
+                  - https://cdn.example.com/img/beanie-1.jpg
+                  validation_errors: null
+                  channel_errors: null
+                  published_at: null
+                  created_at: '2026-07-06T12:00:00+00:00'
+                  updated_at: '2026-07-06T12:05:00+00:00'
+                  product:
+                    id: 88
+                    name: Tiny Threads Beanie
+                    sku: TT008
+                  sales_channel:
+                    id: 30
+                    name: eBay Store
+                    integration_name: Ebay
+                  category:
+                    id: 7
+                    name: Hoodies
+                    path: QA / Hoodies
+                    external_id: '155184'
+                  template: null
+                  listing_profile: null
+                  variation_theme: null
+                  variation_data: null
+                  fields:
+                  - name: Brand
+                    label: Brand
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Tiny Threads
+                    provenance: override
+                    has_override: true
+                    override:
+                      source_type: product_field
+                      source_value: brand
+                    errors: []
+                  - name: Color
+                    label: Color
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Sage
+                    provenance: template
+                    has_override: false
+                    override: null
+                    errors: []
+                  field_overrides:
+                    Brand:
+                      source_type: product_field
+                      source_value: brand
+                  resolved_values:
+                    Brand:
+                      value: Tiny Threads
+                      provenance: override
+                    Color:
+                      value: Sage
+                      provenance: template
+        '422':
+          description: Unprocessable Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      field_overrides.Brand:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The field_overrides.Brand mapping has an invalid source_type.
+                  errors:
+                    field_overrides.Brand:
+                    - The field_overrides.Brand mapping has an invalid source_type.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-v2-listing-drafts-draft
+  /api/v2/listing-drafts/{draft}/validate:
+    post:
+      tags:
+      - Product Listings
+      summary: Validate Draft
+      description: 'Re-resolve the draft''s values against current product data +
+        mappings and re-run validation. Mapped overrides (`{source_type, source_value}`)
+        are re-evaluated against the product on every call. State transitions to `ready`
+        when validation passes, back to `draft` when errors appear. A draft without
+        a category records a `missing_category` validation error.
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: draft
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Listing draft ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  sales_channel_id:
+                    type: integer
+                  sales_channel_category_id:
+                    type: integer
+                  sales_channel_product_template_id:
+                    type: string
+                    nullable: true
+                  sales_channel_listing_profile_id:
+                    type: string
+                    nullable: true
+                  product_listing_id:
+                    type: string
+                    nullable: true
+                  purpose:
+                    type: string
+                  state:
+                    type: string
+                  scheduled_at:
+                    type: string
+                    nullable: true
+                  image_urls:
+                    type: array
+                    items:
+                      type: string
+                  validation_errors:
+                    type: string
+                    nullable: true
+                  channel_errors:
+                    type: string
+                    nullable: true
+                  published_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                  product:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      sku:
+                        type: string
+                  sales_channel:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      integration_name:
+                        type: string
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      path:
+                        type: string
+                      external_id:
+                        type: string
+                  template:
+                    type: string
+                    nullable: true
+                  listing_profile:
+                    type: string
+                    nullable: true
+                  variation_theme:
+                    type: string
+                    nullable: true
+                  variation_data:
+                    type: string
+                    nullable: true
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        label:
+                          type: string
+                        schema:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            usage:
+                              type: string
+                            cardinality:
+                              type: integer
+                            allowed_values:
+                              type: string
+                              nullable: true
+                            allows_custom_value:
+                              type: boolean
+                        value:
+                          type: string
+                        provenance:
+                          type: string
+                        has_override:
+                          type: boolean
+                        override:
+                          type: object
+                          properties:
+                            source_type:
+                              type: string
+                            source_value:
+                              type: string
+                        errors:
+                          type: array
+                  field_overrides:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          source_type:
+                            type: string
+                          source_value:
+                            type: string
+                  resolved_values:
+                    type: object
+                    properties:
+                      Brand:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                      Color:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          provenance:
+                            type: string
+                example:
+                  id: 42
+                  product_id: 88
+                  sales_channel_id: 30
+                  sales_channel_category_id: 7
+                  sales_channel_product_template_id: null
+                  sales_channel_listing_profile_id: null
+                  product_listing_id: null
+                  purpose: create
+                  state: ready
+                  scheduled_at: null
+                  image_urls:
+                  - https://cdn.example.com/img/beanie-1.jpg
+                  validation_errors: null
+                  channel_errors: null
+                  published_at: null
+                  created_at: '2026-07-06T12:00:00+00:00'
+                  updated_at: '2026-07-06T12:05:00+00:00'
+                  product:
+                    id: 88
+                    name: Tiny Threads Beanie
+                    sku: TT008
+                  sales_channel:
+                    id: 30
+                    name: eBay Store
+                    integration_name: Ebay
+                  category:
+                    id: 7
+                    name: Hoodies
+                    path: QA / Hoodies
+                    external_id: '155184'
+                  template: null
+                  listing_profile: null
+                  variation_theme: null
+                  variation_data: null
+                  fields:
+                  - name: Brand
+                    label: Brand
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Tiny Threads
+                    provenance: override
+                    has_override: true
+                    override:
+                      source_type: product_field
+                      source_value: brand
+                    errors: []
+                  - name: Color
+                    label: Color
+                    schema:
+                      type: text
+                      usage: required
+                      cardinality: 1
+                      allowed_values: null
+                      allows_custom_value: true
+                    value: Sage
+                    provenance: template
+                    has_override: false
+                    override: null
+                    errors: []
+                  field_overrides:
+                    Brand:
+                      source_type: product_field
+                      source_value: brand
+                  resolved_values:
+                    Brand:
+                      value: Tiny Threads
+                      provenance: override
+                    Color:
+                      value: Sage
+                      provenance: template
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-v2-listing-drafts-draft-validate
   /api/inventory-adjustments/{inventory_adjustment}:
     get:
       tags:
@@ -506135,6 +508452,7 @@ x-tagGroups:
   - Listings
   - Sales Credits
   - Reporting
+  - Product Listings (V2)
   - Card on File
   - Channel Partners
   - Sub Sales Channels

@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 118 additions, 4 changes, 26 removals. 28 breaking changes — action required.
+description: This release includes 129 additions, 4 changes, 25 removals. 27 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 118 additions, 4 changes, 26 removals. 28 breaking changes — action required.
+This release includes 129 additions, 4 changes, 25 removals. 27 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -40,7 +40,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `PUT /api/integration-instances/{integration_instance}/unmap-listing` — Unmap Listing from SKU Product
 
 #### Product Listings
-- **Removed** `GET /api/product-listings/{product_listing}` — Get Product Listing
 - **Removed** `PUT /api/product-listings/{product_listing}` — Update Product Listing
 
 #### Reporting
@@ -124,13 +123,19 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/auto-match` — Auto-Match Shipping Methods
 - `GET /api/odoo-3pl/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
-- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
 
 ### Orders
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/import-pre-start-date` — Pre-Start-Date Orders — Import
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/pre-start-date-search` — Pre-Start-Date Orders — Search Specific Order
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/refresh` — Refresh Orders
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/{magento2Order}` — Get Order By ID
+
+### Product Listings
+- `GET /api/v2/listing-drafts` — List Drafts
+- `GET /api/v2/listing-drafts/mappable-product-fields` — List Mappable Product Fields
+- `GET /api/v2/listing-drafts/{draft}` — Get Draft
+- `GET /api/v2/listings/coverage` — Get Catalog Coverage Matrix
+- `GET /api/v2/products/{product}/publish-readiness` — Get Publish-Readiness Snapshot
 
 ### Products
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products` — List Products
@@ -158,7 +163,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
-- `POST /api/purchase-orders/{purchase_order}/changes-since-sent/dismiss` — Dismiss Pending Changes
 - `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines
 
 ### Reference Data (Read-Only)
@@ -172,6 +176,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Shipping Method Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/shipping-method-mappings` — List Shipping Method Mappings
+
+### Sub Sales Channels
+- `PATCH /api/sub-sales-channels/{subSalesChannel}/source-type` — Reclassify Source Type
 
 ### Transactions
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions` — List Transactions
@@ -188,13 +195,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Walmart
 - `GET /api/walmart/{integrationInstance}/feeds` — List Feeds
 - `GET /api/walmart/{integrationInstance}/feeds/{feed}` — Get Feed
-- `POST /api/walmart/{integrationInstance}/feeds/{feed}/repoll` — Re-poll Feed Status
 - `GET /api/walmart/{integrationInstance}/insights/seller-health` — Get Seller Health Summary
 - `DELETE /api/walmart/{integrationInstance}/listings/{listing}/promotions` — Delete Promotion
-- `POST /api/walmart/{integrationInstance}/listings/{listing}/promotions` — Create or Update Promotion
 - `GET /api/walmart/{integrationInstance}/oauth/authorization-url` — Get Authorization URL
-- `POST /api/walmart/{integrationInstance}/oauth/disconnect` — Disconnect OAuth Connection
-- `POST /api/walmart/{integrationInstance}/orders/{order}/acknowledge` — Acknowledge Order
 - `GET /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — List Order Shipping Labels
 - `GET /api/walmart/{integrationInstance}/platform-status` — Get API Platform Status
 - `GET /api/walmart/{integrationInstance}/reports/payment-statement` — Get Payment Statement
@@ -216,7 +219,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Warehouse Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
 
-_…plus 18 more (see the API reference)._
+_…plus 29 more (see the API reference)._
 
 ## Changed
 
