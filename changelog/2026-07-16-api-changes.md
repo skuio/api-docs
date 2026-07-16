@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 121 additions, 3 changes, 23 removals. 24 breaking changes — action required.
+description: This release includes 111 additions, 4 changes, 25 removals. 27 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 121 additions, 3 changes, 23 removals. 24 breaking changes — action required.
+This release includes 111 additions, 4 changes, 25 removals. 27 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -19,6 +19,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ## ⚠️ Breaking changes
 
 ### Removed endpoints
+
+#### Amazon
+- **Removed** `GET /api/amazon/{integrationInstance}/orders/export` — Export Orders
 
 #### Export
 - **Removed** `POST /api/export/create-download-file` — Start Async Export
@@ -42,6 +45,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/reporting/products` — Get Dashboard Products
 - **Removed** `GET /api/reporting/top-selling-products` — Get Top Selling Products
 
+#### Temu
+- **Removed** `GET /api/temu/{integrationInstance}/orders/export` — Export Orders
+
 #### UI Utilities
 - **Removed** `GET /api/data-tables` — Query list view Model
 - **Removed** `GET /api/table-views` — List Table Views
@@ -52,6 +58,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `PUT /api/table-views/{tableView}` — Update Table View
 
 ### Incompatible changes
+
+#### eBay
+- **Changed** `GET /api/ebay/{integrationInstance}/legacy-products` — List Legacy Products (Integration)
+  - new parameter(s): `per_page`
+  - removed parameter(s): `limit`
 
 #### Suppliers
 - **Changed** `GET /api/suppliers/{supplier}/pricing-tiers` — Get Supplier Pricing Tiers
@@ -84,26 +95,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Integration Instances
 - `GET /api/magento2/integration-instances` — List Instances
-- `DELETE /api/magento2/integration-instances/{instanceId}` — Delete Instance
-- `GET /api/magento2/integration-instances/{instanceId}` — Get Instance
-- `PATCH /api/magento2/integration-instances/{instanceId}` — Update Instance
+- `DELETE /api/magento2/integration-instances/{magento2IntegrationInstance}` — Delete Instance
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}` — Get Instance
+- `PATCH /api/magento2/integration-instances/{magento2IntegrationInstance}` — Update Instance
 
 ### Inventory Sources (MSI)
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources-cache` — List Cached MSI Sources
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/refresh` — Refresh MSI Sources from Magento
 - `PATCH /api/magento2/integration-instances/{magento2IntegrationInstance}/inventory-sources/{sourceCode}/master-of-stock` — Update Master of Stock for a Source
-
-### Magento 2
-- `POST /api/magento2/integration-instances/{instanceId}/inventory/compare` — Fetch From Magento (Compare)
-- `GET /api/magento2/integration-instances/{instanceId}/inventory/items` — List Inventory Items
-- `POST /api/magento2/integration-instances/{instanceId}/inventory/pull-from-magento` — Pull From Magento
-- `POST /api/magento2/integration-instances/{instanceId}/inventory/push-to-magento` — Sync To Magento (Push)
-- `POST /api/magento2/integration-instances/{instanceId}/inventory/recache` — Recache SKU Quantities
-- `GET /api/magento2/integration-instances/{instanceId}/inventory/summary` — Inventory Summary
-- `GET /api/magento2/integration-instances/{instanceId}/webhooks` — List Sync Runs
-- `GET /api/magento2/integration-instances/{instanceId}/webhooks/schedule` — Polling Schedule
-- `GET /api/magento2/integration-instances/{instanceId}/webhooks/summary` — Run Summary
-- `GET /api/magento2/integration-instances/{instanceId}/webhooks/{runId}` — Show Sync Run
 
 ### OAuth
 - `POST /api/magento2/oauth/callback` — OAuth Callback
@@ -147,6 +146,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
+- `POST /api/purchase-orders/{purchase_order}/changes-since-sent/dismiss` — Dismiss Pending Changes
 - `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines
 
 ### Reference Data (Read-Only)
@@ -176,16 +176,25 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Walmart
 - `GET /api/walmart/{integrationInstance}/feeds` — List Feeds
 - `GET /api/walmart/{integrationInstance}/feeds/{feed}` — Get Feed
+- `POST /api/walmart/{integrationInstance}/feeds/{feed}/repoll` — Re-poll Feed Status
 - `GET /api/walmart/{integrationInstance}/insights/seller-health` — Get Seller Health Summary
 - `DELETE /api/walmart/{integrationInstance}/listings/{listing}/promotions` — Delete Promotion
+- `POST /api/walmart/{integrationInstance}/listings/{listing}/promotions` — Create or Update Promotion
 - `GET /api/walmart/{integrationInstance}/oauth/authorization-url` — Get Authorization URL
+- `POST /api/walmart/{integrationInstance}/oauth/disconnect` — Disconnect OAuth Connection
+- `POST /api/walmart/{integrationInstance}/orders/{order}/acknowledge` — Acknowledge Order
+- `POST /api/walmart/{integrationInstance}/orders/{order}/cancel-lines` — Cancel Order Lines
+- `POST /api/walmart/{integrationInstance}/orders/{order}/shipping/estimates` — Get Shipping Estimates
 - `GET /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — List Order Shipping Labels
+- `POST /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — Purchase Shipping Label
 - `GET /api/walmart/{integrationInstance}/platform-status` — Get API Platform Status
+- `POST /api/walmart/{integrationInstance}/prices/push` — Push Prices
 - `GET /api/walmart/{integrationInstance}/reports/payment-statement` — Get Payment Statement
 - `GET /api/walmart/{integrationInstance}/reports/performance` — Get Partner Performance Report
 - `GET /api/walmart/{integrationInstance}/reports/recon/dates` — List Settlement Report Dates
 - `GET /api/walmart/{integrationInstance}/reports/recon/download` — Download Settlement Report
 - `GET /api/walmart/{integrationInstance}/reports/requests` — List Report Requests
+- `POST /api/walmart/{integrationInstance}/reports/requests` — Create Report Request
 - `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}` — Get Report Request Status
 - `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}/download` — Get Report Download URL
 - `GET /api/walmart/{integrationInstance}/shipping/carriers` — List Supported Carriers
@@ -200,7 +209,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Warehouse Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
 
-_…plus 21 more (see the API reference)._
+_…plus 11 more (see the API reference)._
 
 ## Changed
 
