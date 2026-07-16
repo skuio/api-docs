@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 15 additions, 2 changes, 25 removals. 27 breaking changes — action required.
+description: This release includes 16 additions, 2 changes, 24 removals. 26 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 15 additions, 2 changes, 25 removals. 27 breaking changes — action required.
+This release includes 16 additions, 2 changes, 24 removals. 26 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -22,9 +22,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 #### Amazon
 - **Removed** `GET /api/amazon/{integrationInstance}/orders/export` — Export Orders
-
-#### CSV Templates
-- **Removed** `GET /api/csv-templates/{csvTemplate}/export` — Export Data Using Template
 
 #### Export
 - **Removed** `POST /api/export/create-download-file` — Start Async Export
@@ -80,6 +77,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/ebay/{integrationInstance}/orders/archive` — Bulk Archive eBay Orders
 - `PUT /api/ebay/{integrationInstance}/orders/unarchive` — Bulk Unarchive eBay Orders
 - `POST /api/ebay/{integrationInstance}/orders/update-sku-orders` — Update SKU Orders from Channel Orders
+
+### Products
+- `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
 - `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines
