@@ -400215,7 +400215,7 @@ paths:
 
         Loads: salesOrder.customer, warehouse.address, approvedBy, rmaLines.product,
         rmaLines.returnReason, rmaLines.salesOrderLine, rmaLines.amazonFbaCustomerReturns,
-        returnReceipts.returnReceiptLines.product, returnReceipts.returnReceiptLines.returnReason,
+        returnReceipts.receivedBy, returnReceipts.returnReceiptLines.product, returnReceipts.returnReceiptLines.returnReason,
         salesCredits.'
       parameters:
       - name: rma
@@ -400386,6 +400386,66 @@ paths:
                               nullable: true
                       return_receipts:
                         type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            rma_id:
+                              type: integer
+                            warehouse_id:
+                              type: integer
+                            warehouse:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            received_at:
+                              type: string
+                            received_by_user_id:
+                              type: integer
+                            received_by:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                            notes:
+                              type: string
+                            return_receipt_lines:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  product_id:
+                                    type: integer
+                                  product:
+                                    type: object
+                                    properties:
+                                      id:
+                                        type: integer
+                                      sku:
+                                        type: string
+                                      name:
+                                        type: string
+                                  quantity:
+                                    type: integer
+                                  action:
+                                    type: string
+                                  return_reason:
+                                    type: object
+                                    properties:
+                                      id:
+                                        type: integer
+                                      name:
+                                        type: string
+                            created_at:
+                              type: string
                       sales_credits:
                         type: array
                       created_at:
@@ -400459,7 +400519,32 @@ paths:
                       remaining_quantity: 2
                       notes: Unit arrived damaged
                       amazon_fba_return: null
-                    return_receipts: []
+                    return_receipts:
+                    - id: 5
+                      rma_id: 1
+                      warehouse_id: 2
+                      warehouse:
+                        id: 2
+                        name: Main Warehouse
+                      received_at: '2024-01-21T09:00:00.000000Z'
+                      received_by_user_id: 1
+                      received_by:
+                        id: 1
+                        name: Admin User
+                      notes: Received in good condition
+                      return_receipt_lines:
+                      - id: 8
+                        product_id: 20
+                        product:
+                          id: 20
+                          sku: WIDGET-A
+                          name: Widget A
+                        quantity: 2
+                        action: added_to_stock
+                        return_reason:
+                          id: 1
+                          name: Defective
+                      created_at: '2024-01-21T09:00:00.000000Z'
                     sales_credits: []
                     created_at: '2024-01-14T08:00:00.000000Z'
                     updated_at: '2024-01-16T09:00:00.000000Z'
@@ -401868,6 +401953,13 @@ paths:
                         type: string
                       received_by_user_id:
                         type: integer
+                      received_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
                       notes:
                         type: string
                       return_receipt_lines:
@@ -401910,6 +402002,9 @@ paths:
                       name: Main Warehouse
                     received_at: '2024-01-21T00:00:00.000000Z'
                     received_by_user_id: 1
+                    received_by:
+                      id: 1
+                      name: Admin User
                     notes: Received in good condition
                     return_receipt_lines:
                     - id: 8
@@ -404307,7 +404402,14 @@ paths:
         or barcode)
 
         - warehouse_id (required): Warehouse the operator is receiving into (used
-        for warehouse-scoped policy matching)'
+        for warehouse-scoped policy matching)
+
+
+        When the token matches an RMA or a sales order, the response includes `sales_order_notes`
+        — the notes on the sales order being returned (pinned notes first, then newest
+        first), each with `id`, `note`, `user_name`, `created_at`, and `is_pinned`.
+        An RMA match also includes the linked `sales_order_id`, `sales_order_number`,
+        and the RMA''s own free-text `notes`.'
       requestBody:
         content:
           application/json:
@@ -404352,6 +404454,7 @@ paths:
                         policy_id: 4
                         policy_name: Main Warehouse Grade A → Restock
                         return_reason_id: null
+                      sales_order_notes: []
                 example-1:
                   summary: 200 OK (rma match)
                   value:
@@ -404363,6 +404466,9 @@ paths:
                         status: approved
                         customer_name: Acme Co
                         remaining_quantity: 3
+                        sales_order_id: 10
+                        sales_order_number: SO-0010
+                        notes: Inspect on arrival
                       order: null
                       staged_lines:
                       - product_id: 10
@@ -404374,6 +404480,17 @@ paths:
                         policy_id: null
                         policy_name: null
                         return_reason_id: 1
+                      sales_order_notes:
+                      - id: 44
+                        note: Fragile item — handle with care
+                        user_name: Admin User
+                        created_at: '2026-01-10T14:03:00.000000Z'
+                        is_pinned: true
+                      - id: 41
+                        note: Customer reports the box arrived damaged
+                        user_name: Admin User
+                        created_at: '2026-01-09T09:21:00.000000Z'
+                        is_pinned: false
         '422':
           description: Unprocessable Entity
           headers:
