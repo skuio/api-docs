@@ -46938,8 +46938,11 @@ paths:
 
         Use the `with` query parameter (comma-separated) to include additional relations:
         `pricingTiers` (also aliased as `pricing`), `defaultStore`, `defaultIncoterm`,
-        `wireInstructionsVerifiedBy`. Pass `bill_stats` to include bill activity statistics
-        for the supplier.'
+        `wireInstructionsVerifiedBy`, `customFieldValues`. Passing `customFieldValues`
+        adds `custom_field_values` to the response — each stored custom-field value
+        with its field metadata (`custom_field_id`, `name`, `slug`, `field_type`,
+        `options`, `description`, `is_visible_in_details`). Pass `bill_stats` to include
+        bill activity statistics for the supplier.'
       parameters:
       - name: supplier
         in: path
@@ -355343,7 +355346,33 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        **Consumption method fields:**
+
+        - `default_consumption_method` (optional, enum: `forward_flush` | `backflush`)
+        — BOM-level default inherited by component lines that omit their own `consumption_method`.
+        Null means no default (lines fall back to `forward_flush`).
+
+        - `component_lines[].consumption_method` (optional, enum: `forward_flush`
+        | `backflush`) — how the component is issued when production is recorded.
+        `forward_flush` (the default) waits for the operator to issue the component
+        explicitly with an actual consumed quantity; `backflush` auto-consumes it
+        from the produced output quantity multiplied by the BOM per-unit usage, with
+        no operator entry required. An explicit `null` behaves exactly like omitting
+        the field — the line inherits `default_consumption_method`, falling back to
+        `forward_flush` when the BOM has no default. The method is snapshotted onto
+        each manufacturing-order component line at confirmation, so later BOM edits
+        never change how an already-open order consumes.
+
+
+        **Operation cost fields:** each `operations[]` row accepts `time_minutes`,
+        `cost_per_hour`, and `fixed_cost` (optional, numeric, min 0) — a flat per-run
+        cost added on top of time-based labour. Fixed cost is capitalized onto finished
+        goods the same way labour is, but is never marked up by work-center overhead.
+
+        Auth: requires Bearer token.'
       requestBody:
         content:
           application/json:
@@ -355370,6 +355399,8 @@ paths:
                 expected_yield_percent:
                   type: integer
                 cost_allocation_method:
+                  type: string
+                default_consumption_method:
                   type: string
                 output_lines:
                   type: array
@@ -355437,6 +355468,7 @@ paths:
                 is_phantom: false
                 expected_yield_percent: 98
                 cost_allocation_method: by_value
+                default_consumption_method: forward_flush
                 output_lines:
                 - product_id: 1
                   role: primary
@@ -355448,7 +355480,7 @@ paths:
                   quantity: 2
                   uom_id: 1
                   expected_scrap_percent: 2
-                  consumption_method: manual
+                  consumption_method: forward_flush
                   is_optional: false
                   sort_order: 0
                 - product_id: 3
@@ -355467,10 +355499,211 @@ paths:
                   instructions: Mix components thoroughly.
       parameters: []
       responses:
-        '200':
-          description: Successful response
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  product_variant_id:
+                    type: string
+                    nullable: true
+                  name:
+                    type: string
+                  version_number:
+                    type: integer
+                  version_notes:
+                    type: string
+                  status:
+                    type: string
+                  effective_from:
+                    type: string
+                  effective_to:
+                    type: string
+                    nullable: true
+                  is_default:
+                    type: boolean
+                  is_phantom:
+                    type: boolean
+                  expected_yield_percent:
+                    type: integer
+                  manufacturing_leadtime_days:
+                    type: string
+                    nullable: true
+                  cost_allocation_method:
+                    type: string
+                  default_consumption_method:
+                    type: string
+                  created_by_id:
+                    type: integer
+                  component_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        expected_scrap_percent:
+                          type: integer
+                        consumption_method:
+                          type: string
+                        is_optional:
+                          type: boolean
+                        notes:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  output_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        role:
+                          type: string
+                        quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        manual_cost_percent:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_method:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_amount:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        sequence:
+                          type: integer
+                        name:
+                          type: string
+                        work_center_id:
+                          type: integer
+                        operation_type:
+                          type: string
+                        time_minutes:
+                          type: integer
+                        cost_per_hour:
+                          type: integer
+                        fixed_cost:
+                          type: integer
+                        instructions:
+                          type: string
+                  archived_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                example:
+                  id: 12
+                  product_id: 1
+                  product_variant_id: null
+                  name: Default Recipe v1
+                  version_number: 1
+                  version_notes: Initial recipe
+                  status: draft
+                  effective_from: '2026-01-01'
+                  effective_to: null
+                  is_default: true
+                  is_phantom: false
+                  expected_yield_percent: 98
+                  manufacturing_leadtime_days: null
+                  cost_allocation_method: by_value
+                  default_consumption_method: forward_flush
+                  created_by_id: 1
+                  component_lines:
+                  - id: 31
+                    bom_id: 12
+                    product_id: 2
+                    product_variant_id: null
+                    quantity: 2
+                    uom_id: 1
+                    expected_scrap_percent: 2
+                    consumption_method: forward_flush
+                    is_optional: false
+                    notes: null
+                    sort_order: 0
+                  - id: 32
+                    bom_id: 12
+                    product_id: 3
+                    product_variant_id: null
+                    quantity: 1
+                    uom_id: 1
+                    expected_scrap_percent: null
+                    consumption_method: backflush
+                    is_optional: false
+                    notes: null
+                    sort_order: 1
+                  output_lines:
+                  - id: 21
+                    bom_id: 12
+                    product_id: 1
+                    product_variant_id: null
+                    role: primary
+                    quantity: 1
+                    uom_id: 1
+                    manual_cost_percent: null
+                    byproduct_valuation_method: null
+                    byproduct_valuation_amount: null
+                    sort_order: 0
+                  operations:
+                  - id: 7
+                    bom_id: 12
+                    sequence: 10
+                    name: Mix
+                    work_center_id: 1
+                    operation_type: setup
+                    time_minutes: 30
+                    cost_per_hour: 45
+                    fixed_cost: 0
+                    instructions: Mix components thoroughly.
+                  archived_at: null
+                  created_at: '2026-07-01T10:15:00.000000Z'
+                  updated_at: '2026-07-01T10:15:00.000000Z'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -355559,6 +355792,26 @@ paths:
       tags:
       - BOMs
       summary: Get BOM
+      description: 'Get a single BOM with its product, component lines, output lines,
+        operations (with work centers), and creator, plus `manufacturing_orders_count`.
+
+
+        :::info[Required scope: `manufacturing:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        The BOM carries `default_consumption_method` (`forward_flush` | `backflush`
+        | null) — the default inherited by component lines that don''t set their own
+        — and each `component_lines[]` row carries its effective `consumption_method`.
+        `forward_flush` components are issued explicitly by the operator when production
+        is recorded; `backflush` components are auto-consumed from the produced output
+        quantity multiplied by the BOM per-unit usage.
+
+        Auth: requires Bearer token.'
       parameters:
       - name: id
         in: path
@@ -355568,28 +355821,428 @@ paths:
         description: The id identifier
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  product_variant_id:
+                    type: string
+                    nullable: true
+                  product:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      sku:
+                        type: string
+                      name:
+                        type: string
+                      stock_uom:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          product_id:
+                            type: integer
+                          uom_id:
+                            type: integer
+                          unit_of_measure:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              code:
+                                type: string
+                              name:
+                                type: string
+                              uom_type:
+                                type: string
+                              is_system:
+                                type: boolean
+                          is_stock_uom:
+                            type: boolean
+                          is_purchase_uom:
+                            type: boolean
+                          is_sales_uom:
+                            type: boolean
+                          conversion_factor:
+                            type: integer
+                          display_precision:
+                            type: integer
+                          has_transactional_history:
+                            type: boolean
+                  name:
+                    type: string
+                  version_number:
+                    type: integer
+                  version_notes:
+                    type: string
+                  status:
+                    type: string
+                  effective_from:
+                    type: string
+                  effective_to:
+                    type: string
+                    nullable: true
+                  is_default:
+                    type: boolean
+                  is_phantom:
+                    type: boolean
+                  expected_yield_percent:
+                    type: integer
+                  manufacturing_leadtime_days:
+                    type: integer
+                  cost_allocation_method:
+                    type: string
+                  default_consumption_method:
+                    type: string
+                  created_by_id:
+                    type: integer
+                  created_by:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  component_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            weight:
+                              type: number
+                            weight_unit:
+                              type: string
+                            stock_uom:
+                              type: string
+                              nullable: true
+                        quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        unit_of_measure:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            uom_type:
+                              type: string
+                            is_system:
+                              type: boolean
+                        expected_scrap_percent:
+                          type: integer
+                        consumption_method:
+                          type: string
+                        is_optional:
+                          type: boolean
+                        notes:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  output_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            weight:
+                              type: number
+                            weight_unit:
+                              type: string
+                            stock_uom:
+                              type: string
+                              nullable: true
+                        role:
+                          type: string
+                        quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        unit_of_measure:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            uom_type:
+                              type: string
+                            is_system:
+                              type: boolean
+                        manual_cost_percent:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_method:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_amount:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        sequence:
+                          type: integer
+                        name:
+                          type: string
+                        work_center_id:
+                          type: integer
+                        work_center:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            overhead_rate_percent:
+                              type: integer
+                        operation_type:
+                          type: string
+                        time_minutes:
+                          type: integer
+                        cost_per_hour:
+                          type: integer
+                        fixed_cost:
+                          type: integer
+                        instructions:
+                          type: string
+                  manufacturing_orders_count:
+                    type: integer
+                  archived_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                example:
+                  id: 12
+                  product_id: 1
+                  product_variant_id: null
+                  product:
+                    id: 1
+                    sku: KIT-A
+                    name: Widget Kit A
+                    stock_uom:
+                      id: 11
+                      product_id: 1
+                      uom_id: 1
+                      unit_of_measure:
+                        id: 1
+                        code: EA
+                        name: Each
+                        uom_type: count
+                        is_system: true
+                      is_stock_uom: true
+                      is_purchase_uom: true
+                      is_sales_uom: true
+                      conversion_factor: 1
+                      display_precision: 0
+                      has_transactional_history: true
+                  name: Default Recipe v1
+                  version_number: 1
+                  version_notes: Initial recipe
+                  status: active
+                  effective_from: '2026-01-01'
+                  effective_to: null
+                  is_default: true
+                  is_phantom: false
+                  expected_yield_percent: 98
+                  manufacturing_leadtime_days: 2
+                  cost_allocation_method: by_value
+                  default_consumption_method: forward_flush
+                  created_by_id: 1
+                  created_by:
+                    id: 1
+                    name: Dev User
+                  component_lines:
+                  - id: 31
+                    bom_id: 12
+                    product_id: 2
+                    product_variant_id: null
+                    product:
+                      id: 2
+                      sku: RM-BEAN
+                      name: Raw Coffee Beans
+                      weight: 0.5
+                      weight_unit: kg
+                      stock_uom: null
+                    quantity: 2
+                    uom_id: 1
+                    unit_of_measure:
+                      id: 1
+                      code: EA
+                      name: Each
+                      uom_type: count
+                      is_system: true
+                    expected_scrap_percent: 2
+                    consumption_method: forward_flush
+                    is_optional: false
+                    notes: null
+                    sort_order: 0
+                  - id: 32
+                    bom_id: 12
+                    product_id: 3
+                    product_variant_id: null
+                    product:
+                      id: 3
+                      sku: PKG-POUCH
+                      name: 250g Pouch
+                      weight: 0.02
+                      weight_unit: kg
+                      stock_uom: null
+                    quantity: 1
+                    uom_id: 1
+                    unit_of_measure:
+                      id: 1
+                      code: EA
+                      name: Each
+                      uom_type: count
+                      is_system: true
+                    expected_scrap_percent: null
+                    consumption_method: backflush
+                    is_optional: false
+                    notes: null
+                    sort_order: 1
+                  output_lines:
+                  - id: 21
+                    bom_id: 12
+                    product_id: 1
+                    product_variant_id: null
+                    product:
+                      id: 1
+                      sku: KIT-A
+                      name: Widget Kit A
+                      weight: 1.2
+                      weight_unit: kg
+                      stock_uom: null
+                    role: primary
+                    quantity: 1
+                    uom_id: 1
+                    unit_of_measure:
+                      id: 1
+                      code: EA
+                      name: Each
+                      uom_type: count
+                      is_system: true
+                    manual_cost_percent: null
+                    byproduct_valuation_method: null
+                    byproduct_valuation_amount: null
+                    sort_order: 0
+                  operations:
+                  - id: 7
+                    bom_id: 12
+                    sequence: 10
+                    name: Mix
+                    work_center_id: 1
+                    work_center:
+                      id: 1
+                      name: Mixing Station
+                      overhead_rate_percent: 10
+                    operation_type: setup
+                    time_minutes: 30
+                    cost_per_hour: 45
+                    fixed_cost: 75
+                    instructions: Mix components thoroughly.
+                  manufacturing_orders_count: 3
+                  archived_at: null
+                  created_at: '2026-07-01T10:15:00.000000Z'
+                  updated_at: '2026-07-02T08:30:00.000000Z'
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
       x-required-scope: manufacturing:read
-      description: 'Get BOM
-
-
-        :::info[Required scope: `manufacturing:read`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::'
       operationId: get-api-manufacturing-boms-id
     put:
       tags:
       - BOMs
       summary: Update BOM
+      description: 'Update a BOM. All fields are optional — omitted fields keep their
+        current values.
+
+
+        :::info[Required scope: `manufacturing:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        `default_consumption_method` (nullable, enum: `forward_flush` | `backflush`)
+        sets the BOM-level default inherited by component lines that omit their own
+        `consumption_method`; a per-line `consumption_method` always overrides it.
+        A component line submitted with an explicit `consumption_method: null` behaves
+        exactly like omitting the field — a new line inherits the BOM default (falling
+        back to `forward_flush`), and an existing line keeps its current method. Changing
+        consumption methods only affects manufacturing orders confirmed after the
+        change — each order snapshots the method per component line at confirmation,
+        so open orders keep consuming the way they were confirmed.
+
+        Auth: requires Bearer token.'
       requestBody:
         content:
           application/json:
@@ -355601,6 +356254,8 @@ paths:
                 version_notes:
                   type: string
                 cost_allocation_method:
+                  type: string
+                default_consumption_method:
                   type: string
                 component_lines:
                   type: array
@@ -355617,16 +356272,20 @@ paths:
                         type: integer
                       expected_scrap_percent:
                         type: integer
+                      consumption_method:
+                        type: string
               example:
                 name: Default Recipe v2
                 version_notes: Adjusted scrap
                 cost_allocation_method: by_quantity
+                default_consumption_method: backflush
                 component_lines:
                 - id: 11
                   product_id: 2
                   quantity: 2.5
                   uom_id: 1
                   expected_scrap_percent: 3
+                  consumption_method: forward_flush
       parameters:
       - name: id
         in: path
@@ -355636,24 +356295,171 @@ paths:
         description: The id identifier
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  product_id:
+                    type: integer
+                  product_variant_id:
+                    type: string
+                    nullable: true
+                  name:
+                    type: string
+                  version_number:
+                    type: integer
+                  version_notes:
+                    type: string
+                  status:
+                    type: string
+                  effective_from:
+                    type: string
+                  effective_to:
+                    type: string
+                    nullable: true
+                  is_default:
+                    type: boolean
+                  is_phantom:
+                    type: boolean
+                  expected_yield_percent:
+                    type: integer
+                  manufacturing_leadtime_days:
+                    type: integer
+                  cost_allocation_method:
+                    type: string
+                  default_consumption_method:
+                    type: string
+                  created_by_id:
+                    type: integer
+                  component_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: number
+                        uom_id:
+                          type: integer
+                        expected_scrap_percent:
+                          type: integer
+                        consumption_method:
+                          type: string
+                        is_optional:
+                          type: boolean
+                        notes:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  output_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        bom_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        role:
+                          type: string
+                        quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        manual_cost_percent:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_method:
+                          type: string
+                          nullable: true
+                        byproduct_valuation_amount:
+                          type: string
+                          nullable: true
+                        sort_order:
+                          type: integer
+                  operations:
+                    type: array
+                  archived_at:
+                    type: string
+                    nullable: true
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                example:
+                  id: 12
+                  product_id: 1
+                  product_variant_id: null
+                  name: Default Recipe v2
+                  version_number: 1
+                  version_notes: Adjusted scrap
+                  status: active
+                  effective_from: '2026-01-01'
+                  effective_to: null
+                  is_default: true
+                  is_phantom: false
+                  expected_yield_percent: 98
+                  manufacturing_leadtime_days: 2
+                  cost_allocation_method: by_quantity
+                  default_consumption_method: backflush
+                  created_by_id: 1
+                  component_lines:
+                  - id: 11
+                    bom_id: 12
+                    product_id: 2
+                    product_variant_id: null
+                    quantity: 2.5
+                    uom_id: 1
+                    expected_scrap_percent: 3
+                    consumption_method: forward_flush
+                    is_optional: false
+                    notes: null
+                    sort_order: 0
+                  output_lines:
+                  - id: 21
+                    bom_id: 12
+                    product_id: 1
+                    product_variant_id: null
+                    role: primary
+                    quantity: 1
+                    uom_id: 1
+                    manual_cost_percent: null
+                    byproduct_valuation_method: null
+                    byproduct_valuation_amount: null
+                    sort_order: 0
+                  operations: []
+                  archived_at: null
+                  created_at: '2026-07-01T10:15:00.000000Z'
+                  updated_at: '2026-07-02T11:40:00.000000Z'
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
         '422': *id005
       x-required-scope: manufacturing:write
-      description: 'Update BOM
-
-
-        :::info[Required scope: `manufacturing:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::'
       operationId: put-api-manufacturing-boms-id
     delete:
       tags:
@@ -355764,6 +356570,8 @@ paths:
                   type: string
                 cost_allocation_method:
                   type: string
+                default_consumption_method:
+                  type: string
                 output_lines:
                   type: array
                   items:
@@ -355790,11 +356598,14 @@ paths:
                         type: integer
                       expected_scrap_percent:
                         type: integer
+                      consumption_method:
+                        type: string
               example:
                 name: Default Recipe
                 version_notes: Reduced component scrap
                 effective_from: '2026-07-01'
                 cost_allocation_method: by_weight
+                default_consumption_method: forward_flush
                 output_lines:
                 - product_id: 1
                   role: primary
@@ -355805,6 +356616,7 @@ paths:
                   quantity: 2.5
                   uom_id: 1
                   expected_scrap_percent: 3
+                  consumption_method: forward_flush
       parameters:
       - name: bom
         in: path
@@ -355857,6 +356669,8 @@ paths:
                     type: integer
                   cost_allocation_method:
                     type: string
+                  default_consumption_method:
+                    type: string
                   created_by_id:
                     type: integer
                   component_lines:
@@ -355874,6 +356688,8 @@ paths:
                           type: integer
                         expected_scrap_percent:
                           type: integer
+                        consumption_method:
+                          type: string
                   output_lines:
                     type: array
                     items:
@@ -355915,6 +356731,7 @@ paths:
                   expected_yield_percent: null
                   manufacturing_leadtime_days: 2
                   cost_allocation_method: by_weight
+                  default_consumption_method: forward_flush
                   created_by_id: 1
                   component_lines:
                   - id: 61
@@ -355922,6 +356739,7 @@ paths:
                     quantity: 2.5
                     uom_id: 1
                     expected_scrap_percent: 3
+                    consumption_method: forward_flush
                   output_lines:
                   - id: 44
                     product_id: 1
@@ -356920,7 +357738,23 @@ paths:
         For **draft** MOs — which have no materialised `component_lines`/`output_lines`/`operations`
         rows yet (those are created by ConfirmMoAction) — clients should fall back
         to these BOM counts when rendering tab badges and the footer summary so the
-        user sees what the MO *will* contain once confirmed.'
+        user sees what the MO *will* contain once confirmed.
+
+
+        Once production has been recorded, `cost_breakdown` is populated with cumulative
+        cost categories: `materials`, `labor`, `overhead`, `fixed` (flat per-run operation
+        costs — never marked up by overhead), `service_fee`, `landed_cost` (outsourced
+        orders only), `total`, `allocation_method`, `recorded_at`, and per-output
+        allocation rows in `outputs[]`. It is null until the first production record.
+
+
+        Each `component_lines[]` row carries `consumption_method` (`forward_flush`
+        | `backflush`) — snapshotted from the BOM at confirmation — and each `operations[]`
+        row carries `fixed_cost` plus `cost_source` (`none` | `actual` | `estimated`
+        | `manual`) — the provenance of its `actual_cost`: `estimated` flags a cost
+        that fell back to the planned duration because no time was logged, and `manual`
+        marks an explicitly supplied cost that is never auto-recalculated (only another
+        explicit cost, or an explicitly logged positive time, replaces it).'
       parameters:
       - name: id
         in: path
@@ -357679,7 +358513,85 @@ paths:
 
         Destination bin: each output may optionally set `warehouse_location_id` —
         the bin the produced quantity is received into. When omitted, the assembly''s
-        preferred bin (or the warehouse''s default storage location) is used.'
+        preferred bin (or the warehouse''s default storage location) is used.
+
+
+        **Request `components` (present, may be empty):** the `components` array must
+        always be present, but it no longer needs at least one entry. Only `forward_flush`
+        component lines need entries — omit `backflush` lines entirely (they are consumed
+        automatically, prorated to the recorded output), and submit `"components":
+        []` when every component line on the order is backflush. Including an entry
+        for a backflush line acts as a manual override of the automatic quantity for
+        that run.
+
+
+        **Backflush components:** component lines with `consumption_method = backflush`
+        are consumed automatically — for each backflush line without an explicit `components[]`
+        entry, the recorded output is converted to that line''s BOM-implied usage
+        (per-unit usage multiplied by cumulative primary output produced — deliberately
+        uncapped, so over-yield beyond the planned quantity consumes proportionally
+        more — minus what earlier production records already consumed) and issued
+        through the same FIFO/lot machinery as operator entries. Consumption beyond
+        the quantity reserved at confirmation automatically tops up the line''s allocation
+        from free (unreserved) stock; when free stock cannot cover the excess the
+        request fails with the same structured 422s as a manual over-issue (`code
+        = insufficient_inventory` when the stock physically does not exist, `code
+        = over_consumption` when it exists but is reserved by other documents) and
+        the whole call rolls back. Submitting an explicit `components[]` entry for
+        a backflush line overrides the automatic quantity for that run. `forward_flush`
+        lines are only consumed when an explicit entry is submitted.
+
+
+        **Response `cost_breakdown`:** the returned manufacturing order carries a
+        cumulative `cost_breakdown` object: `materials` (FIFO value consumed so far),
+        `labor` (time-based operation labour), `overhead` (labour multiplied by the
+        work-center overhead percent), `fixed` (flat per-run operation costs — never
+        marked up by overhead), `service_fee` and `landed_cost` (outsourced orders
+        only), `total`, `allocation_method`, `recorded_at`, and per-output allocation
+        rows in `outputs[]`.
+
+
+        **Operation costing without a timer:** each `operations[]` row in the response
+        reports `fixed_cost`, `actual_cost`, and `cost_source` — `none` (no cost recorded),
+        `actual` (from logged time or a flat fixed-cost operation), `estimated` (fell
+        back to the planned duration because no time was logged), or `manual` (an
+        explicitly supplied cost that is never auto-recalculated — only another explicit
+        cost, or an explicitly logged positive time, replaces it).
+
+
+        **Insufficient stock guard:** if a component''s FIFO layers in the MO''s source
+        warehouse cannot cover the quantity to consume (forward-flush or backflush),
+        the call returns **422** with `code = insufficient_inventory` and an `offending[]`
+        array (`product_id`, `product_sku`, `product_name`, `warehouse_id`, `requested_quantity`,
+        `available_quantity`). The whole call rolls back — no movements, FIFO layers,
+        or production iterations are written.
+
+
+        **Explicit lot allocation shortages:** shortage failures inside an explicit
+        `lot_allocation[]` return the same **422** `code = insufficient_inventory`
+        envelope (previously an internal error). A named lot that is no longer an
+        active layer for the component at consumption time, or a lot that cannot cover
+        its requested quantity, reports the usual `product_id`, `product_sku`, `product_name`,
+        `warehouse_id`, `requested_quantity`, `available_quantity` row. A lot-level
+        overdraw detected mid-consumption (e.g. duplicate entries naming the same
+        lot whose combined quantity exceeds its availability) identifies the lot with
+        `fifo_layer_id` and reports the layer''s real state at the failed draw — `layer_original_quantity`,
+        `layer_fulfilled_quantity` (includes quantities drawn earlier in the same
+        rolled-back call), and `layer_remaining_quantity` — rather than a fabricated
+        requested/available pair. The whole call rolls back.
+
+
+        **Downward cost revision guard:** operation cost revisions between production
+        records are recognized as SIGNED deltas on the next iteration''s journal —
+        negative buckets post as balanced flipped legs (e.g. a debit to Direct Labor
+        Applied) and a net-zero reclassification still posts its offsetting legs.
+        When a negative conversion delta exceeds the value this run''s output FIFO
+        layers can absorb (a layer''s cost would drop below zero), the call returns
+        **422** with `code = cost_revision_exceeds_layer_value`, the signed `conversion_delta`,
+        and an `offending[]` array (`output_line_id`, `fifo_layer_id`, `product_id`,
+        `product_sku`, `product_name`, `layer_cost`, `revision_share`, `resulting_cost`).
+        The whole call rolls back — reverse the over-costed earlier iteration and
+        re-record it with the corrected operation costs.'
       requestBody:
         content:
           application/json:
@@ -357785,6 +358697,365 @@ paths:
           type: string
         description: The id identifier
       responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  mo_number:
+                    type: string
+                  status:
+                    type: string
+                  bom_id:
+                    type: integer
+                  warehouse_id:
+                    type: integer
+                  destination_warehouse_id:
+                    type: integer
+                  planned_quantity:
+                    type: integer
+                  completed_quantity:
+                    type: integer
+                  production_method:
+                    type: string
+                  contractor_supplier_id:
+                    type: string
+                    nullable: true
+                  outsourced_purchase_order_id:
+                    type: string
+                    nullable: true
+                  sales_order_id:
+                    type: string
+                    nullable: true
+                  sales_order_line_id:
+                    type: string
+                    nullable: true
+                  priority:
+                    type: integer
+                  scheduled_start:
+                    type: string
+                  scheduled_end:
+                    type: string
+                  started_at:
+                    type: string
+                  completed_at:
+                    type: string
+                    nullable: true
+                  closed_at:
+                    type: string
+                    nullable: true
+                  cancelled_at:
+                    type: string
+                    nullable: true
+                  cancelled_reason_code:
+                    type: string
+                    nullable: true
+                  cancelled_reason_notes:
+                    type: string
+                    nullable: true
+                  is_simple_mode:
+                    type: boolean
+                  is_disassemble:
+                    type: boolean
+                  notes:
+                    type: string
+                  internal_reference:
+                    type: string
+                    nullable: true
+                  cost_breakdown:
+                    type: object
+                    properties:
+                      materials:
+                        type: number
+                      labor:
+                        type: number
+                      overhead:
+                        type: number
+                      fixed:
+                        type: integer
+                      service_fee:
+                        type: integer
+                      landed_cost:
+                        type: integer
+                      total:
+                        type: number
+                      allocation_method:
+                        type: string
+                      outputs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mo_output_line_id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            role:
+                              type: string
+                            produced_quantity:
+                              type: integer
+                            allocated_cost:
+                              type: number
+                            allocated_this_step:
+                              type: number
+                            unit_cost:
+                              type: number
+                      recorded_at:
+                        type: string
+                  created_by_id:
+                    type: integer
+                  assigned_to_id:
+                    type: string
+                    nullable: true
+                  component_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        manufacturing_order_id:
+                          type: integer
+                        bom_component_line_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        expected_quantity:
+                          type: integer
+                        actual_consumed_quantity:
+                          type: integer
+                        expected_scrap_quantity:
+                          type: integer
+                        actual_scrap_quantity:
+                          type: integer
+                        scrap_reason_code:
+                          type: string
+                        uom_id:
+                          type: integer
+                        consumption_method:
+                          type: string
+                        consumption_posted_at:
+                          type: string
+                  output_lines:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        manufacturing_order_id:
+                          type: integer
+                        bom_output_line_id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product_variant_id:
+                          type: string
+                          nullable: true
+                        role:
+                          type: string
+                        expected_quantity:
+                          type: integer
+                        actual_produced_quantity:
+                          type: integer
+                        uom_id:
+                          type: integer
+                        allocated_cost:
+                          type: number
+                        batch_number:
+                          type: string
+                        expiry_date:
+                          type: string
+                  operations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        manufacturing_order_id:
+                          type: integer
+                        source:
+                          type: string
+                        bom_operation_id:
+                          type: integer
+                        sequence:
+                          type: integer
+                        name:
+                          type: string
+                        type:
+                          type: string
+                        operation_type:
+                          type: string
+                        expected_duration_minutes:
+                          type: integer
+                        hourly_rate:
+                          type: integer
+                        status:
+                          type: string
+                        scheduled_start:
+                          type: string
+                          nullable: true
+                        started_at:
+                          type: string
+                          nullable: true
+                        completed_at:
+                          type: string
+                        actual_time_minutes:
+                          type: integer
+                        operator_id:
+                          type: integer
+                        default_operator_id:
+                          type: string
+                          nullable: true
+                        work_center_id:
+                          type: integer
+                        fixed_cost:
+                          type: integer
+                        actual_cost:
+                          type: number
+                        cost_source:
+                          type: string
+                        notes:
+                          type: string
+                        is_modified_from_bom:
+                          type: boolean
+                  events:
+                    type: array
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                  archived_at:
+                    type: string
+                    nullable: true
+                example:
+                  id: 14
+                  mo_number: MO-000014
+                  status: in_progress
+                  bom_id: 12
+                  warehouse_id: 1
+                  destination_warehouse_id: 1
+                  planned_quantity: 100
+                  completed_quantity: 100
+                  production_method: in_house
+                  contractor_supplier_id: null
+                  outsourced_purchase_order_id: null
+                  sales_order_id: null
+                  sales_order_line_id: null
+                  priority: 0
+                  scheduled_start: '2026-04-22T08:00:00.000000Z'
+                  scheduled_end: '2026-04-24T17:00:00.000000Z'
+                  started_at: '2026-04-22T08:05:00.000000Z'
+                  completed_at: null
+                  closed_at: null
+                  cancelled_at: null
+                  cancelled_reason_code: null
+                  cancelled_reason_notes: null
+                  is_simple_mode: false
+                  is_disassemble: false
+                  notes: Full run completed
+                  internal_reference: null
+                  cost_breakdown:
+                    materials: 1240.5
+                    labor: 26.25
+                    overhead: 2.625
+                    fixed: 75
+                    service_fee: 0
+                    landed_cost: 0
+                    total: 1344.375
+                    allocation_method: by_value
+                    outputs:
+                    - mo_output_line_id: 1
+                      product_id: 1
+                      role: primary
+                      produced_quantity: 100
+                      allocated_cost: 1344.375
+                      allocated_this_step: 1344.375
+                      unit_cost: 13.44375
+                    recorded_at: '2026-04-23T14:12:09+00:00'
+                  created_by_id: 1
+                  assigned_to_id: null
+                  component_lines:
+                  - id: 1
+                    manufacturing_order_id: 14
+                    bom_component_line_id: 31
+                    product_id: 2
+                    product_variant_id: null
+                    expected_quantity: 200
+                    actual_consumed_quantity: 200
+                    expected_scrap_quantity: 4
+                    actual_scrap_quantity: 4
+                    scrap_reason_code: spillage
+                    uom_id: 1
+                    consumption_method: forward_flush
+                    consumption_posted_at: '2026-04-23T14:12:09.000000Z'
+                  - id: 2
+                    manufacturing_order_id: 14
+                    bom_component_line_id: 32
+                    product_id: 3
+                    product_variant_id: null
+                    expected_quantity: 100
+                    actual_consumed_quantity: 100
+                    expected_scrap_quantity: 0
+                    actual_scrap_quantity: 0
+                    scrap_reason_code: null
+                    uom_id: 1
+                    consumption_method: backflush
+                    consumption_posted_at: '2026-04-23T14:12:09.000000Z'
+                  output_lines:
+                  - id: 1
+                    manufacturing_order_id: 14
+                    bom_output_line_id: 21
+                    product_id: 1
+                    product_variant_id: null
+                    role: primary
+                    expected_quantity: 100
+                    actual_produced_quantity: 100
+                    uom_id: 1
+                    allocated_cost: 1344.375
+                    batch_number: LOT-2026-04-001
+                    expiry_date: '2027-04-23'
+                  operations:
+                  - id: 1
+                    manufacturing_order_id: 14
+                    source: from_bom
+                    bom_operation_id: 7
+                    sequence: 10
+                    name: Mix
+                    type: setup
+                    operation_type: setup
+                    expected_duration_minutes: 30
+                    hourly_rate: 45
+                    status: completed
+                    scheduled_start: null
+                    started_at: null
+                    completed_at: '2026-04-23T14:12:09.000000Z'
+                    actual_time_minutes: 35
+                    operator_id: 1
+                    default_operator_id: null
+                    work_center_id: 1
+                    fixed_cost: 75
+                    actual_cost: 101.25
+                    cost_source: actual
+                    notes: Ran 5 minutes over
+                    is_modified_from_bom: false
+                  events: []
+                  created_at: '2026-04-20T09:00:00.000000Z'
+                  updated_at: '2026-04-23T14:12:09.000000Z'
+                  archived_at: null
         '422':
           description: Unprocessable Entity
           headers:
@@ -357829,6 +359100,30 @@ paths:
                       weight: 0
                       manual_cost_percent: null
                 example-2:
+                  summary: 422 — Downward Cost Revision Exceeds Layer Value
+                  value:
+                    error: 'MO-000001 cannot record production: this run recognizes
+                      a downward cost revision of 50.00, which exceeds the value its
+                      produced output can absorb. Reverse the affected earlier production
+                      iteration(s) and re-record them with the corrected operation
+                      costs instead.'
+                    message: 'MO-000001 cannot record production: this run recognizes
+                      a downward cost revision of 50.00, which exceeds the value its
+                      produced output can absorb. Reverse the affected earlier production
+                      iteration(s) and re-record them with the corrected operation
+                      costs instead.'
+                    code: cost_revision_exceeds_layer_value
+                    conversion_delta: -50
+                    offending:
+                    - output_line_id: 1
+                      fifo_layer_id: 42
+                      product_id: 9
+                      product_sku: QA-ROAST
+                      product_name: Roasted Coffee Beans
+                      layer_cost: 20
+                      revision_share: -50
+                      resulting_cost: -30
+                example-3:
                   summary: 422 — Over-Consumption (exceeds allocated)
                   value:
                     error: 'MO-000001: cannot consume 10 EACH of QA-BEAN (Coffee Beans)
@@ -357848,6 +359143,40 @@ paths:
                       uom_code: EACH
                       requested_quantity: 10
                       allocated_quantity: 6
+                example-4:
+                  summary: 422 — Insufficient Component Inventory
+                  value:
+                    error: 'Insufficient FIFO inventory for WIDGET-RAW (Raw Widget)
+                      in warehouse 3: 30 required, only 4 available. Receive or transfer
+                      more stock before recording production.'
+                    message: 'Insufficient FIFO inventory for WIDGET-RAW (Raw Widget)
+                      in warehouse 3: 30 required, only 4 available. Receive or transfer
+                      more stock before recording production.'
+                    code: insufficient_inventory
+                    offending:
+                    - product_id: 88
+                      product_sku: WIDGET-RAW
+                      product_name: Raw Widget
+                      warehouse_id: 3
+                      requested_quantity: 30
+                      available_quantity: 4
+                example-5:
+                  summary: 422 — Lot Overdraw (Duplicate Allocation Entries)
+                  value:
+                    error: 'updateFulfilledQuantity would oversubscribe FifoLayer
+                      412: 6+6=12 > original 10'
+                    message: 'updateFulfilledQuantity would oversubscribe FifoLayer
+                      412: 6+6=12 > original 10'
+                    code: insufficient_inventory
+                    offending:
+                    - fifo_layer_id: 412
+                      product_id: 88
+                      product_sku: WIDGET-RAW
+                      product_name: Raw Widget
+                      warehouse_id: 3
+                      layer_original_quantity: 10
+                      layer_fulfilled_quantity: 6
+                      layer_remaining_quantity: 4
         '429': *id001
         '401': *id002
         '403': *id003
@@ -358861,6 +360190,8 @@ paths:
                         nullable: true
                       is_optional:
                         type: boolean
+                      consumption_method:
+                        type: string
                       consumption_posted_at:
                         type: string
                       manufacturing_order:
@@ -358940,6 +360271,7 @@ paths:
                     actual_scrap_quantity: 2
                     scrap_reason_code: null
                     is_optional: false
+                    consumption_method: backflush
                     consumption_posted_at: '2026-04-15T09:30:00.000000Z'
                     manufacturing_order:
                       id: 14
@@ -360286,6 +361618,11 @@ paths:
 
         - `hourly_rate` (optional, numeric, min 0)
 
+        - `fixed_cost` (optional, numeric, min 0) — flat per-run cost added on top
+        of labour for any operation type (or the entire cost of a fixed_cost operation).
+        Capitalized onto finished goods like labour, but never marked up by work-center
+        overhead.
+
         - `notes` (optional, string, max 1000)
 
 
@@ -360311,6 +361648,8 @@ paths:
                   type: integer
                 hourly_rate:
                   type: integer
+                fixed_cost:
+                  type: integer
                 notes:
                   type: string
               example:
@@ -360321,6 +361660,7 @@ paths:
                 default_operator_id: 7
                 expected_duration_minutes: 15
                 hourly_rate: 35
+                fixed_cost: 0
                 notes: Added for this MO only — not on the BOM.
       parameters:
       - name: manufacturingOrder
@@ -360402,9 +361742,13 @@ paths:
                             type: integer
                           name:
                             type: string
+                      fixed_cost:
+                        type: integer
                       actual_cost:
                         type: string
                         nullable: true
+                      cost_source:
+                        type: string
                       notes:
                         type: string
                       bom_operation:
@@ -360438,7 +361782,9 @@ paths:
                     work_center:
                       id: 3
                       name: QA Bench
+                    fixed_cost: 0
                     actual_cost: null
+                    cost_source: none
                     notes: Added for this MO only — not on the BOM.
                     bom_operation: null
                     is_modified_from_bom: false
@@ -360502,17 +361848,30 @@ paths:
 
         - `hourly_rate` (numeric, min 0, nullable)
 
+        - `fixed_cost` (numeric, min 0, nullable) — flat per-run cost added additively
+        to labour. Changing it re-derives actual_cost as (time × rate) + fixed_cost.
+
         - `notes` (string, max 1000, nullable)
 
 
         When the row is source=''from_bom'' and any of {sequence, name, operation_type,
-        work_center_id, default_operator_id, expected_duration_minutes, hourly_rate}
-        now differs from the linked BOM operation, the response field `is_modified_from_bom`
-        flips to true.
+        work_center_id, default_operator_id, expected_duration_minutes, hourly_rate,
+        fixed_cost} now differs from the linked BOM operation, the response field
+        `is_modified_from_bom` flips to true.
 
 
         **Refused** with 422 {code:''mo_locked''} when MO status is completed | closed
-        | cancelled.'
+        | cancelled.
+
+
+        The response also carries a `cost_source` field: ''none'' (no actual_cost
+        yet), ''actual'' (cost backed by logged time, or a fixed_cost operation),
+        ''estimated'' (cost fell back to planned duration because no timer was logged),
+        or ''manual'' (an explicitly supplied `actual_cost`). Sending `actual_cost`
+        in the body stamps cost_source=''manual'' and locks the cost against automatic
+        re-derivation — rate, fixed-cost, or type edits no longer recompute it; only
+        another explicit `actual_cost` (null clears both cost and source), or an explicitly
+        logged positive time, replaces it.'
       requestBody:
         content:
           application/json:
@@ -360529,12 +361888,15 @@ paths:
                   type: integer
                 hourly_rate:
                   type: integer
+                fixed_cost:
+                  type: integer
               example:
                 sequence: 25
                 name: Mix (revised)
                 work_center_id: 2
                 expected_duration_minutes: 45
                 hourly_rate: 55
+                fixed_cost: 5
       parameters:
       - name: moOperation
         in: path
@@ -360608,9 +361970,13 @@ paths:
                             type: integer
                           name:
                             type: string
+                      fixed_cost:
+                        type: integer
                       actual_cost:
                         type: string
                         nullable: true
+                      cost_source:
+                        type: string
                       notes:
                         type: string
                         nullable: true
@@ -360664,7 +362030,9 @@ paths:
                     work_center:
                       id: 2
                       name: Mixing Station
+                    fixed_cost: 5
                     actual_cost: null
+                    cost_source: none
                     notes: null
                     bom_operation:
                       id: 12
@@ -360778,7 +362146,11 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Returns **422** with `code = mo_locked` when the parent manufacturing order
+        is Completed, Closed, or Cancelled — operations on a terminal order are immutable.'
       requestBody:
         content: {}
       parameters:
@@ -360791,14 +362163,144 @@ paths:
         example: '1'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      manufacturing_order_id:
+                        type: integer
+                      source:
+                        type: string
+                      bom_operation_id:
+                        type: integer
+                      sequence:
+                        type: integer
+                      name:
+                        type: string
+                      type:
+                        type: string
+                      operation_type:
+                        type: string
+                      expected_duration_minutes:
+                        type: integer
+                      hourly_rate:
+                        type: integer
+                      status:
+                        type: string
+                      scheduled_start:
+                        type: string
+                        nullable: true
+                      started_at:
+                        type: string
+                      completed_at:
+                        type: string
+                        nullable: true
+                      actual_time_minutes:
+                        type: string
+                        nullable: true
+                      operator_id:
+                        type: integer
+                      operator:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      default_operator_id:
+                        type: string
+                        nullable: true
+                      work_center_id:
+                        type: integer
+                      work_center:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      fixed_cost:
+                        type: integer
+                      actual_cost:
+                        type: string
+                        nullable: true
+                      cost_source:
+                        type: string
+                      notes:
+                        type: string
+                        nullable: true
+                      bom_operation:
+                        type: string
+                        nullable: true
+                      is_modified_from_bom:
+                        type: boolean
+                example:
+                  data:
+                    id: 1
+                    manufacturing_order_id: 14
+                    source: from_bom
+                    bom_operation_id: 12
+                    sequence: 25
+                    name: Mix
+                    type: process
+                    operation_type: process
+                    expected_duration_minutes: 30
+                    hourly_rate: 55
+                    status: in_progress
+                    scheduled_start: null
+                    started_at: '2026-07-15T09:12:00.000000Z'
+                    completed_at: null
+                    actual_time_minutes: null
+                    operator_id: 7
+                    operator:
+                      id: 7
+                      name: Sam Cooper
+                    default_operator_id: null
+                    work_center_id: 2
+                    work_center:
+                      id: 2
+                      name: Mixing Station
+                    fixed_cost: 5
+                    actual_cost: null
+                    cost_source: none
+                    notes: null
+                    bom_operation: null
+                    is_modified_from_bom: false
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  code: mo_locked
+                  message: This MO is no longer editable.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-required-scope: manufacturing:write
       operationId: post-api-manufacturing-mo-operations-mooperation-start
   /api/manufacturing/mo-operations/{moOperation}/complete:
@@ -360822,7 +362324,20 @@ paths:
 
         - `actual_time_minutes` (optional, numeric, min 0)
 
-        - `notes` (optional, string, max 2000)'
+        - `notes` (optional, string, max 2000)
+
+
+        When `actual_time_minutes` is omitted or 0, the labour cost falls back to
+        the operation''s planned `expected_duration_minutes` so a bare mark-done still
+        costs out. The response''s `cost_source` then reads ''estimated'' (vs ''actual''
+        when a timer was logged, or for a fixed_cost operation). If the operation
+        carries a manually-set cost (cost_source=''manual''), a bare mark-done without
+        a positive `actual_time_minutes` keeps that cost and source untouched; logging
+        a positive time re-derives the cost and replaces the manual value.
+
+
+        Returns **422** with `code = mo_locked` when the parent manufacturing order
+        is Completed, Closed, or Cancelled — operations on a terminal order are immutable.'
       requestBody:
         content:
           application/json:
@@ -360846,14 +362361,108 @@ paths:
         example: '1'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — Timer logged
+                  value:
+                    data:
+                      id: 1
+                      manufacturing_order_id: 14
+                      source: from_bom
+                      bom_operation_id: 12
+                      sequence: 25
+                      name: Mix
+                      type: process
+                      operation_type: process
+                      expected_duration_minutes: 30
+                      hourly_rate: 55
+                      status: done
+                      scheduled_start: null
+                      started_at: '2026-07-15T09:12:00.000000Z'
+                      completed_at: '2026-07-15T09:47:00.000000Z'
+                      actual_time_minutes: 35
+                      operator_id: 7
+                      operator:
+                        id: 7
+                        name: Sam Cooper
+                      default_operator_id: null
+                      work_center_id: 2
+                      work_center:
+                        id: 2
+                        name: Mixing Station
+                      fixed_cost: 5
+                      actual_cost: 37.08
+                      cost_source: actual
+                      notes: Ran a bit over.
+                      bom_operation: null
+                      is_modified_from_bom: false
+                example-1:
+                  summary: 200 OK — No timer (estimated fallback)
+                  value:
+                    data:
+                      id: 1
+                      manufacturing_order_id: 14
+                      source: from_bom
+                      bom_operation_id: 12
+                      sequence: 25
+                      name: Mix
+                      type: process
+                      operation_type: process
+                      expected_duration_minutes: 30
+                      hourly_rate: 55
+                      status: done
+                      scheduled_start: null
+                      started_at: null
+                      completed_at: '2026-07-15T09:47:00.000000Z'
+                      actual_time_minutes: null
+                      operator_id: null
+                      operator:
+                        id: 7
+                        name: Sam Cooper
+                      default_operator_id: null
+                      work_center_id: 2
+                      work_center:
+                        id: 2
+                        name: Mixing Station
+                      fixed_cost: 5
+                      actual_cost: 32.5
+                      cost_source: estimated
+                      notes: null
+                      bom_operation: null
+                      is_modified_from_bom: false
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  code: mo_locked
+                  message: This MO is no longer editable.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-required-scope: manufacturing:write
       operationId: post-api-manufacturing-mo-operations-mooperation-complete
   /api/manufacturing/manufacturing-orders/{manufacturingOrder}/outsource:
@@ -362794,6 +364403,137 @@ paths:
         '404': *id004
       x-required-scope: manufacturing:write
       operationId: put-api-manufacturing-products-product-units-of-measure
+  /api/manufacturing/products/{product}/units-of-measure/enable:
+    post:
+      tags:
+      - Units of Measure
+      summary: Enable Product Unit of Measure
+      description: 'Idempotently enable a single unit of measure for a product so
+        a bill-of-materials or manufacturing-order line referencing it can be saved
+        without first configuring the full unit-of-measure set. The unit is added
+        as a pending alternate with no conversion factor (0), which lets draft documents
+        validate; a real conversion factor must still be set before the bill of materials
+        can be activated. Calling this repeatedly for the same unit is safe and returns
+        the existing configuration untouched.
+
+        Auth: requires Bearer token.
+
+        Path param: product = product id.
+
+        Body: uom_id = id of the unit of measure to enable (must exist).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                uom_id:
+                  type: integer
+              example:
+                uom_id: 12
+      parameters:
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The product ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      product_id:
+                        type: integer
+                      uom_id:
+                        type: integer
+                      unit_of_measure:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                          uom_type:
+                            type: string
+                          is_system:
+                            type: boolean
+                      is_stock_uom:
+                        type: boolean
+                      is_purchase_uom:
+                        type: boolean
+                      is_sales_uom:
+                        type: boolean
+                      conversion_factor:
+                        type: integer
+                      display_precision:
+                        type: integer
+                      has_transactional_history:
+                        type: boolean
+                example:
+                  data:
+                    id: 43
+                    product_id: 1
+                    uom_id: 12
+                    unit_of_measure:
+                      id: 12
+                      code: BOX12
+                      name: Box of 12
+                      uom_type: count
+                      is_system: false
+                    is_stock_uom: false
+                    is_purchase_uom: false
+                    is_sales_uom: false
+                    conversion_factor: 0
+                    display_precision: 2
+                    has_transactional_history: false
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      uom_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected unit of measure does not exist.
+                  errors:
+                    uom_id:
+                    - The selected unit of measure does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-manufacturing-products-product-units-of-measure-enable
   /api/manufacturing/scheduler/scheduled:
     get:
       tags:
@@ -362964,6 +364704,8 @@ paths:
                               type: string
                             overhead:
                               type: string
+                            fixed:
+                              type: string
                         has_shortage:
                           type: boolean
                         created_at:
@@ -363024,6 +364766,7 @@ paths:
                       materials: '1240.50'
                       labor: '320.00'
                       overhead: '85.00'
+                      fixed: '25.00'
                     has_shortage: false
                     created_at: '2026-03-28T14:22:11+00:00'
                     updated_at: '2026-04-05T08:15:00+00:00'
@@ -406276,7 +408019,16 @@ paths:
 
 
         Clearing `default_incoterm_id` (sending it as null/empty) also clears `default_incoterm_place`
-        — a default named place is never kept without a default term.'
+        — a default named place is never kept without a default term.
+
+
+        **Custom fields:** `custom_field_values` (optional array) sets values for
+        supplier custom fields. Each entry takes `custom_field_id` (required — must
+        reference a custom field defined for suppliers) and `value` (nullable); `id`
+        is prohibited on create (value ids only exist once the supplier does). The
+        response echoes each value with its field metadata: `name`, `slug`, `field_type`
+        (`text` | `long_text` | `number` | `decimal` | `date` | `datetime` | `checkbox`
+        | `dropdown`), `options`, `description`, and `is_visible_in_details`.'
       requestBody:
         content:
           application/json:
@@ -406377,6 +408129,15 @@ paths:
                   type: integer
                 default_incoterm_place:
                   type: string
+                custom_field_values:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      custom_field_id:
+                        type: integer
+                      value:
+                        type: string
               example:
                 name: New Supplier
                 company_name: New Supplier Co Pty Ltd
@@ -406423,6 +408184,11 @@ paths:
                 - id: 1
                 default_incoterm_id: 12
                 default_incoterm_place: Shanghai Port, CN
+                custom_field_values:
+                - custom_field_id: 3
+                  value: Gold
+                - custom_field_id: 5
+                  value: '2026-01-15'
       parameters: []
       responses:
         '201':
@@ -406480,6 +408246,31 @@ paths:
                               type: string
                             currency_code:
                               type: string
+                      custom_field_values:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            custom_field_id:
+                              type: integer
+                            value:
+                              type: string
+                            name:
+                              type: string
+                            slug:
+                              type: string
+                            field_type:
+                              type: string
+                            options:
+                              type: array
+                              items:
+                                type: string
+                            description:
+                              type: string
+                            is_visible_in_details:
+                              type: boolean
                       created_at:
                         type: string
                       updated_at:
@@ -406509,6 +408300,28 @@ paths:
                     - id: 1
                       name: Standard
                       currency_code: AUD
+                    custom_field_values:
+                    - id: 21
+                      custom_field_id: 3
+                      value: Gold
+                      name: Preferred Tier
+                      slug: preferred_tier
+                      field_type: dropdown
+                      options:
+                      - Gold
+                      - Silver
+                      - Bronze
+                      description: Negotiated service tier
+                      is_visible_in_details: true
+                    - id: 22
+                      custom_field_id: 5
+                      value: '2026-01-15'
+                      name: Contract Renewal Date
+                      slug: contract_renewal_date
+                      field_type: date
+                      options: null
+                      description: null
+                      is_visible_in_details: true
                     created_at: '2024-01-20T10:00:00.000000Z'
                     updated_at: '2024-01-20T10:00:00.000000Z'
                     archived_at: null
@@ -406581,7 +408394,12 @@ paths:
 
 
         The response includes the supplier''s `default_incoterm` (the full incoterm
-        object, or null when no default is set).'
+        object, or null when no default is set).
+
+
+        The response also includes `custom_field_values` — each entry pairs the stored
+        value with its field metadata (`custom_field_id`, `name`, `slug`, `field_type`,
+        `options`, `description`, `is_visible_in_details`).'
       parameters:
       - name: supplier
         in: path
@@ -406684,6 +408502,31 @@ paths:
                               type: string
                             type:
                               type: string
+                      custom_field_values:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            custom_field_id:
+                              type: integer
+                            value:
+                              type: string
+                            name:
+                              type: string
+                            slug:
+                              type: string
+                            field_type:
+                              type: string
+                            options:
+                              type: array
+                              items:
+                                type: string
+                            description:
+                              type: string
+                            is_visible_in_details:
+                              type: boolean
                       created_at:
                         type: string
                       updated_at:
@@ -406729,6 +408572,28 @@ paths:
                     - id: 2
                       name: Acme Warehouse
                       type: supplier
+                    custom_field_values:
+                    - id: 21
+                      custom_field_id: 3
+                      value: Gold
+                      name: Preferred Tier
+                      slug: preferred_tier
+                      field_type: dropdown
+                      options:
+                      - Gold
+                      - Silver
+                      - Bronze
+                      description: Negotiated service tier
+                      is_visible_in_details: true
+                    - id: 22
+                      custom_field_id: 5
+                      value: '2026-01-15'
+                      name: Contract Renewal Date
+                      slug: contract_renewal_date
+                      field_type: date
+                      options: null
+                      description: null
+                      is_visible_in_details: true
                     created_at: '2024-01-01T00:00:00.000000Z'
                     updated_at: '2024-01-15T09:00:00.000000Z'
                     archived_at: null
@@ -406771,7 +408636,16 @@ paths:
 
 
         Clearing `default_incoterm_id` (sending it as null/empty) also clears `default_incoterm_place`
-        — a default named place is never kept without a default term.'
+        — a default named place is never kept without a default term.
+
+
+        **Custom fields:** `custom_field_values` (optional array) fully replaces the
+        supplier''s stored custom field values when present — entries with an `id`
+        update that existing value (the id must reference a custom-field value belonging
+        to THIS supplier; a value id from another supplier is rejected with a 422),
+        entries without one create a new value (`custom_field_id` required, must reference
+        a custom field defined for suppliers), and any stored value row omitted from
+        the array is deleted. Omit the key entirely to leave stored values untouched.'
       requestBody:
         content:
           application/json:
@@ -406833,6 +408707,17 @@ paths:
                   type: integer
                 default_incoterm_place:
                   type: string
+                custom_field_values:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      custom_field_id:
+                        type: integer
+                      value:
+                        type: string
               example:
                 name: Acme Supplier Updated
                 company_name: Acme Wholesale International
@@ -406865,6 +408750,12 @@ paths:
                 - id: 2
                 default_incoterm_id: 12
                 default_incoterm_place: Shanghai Port, CN
+                custom_field_values:
+                - id: 21
+                  custom_field_id: 3
+                  value: Silver
+                - custom_field_id: 5
+                  value: '2027-01-15'
       parameters:
       - name: supplier
         in: path
@@ -406895,6 +408786,31 @@ paths:
                         type: string
                       leadtime:
                         type: integer
+                      custom_field_values:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            custom_field_id:
+                              type: integer
+                            value:
+                              type: string
+                            name:
+                              type: string
+                            slug:
+                              type: string
+                            field_type:
+                              type: string
+                            options:
+                              type: array
+                              items:
+                                type: string
+                            description:
+                              type: string
+                            is_visible_in_details:
+                              type: boolean
                       updated_at:
                         type: string
                   message:
@@ -406904,6 +408820,28 @@ paths:
                     id: 1
                     name: Acme Supplier Updated
                     leadtime: 10
+                    custom_field_values:
+                    - id: 21
+                      custom_field_id: 3
+                      value: Silver
+                      name: Preferred Tier
+                      slug: preferred_tier
+                      field_type: dropdown
+                      options:
+                      - Gold
+                      - Silver
+                      - Bronze
+                      description: Negotiated service tier
+                      is_visible_in_details: true
+                    - id: 23
+                      custom_field_id: 5
+                      value: '2027-01-15'
+                      name: Contract Renewal Date
+                      slug: contract_renewal_date
+                      field_type: date
+                      options: null
+                      description: null
+                      is_visible_in_details: true
                     updated_at: '2024-01-20T11:00:00.000000Z'
                   message: supplier Acme Supplier Updated updated successfully
         '429': *id001
@@ -406918,7 +408856,8 @@ paths:
       - Suppliers
       summary: Delete Supplier
       description: 'Delete a supplier. Returns 400 if the supplier is linked to purchase
-        orders or other records.
+        orders or other records. Deleting a supplier also removes its owned records,
+        including its custom field values.
 
 
         :::info[Required scope: `suppliers:write`]
@@ -406997,6 +408936,9 @@ paths:
         equivalent record (e.g. the same product), the source''s duplicate is dropped
         in favor of the target''s. If the source was a product''s default supplier
         and the target also supplies that product, the target becomes the default.
+        Custom field values move to the target as well — where the target already
+        has a value for the same custom field, the target''s value is kept and the
+        source''s is dropped.
 
 
         Errors (422):

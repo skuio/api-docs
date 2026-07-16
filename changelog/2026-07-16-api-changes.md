@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 16 additions, 2 changes, 24 removals. 26 breaking changes — action required.
+description: This release includes 17 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 16 additions, 2 changes, 24 removals. 26 breaking changes — action required.
+This release includes 17 additions, 4 changes, 24 removals. 26 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -97,5 +97,19 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
 - `POST /api/odoo-3pl/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
 - `PUT /api/odoo-3pl/{integration_instance}/shipping-methods/{shippingMethodId}/mapping` — Update Shipping Method Mapping
+
+### Units of Measure
+- `POST /api/manufacturing/products/{product}/units-of-measure/enable` — Enable Product Unit of Measure
+
+## Changed
+
+### BOMs
+- `POST /api/manufacturing/boms` — Create BOM
+  - new response code(s): `201`
+  - removed response code(s): `200`
+
+### Manufacturing Orders
+- `POST /api/manufacturing/manufacturing-orders/{id}/record-production` — Record Production
+  - new response code(s): `200`
 
 _Spec version 1.0.0 → 1.0.0._
