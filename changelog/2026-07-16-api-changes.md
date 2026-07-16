@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-16
-description: This release includes 86 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+description: This release includes 121 additions, 3 changes, 22 removals. 23 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-16
 ---
 
-This release includes 86 additions, 4 changes, 24 removals. 26 breaking changes — action required.
+This release includes 121 additions, 3 changes, 22 removals. 23 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -19,9 +19,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ## ⚠️ Breaking changes
 
 ### Removed endpoints
-
-#### Amazon
-- **Removed** `GET /api/amazon/{integrationInstance}/orders/export` — Export Orders
 
 #### Export
 - **Removed** `POST /api/export/create-download-file` — Start Async Export
@@ -45,9 +42,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/reporting/products` — Get Dashboard Products
 - **Removed** `GET /api/reporting/top-selling-products` — Get Top Selling Products
 
-#### Temu
-- **Removed** `GET /api/temu/{integrationInstance}/orders/export` — Export Orders
-
 #### UI Utilities
 - **Removed** `GET /api/table-views` — List Table Views
 - **Removed** `POST /api/table-views` — Create Table View
@@ -57,11 +51,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `PUT /api/table-views/{tableView}` — Update Table View
 
 ### Incompatible changes
-
-#### eBay
-- **Changed** `GET /api/ebay/{integrationInstance}/legacy-products` — List Legacy Products (Integration)
-  - new parameter(s): `per_page`
-  - removed parameter(s): `limit`
 
 #### Suppliers
 - **Changed** `GET /api/suppliers/{supplier}/pricing-tiers` — Get Supplier Pricing Tiers
@@ -90,8 +79,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/data-imports/template` — Download Import Template
 
 ### eBay
-- `PUT /api/ebay/{integrationInstance}/orders/archive` — Bulk Archive eBay Orders
-- `PUT /api/ebay/{integrationInstance}/orders/unarchive` — Bulk Unarchive eBay Orders
 - `POST /api/ebay/{integrationInstance}/orders/update-sku-orders` — Update SKU Orders from Channel Orders
 
 ### Integration Instances
@@ -120,6 +107,13 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### OAuth
 - `POST /api/magento2/oauth/callback` — OAuth Callback
 
+### Odoo 3PL
+- `GET /api/odoo-3pl/{integration_instance}/shipping-methods` — List Shipping Methods
+- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/auto-match` — Auto-Match Shipping Methods
+- `GET /api/odoo-3pl/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
+- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
+- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
+
 ### Orders
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/import-pre-start-date` — Pre-Start-Date Orders — Import
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/orders/pre-start-date-search` — Pre-Start-Date Orders — Search Specific Order
@@ -134,7 +128,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-unarchive` — Bulk Unarchive Products
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/bulk-unmap` — Bulk Unmap Products
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/field-mappings` — Get Field Mappings
-- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/products/field-mappings` — Update Field Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/filter-options` — Get Products Filter Options
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/products/latest-sync-info` — Get Products Latest Sync Info
 - `POST /api/magento2/integration-instances/{magento2IntegrationInstance}/products/refresh` — Refresh Products
@@ -153,7 +146,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/v2/products/{product}/sales` — List Product Sales
 
 ### Purchase Orders
-- `POST /api/purchase-orders/{purchase_order}/changes-since-sent/dismiss` — Dismiss Pending Changes
 - `GET /api/purchase-orders/{purchase_order}/lines` — Get PO Lines
 
 ### Reference Data (Read-Only)
@@ -167,16 +159,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Shipping Method Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/shipping-method-mappings` — List Shipping Method Mappings
-- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/shipping-method-mappings` — Bulk Replace Shipping Method Mappings
-
-### ShipStation
-- `GET /api/odoo-3pl/{integration_instance}/shipping-methods` — List Shipping Methods
-- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/auto-match` — Auto-Match Shipping Methods
-- `PUT /api/odoo-3pl/{integration_instance}/shipping-methods/bulk-map` — Bulk Map Shipping Methods
-- `GET /api/odoo-3pl/{integration_instance}/shipping-methods/export` — Export Shipping Method Mappings
-- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/import` — Import Shipping Method Mappings
-- `POST /api/odoo-3pl/{integration_instance}/shipping-methods/sync` — Sync Shipping Methods
-- `PUT /api/odoo-3pl/{integration_instance}/shipping-methods/{shippingMethodId}/mapping` — Update Shipping Method Mapping
 
 ### Transactions
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions` — List Transactions
@@ -190,9 +172,34 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Units of Measure
 - `POST /api/manufacturing/products/{product}/units-of-measure/enable` — Enable Product Unit of Measure
 
+### Walmart
+- `GET /api/walmart/{integrationInstance}/feeds` — List Feeds
+- `GET /api/walmart/{integrationInstance}/feeds/{feed}` — Get Feed
+- `GET /api/walmart/{integrationInstance}/insights/seller-health` — Get Seller Health Summary
+- `DELETE /api/walmart/{integrationInstance}/listings/{listing}/promotions` — Delete Promotion
+- `GET /api/walmart/{integrationInstance}/oauth/authorization-url` — Get Authorization URL
+- `GET /api/walmart/{integrationInstance}/orders/{order}/shipping/labels` — List Order Shipping Labels
+- `GET /api/walmart/{integrationInstance}/platform-status` — Get API Platform Status
+- `GET /api/walmart/{integrationInstance}/reports/payment-statement` — Get Payment Statement
+- `GET /api/walmart/{integrationInstance}/reports/performance` — Get Partner Performance Report
+- `GET /api/walmart/{integrationInstance}/reports/recon/dates` — List Settlement Report Dates
+- `GET /api/walmart/{integrationInstance}/reports/recon/download` — Download Settlement Report
+- `GET /api/walmart/{integrationInstance}/reports/requests` — List Report Requests
+- `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}` — Get Report Request Status
+- `GET /api/walmart/{integrationInstance}/reports/requests/{requestId}/download` — Get Report Download URL
+- `GET /api/walmart/{integrationInstance}/shipping/carriers` — List Supported Carriers
+- `GET /api/walmart/{integrationInstance}/shipping/fulfillment-centers` — List Fulfillment Centers
+- `DELETE /api/walmart/{integrationInstance}/shipping/labels/{carrier}/{trackingNumber}` — Discard Shipping Label
+- `GET /api/walmart/{integrationInstance}/shipping/labels/{carrier}/{trackingNumber}/download` — Download Shipping Label
+- `GET /api/walmart/{integrationInstance}/shipping/templates` — List Shipping Templates
+- `GET /api/walmart/{integrationInstance}/webhook-subscriptions` — List Webhook Subscriptions
+- `GET /api/walmart/{integrationInstance}/webhook-subscriptions/event-types` — List Available Event Types
+- `DELETE /api/walmart/{integrationInstance}/webhook-subscriptions/{subscription}` — Delete Webhook Subscription
+
 ### Warehouse Mappings
 - `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — List Warehouse Mappings
-- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/warehouse-mappings` — Bulk Replace Warehouse Mappings
+
+_…plus 21 more (see the API reference)._
 
 ## Changed
 
