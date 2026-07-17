@@ -44714,8 +44714,8 @@ paths:
       tags:
       - FIFO Layers
       summary: Show FIFO Layer
-      description: 'Returns a single FIFO layer with product, warehouse, and link
-        relations loaded.
+      description: 'Returns a single FIFO layer with product, warehouse, source-document
+        link, and origin-movement relations loaded.
 
 
         :::info[Required scope: `inventory:read`]
@@ -44724,6 +44724,19 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        The `origin` block identifies the source document that created the layer and
+        now includes `origin.movement` — the metadata of the inventory movement that
+        created the layer (id, date, type, source link, quantity, unit_cost, inventory_status,
+        reference, batch_number, expiry_date, warehouse, and warehouse_location).
+        That origin movement is excluded from the layer''s usage-movements listing
+        by default, so its details are surfaced here instead.
+
+
+        Lot fields (`batch_number`, `manufacture_date`, `expiry_date`, `days_to_expiry`,
+        `lot_notes`) are always included; `days_to_expiry` is a signed whole-day countdown
+        (negative = already expired, null when the lot has no expiry).
 
 
         Authentication: Requires Bearer token.'
@@ -44758,6 +44771,19 @@ paths:
                         type: string
                       product_barcode:
                         type: string
+                      stock_uom_code:
+                        type: string
+                      batch_number:
+                        type: string
+                      manufacture_date:
+                        type: string
+                      expiry_date:
+                        type: string
+                      days_to_expiry:
+                        type: integer
+                      lot_notes:
+                        type: string
+                        nullable: true
                       original_quantity:
                         type: integer
                       fulfilled_quantity:
@@ -44766,6 +44792,9 @@ paths:
                         type: string
                       total_cost:
                         type: string
+                      cost_breakdown:
+                        type: string
+                        nullable: true
                       origin:
                         type: object
                         properties:
@@ -44783,6 +44812,50 @@ paths:
                             nullable: true
                           reference:
                             type: string
+                          parent_reference:
+                            type: string
+                            nullable: true
+                          movement:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              date:
+                                type: string
+                              type:
+                                type: string
+                              link_type:
+                                type: string
+                              link_id:
+                                type: integer
+                              quantity:
+                                type: integer
+                              unit_cost:
+                                type: string
+                              inventory_status:
+                                type: string
+                              reference:
+                                type: string
+                              batch_number:
+                                type: string
+                              expiry_date:
+                                type: string
+                              warehouse:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                              warehouse_location:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  code:
+                                    type: string
+                                  name:
+                                    type: string
                       warehouse:
                         type: object
                         properties:
@@ -44791,6 +44864,8 @@ paths:
                           name:
                             type: string
                       is_fba:
+                        type: boolean
+                      is_consignment:
                         type: boolean
                       condition:
                         type: string
@@ -44816,10 +44891,17 @@ paths:
                     sku: WIDGET-001
                     product_name: Blue Widget
                     product_barcode: '123456789'
+                    stock_uom_code: EA
+                    batch_number: LOT-2024-03-001
+                    manufacture_date: '2024-02-28'
+                    expiry_date: '2025-02-28'
+                    days_to_expiry: 226
+                    lot_notes: null
                     original_quantity: 100
                     fulfilled_quantity: 35
                     avg_cost: '4.5000'
                     total_cost: '450.0000'
+                    cost_breakdown: null
                     origin:
                       link_type: purchase_order
                       link_id: 8
@@ -44827,14 +44909,35 @@ paths:
                       parent_link_id: null
                       detail_link_id: null
                       reference: REF-123
+                      parent_reference: null
+                      movement:
+                        id: 187
+                        date: '2024-03-01T10:00:00.000000Z'
+                        type: purchase_order_received
+                        link_type: purchase_order_shipment_item
+                        link_id: 91
+                        quantity: 100
+                        unit_cost: '4.5000'
+                        inventory_status: active
+                        reference: REF-123
+                        batch_number: LOT-2024-03-001
+                        expiry_date: '2025-02-28'
+                        warehouse:
+                          id: 2
+                          name: Main Warehouse
+                        warehouse_location:
+                          id: 7
+                          code: A-01-02
+                          name: Aisle A Bay 1 Shelf 2
                     warehouse:
                       id: 2
                       name: Main Warehouse
                     is_fba: false
+                    is_consignment: false
                     condition: new
                     integration_unique_id: null
                     allocated_quantity: 10
-                    available_quantity: 55
+                    available_quantity: 65
                     archived_at: null
                     created_at: '2024-03-01T10:00:00.000000Z'
                     updated_at: '2024-03-15T14:30:00.000000Z'
@@ -44943,7 +45046,9 @@ paths:
       tags:
       - FIFO Layers
       summary: FIFO Layer Inventory Movements
-      description: 'Returns inventory movements associated with this FIFO layer.
+      description: 'Paginated usage movements for a FIFO layer (standard paginated
+        response: `data[]` plus `current_page`, `last_page`, `per_page`, `total`,
+        ...).
 
 
         :::info[Required scope: `inventory:read`]
@@ -44952,6 +45057,38 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        The movement that originally created the layer is **excluded by default**
+        — it is presented in the layer''s `origin` block on the single-layer endpoint
+        instead of as a usage. Pass `exclude_origin=0` to include it (e.g. to tally
+        the layer''s full movement history).
+
+
+        Filters (server-side):
+
+        - `filter[type]` — exact movement type match. Dotted operator variants are
+        also available (`filter[type.is]`, `filter[type.contains]`, ...).
+
+        - `filter[link_type]` — exact source-document type match.
+
+        - `filter[inventory_status]` — defaults to `active`; pass `all` for no status
+        restriction. Dotted operator variants (`filter[inventory_status.is]`, ...)
+        are also available.
+
+        - `filter[reference]` — text operator filters (`filter[reference.contains]`,
+        ...).
+
+        - `filter[quantity]` — numeric operator filters (`filter[quantity.gte]`, ...).
+
+        - `filter[inventory_movement_date]`, `filter[created_at]` — date operator
+        filters (`.on`, `.before`, `.after`, `.between`).
+
+        - `filter[search]` — searches ID (exact), Reference, SKU, and Product Name.
+
+
+        Allowed sorts: id, inventory_movement_date, type, inventory_status, quantity,
+        reference, created_at (prefix with - for descending; default: -inventory_movement_date).
 
 
         Authentication: Requires Bearer token.'
@@ -44978,12 +45115,36 @@ paths:
                       properties:
                         id:
                           type: integer
+                        inventory_movement_date:
+                          type: string
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        barcode:
+                          type: string
+                        product_name:
+                          type: string
+                        stock_uom_code:
+                          type: string
                         type:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            link_type:
+                              type: string
+                            link_id:
+                              type: integer
+                            parent_link_id:
+                              type: integer
+                            detail_link_id:
+                              type: string
+                              nullable: true
+                        inventory_status:
                           type: string
                         quantity:
                           type: integer
-                        inventory_status:
-                          type: string
                         warehouse:
                           type: object
                           properties:
@@ -44991,31 +45152,66 @@ paths:
                               type: integer
                             name:
                               type: string
-                        product:
+                        layer:
                           type: object
                           properties:
-                            id:
+                            fifo_layer_id:
                               type: integer
-                            sku:
-                              type: string
                             name:
                               type: string
+                        fifo_layer_id:
+                          type: integer
+                        reference:
+                          type: string
                         created_at:
                           type: string
+                        updated_at:
+                          type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
                 example:
                   data:
                   - id: 201
-                    type: fulfillment
+                    inventory_movement_date: '2024-03-12T11:00:00.000000Z'
+                    product_id: 15
+                    sku: WIDGET-001
+                    barcode: '123456789'
+                    product_name: Blue Widget
+                    stock_uom_code: EA
+                    type:
+                      name: fulfillment
+                      link_type: sales_order_fulfillment_line
+                      link_id: 3411
+                      parent_link_id: 812
+                      detail_link_id: null
+                    inventory_status: active
                     quantity: -5
-                    inventory_status: committed
                     warehouse:
                       id: 2
                       name: Main Warehouse
-                    product:
-                      id: 15
-                      sku: WIDGET-001
-                      name: Blue Widget
+                    layer:
+                      fifo_layer_id: 42
+                      name: PO-0008
+                    fifo_layer_id: 42
+                    reference: SO-1042
                     created_at: '2024-03-12T11:00:00.000000Z'
+                    updated_at: '2024-03-12T11:00:00.000000Z'
+                  current_page: 1
+                  last_page: 3
+                  per_page: 15
+                  total: 35
+                  from: 1
+                  to: 15
         '429': *id001
         '401': *id002
         '403': *id003
@@ -47692,8 +47888,11 @@ paths:
 
         Use the `with` query parameter (comma-separated) to include additional relations:
         `pricingTiers` (also aliased as `pricing`), `defaultStore`, `defaultIncoterm`,
-        `wireInstructionsVerifiedBy`. Pass `bill_stats` to include bill activity statistics
-        for the supplier.'
+        `wireInstructionsVerifiedBy`, `customFieldValues`. Passing `customFieldValues`
+        adds `custom_field_values` to the response — each stored custom-field value
+        with its field metadata (`custom_field_id`, `name`, `slug`, `field_type`,
+        `options`, `description`, `is_visible_in_details`). Pass `bill_stats` to include
+        bill activity statistics for the supplier.'
       parameters:
       - name: supplier
         in: path
