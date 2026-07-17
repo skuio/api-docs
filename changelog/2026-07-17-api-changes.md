@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-17
-description: This release includes 32 additions, 34 removals. 34 breaking changes — action required.
+description: This release includes 36 additions, 34 removals. 34 breaking changes — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-17
 ---
 
-This release includes 32 additions, 34 removals. 34 breaking changes — action required.
+This release includes 36 additions, 34 removals. 34 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -78,6 +78,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Purchase Orders
 - `POST /api/purchase-orders/{purchaseOrder}/lines/reorder` — Reorder Purchase Order Lines
+- `GET /api/purchase-orders/{purchaseOrder}/return-metrics` — Get Purchase Order Return Metrics
 
 ### QuickBooks Online
 - `GET /api/qbo/accounts/{id}/activity-log` — Get Account Activity Log
@@ -91,6 +92,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/qbo/sync-activity` — List Sync Activity
 - `GET /api/qbo/vendor-credits` — List Vendor Credits
 - `GET /api/qbo/vendor-credits/{id}` — Get Vendor Credit
+
+### Reporting
+- `GET /api/reporting/irr/products` — List Product IRR Ranking
+- `GET /api/reporting/irr/suppliers` — List Supplier IRR Ranking
+- `GET /api/reporting/irr/suppliers/{supplier}/products` — List Supplier Product IRR Breakdown
 
 ### Sales Order Lines
 - `POST /api/sales-orders/{salesOrder}/lines/reorder` — Reorder Sales Order Lines
