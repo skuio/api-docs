@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-17
-description: This release includes 19 additions.
+description: This release includes 11 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-17
 ---
 
-This release includes 19 additions.
+This release includes 11 additions.
 
 <!-- truncate -->
 
@@ -26,15 +26,5 @@ This release includes 19 additions.
 - `GET /api/qbo/sync-activity` — List Sync Activity
 - `GET /api/qbo/vendor-credits` — List Vendor Credits
 - `GET /api/qbo/vendor-credits/{id}` — Get Vendor Credit
-
-### Reporting
-- `GET /api/reporting/suppliers/targets` — Get Purchasing Target Matrix
-- `PUT /api/reporting/suppliers/targets` — Bulk Upsert Purchasing Targets
-- `POST /api/reporting/suppliers/targets/seed` — Preview Seeded Targets
-- `GET /api/reporting/suppliers/targets/settings` — Get Purchasing Target Settings
-- `PUT /api/reporting/suppliers/targets/settings` — Update Purchasing Target Settings
-- `GET /api/reporting/suppliers/{supplier}/targets/purchase-orders` — List Target Month Purchase Orders
-- `GET /api/reporting/suppliers/{supplier}/targets/summary` — Get Supplier Target Summary
-- `DELETE /api/reporting/suppliers/{supplier}/targets/{year}/{month}` — Delete Purchasing Target
 
 _Spec version 1.0.0 → 1.0.0._
