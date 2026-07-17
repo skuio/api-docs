@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-17
-description: This release includes 27 additions, 34 removals. 34 breaking changes — action required.
+description: This release includes 29 additions, 34 removals. 34 breaking changes — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-17
 ---
 
-This release includes 27 additions, 34 removals. 34 breaking changes — action required.
+This release includes 29 additions, 34 removals. 34 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -76,6 +76,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/ledger/close/periods/{period}/start` — Start Period Close
 - `GET /api/ledger/close/periods/{period}/verify` — Verify Closed Period
 
+### Purchase Orders
+- `POST /api/purchase-orders/{purchaseOrder}/lines/reorder` — Reorder Purchase Order Lines
+
 ### QuickBooks Online
 - `GET /api/qbo/accounts/{id}/activity-log` — Get Account Activity Log
 - `GET /api/qbo/bill-payments` — List Bill Payments
@@ -88,5 +91,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/qbo/sync-activity` — List Sync Activity
 - `GET /api/qbo/vendor-credits` — List Vendor Credits
 - `GET /api/qbo/vendor-credits/{id}` — Get Vendor Credit
+
+### Sales Order Lines
+- `POST /api/sales-orders/{salesOrder}/lines/reorder` — Reorder Sales Order Lines
 
 _Spec version 1.0.0 → 1.0.0._
