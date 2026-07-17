@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-17
-description: This release includes 11 additions, 34 removals. 34 breaking changes — action required.
+description: This release includes 27 additions, 34 removals. 34 breaking changes — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-17
 ---
 
-This release includes 11 additions, 34 removals. 34 breaking changes — action required.
+This release includes 27 additions, 34 removals. 34 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -57,6 +57,24 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/accounting/v3/transactions/export/download` — Download Export File
 
 ## Added
+
+### Ledger (Accounting v2)
+- `GET /api/ledger/accounting-dimensions` — Get Accounting Dimensions
+- `PUT /api/ledger/accounting-dimensions` — Update Accounting Dimensions
+- `POST /api/ledger/accounting-dimensions/dimensions` — Create Accounting Dimension
+- `POST /api/ledger/accounting-dimensions/refresh` — Refresh Accounting Dimensions
+- `POST /api/ledger/accounting-dimensions/values` — Create Accounting Dimension Values
+- `GET /api/ledger/close/periods` — List Close Periods
+- `GET /api/ledger/close/periods/{period}` — Get Close Period
+- `DELETE /api/ledger/close/periods/{period}/checklist/{item}/complete` — Uncomplete Checklist Item
+- `POST /api/ledger/close/periods/{period}/checklist/{item}/complete` — Complete Checklist Item
+- `POST /api/ledger/close/periods/{period}/close` — Close Period
+- `POST /api/ledger/close/periods/{period}/export` — Export Close Pack
+- `POST /api/ledger/close/periods/{period}/refresh` — Refresh Close Checklist
+- `POST /api/ledger/close/periods/{period}/reopen` — Reopen Period
+- `GET /api/ledger/close/periods/{period}/reports/{report}` — Get Close Report
+- `POST /api/ledger/close/periods/{period}/start` — Start Period Close
+- `GET /api/ledger/close/periods/{period}/verify` — Verify Closed Period
 
 ### QuickBooks Online
 - `GET /api/qbo/accounts/{id}/activity-log` — Get Account Activity Log

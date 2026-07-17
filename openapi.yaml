@@ -24201,6 +24201,912 @@ paths:
         '401': *id002
         '403': *id003
       operationId: post-api-ledger-setup-apply-suggested-chart
+  /api/ledger/accounting-dimensions:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Accounting Dimensions
+      description: 'Read the tracking-category (Xero) / class (QBO) settings for the
+        accounting connection: the active provider, its dimension capabilities, the
+        mirrored tracking categories/options (or classes) available to map, the sales
+        channels (including a synthetic "SKU.io (internal)" pseudo-channel for internal
+        orders), and the saved per-channel slot configuration. Used to build P&L segmentation
+        such as COGS by sales channel.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        Returns 404 when no accounting connection is configured. For QBO the `capabilities`
+        object also carries `class_tracking_enabled`, `class_tracking_per_line`, and
+        `plan_supports_classes`.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      connection_id:
+                        type: integer
+                      provider:
+                        type: string
+                      capabilities:
+                        type: object
+                        properties:
+                          max_slots:
+                            type: integer
+                          dimension_types:
+                            type: array
+                            items:
+                              type: string
+                          class_tracking_enabled:
+                            type: string
+                            nullable: true
+                          class_tracking_per_line:
+                            type: string
+                            nullable: true
+                          plan_supports_classes:
+                            type: string
+                            nullable: true
+                          write_scope_available:
+                            type: boolean
+                          warnings:
+                            type: array
+                      dimensions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mirror_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                            values:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  mirror_id:
+                                    type: integer
+                                  name:
+                                    type: string
+                                  status:
+                                    type: string
+                      channels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            sub_channels:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                      config:
+                        type: object
+                        properties:
+                          slots:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                slot:
+                                  type: integer
+                                provider_dimension:
+                                  type: object
+                                  properties:
+                                    type:
+                                      type: string
+                                    mirror_id:
+                                      type: integer
+                                driver:
+                                  type: string
+                                apply_to:
+                                  type: object
+                                  properties:
+                                    revenue:
+                                      type: boolean
+                                    cogs:
+                                      type: boolean
+                                    fba:
+                                      type: boolean
+                                default_value_mirror_id:
+                                  type: string
+                                  nullable: true
+                                mappings:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      channel_instance_id:
+                                        type: integer
+                                      value_mirror_id:
+                                        type: integer
+                                      sub_channel_overrides:
+                                        type: object
+                                        properties:
+                                          '12':
+                                            type: integer
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            slot:
+                              type: integer
+                            type:
+                              type: string
+                            count:
+                              type: integer
+                example:
+                  data:
+                    connection_id: 7
+                    provider: xero
+                    capabilities:
+                      max_slots: 2
+                      dimension_types:
+                      - xero_tracking_category
+                      class_tracking_enabled: null
+                      class_tracking_per_line: null
+                      plan_supports_classes: null
+                      write_scope_available: true
+                      warnings: []
+                    dimensions:
+                    - mirror_id: 12
+                      name: Sales Channel
+                      status: ACTIVE
+                      values:
+                      - mirror_id: 33
+                        name: Amazon US
+                        status: ACTIVE
+                      - mirror_id: 34
+                        name: Shopify
+                        status: ACTIVE
+                    channels:
+                    - instance_id: 5
+                      name: Amazon US
+                      sub_channels:
+                      - id: 12
+                        name: amazon.com
+                    - instance_id: null
+                      name: SKU.io (internal)
+                      sub_channels: []
+                    config:
+                      slots:
+                      - slot: 1
+                        provider_dimension:
+                          type: xero_tracking_category
+                          mirror_id: 12
+                        driver: sales_channel
+                        apply_to:
+                          revenue: true
+                          cogs: true
+                          fba: true
+                        default_value_mirror_id: null
+                        mappings:
+                        - channel_instance_id: 5
+                          value_mirror_id: 33
+                          sub_channel_overrides:
+                            '12': 34
+                    warnings:
+                    - slot: 1
+                      type: unmapped_channels
+                      count: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-accounting-dimensions
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Update Accounting Dimensions
+      description: 'Save the per-channel slot configuration. Up to two dimension slots
+        are allowed; each slot must reference a distinct provider dimension (a 422
+        is returned otherwise).
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Slot fields:**
+
+        - `slot` — 1 or 2
+
+        - `provider_dimension.type` — `xero_tracking_category` or `qbo_class`
+
+        - `provider_dimension.mirror_id` — the local id of the chosen dimension
+
+        - `driver` — `sales_channel`
+
+        - `apply_to` — object with `revenue`, `cogs`, `fba` booleans (which document
+        families are tagged)
+
+        - `default_value_mirror_id` — fallback value id applied to unmapped channels
+        (null to leave them untagged)
+
+        - `mappings[]` — one row per channel: `channel_instance_id` (null for the
+        internal pseudo-channel), `value_mirror_id`, and optional `sub_channel_overrides`
+        keyed by sub-channel id
+
+
+        Returns the saved configuration with recomputed warnings.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slots:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      slot:
+                        type: integer
+                      provider_dimension:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                          mirror_id:
+                            type: integer
+                      driver:
+                        type: string
+                      apply_to:
+                        type: object
+                        properties:
+                          revenue:
+                            type: boolean
+                          cogs:
+                            type: boolean
+                          fba:
+                            type: boolean
+                      default_value_mirror_id:
+                        type: string
+                        nullable: true
+                      mappings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            channel_instance_id:
+                              type: integer
+                            value_mirror_id:
+                              type: integer
+                            sub_channel_overrides:
+                              type: object
+                              properties: {}
+              example:
+                slots:
+                - slot: 1
+                  provider_dimension:
+                    type: xero_tracking_category
+                    mirror_id: 12
+                  driver: sales_channel
+                  apply_to:
+                    revenue: true
+                    cogs: true
+                    fba: true
+                  default_value_mirror_id: null
+                  mappings:
+                  - channel_instance_id: 5
+                    value_mirror_id: 33
+                    sub_channel_overrides: {}
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      capabilities:
+                        type: object
+                        properties:
+                          max_slots:
+                            type: integer
+                          dimension_types:
+                            type: array
+                            items:
+                              type: string
+                          class_tracking_enabled:
+                            type: string
+                            nullable: true
+                          class_tracking_per_line:
+                            type: string
+                            nullable: true
+                          plan_supports_classes:
+                            type: string
+                            nullable: true
+                          write_scope_available:
+                            type: boolean
+                          warnings:
+                            type: array
+                      dimensions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mirror_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                            values:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  mirror_id:
+                                    type: integer
+                                  name:
+                                    type: string
+                                  status:
+                                    type: string
+                      channels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            sub_channels:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                      config:
+                        type: object
+                        properties:
+                          slots:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                slot:
+                                  type: integer
+                                provider_dimension:
+                                  type: object
+                                  properties:
+                                    type:
+                                      type: string
+                                    mirror_id:
+                                      type: integer
+                                driver:
+                                  type: string
+                                apply_to:
+                                  type: object
+                                  properties:
+                                    revenue:
+                                      type: boolean
+                                    cogs:
+                                      type: boolean
+                                    fba:
+                                      type: boolean
+                                default_value_mirror_id:
+                                  type: string
+                                  nullable: true
+                                mappings:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      channel_instance_id:
+                                        type: integer
+                                      value_mirror_id:
+                                        type: integer
+                                      sub_channel_overrides:
+                                        type: object
+                                        properties:
+                                          '12':
+                                            type: integer
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            slot:
+                              type: integer
+                            type:
+                              type: string
+                            count:
+                              type: integer
+                example:
+                  data:
+                    provider: xero
+                    capabilities:
+                      max_slots: 2
+                      dimension_types:
+                      - xero_tracking_category
+                      class_tracking_enabled: null
+                      class_tracking_per_line: null
+                      plan_supports_classes: null
+                      write_scope_available: true
+                      warnings: []
+                    dimensions:
+                    - mirror_id: 12
+                      name: Sales Channel
+                      status: ACTIVE
+                      values:
+                      - mirror_id: 33
+                        name: Amazon US
+                        status: ACTIVE
+                      - mirror_id: 34
+                        name: Shopify
+                        status: ACTIVE
+                    channels:
+                    - instance_id: 5
+                      name: Amazon US
+                      sub_channels:
+                      - id: 12
+                        name: amazon.com
+                    - instance_id: null
+                      name: SKU.io (internal)
+                      sub_channels: []
+                    config:
+                      slots:
+                      - slot: 1
+                        provider_dimension:
+                          type: xero_tracking_category
+                          mirror_id: 12
+                        driver: sales_channel
+                        apply_to:
+                          revenue: true
+                          cogs: true
+                          fba: true
+                        default_value_mirror_id: null
+                        mappings:
+                        - channel_instance_id: 5
+                          value_mirror_id: 33
+                          sub_channel_overrides:
+                            '12': 34
+                    warnings:
+                    - slot: 1
+                      type: unmapped_channels
+                      count: 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      slots.1.provider_dimension:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The given data was invalid.
+                  errors:
+                    slots.1.provider_dimension:
+                    - Each slot must reference a distinct tracking category / dimension.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-ledger-accounting-dimensions
+  /api/ledger/accounting-dimensions/refresh:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Refresh Accounting Dimensions
+      description: 'Re-pull the connected provider''s tracking categories/options
+        (Xero) or classes (QBO) into the local mirror, then return the refreshed settings
+        payload. Runs synchronously; the datasets are small.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        Returns 502 when the provider could not be reached.'
+      requestBody:
+        content: {}
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      capabilities:
+                        type: object
+                        properties:
+                          max_slots:
+                            type: integer
+                          dimension_types:
+                            type: array
+                            items:
+                              type: string
+                          class_tracking_enabled:
+                            type: string
+                            nullable: true
+                          class_tracking_per_line:
+                            type: string
+                            nullable: true
+                          plan_supports_classes:
+                            type: string
+                            nullable: true
+                          write_scope_available:
+                            type: boolean
+                          warnings:
+                            type: array
+                      dimensions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mirror_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                            values:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  mirror_id:
+                                    type: integer
+                                  name:
+                                    type: string
+                                  status:
+                                    type: string
+                      channels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            sub_channels:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                      config:
+                        type: object
+                        properties:
+                          slots:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                slot:
+                                  type: integer
+                                provider_dimension:
+                                  type: object
+                                  properties:
+                                    type:
+                                      type: string
+                                    mirror_id:
+                                      type: integer
+                                driver:
+                                  type: string
+                                apply_to:
+                                  type: object
+                                  properties:
+                                    revenue:
+                                      type: boolean
+                                    cogs:
+                                      type: boolean
+                                    fba:
+                                      type: boolean
+                                default_value_mirror_id:
+                                  type: string
+                                  nullable: true
+                                mappings:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      channel_instance_id:
+                                        type: integer
+                                      value_mirror_id:
+                                        type: integer
+                                      sub_channel_overrides:
+                                        type: object
+                                        properties:
+                                          '12':
+                                            type: integer
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            slot:
+                              type: integer
+                            type:
+                              type: string
+                            count:
+                              type: integer
+                example:
+                  data:
+                    provider: xero
+                    capabilities:
+                      max_slots: 2
+                      dimension_types:
+                      - xero_tracking_category
+                      class_tracking_enabled: null
+                      class_tracking_per_line: null
+                      plan_supports_classes: null
+                      write_scope_available: true
+                      warnings: []
+                    dimensions:
+                    - mirror_id: 12
+                      name: Sales Channel
+                      status: ACTIVE
+                      values:
+                      - mirror_id: 33
+                        name: Amazon US
+                        status: ACTIVE
+                      - mirror_id: 34
+                        name: Shopify
+                        status: ACTIVE
+                    channels:
+                    - instance_id: 5
+                      name: Amazon US
+                      sub_channels:
+                      - id: 12
+                        name: amazon.com
+                    - instance_id: null
+                      name: SKU.io (internal)
+                      sub_channels: []
+                    config:
+                      slots:
+                      - slot: 1
+                        provider_dimension:
+                          type: xero_tracking_category
+                          mirror_id: 12
+                        driver: sales_channel
+                        apply_to:
+                          revenue: true
+                          cogs: true
+                          fba: true
+                        default_value_mirror_id: null
+                        mappings:
+                        - channel_instance_id: 5
+                          value_mirror_id: 33
+                          sub_channel_overrides:
+                            '12': 34
+                    warnings:
+                    - slot: 1
+                      type: unmapped_channels
+                      count: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-ledger-accounting-dimensions-refresh
+  /api/ledger/accounting-dimensions/values:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Create Accounting Dimension Values
+      description: 'Create one or more tracking options (Xero) or classes (QBO) in
+        the connected provider and mirror them locally. Names are matched case-insensitively
+        against the mirror first, so an existing value is reused instead of duplicated.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body:** `slot` (1 or 2) and `names` (array of value names, each ≤ 100 chars).
+
+
+        Returns per-name results: `created`, `matched_existing`, and `failed` (each
+        failure carries an `error` code such as `qbo_usage_limit` or `missing_scope`
+        and a message). Partial success is expected.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slot:
+                  type: integer
+                names:
+                  type: array
+                  items:
+                    type: string
+              example:
+                slot: 1
+                names:
+                - Amazon US
+                - eBay
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      created:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mirror_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                      matched_existing:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            mirror_id:
+                              type: integer
+                            name:
+                              type: string
+                      failed:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            error:
+                              type: string
+                            message:
+                              type: string
+                example:
+                  data:
+                    created:
+                    - mirror_id: 41
+                      name: Amazon US
+                      status: ACTIVE
+                    matched_existing:
+                    - mirror_id: 33
+                      name: eBay
+                    failed:
+                    - name: Retail
+                      error: qbo_usage_limit
+                      message: QuickBooks Plus allows 40 combined classes and locations.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-ledger-accounting-dimensions-values
+  /api/ledger/accounting-dimensions/dimensions:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Create Accounting Dimension
+      description: 'Create a new Xero tracking category in the connected organisation.
+        Only succeeds when a free active category slot is available (Xero allows at
+        most two active tracking categories).
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body:** `name` (≤ 100 chars).
+
+
+        When both active category slots are already consumed, returns an `{ error:
+        "xero_category_slots_consumed", message }` body.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+              example:
+                name: Sales Channel
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — created
+                  value:
+                    data:
+                      mirror_id: 13
+                      name: Sales Channel
+                      status: ACTIVE
+                example-1:
+                  summary: 200 OK — slots consumed
+                  value:
+                    data:
+                      error: xero_category_slots_consumed
+                      message: This Xero organisation already has 2 active tracking
+                        categories.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-ledger-accounting-dimensions-dimensions
   /api/ledger/opening-balance:
     get:
       tags:
@@ -30974,6 +31880,1574 @@ paths:
         '401': *id002
         '403': *id003
       operationId: post-api-ledger-reconciliation-inventory-resume-journals
+  /api/ledger/close/periods:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Close Periods
+      description: 'Every month in the closable range (most recent first) with lifecycle
+        status (open, in_review, closing, closed), checklist progress, blocking-failure
+        and warning counts, and close sign-off metadata. Months are materialized lazily
+        — a month that has never been interacted with reports status open with is_started
+        false.
+
+
+        Authentication: Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      periods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            period:
+                              type: string
+                            period_start:
+                              type: string
+                            period_end:
+                              type: string
+                            status:
+                              type: string
+                            is_started:
+                              type: boolean
+                            is_closable:
+                              type: boolean
+                            is_reopenable:
+                              type: boolean
+                            progress:
+                              type: object
+                              properties:
+                                done:
+                                  type: integer
+                                total:
+                                  type: integer
+                            blocking_failures:
+                              type: integer
+                            warnings:
+                              type: integer
+                            closed_at:
+                              type: string
+                              nullable: true
+                            closed_by:
+                              type: string
+                              nullable: true
+                example:
+                  data:
+                    periods:
+                    - period: 2026-06
+                      period_start: '2026-06-01'
+                      period_end: '2026-06-30'
+                      status: in_review
+                      is_started: true
+                      is_closable: true
+                      is_reopenable: false
+                      progress:
+                        done: 12
+                        total: 14
+                      blocking_failures: 0
+                      warnings: 2
+                      closed_at: null
+                      closed_by: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-close-periods
+  /api/ledger/close/periods/{period}:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Close Period
+      description: 'Full detail for one period (period key format YYYY-MM): the close
+        checklist with each item''s latest evaluation, lock state (active lock date
+        plus per-connection provider lock dates), report snapshot index, and close/reopen
+        eligibility flags. For a month that has not been started, the checklist is
+        a live read-only preview.
+
+
+        Authentication: Bearer token.
+
+
+        Errors: 422 when the period predates the accounting start date or is in the
+        future.'
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                          period_start:
+                            type: string
+                          period_end:
+                            type: string
+                          status:
+                            type: string
+                          status_label:
+                            type: string
+                          is_started:
+                            type: boolean
+                          is_closable:
+                            type: boolean
+                          is_reopenable:
+                            type: boolean
+                          closed_at:
+                            type: string
+                            nullable: true
+                          closed_by:
+                            type: string
+                            nullable: true
+                          reopened_at:
+                            type: string
+                            nullable: true
+                          reopened_by:
+                            type: string
+                            nullable: true
+                          reopen_reason:
+                            type: string
+                            nullable: true
+                          notes:
+                            type: string
+                            nullable: true
+                          lock:
+                            type: object
+                            properties:
+                              active_lock_date:
+                                type: string
+                              provider_locks:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    lock_date:
+                                      type: string
+                          checklist:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                key:
+                                  type: string
+                                title:
+                                  type: string
+                                description:
+                                  type: string
+                                  nullable: true
+                                category:
+                                  type: string
+                                category_label:
+                                  type: string
+                                type:
+                                  type: string
+                                severity:
+                                  type: string
+                                status:
+                                  type: string
+                                result:
+                                  type: object
+                                  properties:
+                                    count:
+                                      type: integer
+                                    link:
+                                      type: object
+                                      properties:
+                                        tab:
+                                          type: string
+                                        filter:
+                                          type: object
+                                          properties:
+                                            balance_mismatch:
+                                              type: boolean
+                                acknowledged:
+                                  type: boolean
+                                completed_by:
+                                  type: string
+                                  nullable: true
+                                completed_at:
+                                  type: string
+                                  nullable: true
+                                evaluated_at:
+                                  type: string
+                                sort_order:
+                                  type: integer
+                          snapshots:
+                            type: array
+                example:
+                  data:
+                    period:
+                      period: 2026-06
+                      period_start: '2026-06-01'
+                      period_end: '2026-06-30'
+                      status: in_review
+                      status_label: In Review
+                      is_started: true
+                      is_closable: true
+                      is_reopenable: false
+                      closed_at: null
+                      closed_by: null
+                      reopened_at: null
+                      reopened_by: null
+                      reopen_reason: null
+                      notes: null
+                      lock:
+                        active_lock_date: '2026-05-31'
+                        provider_locks:
+                        - connection_id: 30
+                          connection_name: Xero
+                          lock_date: '2026-05-31'
+                      checklist:
+                      - id: 41
+                        key: entries_balanced
+                        title: All entries balanced
+                        description: null
+                        category: data_completeness
+                        category_label: Data completeness
+                        type: automated
+                        severity: blocking
+                        status: pass
+                        result:
+                          count: 0
+                          link:
+                            tab: transactions
+                            filter:
+                              balance_mismatch: true
+                        acknowledged: false
+                        completed_by: null
+                        completed_at: null
+                        evaluated_at: '2026-07-17T10:04:00+00:00'
+                        sort_order: 11
+                      - id: 52
+                        key: review_income_statement
+                        title: Review Income Statement
+                        description: Read through the month's Income Statement for
+                          unexpected balances before sign-off.
+                        category: review
+                        category_label: Review
+                        type: manual
+                        severity: null
+                        status: done
+                        result:
+                          report_key: income_statement
+                        acknowledged: false
+                        completed_by:
+                          id: 5
+                          name: Dana Bookkeeper
+                        completed_at: '2026-07-16T22:10:00+00:00'
+                        evaluated_at: null
+                        sort_order: 300
+                      snapshots: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-close-periods-period
+  /api/ledger/close/periods/{period}/start:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Start Period Close
+      description: 'Begin the close for a month: materializes the period, seeds its
+        checklist (automated checks, built-in review items, and any custom items configured
+        in accounting settings), and evaluates every automated check. Returns the
+        full period detail.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                          period_start:
+                            type: string
+                          period_end:
+                            type: string
+                          status:
+                            type: string
+                          status_label:
+                            type: string
+                          is_started:
+                            type: boolean
+                          is_closable:
+                            type: boolean
+                          is_reopenable:
+                            type: boolean
+                          closed_at:
+                            type: string
+                            nullable: true
+                          closed_by:
+                            type: string
+                            nullable: true
+                          reopened_at:
+                            type: string
+                            nullable: true
+                          reopened_by:
+                            type: string
+                            nullable: true
+                          reopen_reason:
+                            type: string
+                            nullable: true
+                          notes:
+                            type: string
+                            nullable: true
+                          lock:
+                            type: object
+                            properties:
+                              active_lock_date:
+                                type: string
+                              provider_locks:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    lock_date:
+                                      type: string
+                          checklist:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                key:
+                                  type: string
+                                title:
+                                  type: string
+                                description:
+                                  type: string
+                                  nullable: true
+                                category:
+                                  type: string
+                                category_label:
+                                  type: string
+                                type:
+                                  type: string
+                                severity:
+                                  type: string
+                                status:
+                                  type: string
+                                result:
+                                  type: object
+                                  properties:
+                                    count:
+                                      type: integer
+                                    link:
+                                      type: object
+                                      properties:
+                                        tab:
+                                          type: string
+                                        filter:
+                                          type: object
+                                          properties:
+                                            balance_mismatch:
+                                              type: boolean
+                                acknowledged:
+                                  type: boolean
+                                completed_by:
+                                  type: string
+                                  nullable: true
+                                completed_at:
+                                  type: string
+                                  nullable: true
+                                evaluated_at:
+                                  type: string
+                                sort_order:
+                                  type: integer
+                          snapshots:
+                            type: array
+                  message:
+                    type: string
+                example:
+                  data:
+                    period:
+                      period: 2026-06
+                      period_start: '2026-06-01'
+                      period_end: '2026-06-30'
+                      status: in_review
+                      status_label: In Review
+                      is_started: true
+                      is_closable: true
+                      is_reopenable: false
+                      closed_at: null
+                      closed_by: null
+                      reopened_at: null
+                      reopened_by: null
+                      reopen_reason: null
+                      notes: null
+                      lock:
+                        active_lock_date: '2026-05-31'
+                        provider_locks:
+                        - connection_id: 30
+                          connection_name: Xero
+                          lock_date: '2026-05-31'
+                      checklist:
+                      - id: 41
+                        key: entries_balanced
+                        title: All entries balanced
+                        description: null
+                        category: data_completeness
+                        category_label: Data completeness
+                        type: automated
+                        severity: blocking
+                        status: pass
+                        result:
+                          count: 0
+                          link:
+                            tab: transactions
+                            filter:
+                              balance_mismatch: true
+                        acknowledged: false
+                        completed_by: null
+                        completed_at: null
+                        evaluated_at: '2026-07-17T10:04:00+00:00'
+                        sort_order: 11
+                      - id: 52
+                        key: review_income_statement
+                        title: Review Income Statement
+                        description: Read through the month's Income Statement for
+                          unexpected balances before sign-off.
+                        category: review
+                        category_label: Review
+                        type: manual
+                        severity: null
+                        status: done
+                        result:
+                          report_key: income_statement
+                        acknowledged: false
+                        completed_by:
+                          id: 5
+                          name: Dana Bookkeeper
+                        completed_at: '2026-07-16T22:10:00+00:00'
+                        evaluated_at: null
+                        sort_order: 300
+                      snapshots: []
+                  message: Close started for 2026-06.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-start
+  /api/ledger/close/periods/{period}/refresh:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Refresh Close Checklist
+      description: 'Re-evaluate every automated check on a started, non-closed period
+        and append any newly configured custom checklist items. Completed manual items
+        are never reset.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.
+
+
+        Errors: 422 when the period has not been started or is already closed.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                          period_start:
+                            type: string
+                          period_end:
+                            type: string
+                          status:
+                            type: string
+                          status_label:
+                            type: string
+                          is_started:
+                            type: boolean
+                          is_closable:
+                            type: boolean
+                          is_reopenable:
+                            type: boolean
+                          closed_at:
+                            type: string
+                            nullable: true
+                          closed_by:
+                            type: string
+                            nullable: true
+                          reopened_at:
+                            type: string
+                            nullable: true
+                          reopened_by:
+                            type: string
+                            nullable: true
+                          reopen_reason:
+                            type: string
+                            nullable: true
+                          notes:
+                            type: string
+                            nullable: true
+                          lock:
+                            type: object
+                            properties:
+                              active_lock_date:
+                                type: string
+                              provider_locks:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    lock_date:
+                                      type: string
+                          checklist:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                key:
+                                  type: string
+                                title:
+                                  type: string
+                                description:
+                                  type: string
+                                  nullable: true
+                                category:
+                                  type: string
+                                category_label:
+                                  type: string
+                                type:
+                                  type: string
+                                severity:
+                                  type: string
+                                status:
+                                  type: string
+                                result:
+                                  type: object
+                                  properties:
+                                    count:
+                                      type: integer
+                                    link:
+                                      type: object
+                                      properties:
+                                        tab:
+                                          type: string
+                                        filter:
+                                          type: object
+                                          properties:
+                                            balance_mismatch:
+                                              type: boolean
+                                acknowledged:
+                                  type: boolean
+                                completed_by:
+                                  type: string
+                                  nullable: true
+                                completed_at:
+                                  type: string
+                                  nullable: true
+                                evaluated_at:
+                                  type: string
+                                sort_order:
+                                  type: integer
+                          snapshots:
+                            type: array
+                  message:
+                    type: string
+                example:
+                  data:
+                    period:
+                      period: 2026-06
+                      period_start: '2026-06-01'
+                      period_end: '2026-06-30'
+                      status: in_review
+                      status_label: In Review
+                      is_started: true
+                      is_closable: true
+                      is_reopenable: false
+                      closed_at: null
+                      closed_by: null
+                      reopened_at: null
+                      reopened_by: null
+                      reopen_reason: null
+                      notes: null
+                      lock:
+                        active_lock_date: '2026-05-31'
+                        provider_locks:
+                        - connection_id: 30
+                          connection_name: Xero
+                          lock_date: '2026-05-31'
+                      checklist:
+                      - id: 41
+                        key: entries_balanced
+                        title: All entries balanced
+                        description: null
+                        category: data_completeness
+                        category_label: Data completeness
+                        type: automated
+                        severity: blocking
+                        status: pass
+                        result:
+                          count: 0
+                          link:
+                            tab: transactions
+                            filter:
+                              balance_mismatch: true
+                        acknowledged: false
+                        completed_by: null
+                        completed_at: null
+                        evaluated_at: '2026-07-17T10:04:00+00:00'
+                        sort_order: 11
+                      - id: 52
+                        key: review_income_statement
+                        title: Review Income Statement
+                        description: Read through the month's Income Statement for
+                          unexpected balances before sign-off.
+                        category: review
+                        category_label: Review
+                        type: manual
+                        severity: null
+                        status: done
+                        result:
+                          report_key: income_statement
+                        acknowledged: false
+                        completed_by:
+                          id: 5
+                          name: Dana Bookkeeper
+                        completed_at: '2026-07-16T22:10:00+00:00'
+                        evaluated_at: null
+                        sort_order: 300
+                      snapshots: []
+                  message: Checklist re-evaluated.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-refresh
+  /api/ledger/close/periods/{period}/checklist/{item}/complete:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Complete Checklist Item
+      description: 'Check a manual checklist item off, recording who completed it
+        and when. Automated checks cannot be checked off — re-evaluate them with Refresh
+        Close Checklist instead.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.
+
+
+        Errors: 422 for automated items or when the period is closed.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      - name: item
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The item ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      item:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          key:
+                            type: string
+                          title:
+                            type: string
+                          description:
+                            type: string
+                          category:
+                            type: string
+                          category_label:
+                            type: string
+                          type:
+                            type: string
+                          severity:
+                            type: string
+                            nullable: true
+                          status:
+                            type: string
+                          result:
+                            type: object
+                            properties:
+                              report_key:
+                                type: string
+                          acknowledged:
+                            type: boolean
+                          completed_by:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                          completed_at:
+                            type: string
+                          evaluated_at:
+                            type: string
+                            nullable: true
+                          sort_order:
+                            type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    item:
+                      id: 52
+                      key: review_income_statement
+                      title: Review Income Statement
+                      description: Read through the month's Income Statement for unexpected
+                        balances before sign-off.
+                      category: review
+                      category_label: Review
+                      type: manual
+                      severity: null
+                      status: done
+                      result:
+                        report_key: income_statement
+                      acknowledged: false
+                      completed_by:
+                        id: 5
+                        name: Dana Bookkeeper
+                      completed_at: '2026-07-16T22:10:00+00:00'
+                      evaluated_at: null
+                      sort_order: 300
+                  message: Review Income Statement checked off.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-checklist-item-complete
+    delete:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Uncomplete Checklist Item
+      description: 'Undo a manual checklist item''s completion on a non-closed period.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.'
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      - name: item
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The item ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      item:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          key:
+                            type: string
+                          title:
+                            type: string
+                          description:
+                            type: string
+                          category:
+                            type: string
+                          category_label:
+                            type: string
+                          type:
+                            type: string
+                          severity:
+                            type: string
+                            nullable: true
+                          status:
+                            type: string
+                          result:
+                            type: object
+                            properties:
+                              report_key:
+                                type: string
+                          acknowledged:
+                            type: boolean
+                          completed_by:
+                            type: string
+                            nullable: true
+                          completed_at:
+                            type: string
+                            nullable: true
+                          evaluated_at:
+                            type: string
+                            nullable: true
+                          sort_order:
+                            type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    item:
+                      id: 52
+                      key: review_income_statement
+                      title: Review Income Statement
+                      description: Read through the month's Income Statement for unexpected
+                        balances before sign-off.
+                      category: review
+                      category_label: Review
+                      type: manual
+                      severity: null
+                      status: open
+                      result:
+                        report_key: income_statement
+                      acknowledged: false
+                      completed_by: null
+                      completed_at: null
+                      evaluated_at: null
+                      sort_order: 300
+                  message: Review Income Statement reopened.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-ledger-close-periods-period-checklist-item-complete
+  /api/ledger/close/periods/{period}/close:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Close Period
+      description: 'Close and lock the period. Only the earliest non-closed month
+        can close (periods close strictly in order). Every failing blocking check
+        refuses the close; every warning-level failure and incomplete manual item
+        must be listed in acknowledged_keys. The close runs as a background job that
+        re-validates all gates, snapshots the report pack, inserts the period lock
+        (new entries dated on or before the period end are refused; corrections are
+        redated to the first open day), and records the sign-off. Returns the background
+        job id.
+
+
+        Authentication: Bearer token. Requires the accounting settings management
+        permission.
+
+
+        Errors: 422 when a blocking check fails, an acknowledgement is missing, the
+        month is out of order, or another close is already running.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                acknowledged_keys:
+                  type: array
+                  items:
+                    type: string
+                notes:
+                  type: string
+              example:
+                acknowledged_keys:
+                - provider_docs_reconciled
+                - review_income_statement
+                - review_balance_sheet
+                - review_inventory_valuation
+                notes: June close complete.
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 9311
+                  message: Closing 2026-06 — track progress in the job tray.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      acknowledged_keys:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'These items need acknowledgement before closing: Review
+                    Balance Sheet.'
+                  errors:
+                    acknowledged_keys:
+                    - 'These items need acknowledgement before closing: Review Balance
+                      Sheet.'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-ledger-close-periods-period-close
+  /api/ledger/close/periods/{period}/reopen:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Reopen Period
+      description: 'Reopen the most recently closed period (a reason is required and
+        audit-logged). Removes the period''s own lock, flags its report snapshots
+        stale, and returns the period to review. When the accounting provider still
+        has the month locked, residual_provider_locks lists those connections — entries
+        stay locked provider-side until the books are reopened there too.
+
+
+        Authentication: Bearer token. Requires the accounting settings management
+        permission.
+
+
+        Errors: 422 when the period is not the most recently closed one or a close
+        is currently running.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+              example:
+                reason: Client sent late invoices for June.
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      period:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                          period_start:
+                            type: string
+                          period_end:
+                            type: string
+                          status:
+                            type: string
+                          status_label:
+                            type: string
+                          is_started:
+                            type: boolean
+                          is_closable:
+                            type: boolean
+                          is_reopenable:
+                            type: boolean
+                          closed_at:
+                            type: string
+                            nullable: true
+                          closed_by:
+                            type: string
+                            nullable: true
+                          reopened_at:
+                            type: string
+                            nullable: true
+                          reopened_by:
+                            type: string
+                            nullable: true
+                          reopen_reason:
+                            type: string
+                            nullable: true
+                          notes:
+                            type: string
+                            nullable: true
+                          lock:
+                            type: object
+                            properties:
+                              active_lock_date:
+                                type: string
+                              provider_locks:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    lock_date:
+                                      type: string
+                          checklist:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                key:
+                                  type: string
+                                title:
+                                  type: string
+                                description:
+                                  type: string
+                                  nullable: true
+                                category:
+                                  type: string
+                                category_label:
+                                  type: string
+                                type:
+                                  type: string
+                                severity:
+                                  type: string
+                                status:
+                                  type: string
+                                result:
+                                  type: object
+                                  properties:
+                                    count:
+                                      type: integer
+                                    link:
+                                      type: object
+                                      properties:
+                                        tab:
+                                          type: string
+                                        filter:
+                                          type: object
+                                          properties:
+                                            balance_mismatch:
+                                              type: boolean
+                                acknowledged:
+                                  type: boolean
+                                completed_by:
+                                  type: string
+                                  nullable: true
+                                completed_at:
+                                  type: string
+                                  nullable: true
+                                evaluated_at:
+                                  type: string
+                                sort_order:
+                                  type: integer
+                          snapshots:
+                            type: array
+                      residual_provider_locks:
+                        type: array
+                  message:
+                    type: string
+                example:
+                  data:
+                    period:
+                      period: 2026-06
+                      period_start: '2026-06-01'
+                      period_end: '2026-06-30'
+                      status: in_review
+                      status_label: In Review
+                      is_started: true
+                      is_closable: true
+                      is_reopenable: false
+                      closed_at: null
+                      closed_by: null
+                      reopened_at: null
+                      reopened_by: null
+                      reopen_reason: null
+                      notes: null
+                      lock:
+                        active_lock_date: '2026-05-31'
+                        provider_locks:
+                        - connection_id: 30
+                          connection_name: Xero
+                          lock_date: '2026-05-31'
+                      checklist:
+                      - id: 41
+                        key: entries_balanced
+                        title: All entries balanced
+                        description: null
+                        category: data_completeness
+                        category_label: Data completeness
+                        type: automated
+                        severity: blocking
+                        status: pass
+                        result:
+                          count: 0
+                          link:
+                            tab: transactions
+                            filter:
+                              balance_mismatch: true
+                        acknowledged: false
+                        completed_by: null
+                        completed_at: null
+                        evaluated_at: '2026-07-17T10:04:00+00:00'
+                        sort_order: 11
+                      - id: 52
+                        key: review_income_statement
+                        title: Review Income Statement
+                        description: Read through the month's Income Statement for
+                          unexpected balances before sign-off.
+                        category: review
+                        category_label: Review
+                        type: manual
+                        severity: null
+                        status: done
+                        result:
+                          report_key: income_statement
+                        acknowledged: false
+                        completed_by:
+                          id: 5
+                          name: Dana Bookkeeper
+                        completed_at: '2026-07-16T22:10:00+00:00'
+                        evaluated_at: null
+                        sort_order: 300
+                      snapshots: []
+                    residual_provider_locks: []
+                  message: 2026-06 reopened.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-reopen
+  /api/ledger/close/periods/{period}/reports/{report}:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Close Report
+      description: 'One report of the month-end pack. Report keys: income_statement,
+        balance_sheet, trial_balance, inventory_valuation, cogs, ginr, reconciliation_summary.
+        On a closed period this returns the snapshot frozen at close time (source:
+        snapshot); otherwise a live build flagged preliminary. Payloads carry statement-level
+        rows plus a totals map of headline figures.
+
+
+        Authentication: Bearer token.
+
+
+        Errors: 422 for an unknown report key.'
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      - name: report
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The report ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      report:
+                        type: object
+                        properties:
+                          report_key:
+                            type: string
+                          label:
+                            type: string
+                          source:
+                            type: string
+                          preliminary:
+                            type: boolean
+                          is_stale:
+                            type: boolean
+                          generated_at:
+                            type: string
+                          payload:
+                            type: object
+                            properties:
+                              totals:
+                                type: object
+                                properties:
+                                  total_opening:
+                                    type: integer
+                                  total_debits:
+                                    type: number
+                                  total_credits:
+                                    type: number
+                                  total_closing:
+                                    type: integer
+                              rows:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    account_code:
+                                      type: string
+                                    account_name:
+                                      type: string
+                                    opening_balance:
+                                      type: integer
+                                    period_debits:
+                                      type: integer
+                                    period_credits:
+                                      type: integer
+                                    closing_balance:
+                                      type: integer
+                example:
+                  data:
+                    report:
+                      report_key: trial_balance
+                      label: Trial Balance
+                      source: snapshot
+                      preliminary: false
+                      is_stale: false
+                      generated_at: '2026-07-05T14:22:00+00:00'
+                      payload:
+                        totals:
+                          total_opening: 0
+                          total_debits: 633597.98
+                          total_credits: 633597.98
+                          total_closing: 0
+                        rows:
+                        - account_code: '1200'
+                          account_name: Inventory
+                          opening_balance: 700000
+                          period_debits: 45000
+                          period_credits: 38000
+                          closing_balance: 707000
+                        - account_code: '4000'
+                          account_name: Sales
+                          opening_balance: 0
+                          period_debits: 0
+                          period_credits: 80095.74
+                          closing_balance: -80095.74
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-close-periods-period-reports-report
+  /api/ledger/close/periods/{period}/verify:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Verify Closed Period
+      description: 'Drift check for a closed period: recomputes each snapshotted report
+        live and diffs the totals against the snapshot with a $0.01 tolerance. Any
+        difference means the closed month''s numbers moved after close (for example
+        via data repairs) and lists the changed figures. The reconciliation summary
+        is informational — it legitimately changes as reconciliation work continues
+        and never trips the period-level verdict.
+
+
+        Authentication: Bearer token.
+
+
+        Errors: 422 when the period is not closed.'
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      verification:
+                        type: object
+                        properties:
+                          period:
+                            type: string
+                          has_drift:
+                            type: boolean
+                          reports:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                report_key:
+                                  type: string
+                                label:
+                                  type: string
+                                matches:
+                                  type: boolean
+                                informational:
+                                  type: boolean
+                                is_stale:
+                                  type: boolean
+                                snapshot_generated_at:
+                                  type: string
+                                drift:
+                                  type: array
+                example:
+                  data:
+                    verification:
+                      period: 2026-06
+                      has_drift: false
+                      reports:
+                      - report_key: trial_balance
+                        label: Trial Balance
+                        matches: true
+                        informational: false
+                        is_stale: false
+                        snapshot_generated_at: '2026-07-05T14:22:00+00:00'
+                        drift: []
+                      - report_key: reconciliation_summary
+                        label: Reconciliation Summary
+                        matches: false
+                        informational: true
+                        is_stale: false
+                        snapshot_generated_at: '2026-07-05T14:22:00+00:00'
+                        drift:
+                        - field: provider_variance
+                          snapshot: 13891.46
+                          live: 12100.02
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-close-periods-period-verify
+  /api/ledger/close/periods/{period}/export:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Export Close Pack
+      description: 'Generate the month-end close pack workbook (XLSX) as a background
+        job: a cover sheet with the period''s status, sign-off and checklist outcomes,
+        plus one sheet per report of the pack. Closed periods export their frozen
+        snapshots; open periods export live figures flagged PRELIMINARY. The finished
+        file is delivered as a download from the job result.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 9312
+                  message: Close pack export started — the download will appear in
+                    the job tray.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-export
   /api/auth/login:
     post:
       tags:
