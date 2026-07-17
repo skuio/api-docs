@@ -181079,7 +181079,11 @@ paths:
         - is_automatic_sync_enabled (boolean).
 
         - use_location_mapping_for_new_orders (boolean): route new orders to warehouses
-        via location mappings.'
+        via location mappings.
+
+
+        integration_settings.cost_sync.fallback_to_default_cost (boolean): when a
+        product has no average cost, fall back to its default cost for the cost push.'
       requestBody:
         content:
           application/json:
@@ -181143,6 +181147,11 @@ paths:
                           type: boolean
                         notify_customer_picked_up:
                           type: boolean
+                    cost_sync:
+                      type: object
+                      properties:
+                        fallback_to_default_cost:
+                          type: boolean
               example:
                 name: Main Shopify Store
                 is_automatic_sync_enabled: true
@@ -181171,6 +181180,8 @@ paths:
                     sync_ready_for_pickup: true
                     notify_customer_ready_for_pickup: false
                     notify_customer_picked_up: false
+                  cost_sync:
+                    fallback_to_default_cost: true
       parameters:
       - name: integrationInstance
         in: path
@@ -192494,6 +192505,276 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-shopify-integrationinstance-products-product-revenue-conversion
+  /api/shopify/{integrationInstance}/costs/sync:
+    post:
+      tags:
+      - Shopify
+      summary: Sync Costs to Shopify
+      description: 'Push each mapped listing''s average cost to the Shopify variant''s
+        "Cost per item" field. Runs asynchronously; poll Get Cost Sync Progress with
+        the returned tracked_job_log_id.
+
+
+        Costs are pushed in the store''s currency (converted from your base currency
+        using your configured exchange rate). Products with no average cost are skipped,
+        never zeroed. Bundles push the sum of component costs; a bundle is skipped
+        when any component has no cost. Values already matching Shopify are skipped.
+
+
+        Requires the "Push costs" sync capability to be enabled for the integration
+        instance.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                example:
+                  message: Cost sync job has been queued
+                  data:
+                    tracked_job_log_id: 9134
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      cost_sync:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Cost sync is not enabled for this Shopify instance. Enable
+                    "Push costs" in Settings first.
+                  errors:
+                    cost_sync:
+                    - Cost sync is not enabled for this Shopify instance. Enable "Push
+                      costs" in Settings first.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-shopify-integrationinstance-costs-sync
+  /api/shopify/{integrationInstance}/costs/sync-progress/{trackedJobLogId}:
+    get:
+      tags:
+      - Shopify
+      summary: Get Cost Sync Progress
+      description: 'Get the progress and results of a cost sync run. The results object
+        reports pushed, skipped_unchanged, skipped_no_cost, skipped_bundle_component,
+        skipped_currency, failed counts and an errors list.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      - name: trackedJobLogId
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '9134'
+        description: The tracked job log ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      job_name:
+                        type: string
+                      status:
+                        type: string
+                      progress_percentage:
+                        type: integer
+                      messages:
+                        type: string
+                      results:
+                        type: object
+                        properties:
+                          pushed:
+                            type: integer
+                          skipped_unchanged:
+                            type: integer
+                          skipped_no_cost:
+                            type: integer
+                          skipped_bundle_component:
+                            type: integer
+                          skipped_currency:
+                            type: integer
+                          failed:
+                            type: integer
+                          has_failures:
+                            type: boolean
+                          errors:
+                            type: array
+                            items:
+                              type: string
+                          completed_at:
+                            type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  data:
+                    id: 9134
+                    job_name: 'Sync Costs to Shopify: My Store'
+                    status: completed
+                    progress_percentage: 100
+                    messages: Pushed 1204 costs to Shopify (310 unchanged, 12 without
+                      cost, 4 bundle-skipped, 0 currency-skipped, 2 failed)
+                    results:
+                      pushed: 1204
+                      skipped_unchanged: 310
+                      skipped_no_cost: 12
+                      skipped_bundle_component: 4
+                      skipped_currency: 0
+                      failed: 2
+                      has_failures: true
+                      errors:
+                      - 'SHIRT-BLU-LG: Variant not found on Shopify'
+                      completed_at: '2026-07-17T06:02:14+00:00'
+                    created_at: '2026-07-17T06:00:00+00:00'
+                    updated_at: '2026-07-17T06:02:14+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-shopify-integrationinstance-costs-sync-progress-trackedjoblogid
+  /api/shopify/{integrationInstance}/costs/last-sync:
+    get:
+      tags:
+      - Shopify
+      summary: Get Last Cost Sync
+      description: 'Get the most recent cost sync run for this instance (any status),
+        or null when costs have never been synced. The response also includes a currency
+        object (base_currency, store_currency, store_currency_rate, has_rate, differs)
+        describing the base-vs-store currency conversion applied when pushing costs.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      id: 9134
+                      job_name: 'Sync Costs to Shopify: My Store'
+                      status: completed
+                      progress_percentage: 100
+                      messages: Pushed 1204 costs to Shopify (310 unchanged, 12 without
+                        cost, 4 bundle-skipped, 0 currency-skipped, 2 failed)
+                      results:
+                        pushed: 1204
+                        skipped_unchanged: 310
+                        skipped_no_cost: 12
+                        skipped_bundle_component: 4
+                        skipped_currency: 0
+                        failed: 2
+                        has_failures: true
+                        errors:
+                        - 'SHIRT-BLU-LG: Variant not found on Shopify'
+                        completed_at: '2026-07-17T06:02:14+00:00'
+                      created_at: '2026-07-17T06:00:00+00:00'
+                      updated_at: '2026-07-17T06:02:14+00:00'
+                    currency:
+                      base_currency: USD
+                      store_currency: GBP
+                      store_currency_rate: 1.27
+                      has_rate: true
+                      differs: true
+                example-1:
+                  summary: 200 OK (Never Synced)
+                  value:
+                    data: null
+                    currency:
+                      base_currency: USD
+                      store_currency: USD
+                      store_currency_rate: 1
+                      has_rate: true
+                      differs: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-shopify-integrationinstance-costs-last-sync
   /api/shopify/{integrationInstance}/customers:
     get:
       tags:
