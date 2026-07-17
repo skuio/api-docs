@@ -107648,6 +107648,1037 @@ paths:
         '403': *id003
       x-required-scope: reports:read
       operationId: get-api-reporting-suppliers-supplier-scorecard
+  /api/reporting/suppliers/targets:
+    get:
+      tags:
+      - Reporting
+      summary: Get Purchasing Target Matrix
+      description: 'Returns the target-vs-actual matrix for a year: one row per supplier
+        with 12 month cells. Each cell carries the target (amount and units), the
+        actual placed purchase-order volume, the latest forecast amount when available,
+        variance in absolute value and percent, a status (on_target | over | under
+        | no_target | future), mid-month pacing for the current month (on_pace | ahead
+        | behind), and the remaining amount to buy.
+
+
+        Authentication: Requires Bearer token
+
+
+        Notes:
+
+        - Actuals count non-draft purchase orders only, normalised to the tenant base
+        currency.
+
+        - Suppliers with actuals but no targets still appear with status no_target.
+
+        - Rows are ordered with off-target suppliers first, then alphabetically.
+
+        - variance_pct is null when the target is zero or not set.'
+      parameters:
+      - name: year
+        in: query
+        schema:
+          type: integer
+        description: Required. Calendar year of the matrix (2000-2100).
+        example: '2026'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      meta:
+                        type: object
+                        properties:
+                          year:
+                            type: integer
+                          basis:
+                            type: string
+                          currency_code:
+                            type: string
+                          tolerance_pct:
+                            type: number
+                          has_forecast:
+                            type: boolean
+                          current_year:
+                            type: integer
+                          current_month:
+                            type: integer
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            supplier_id:
+                              type: integer
+                            supplier_name:
+                              type: string
+                            supplier_archived:
+                              type: boolean
+                            supplier_min_purchase_order:
+                              type: integer
+                            months:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  period_month:
+                                    type: integer
+                                  month_class:
+                                    type: string
+                                  target_amount:
+                                    type: integer
+                                  target_quantity:
+                                    type: integer
+                                  actual_amount:
+                                    type: integer
+                                  actual_quantity:
+                                    type: integer
+                                  po_count:
+                                    type: integer
+                                  forecast_amount:
+                                    type: integer
+                                  variance:
+                                    type: integer
+                                  variance_pct:
+                                    type: number
+                                  status:
+                                    type: string
+                                  pacing:
+                                    type: string
+                                    nullable: true
+                                  remaining:
+                                    type: string
+                                    nullable: true
+                                  source:
+                                    type: string
+                                  notes:
+                                    type: string
+                                    nullable: true
+                            row_totals:
+                              type: object
+                              properties:
+                                target:
+                                  type: integer
+                                actual:
+                                  type: integer
+                                variance:
+                                  type: integer
+                                variance_pct:
+                                  type: number
+                                status:
+                                  type: string
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: ''
+                  data:
+                    meta:
+                      year: 2026
+                      basis: cost
+                      currency_code: USD
+                      tolerance_pct: 0.1
+                      has_forecast: true
+                      current_year: 2026
+                      current_month: 7
+                    rows:
+                    - supplier_id: 12
+                      supplier_name: Acme Supply Co
+                      supplier_archived: false
+                      supplier_min_purchase_order: 5000
+                      months:
+                      - period_month: 5
+                        month_class: past
+                        target_amount: 80000
+                        target_quantity: 1200
+                        actual_amount: 72000
+                        actual_quantity: 1080
+                        po_count: 4
+                        forecast_amount: 76500
+                        variance: -8000
+                        variance_pct: -0.1
+                        status: on_target
+                        pacing: null
+                        remaining: null
+                        source: manual
+                        notes: null
+                      - period_month: 7
+                        month_class: current
+                        target_amount: 80000
+                        target_quantity: 1200
+                        actual_amount: 41000
+                        actual_quantity: 1080
+                        po_count: 4
+                        forecast_amount: 76500
+                        variance: -39000
+                        variance_pct: -0.4875
+                        status: under
+                        pacing: behind
+                        remaining: 39000
+                        source: manual
+                        notes: null
+                      row_totals:
+                        target: 960000
+                        actual: 445000
+                        variance: -35000
+                        variance_pct: -0.0729
+                        status: on_target
+                  errors: []
+                  warnings: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-reporting-suppliers-targets
+    put:
+      tags:
+      - Reporting
+      summary: Bulk Upsert Purchasing Targets
+      description: 'Creates, updates, or clears target cells in bulk. Each entry is
+        keyed by (supplier_id, period_year, period_month) — existing cells are updated,
+        new ones created, and an entry with BOTH target_amount and target_quantity
+        null clears the cell (reverting it to no target). All operations in one request
+        are applied atomically. Returns the fresh persisted rows (cleared cells are
+        absent).
+
+
+        Authentication: Requires Bearer token
+
+
+        Body fields (per entry in targets, max 1000):
+
+        - supplier_id: integer, required — must be an existing supplier
+
+        - period_year: integer, required (2000-2100)
+
+        - period_month: integer, required (1-12)
+
+        - target_amount: number or null, key required — tenant base currency, min
+        0
+
+        - target_quantity: integer or null, key required — units, min 0, max 2000000000
+
+        - basis: string, optional — cost | units (default: cost)
+
+        - source: string, optional — manual | seeded_trailing | seeded_same_month_last_year
+        | seeded_forecast (default: manual)
+
+        - notes: string, optional — max 500 characters
+
+
+        Both value keys must be present on every entry (values may be null). Submitting
+        both as null deletes the cell.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                targets:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      supplier_id:
+                        type: integer
+                      period_year:
+                        type: integer
+                      period_month:
+                        type: integer
+                      target_amount:
+                        type: integer
+                      target_quantity:
+                        type: integer
+                      basis:
+                        type: string
+                      source:
+                        type: string
+                      notes:
+                        type: string
+              example:
+                targets:
+                - supplier_id: 12
+                  period_year: 2026
+                  period_month: 8
+                  target_amount: 85000
+                  target_quantity: 1300
+                  basis: cost
+                  source: manual
+                  notes: Q3 volume commitment
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        supplier_id:
+                          type: integer
+                        period_year:
+                          type: integer
+                        period_month:
+                          type: integer
+                        basis:
+                          type: string
+                        target_amount:
+                          type: integer
+                        target_quantity:
+                          type: string
+                          nullable: true
+                        currency_code:
+                          type: string
+                        source:
+                          type: string
+                        notes:
+                          type: string
+                          nullable: true
+                        updated_at:
+                          type: string
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: 1 target saved.
+                  data:
+                  - id: 44
+                    supplier_id: 12
+                    period_year: 2026
+                    period_month: 8
+                    basis: cost
+                    target_amount: 85000
+                    target_quantity: null
+                    currency_code: USD
+                    source: manual
+                    notes: null
+                    updated_at: '2026-07-16T14:05:00.000000Z'
+                  errors: []
+                  warnings: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      targets.0.target_amount:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Target amounts cannot be negative.
+                  errors:
+                    targets.0.target_amount:
+                    - Target amounts cannot be negative.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-reporting-suppliers-targets
+  /api/reporting/suppliers/targets/seed:
+    post:
+      tags:
+      - Reporting
+      summary: Preview Seeded Targets
+      description: 'Computes proposed target values without persisting anything. Review
+        the proposals, then save the ones you want via Bulk Upsert Purchasing Targets.
+
+
+        Authentication: Requires Bearer token
+
+
+        Body fields:
+
+        - strategy: string, required — trailing_average | same_month_last_year | latest_forecast
+
+        - period_year: integer, required (2000-2100)
+
+        - supplier_ids: integer[], optional — defaults to all active suppliers
+
+        - months: integer[], optional — months 1-12 to propose for; defaults to all
+        12
+
+        - trailing_months: integer, optional — window for trailing_average (1-24,
+        default 3)
+
+        - only_fill_empty: boolean, optional — skip cells that already have a target
+        (default true)
+
+
+        Strategies:
+
+        - trailing_average: average actual purchase volume of the last N months
+
+        - same_month_last_year: actual volume of the same calendar month one year
+        earlier
+
+        - latest_forecast: purchase orders generated by the most recent completed
+        forecast run (422 if none exists)
+
+
+        Proposals with no source data return a null amount and a note explaining why.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                strategy:
+                  type: string
+                period_year:
+                  type: integer
+                supplier_ids:
+                  type: array
+                  items:
+                    type: integer
+                months:
+                  type: array
+                  items:
+                    type: integer
+                trailing_months:
+                  type: integer
+                only_fill_empty:
+                  type: boolean
+              example:
+                strategy: trailing_average
+                period_year: 2026
+                supplier_ids:
+                - 12
+                months:
+                - 8
+                - 9
+                - 10
+                trailing_months: 3
+                only_fill_empty: true
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        supplier_id:
+                          type: integer
+                        period_month:
+                          type: integer
+                        target_amount:
+                          type: integer
+                        target_quantity:
+                          type: integer
+                        source:
+                          type: string
+                        note:
+                          type: string
+                          nullable: true
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: ''
+                  data:
+                  - supplier_id: 12
+                    period_month: 8
+                    target_amount: 78500
+                    target_quantity: 1150
+                    source: seeded_trailing
+                    note: null
+                  - supplier_id: 12
+                    period_month: 9
+                    target_amount: 78500
+                    target_quantity: 1150
+                    source: seeded_trailing
+                    note: null
+                  errors: []
+                  warnings: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: No completed forecast run with purchase orders is available
+                    to seed from.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-reporting-suppliers-targets-seed
+  /api/reporting/suppliers/targets/settings:
+    get:
+      tags:
+      - Reporting
+      summary: Get Purchasing Target Settings
+      description: 'Returns the tenant purchasing-target settings. tolerance_pct is
+        the +/- band (as a fraction, e.g. 0.10 for 10%) within which an actual is
+        considered on target.
+
+
+        Authentication: Requires Bearer token'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      tolerance_pct:
+                        type: number
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: ''
+                  data:
+                    id: 1
+                    tolerance_pct: 0.1
+                    created_at: '2026-07-16T14:00:00.000000Z'
+                    updated_at: '2026-07-16T14:00:00.000000Z'
+                  errors: []
+                  warnings: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-reporting-suppliers-targets-settings
+    put:
+      tags:
+      - Reporting
+      summary: Update Purchasing Target Settings
+      description: 'Updates the tenant purchasing-target settings.
+
+
+        Authentication: Requires Bearer token
+
+
+        Body fields:
+
+        - tolerance_pct: number, required — fraction between 0 and 1 (e.g. 0.10 for
+        a +/-10% on-target band)'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tolerance_pct:
+                  type: number
+              example:
+                tolerance_pct: 0.15
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      tolerance_pct:
+                        type: number
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: Purchasing target settings saved.
+                  data:
+                    id: 1
+                    tolerance_pct: 0.15
+                    created_at: '2026-07-16T14:00:00.000000Z'
+                    updated_at: '2026-07-16T14:00:00.000000Z'
+                  errors: []
+                  warnings: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      tolerance_pct:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The tolerance must be a fraction between 0 and 1 (e.g.
+                    0.10 for ±10%).
+                  errors:
+                    tolerance_pct:
+                    - The tolerance must be a fraction between 0 and 1 (e.g. 0.10
+                      for ±10%).
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: put-api-reporting-suppliers-targets-settings
+  /api/reporting/suppliers/{supplier}/targets/summary:
+    get:
+      tags:
+      - Reporting
+      summary: Get Supplier Target Summary
+      description: 'Returns a single supplier''s 12-month target-vs-actual summary
+        plus a current-month rollup with the remaining amount to buy — suited for
+        embedding target progress next to purchasing workflows.
+
+
+        Authentication: Requires Bearer token'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      supplier_id:
+                        type: integer
+                      year:
+                        type: integer
+                      currency_code:
+                        type: string
+                      tolerance_pct:
+                        type: number
+                      has_targets:
+                        type: boolean
+                      current_month:
+                        type: object
+                        properties:
+                          period_month:
+                            type: integer
+                          month_class:
+                            type: string
+                          target_amount:
+                            type: integer
+                          target_quantity:
+                            type: integer
+                          actual_amount:
+                            type: integer
+                          actual_quantity:
+                            type: integer
+                          po_count:
+                            type: integer
+                          forecast_amount:
+                            type: integer
+                          variance:
+                            type: integer
+                          variance_pct:
+                            type: number
+                          status:
+                            type: string
+                          pacing:
+                            type: string
+                          remaining:
+                            type: integer
+                          source:
+                            type: string
+                          notes:
+                            type: string
+                            nullable: true
+                      months:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            period_month:
+                              type: integer
+                            month_class:
+                              type: string
+                            target_amount:
+                              type: integer
+                            target_quantity:
+                              type: integer
+                            actual_amount:
+                              type: integer
+                            actual_quantity:
+                              type: integer
+                            po_count:
+                              type: integer
+                            forecast_amount:
+                              type: integer
+                            variance:
+                              type: integer
+                            variance_pct:
+                              type: number
+                            status:
+                              type: string
+                            pacing:
+                              type: string
+                              nullable: true
+                            remaining:
+                              type: string
+                              nullable: true
+                            source:
+                              type: string
+                            notes:
+                              type: string
+                              nullable: true
+                      row_totals:
+                        type: object
+                        properties:
+                          target:
+                            type: integer
+                          actual:
+                            type: integer
+                          variance:
+                            type: integer
+                          variance_pct:
+                            type: number
+                          status:
+                            type: string
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: ''
+                  data:
+                    supplier_id: 12
+                    year: 2026
+                    currency_code: USD
+                    tolerance_pct: 0.1
+                    has_targets: true
+                    current_month:
+                      period_month: 7
+                      month_class: current
+                      target_amount: 80000
+                      target_quantity: 1200
+                      actual_amount: 41000
+                      actual_quantity: 1080
+                      po_count: 4
+                      forecast_amount: 76500
+                      variance: -39000
+                      variance_pct: -0.4875
+                      status: under
+                      pacing: behind
+                      remaining: 39000
+                      source: manual
+                      notes: null
+                    months:
+                    - period_month: 5
+                      month_class: past
+                      target_amount: 80000
+                      target_quantity: 1200
+                      actual_amount: 72000
+                      actual_quantity: 1080
+                      po_count: 4
+                      forecast_amount: 76500
+                      variance: -8000
+                      variance_pct: -0.1
+                      status: on_target
+                      pacing: null
+                      remaining: null
+                      source: manual
+                      notes: null
+                    - period_month: 7
+                      month_class: current
+                      target_amount: 80000
+                      target_quantity: 1200
+                      actual_amount: 41000
+                      actual_quantity: 1080
+                      po_count: 4
+                      forecast_amount: 76500
+                      variance: -39000
+                      variance_pct: -0.4875
+                      status: under
+                      pacing: behind
+                      remaining: 39000
+                      source: manual
+                      notes: null
+                    row_totals:
+                      target: 960000
+                      actual: 445000
+                      variance: -35000
+                      variance_pct: -0.0729
+                      status: on_target
+                  errors: []
+                  warnings: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-reporting-suppliers-supplier-targets-summary
+  /api/reporting/suppliers/{supplier}/targets/purchase-orders:
+    get:
+      tags:
+      - Reporting
+      summary: List Target Month Purchase Orders
+      description: 'Lists the non-draft purchase orders composing one supplier-month
+        actual, each with its base-currency total — lets you verify exactly which
+        orders make up a matrix cell.
+
+
+        Authentication: Requires Bearer token'
+      parameters:
+      - name: year
+        in: query
+        schema:
+          type: integer
+        description: Required. Calendar year (2000-2100).
+        example: '2026'
+      - name: month
+        in: query
+        schema:
+          type: integer
+        description: Required. Month 1-12.
+        example: '5'
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        purchase_order_number:
+                          type: string
+                        purchase_order_date:
+                          type: string
+                        order_status:
+                          type: string
+                        receipt_status:
+                          type: string
+                        total_amount:
+                          type: integer
+                        total_quantity:
+                          type: integer
+                  errors:
+                    type: array
+                  warnings:
+                    type: array
+                example:
+                  status: success
+                  message: ''
+                  data:
+                  - id: 981
+                    purchase_order_number: PO-2026-0143
+                    purchase_order_date: '2026-05-04 00:00:00'
+                    order_status: open
+                    receipt_status: not_received
+                    total_amount: 32000
+                    total_quantity: 480
+                  - id: 1002
+                    purchase_order_number: PO-2026-0159
+                    purchase_order_date: '2026-05-21 00:00:00'
+                    order_status: closed
+                    receipt_status: fully_received
+                    total_amount: 40000
+                    total_quantity: 600
+                  errors: []
+                  warnings: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-reporting-suppliers-supplier-targets-purchase-orders
+  /api/reporting/suppliers/{supplier}/targets/{year}/{month}:
+    delete:
+      tags:
+      - Reporting
+      summary: Delete Purchasing Target
+      description: 'Clears a single supplier-month target cell, reverting it to no
+        target. Deleting a cell is distinct from setting an explicit zero target.
+        Idempotent — deleting a missing cell also returns 204.
+
+
+        Authentication: Requires Bearer token'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '12'
+      - name: year
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Calendar year (2000-2100)
+        example: '2026'
+      - name: month
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Month 1-12
+        example: '8'
+      responses:
+        '204':
+          description: No Content
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ''
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-reporting-suppliers-supplier-targets-year-month
   /api/reporting/products/overview:
     get:
       tags:
