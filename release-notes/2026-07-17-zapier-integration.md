@@ -3,7 +3,7 @@ title: "Zapier Integration & Outbound Webhooks — connect SKU.io to thousands o
 description: "SKU.io now pushes real-time events to Zapier or any HTTPS endpoint — automate orders, inventory, and purchasing workflows with no code."
 authors: [product-team]
 tags: [major-feature, new, developer, integrations]
-date: 2026-06-15
+date: 2026-07-17
 ---
 
 Until now, getting data *out* of SKU.io meant polling the API, exporting
