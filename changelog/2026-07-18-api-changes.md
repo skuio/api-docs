@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 88 additions, 1 removal. 1 breaking change — action required.
+description: This release includes 89 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-18
 ---
 
-This release includes 88 additions, 1 removal. 1 breaking change — action required.
+This release includes 89 additions, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -36,6 +36,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/customers/{customer}/send-statement` — Send Customer Statement
 - `GET /api/customers/{customer}/statement` — Get Customer Statement
 - `GET /api/customers/{customer}/statement/export` — Export Customer Statement
+- `POST /api/customers/{customer}/statement/preview` — Preview Customer Statement Email
 
 ### Documents
 - `GET /api/documents` — List Documents for a Record
