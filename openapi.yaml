@@ -467098,22 +467098,44 @@ paths:
       summary: List Inbox Documents
       description: "Return a unified, paginated, descending-by-created_at list combining\
         \ customer PO, supplier invoice, vendor credit, and landed cost invoice OCR\
-        \ extractions. Each item is normalized to the same shape so the frontend can\
-        \ render a single mixed-type table. Vendor credit extractions that are attached\
-        \ to an existing vendor credit (vendor_credit_attachment_id set) are excluded\
-        \ — they belong to that credit's documents tab, not the inbox.\n\n:::warning[Not\
+        \ extractions. Each item is normalized to the same shape so a single mixed-type\
+        \ list can be rendered. Vendor credit extractions that are attached to an\
+        \ existing vendor credit (vendor_credit_attachment_id set) are excluded —\
+        \ they belong to that credit's documents, not the inbox.\n\n:::warning[Not\
         \ yet available to API tokens]\nThis endpoint currently requires session authentication;\
         \ Personal Access Token scope support is in progress.\n:::\n\nExample item:\n\
-        ```json\n{\n  \"id\": 42,\n  \"type\": \"vendor_credit\",\n  \"status\": \"\
-        pending_review\",\n  \"source\": \"email\",\n  \"source_email_from\": \"billing@acme.com\"\
-        ,\n  \"source_email_subject\": \"Credit Memo CM-1009\",\n  \"customer_name\"\
-        : null,\n  \"supplier_name\": \"Acme Co.\",\n  \"document_type\": \"credit_memo\"\
-        ,\n  \"detection_signals\": [\"keyword:credit memo\", \"total:negative\"],\n\
-        \  \"auto_routed\": true,\n  \"confirmed_record\": null,\n  \"error_message\"\
-        : null,\n  \"created_at\": \"2026-06-10T10:30:00.000000Z\"\n}\n```\n\nClassification\
-        \ fields (new):\n- `document_type` — what the classifier decided the document\
-        \ is: `invoice` or `credit_memo`. Populated on supplier_invoice and vendor_credit\
-        \ items; always null for customer_po and landed_cost_invoice.\n- `detection_signals`\
+        ```json\n{\n  \"id\": 42,\n  \"type\": \"supplier_invoice\",\n  \"status\"\
+        : \"pending_review\",\n  \"source\": \"email\",\n  \"source_email_from\":\
+        \ \"Jane Doe <jane@tenant.com>\",\n  \"source_email_forwarded_from\": \"orders-usa@tecmate.com\"\
+        ,\n  \"source_email_subject\": \"Fwd: Invoice Number-0002020\",\n  \"customer_name\"\
+        : null,\n  \"supplier_name\": \"TecMATE\",\n  \"document_type\": \"invoice\"\
+        ,\n  \"detection_signals\": [],\n  \"auto_routed\": false,\n  \"ocr_header\"\
+        : {\n    \"doc_number\": {\"value\": \"0002020\", \"confidence\": 0.97},\n\
+        \    \"total\": {\"value\": 37.06, \"confidence\": 0.97},\n    \"tax_amount\"\
+        : {\"value\": 2.10, \"confidence\": 0.9},\n    \"currency_code\": {\"value\"\
+        : \"USD\", \"confidence\": 0.99},\n    \"doc_date\": {\"value\": \"2026-07-17\"\
+        , \"confidence\": 0.97},\n    \"po_number\": {\"value\": \"PO-0671\", \"confidence\"\
+        : 0.95}\n  },\n  \"confirmed_record\": null,\n  \"error_message\": null,\n\
+        \  \"created_at\": \"2026-07-17T22:28:48.000000Z\"\n}\n```\n\nSender fields:\n\
+        - `source_email_from` — the sender of the email that reached the intake address.\
+        \ For forwarded emails this is the forwarder, not the original contact.\n\
+        - `source_email_forwarded_from` — the original sender parsed out of a forwarded\
+        \ email's body/headers (null for direct sends and uploads). Prefer this as\
+        \ the document's real contact when present.\n\nOCR header summary (`ocr_header`):\n\
+        - A compact summary of what OCR extracted from the document, or null while\
+        \ the document is still processing (or when extraction failed before analysis).\n\
+        - Each field is `{value, confidence}`; `confidence` is 0–1 or null when the\
+        \ extraction pipeline did not score the field.\n- `doc_number` — the document's\
+        \ own number: invoice number (supplier_invoice, landed_cost_invoice), credit\
+        \ memo number (vendor_credit), or customer PO number (customer_po).\n- `total`,\
+        \ `tax_amount`, `currency_code` — extracted money fields.\n- `doc_date` —\
+        \ the document's own date (invoice date, credit date, or order date), distinct\
+        \ from `created_at` (when the document arrived).\n- `po_number` — for supplier\
+        \ invoices, the purchase order number referenced on the invoice (null for\
+        \ customer POs, where the PO number IS `doc_number`).\n\nClassification fields:\n\
+        - `document_type` — what the classifier decided the document is: `invoice`\
+        \ or `credit_memo`. Populated on supplier_invoice and vendor_credit items;\
+        \ always null for customer_po and landed_cost_invoice.\n- `detection_signals`\
         \ — array of signal keys that drove the classification (e.g. `keyword:credit\
         \ memo`, `doc_number:CM prefix`, `total:negative`). Null when no detection\
         \ ran.\n- `auto_routed` — true when the document arrived in the supplier invoice\
