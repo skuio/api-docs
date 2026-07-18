@@ -3,7 +3,7 @@ title: "Tracking Categories — see your profit and loss by sales channel"
 description: "Tag the invoices and cost-of-goods journals SKU.io sends to Xero and QuickBooks with a tracking category or class per sales channel, so you can report profit and loss by channel."
 authors: [product-team]
 tags: [major-feature, new, accounting]
-date: 2026-07-18
+date: 2026-07-18T03:27:09
 ---
 
 If you sell on more than one channel, your Xero or QuickBooks profit and

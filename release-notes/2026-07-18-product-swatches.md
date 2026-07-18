@@ -3,7 +3,7 @@ title: "Product Swatches — show colour and pattern, not just words"
 description: "Give a product attribute's options a colour chip or image, and SKU.io shows real swatches on your variant products and sends them to channels that support them."
 authors: [product-team]
 tags: [major-feature, new, inventory, integrations]
-date: 2026-07-18
+date: 2026-07-18T02:39:24
 ---
 
 When a product comes in five colours, "Red", "Blue" and "Green" in a

@@ -3,7 +3,7 @@ title: "Shopify Payouts — accounting that matches your bank deposits"
 description: "SKU.io now syncs every Shopify Payments payout and posts one summarized accounting entry that matches the bank deposit to the cent — reconciliation in one click instead of hours."
 authors: [product-team]
 tags: [major-feature, new, integrations, accounting]
-date: 2026-07-18
+date: 2026-07-18T02:48:34
 ---
 
 The number Shopify deposits into your bank account is never your sales
