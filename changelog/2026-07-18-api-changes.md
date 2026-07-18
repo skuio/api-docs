@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 86 additions, 1 removal. 1 breaking change — action required.
+description: This release includes 88 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-18
 ---
 
-This release includes 86 additions, 1 removal. 1 breaking change — action required.
+This release includes 88 additions, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -103,6 +103,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/qbo/vendors/refresh-tracked` — Refresh Vendors in Background
 - `POST /api/qbo/vendors/search-qbo` — Search Vendors in QuickBooks
 - `GET /api/qbo/vendors/sync-info` — Get Vendors Sync Info
+
+### Reporting
+- `GET /api/reporting/profitability/indirect-cost-drilldown` — Get Indirect Cost Drilldown
+- `GET /api/reporting/profitability/indirect-cost-types` — List Indirect Cost Types
 
 ### Shopify
 - `GET /api/shopify/payout-mapping-groups` — List Global Payout Mapping Groups
