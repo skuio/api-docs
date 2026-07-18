@@ -185,6 +185,7 @@ tags:
 - name: Purchase Invoice OCR
 - name: Landed Cost Invoice OCR
 - name: Document Inbox
+- name: Documents
 - name: Fulfillment Orders
 - name: Line Decorations
 - name: Decoration Orders
@@ -33697,6 +33698,187 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-ledger-close-periods-period-verify
+  /api/ledger/close/periods/{period}/capture-provider-balances:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Capture Provider Trial Balances
+      description: 'Capture the accounting provider''s trial balance as of the period
+        end (period key format YYYY-MM), for every connected accounting integration.
+        This is the one metered provider pull behind the Trial Balance Reconciliation
+        report and the trial_balance_reconciled close check — both read only the cached
+        snapshot this produces. Synchronous: one trial-balance call per connection;
+        connections whose provider exposes no trial-balance report are skipped, not
+        failed. Re-running re-captures in place so provider-side edits are picked
+        up.
+
+
+        Authentication: Bearer token. Requires the accounting sync permission.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      captured:
+                        type: integer
+                      unsupported:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    captured: 1
+                    unsupported: 0
+                  message: 1 provider trial balance captured. Re-check the close to
+                    reconcile.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-ledger-close-periods-period-capture-provider-balances
+  /api/ledger/close/periods/{period}/sync-breakdown:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Sync Breakdown (why not synced)
+      description: 'The why-not-synced breakdown. For the period (key format YYYY-MM),
+        returns every journal entry that has NOT reached the accounting provider,
+        grouped by reason (display status), with an entry count, a dollar total, and
+        a per-reason deep-link filter that lands the entries list on exactly those
+        rows. The synced total rides along as context (how much DID sync). Read-only
+        and entirely local — no provider call.
+
+
+        Each row''s `disposition` is one of: `excluded` (unsynced by design), `in_flight`
+        (queued/syncing/retrying), `needs_attention` (failed/conflict/removed-in-provider/needs-attention).
+        `link` is a checklist-style deep link ({tab, filter}) for the entries list.
+
+
+        Authentication: Bearer token.'
+      parameters:
+      - name: period
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The period ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      breakdown:
+                        type: object
+                        properties:
+                          synced:
+                            type: object
+                            properties:
+                              entry_count:
+                                type: integer
+                              total:
+                                type: integer
+                          rows:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                entry_display_status:
+                                  type: string
+                                label:
+                                  type: string
+                                disposition:
+                                  type: string
+                                reason:
+                                  type: string
+                                entry_count:
+                                  type: integer
+                                total:
+                                  type: integer
+                                link:
+                                  type: object
+                                  properties:
+                                    tab:
+                                      type: string
+                                    filter:
+                                      type: object
+                                      properties:
+                                        entry_display_status:
+                                          type: string
+                          totals:
+                            type: object
+                            properties:
+                              unsynced_count:
+                                type: integer
+                              unsynced_total:
+                                type: integer
+                example:
+                  data:
+                    breakdown:
+                      synced:
+                        entry_count: 128
+                        total: 84250
+                      rows:
+                      - entry_display_status: excluded
+                        label: Disabled
+                        disposition: excluded
+                        reason: Excluded by design — not configured to sync to the
+                          provider.
+                        entry_count: 12
+                        total: 3400
+                        link:
+                          tab: all
+                          filter:
+                            entry_display_status: excluded
+                      - entry_display_status: failed
+                        label: Failed
+                        disposition: needs_attention
+                        reason: Failed — the provider rejected the push.
+                        entry_count: 2
+                        total: 560
+                        link:
+                          tab: all
+                          filter:
+                            entry_display_status: failed
+                      totals:
+                        unsynced_count: 14
+                        unsynced_total: 3960
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-ledger-close-periods-period-sync-breakdown
   /api/ledger/close/periods/{period}/export:
     post:
       tags:
@@ -314472,7 +314654,13 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Each image may carry `swatch_variant_attribute` (string, nullable): when set,
+        the image is the variant swatch for the named attribute (e.g. "Color") on
+        matrix variant children. Channels that support swatches (Walmart) emit it
+        as that child''s swatch image.'
       parameters:
       - name: product
         in: path
@@ -314507,6 +314695,8 @@ paths:
                           type: boolean
                         sort_order:
                           type: integer
+                        swatch_variant_attribute:
+                          type: string
                         created_at:
                           type: string
                         updated_at:
@@ -314517,12 +314707,14 @@ paths:
                     url: https://example.com/images/widget.jpg
                     is_primary: true
                     sort_order: 0
+                    swatch_variant_attribute: Color
                     created_at: '2024-01-15T10:30:00Z'
                     updated_at: '2024-01-15T10:30:00Z'
                   - id: 6
                     url: https://example.com/images/widget-alt.jpg
                     is_primary: false
                     sort_order: 1
+                    swatch_variant_attribute: null
                     created_at: '2024-01-15T10:31:00Z'
                     updated_at: '2024-01-15T10:31:00Z'
         '429': *id001
@@ -461233,8 +461425,9 @@ paths:
               properties:
                 file:
                   type: string
-                  description: 'PDF file of the customer purchase order (required,
-                    max 20 MB, mimes: pdf)'
+                  description: 'Customer purchase order file (required, max 20 MB).
+                    Accepts PDF and image scans: pdf, jpg, jpeg, png, tif, tiff, bmp,
+                    webp.'
                   format: binary
                 customer_id:
                   type: integer
@@ -463294,9 +463487,9 @@ paths:
               properties:
                 file:
                   type: string
-                  description: 'PDF of the landed cost invoice (required, max 20 MB,
-                    mimes: pdf). Examples: freight, customs, brokerage, insurance,
-                    duty.'
+                  description: 'Landed cost invoice file (required, max 20 MB). Accepts
+                    PDF and image scans: pdf, jpg, jpeg, png, tif, tiff, bmp, webp.
+                    Examples: freight, customs, brokerage, insurance, duty.'
                   format: binary
                 supplier_id:
                   type: integer
@@ -464211,6 +464404,121 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-document-inbox-customer-po-extraction-id-reclassify
+  /api/documents:
+    get:
+      tags:
+      - Documents
+      summary: List Documents for a Record
+      description: 'Lists the documents linked to a given business record (purchase
+        order, purchase invoice, or bill). Because one document can be linked to several
+        records, the same file appears here for every record it relates to.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: type
+        in: query
+        schema:
+          type: string
+        description: 'Required. The record type to list documents for. One of: purchase_order,
+          purchase_invoice, bill.'
+        example: purchase_order
+      - name: id
+        in: query
+        schema:
+          type: integer
+        description: Required. The record's ID.
+        example: '900'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        file_name:
+                          type: string
+                        mime_type:
+                          type: string
+                        is_image:
+                          type: boolean
+                        file_size:
+                          type: integer
+                        source:
+                          type: string
+                        file_url:
+                          type: string
+                        linked_records:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                              id:
+                                type: integer
+                        created_at:
+                          type: string
+                example:
+                  data:
+                  - id: 42
+                    file_name: invoice-INV-5501.pdf
+                    mime_type: application/pdf
+                    is_image: false
+                    file_size: 81234
+                    source: ocr_supplier_invoice
+                    file_url: '{{protocol}}{{domain}}/api/documents/42/file'
+                    linked_records:
+                    - type: App\Models\PurchaseOrder
+                      id: 900
+                    - type: App\Models\PurchaseInvoice
+                      id: 1201
+                    created_at: '2026-07-18T01:00:00.000000Z'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-documents
+  /api/documents/{documentId}/file:
+    get:
+      tags:
+      - Documents
+      summary: Stream Document File
+      description: 'Streams a document''s file inline (PDF or image) through the backend.
+        Content-Type reflects the stored file''s type.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: documentId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Document ID
+        example: '42'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-documents-documentid-file
   /api/sales-orders/{salesOrder}/fulfillment-orders:
     get:
       tags:
@@ -492162,7 +492470,9 @@ paths:
               properties:
                 file:
                   type: string
-                  description: Required. Credit memo PDF, max 20 MB.
+                  description: 'Vendor credit / credit memo file (required, max 20
+                    MB). Accepts PDF and image scans: pdf, jpg, jpeg, png, tif, tiff,
+                    bmp, webp.'
                   format: binary
                 supplier_id:
                   type: integer
@@ -513520,6 +513830,7 @@ x-tagGroups:
   - Purchase Invoice OCR
   - Landed Cost Invoice OCR
   - Document Inbox
+  - Documents
   - Fulfillment Orders
   - Line Decorations
   - Decoration Orders
