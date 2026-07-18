@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 58 additions.
+description: This release includes 67 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-18
 ---
 
-This release includes 58 additions.
+This release includes 67 additions.
 
 <!-- truncate -->
 
@@ -16,6 +16,15 @@ This release includes 58 additions.
 
 ### Contractors
 - `PATCH /api/manufacturing/contractors/{supplier}` — Update Contractor
+
+### Customers
+- `GET /api/customers/{customer}/ar-communications` — List Customer AR Communications
+- `GET /api/customers/{customer}/ar-summary` — Get Customer AR Summary
+- `GET /api/customers/{customer}/receivables` — List Customer Receivables
+- `POST /api/customers/{customer}/request-payment` — Request Customer Payment
+- `POST /api/customers/{customer}/send-statement` — Send Customer Statement
+- `GET /api/customers/{customer}/statement` — Get Customer Statement
+- `GET /api/customers/{customer}/statement/export` — Export Customer Statement
 
 ### Documents
 - `GET /api/documents` — List Documents for a Record
@@ -29,6 +38,10 @@ This release includes 58 additions.
 - `PATCH /api/ledger/period-locks/provider/{connectionId}` — Toggle Provider Lock Enforcement
 - `GET /api/ledger/reports/lock-date-exceptions` — List Lock Date Exceptions
 - `GET /api/ledger/reports/lock-date-exceptions/summary` — Get Lock Date Exceptions Summary
+
+### Payment Method Mappings
+- `GET /api/magento2/integration-instances/{magento2IntegrationInstance}/payment-method-mappings` — List Payment Method Mappings
+- `PUT /api/magento2/integration-instances/{magento2IntegrationInstance}/payment-method-mappings` — Bulk Replace Payment Method Mappings
 
 ### QuickBooks Online
 - `POST /api/qbo/accounts/refresh-single` — Pull Account from QuickBooks
