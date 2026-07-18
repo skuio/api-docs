@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 89 additions, 1 removal. 1 breaking change — action required.
+description: This release includes 90 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-18
 ---
 
-This release includes 89 additions, 1 removal. 1 breaking change — action required.
+This release includes 90 additions, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -106,6 +106,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/qbo/vendors/sync-info` — Get Vendors Sync Info
 
 ### Reporting
+- `POST /api/reporting/irr/refresh` — Refresh IRR Metrics
 - `GET /api/reporting/profitability/indirect-cost-drilldown` — Get Indirect Cost Drilldown
 - `GET /api/reporting/profitability/indirect-cost-types` — List Indirect Cost Types
 
