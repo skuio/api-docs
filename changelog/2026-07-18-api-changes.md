@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 67 additions, 1 removal. 1 breaking change — action required.
+description: This release includes 86 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-18
 ---
 
-This release includes 67 additions, 1 removal. 1 breaking change — action required.
+This release includes 86 additions, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -103,5 +103,26 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/qbo/vendors/refresh-tracked` — Refresh Vendors in Background
 - `POST /api/qbo/vendors/search-qbo` — Search Vendors in QuickBooks
 - `GET /api/qbo/vendors/sync-info` — Get Vendors Sync Info
+
+### Shopify
+- `GET /api/shopify/payout-mapping-groups` — List Global Payout Mapping Groups
+- `POST /api/shopify/payout-mapping-groups` — Create Global Payout Mapping Group
+- `POST /api/shopify/payout-mapping-groups/reorder` — Reorder Global Payout Mapping Groups
+- `DELETE /api/shopify/payout-mapping-groups/{payoutMappingGroup}` — Delete Global Payout Mapping Group
+- `PUT /api/shopify/payout-mapping-groups/{payoutMappingGroup}` — Update Global Payout Mapping Group
+- `GET /api/shopify/{integrationInstance}/payout-finance-settings` — Get Payout Finance Settings
+- `PUT /api/shopify/{integrationInstance}/payout-finance-settings` — Update Payout Finance Settings
+- `GET /api/shopify/{integrationInstance}/payout-mapping-groups` — List Payout Mapping Groups
+- `POST /api/shopify/{integrationInstance}/payout-mapping-groups` — Create Payout Mapping Group
+- `POST /api/shopify/{integrationInstance}/payout-mapping-groups/reorder` — Reorder Payout Mapping Groups
+- `DELETE /api/shopify/{integrationInstance}/payout-mapping-groups/{payoutMappingGroup}` — Delete Payout Mapping Group
+- `PUT /api/shopify/{integrationInstance}/payout-mapping-groups/{payoutMappingGroup}` — Update Payout Mapping Group
+- `GET /api/shopify/{integrationInstance}/payout-type-mappings` — List Payout Type Mappings
+- `PUT /api/shopify/{integrationInstance}/payout-type-mappings` — Update Payout Type Mappings
+- `PUT /api/shopify/{integrationInstance}/payout-type-mappings/bulk-assign` — Bulk Assign Payout Type Mappings
+- `GET /api/shopify/{integrationInstance}/payouts` — List Payouts
+- `GET /api/shopify/{integrationInstance}/payouts/filter-options` — Get Payout Filter Options
+- `POST /api/shopify/{integrationInstance}/payouts/sync` — Sync Payouts
+- `GET /api/shopify/{integrationInstance}/payouts/{payout}` — Get Payout
 
 _Spec version 1.0.0 → 1.0.0._
