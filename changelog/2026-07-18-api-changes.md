@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-18
-description: This release includes 10 additions.
+description: This release includes 58 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-18
 ---
 
-This release includes 10 additions.
+This release includes 58 additions.
 
 <!-- truncate -->
 
@@ -29,5 +29,55 @@ This release includes 10 additions.
 - `PATCH /api/ledger/period-locks/provider/{connectionId}` — Toggle Provider Lock Enforcement
 - `GET /api/ledger/reports/lock-date-exceptions` — List Lock Date Exceptions
 - `GET /api/ledger/reports/lock-date-exceptions/summary` — Get Lock Date Exceptions Summary
+
+### QuickBooks Online
+- `POST /api/qbo/accounts/refresh-single` — Pull Account from QuickBooks
+- `POST /api/qbo/accounts/refresh-tracked` — Refresh Accounts in Background
+- `POST /api/qbo/accounts/search-qbo` — Search Accounts in QuickBooks
+- `GET /api/qbo/accounts/sync-info` — Get Accounts Sync Info
+- `POST /api/qbo/bills/refresh-single` — Pull Bill from QuickBooks
+- `POST /api/qbo/bills/refresh-tracked` — Refresh Bills in Background
+- `POST /api/qbo/bills/search-qbo` — Search Bills in QuickBooks
+- `GET /api/qbo/bills/sync-info` — Get Bills Sync Info
+- `POST /api/qbo/credit-memos/refresh-single` — Pull Credit Memo from QuickBooks
+- `POST /api/qbo/credit-memos/refresh-tracked` — Refresh Credit Memos in Background
+- `POST /api/qbo/credit-memos/search-qbo` — Search Credit Memos in QuickBooks
+- `GET /api/qbo/credit-memos/sync-info` — Get Credit Memos Sync Info
+- `POST /api/qbo/customers/refresh-single` — Pull Customer from QuickBooks
+- `POST /api/qbo/customers/refresh-tracked` — Refresh Customers in Background
+- `POST /api/qbo/customers/search-qbo` — Search Customers in QuickBooks
+- `GET /api/qbo/customers/sync-info` — Get Customers Sync Info
+- `POST /api/qbo/invoices/refresh-single` — Pull Invoice from QuickBooks
+- `POST /api/qbo/invoices/refresh-tracked` — Refresh Invoices in Background
+- `POST /api/qbo/invoices/search-qbo` — Search Invoices in QuickBooks
+- `GET /api/qbo/invoices/sync-info` — Get Invoices Sync Info
+- `POST /api/qbo/items/refresh-single` — Pull Item from QuickBooks
+- `POST /api/qbo/items/refresh-tracked` — Refresh Items in Background
+- `POST /api/qbo/items/search-qbo` — Search Items in QuickBooks
+- `GET /api/qbo/items/sync-info` — Get Items Sync Info
+- `POST /api/qbo/journals/refresh-single` — Pull Journal from QuickBooks
+- `POST /api/qbo/journals/refresh-tracked` — Refresh Journals in Background
+- `POST /api/qbo/journals/search-qbo` — Search Journals in QuickBooks
+- `GET /api/qbo/journals/sync-info` — Get Journals Sync Info
+- `POST /api/qbo/payments/refresh-single` — Pull Payment from QuickBooks
+- `POST /api/qbo/payments/refresh-tracked` — Refresh Payments in Background
+- `POST /api/qbo/payments/search-qbo` — Search Payments in QuickBooks
+- `GET /api/qbo/payments/sync-info` — Get Payments Sync Info
+- `POST /api/qbo/purchase-orders/refresh-single` — Pull Purchase Order from QuickBooks
+- `POST /api/qbo/purchase-orders/refresh-tracked` — Refresh Purchase Orders in Background
+- `POST /api/qbo/purchase-orders/search-qbo` — Search Purchase Orders in QuickBooks
+- `GET /api/qbo/purchase-orders/sync-info` — Get Purchase Orders Sync Info
+- `POST /api/qbo/tax-codes/refresh-single` — Pull Tax Code from QuickBooks
+- `POST /api/qbo/tax-codes/refresh-tracked` — Refresh Tax Codes in Background
+- `POST /api/qbo/tax-codes/search-qbo` — Search Tax Codes in QuickBooks
+- `GET /api/qbo/tax-codes/sync-info` — Get Tax Codes Sync Info
+- `POST /api/qbo/tax-rates/refresh-single` — Pull Tax Rate from QuickBooks
+- `POST /api/qbo/tax-rates/refresh-tracked` — Refresh Tax Rates in Background
+- `POST /api/qbo/tax-rates/search-qbo` — Search Tax Rates in QuickBooks
+- `GET /api/qbo/tax-rates/sync-info` — Get Tax Rates Sync Info
+- `POST /api/qbo/vendors/refresh-single` — Pull Vendor from QuickBooks
+- `POST /api/qbo/vendors/refresh-tracked` — Refresh Vendors in Background
+- `POST /api/qbo/vendors/search-qbo` — Search Vendors in QuickBooks
+- `GET /api/qbo/vendors/sync-info` — Get Vendors Sync Info
 
 _Spec version 1.0.0 → 1.0.0._
