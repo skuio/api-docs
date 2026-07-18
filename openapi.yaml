@@ -376096,7 +376096,19 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        For outsourced orders (production_method: outsourced) the request also accepts:
+        contractor_supplier_id (required for outsourced, integer, must be a supplier
+        flagged as a manufacturing contractor); outsourced_cost_basis (optional, string,
+        one of: toll, hybrid) - how the contractor''s product charge is costed into
+        the finished output. toll = you own all component materials and the charge
+        is a processing cost only; hybrid = the contractor supplies additional materials
+        of their own and the charge is capitalized into output cost. When omitted
+        the contractor''s default_outsourced_cost_basis applies, falling back to hybrid;
+        service_fee_amount (optional, numeric, min 0). These three fields are rejected
+        for in_house orders.'
       requestBody:
         content:
           application/json:
@@ -376184,7 +376196,14 @@ paths:
         | `manual`) — the provenance of its `actual_cost`: `estimated` flags a cost
         that fell back to the planned duration because no time was logged, and `manual`
         marks an explicitly supplied cost that is never auto-recalculated (only another
-        explicit cost, or an explicitly logged positive time, replaces it).'
+        explicit cost, or an explicitly logged positive time, replaces it).
+
+
+        **Outsourced cost basis:** `outsourced_cost_basis` is the order''s explicit
+        override (`toll` | `hybrid`, null = inherit) and `resolved_outsourced_cost_basis`
+        is the basis actually used for costing (override, else the contractor''s `default_outsourced_cost_basis`,
+        else `hybrid`). `resolved_outsourced_cost_basis` is null for in-house orders.
+        The nested `contractor_supplier` object also carries the contractor''s `default_outsourced_cost_basis`.'
       parameters:
       - name: id
         in: path
@@ -376284,6 +376303,12 @@ paths:
                   production_method:
                     type: string
                   contractor_supplier_id:
+                    type: string
+                    nullable: true
+                  outsourced_cost_basis:
+                    type: string
+                    nullable: true
+                  resolved_outsourced_cost_basis:
                     type: string
                     nullable: true
                   outsourced_purchase_order_id:
@@ -376399,6 +376424,8 @@ paths:
                   completed_quantity: 0
                   production_method: in_house
                   contractor_supplier_id: null
+                  outsourced_cost_basis: null
+                  resolved_outsourced_cost_basis: null
                   outsourced_purchase_order_id: null
                   sales_order_id: null
                   sales_order_line_id: null
@@ -382018,7 +382045,8 @@ paths:
       - Contractors
       summary: List Contractors
       description: 'List suppliers flagged as manufacturing contractors, with their
-        default contractor warehouse.
+        default contractor warehouse and default outsourced cost basis (toll | hybrid,
+        null when not set).
 
 
         :::info[Required scope: `manufacturing:read`]
@@ -382030,9 +382058,57 @@ paths:
       parameters: []
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: integer
+                    name:
+                      type: string
+                    email:
+                      type: string
+                    phone:
+                      type: string
+                    is_manufacturing_contractor:
+                      type: boolean
+                    contractor_default_warehouse_id:
+                      type: integer
+                    default_outsourced_cost_basis:
+                      type: string
+                    virtual_warehouse:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                    active_mo_count:
+                      type: integer
+                    total_mo_count:
+                      type: integer
+                example:
+                - id: 12
+                  name: Acme Assembly Co
+                  email: ops@acmeassembly.com
+                  phone: +1-555-0142
+                  is_manufacturing_contractor: true
+                  contractor_default_warehouse_id: 9
+                  default_outsourced_cost_basis: toll
+                  virtual_warehouse:
+                    id: 9
+                    name: Acme Assembly Co (Contractor)
+                  active_mo_count: 2
+                  total_mo_count: 14
         '429': *id001
         '401': *id002
         '403': *id003
@@ -382050,7 +382126,14 @@ paths:
 
         Body: supplier_id (required, integer, existing supplier id); virtual_warehouse_name
         (optional, string, max 255) - name for the contractor''s virtual warehouse,
-        a default is generated when omitted.
+        a default is generated when omitted; default_outsourced_cost_basis (optional,
+        string, one of: toll, hybrid) - default cost basis applied to new outsourced
+        manufacturing orders for this contractor. Use toll when you own all component
+        materials and the contractor only charges for processing (the contractor''s
+        product charge is treated as a processing cost, not added on top of your component
+        costs). Use hybrid when the contractor supplies materials of their own beyond
+        the components you provide (their charge is capitalized into the output cost).
+        Omit or null to fall back to hybrid.
 
 
         :::info[Required scope: `manufacturing:write`]
@@ -382069,9 +382152,12 @@ paths:
                   type: integer
                 virtual_warehouse_name:
                   type: string
+                default_outsourced_cost_basis:
+                  type: string
               example:
                 supplier_id: 12
                 virtual_warehouse_name: Acme Assembly Co (Contractor)
+                default_outsourced_cost_basis: toll
       parameters: []
       responses:
         '201':
@@ -382098,6 +382184,8 @@ paths:
                     type: boolean
                   contractor_default_warehouse_id:
                     type: integer
+                  default_outsourced_cost_basis:
+                    type: string
                   virtual_warehouse:
                     type: object
                     properties:
@@ -382116,6 +382204,7 @@ paths:
                   phone: +1-555-0142
                   is_manufacturing_contractor: true
                   contractor_default_warehouse_id: 9
+                  default_outsourced_cost_basis: toll
                   virtual_warehouse:
                     id: 9
                     name: Acme Assembly Co (Contractor)
@@ -382153,6 +382242,128 @@ paths:
       x-required-scope: manufacturing:write
       operationId: post-api-manufacturing-contractors
   /api/manufacturing/contractors/{supplier}:
+    patch:
+      tags:
+      - Contractors
+      summary: Update Contractor
+      description: 'Update a contractor''s manufacturing settings.
+
+        Auth: requires Bearer token.
+
+        Path param: supplier = supplier id.
+
+        Body: default_outsourced_cost_basis (optional, string, one of: toll, hybrid)
+        - default cost basis applied to new outsourced manufacturing orders for this
+        contractor. Use toll when you own all component materials and the contractor
+        only charges for processing (the contractor''s product charge is treated as
+        a processing cost, not added on top of your component costs). Use hybrid when
+        the contractor supplies materials of their own beyond the components you provide
+        (their charge is capitalized into the output cost). Omit or null to fall back
+        to hybrid.
+
+        Send null to clear the setting (new outsourced orders then fall back to hybrid).
+        Changing the default does not alter existing manufacturing orders; each order
+        may also set its own outsourced_cost_basis override at creation.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                default_outsourced_cost_basis:
+                  type: string
+              example:
+                default_outsourced_cost_basis: toll
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '12'
+        description: The supplier ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  name:
+                    type: string
+                  email:
+                    type: string
+                  phone:
+                    type: string
+                  is_manufacturing_contractor:
+                    type: boolean
+                  contractor_default_warehouse_id:
+                    type: integer
+                  default_outsourced_cost_basis:
+                    type: string
+                  virtual_warehouse:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  active_mo_count:
+                    type: integer
+                  total_mo_count:
+                    type: integer
+                example:
+                  id: 12
+                  name: Acme Assembly Co
+                  email: ops@acmeassembly.com
+                  phone: +1-555-0142
+                  is_manufacturing_contractor: true
+                  contractor_default_warehouse_id: 9
+                  default_outsourced_cost_basis: toll
+                  virtual_warehouse:
+                    id: 9
+                    name: Acme Assembly Co (Contractor)
+                  active_mo_count: 0
+                  total_mo_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      default_outsourced_cost_basis:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected default outsourced cost basis is invalid.
+                  errors:
+                    default_outsourced_cost_basis:
+                    - The selected default outsourced cost basis is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: patch-api-manufacturing-contractors-supplier
     delete:
       tags:
       - Contractors
