@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-19
-description: This release includes 20 additions.
+description: This release includes 24 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-19
 ---
 
-This release includes 20 additions.
+This release includes 24 additions.
 
 <!-- truncate -->
 
@@ -34,6 +34,12 @@ This release includes 20 additions.
 - `GET /api/ebay/{integrationInstance}/payouts/filter-options` — Get Payout Filter Options
 - `POST /api/ebay/{integrationInstance}/payouts/sync` — Sync Payouts
 - `GET /api/ebay/{integrationInstance}/payouts/{payout}` — Get Payout
+
+### Purchase Orders
+- `GET /api/purchase-orders/{purchase_order}/communications` — List Purchase Order Communications
+- `POST /api/purchase-orders/{purchase_order}/communications` — Create Purchase Order Communication
+- `POST /api/purchase-orders/{purchase_order}/communications/{communication}/read` — Mark Communication as Read
+- `GET /api/v2/suppliers/{supplier}/communications` — List Supplier Communications (Cross-PO)
 
 ### Stores
 - `PUT /api/stores/{id}/set-default` — Set Default Store
