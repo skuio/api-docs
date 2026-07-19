@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-19
-description: This release includes 19 additions.
+description: This release includes 20 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-19
 ---
 
-This release includes 19 additions.
+This release includes 20 additions.
 
 <!-- truncate -->
 
@@ -34,5 +34,8 @@ This release includes 19 additions.
 - `GET /api/ebay/{integrationInstance}/payouts/filter-options` — Get Payout Filter Options
 - `POST /api/ebay/{integrationInstance}/payouts/sync` — Sync Payouts
 - `GET /api/ebay/{integrationInstance}/payouts/{payout}` — Get Payout
+
+### Stores
+- `PUT /api/stores/{id}/set-default` — Set Default Store
 
 _Spec version 1.0.0 → 1.0.0._
