@@ -48407,6 +48407,8 @@ paths:
                           type: string
                         purchase_order_email:
                           type: string
+                        messaging_phone:
+                          type: string
                         website:
                           type: string
                         leadtime:
@@ -48493,6 +48495,7 @@ paths:
                     email: orders@acmewholesale.com
                     primary_contact_name: Bob Johnson
                     purchase_order_email: po@acmewholesale.com
+                    messaging_phone: '+15551234567'
                     website: https://acmewholesale.com
                     leadtime: 7
                     minimum_order_quantity: 10
@@ -434635,6 +434638,292 @@ paths:
         '403': *id003
       x-required-scope: returns:read
       operationId: get-api-return-receipts-session-summary
+  /api/return-receipts/{returnReceipt}/delete-impact:
+    get:
+      tags:
+      - Returns & RMAs
+      summary: Preview Return Receipt Delete Impact
+      description: 'Read-only preview of the allocation-demotion impact of deleting
+        this return receipt. Because deleting it removes the stock it added, this
+        behaves like a manual negative adjustment and returns one row per affected
+        product: how much of the removed quantity is unallocated vs soft-allocated
+        vs hard-allocated, plus every sales-order allocation and fulfillment (printed
+        shipping label) the removal would disturb. Use it to decide which fulfillments
+        to authorize voiding via `void_confirmations` on the deleting call. Nothing
+        is mutated. A removal that only re-adds stock returns an empty `data` array.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: returnReceipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Return receipt ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 5567
+                    product_sku: WIDGET-BLUE
+                    product_name: Blue Widget
+                    shortfall_quantity: 0
+                    unallocated_quantity: 10
+                    soft_allocated_quantity: 6
+                    hard_allocated_quantity: 4
+                    affected_allocations:
+                    - allocation_id: 88201
+                      allocation_type: soft
+                      sales_order_id: 3120
+                      order_number: SO-3120
+                      customer_name: Acme Co.
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 6
+                    - allocation_id: 88205
+                      allocation_type: hard
+                      sales_order_id: 3125
+                      order_number: SO-3125
+                      customer_name: Beta LLC
+                      fulfillment_id: 90142
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 4
+                      allocation_ids:
+                      - 88205
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-return-receipts-returnreceipt-delete-impact
+  /api/return-receipts/preview-release-impact:
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Preview Return Receipt Release Impact
+      description: 'Read-only preview of which back-ordered sales orders this return
+        receipt would release, per restock-to-sellable line. Send the same payload
+        you would POST to create the receipt; each line that restocks sellable stock
+        is resolved to its product and the receive warehouse and evaluated against
+        waiting back-ordered demand. Nothing is written.
+
+
+        Each row describes one product the receive would restock. `releasable_quantity`
+        is the number of incoming units that can be released to back-ordered demand;
+        `orders[]` are the back-ordered sales orders that would be filled; `held_back[]`
+        is demand that stays back-ordered, with `reason_kept` explaining why (e.g.
+        "Insufficient supply").
+
+
+        Body: the same shape as Create Return Receipt. Minimum: `warehouse_id` and
+        one `return_receipt_lines` entry with `product_id`, `quantity`, and `action`.
+        `release_backorders` (true/false/null) mirrors the receive call''s release
+        control.
+
+
+        Authentication: Requires Bearer token. Requires the returns.receive permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                warehouse_id:
+                  type: integer
+                release_backorders:
+                  type: boolean
+                return_receipt_lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      rma_line_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      action:
+                        type: string
+                      return_reason_id:
+                        type: integer
+              example:
+                warehouse_id: 1
+                release_backorders: true
+                return_receipt_lines:
+                - product_id: 123
+                  rma_line_id: 3
+                  quantity: 8
+                  action: return_to_stock
+                  return_reason_id: 1
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        releasable_quantity:
+                          type: integer
+                        orders:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                        held_back:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              product_id:
+                                type: integer
+                              sales_order_id:
+                                type: integer
+                              sales_order_line_id:
+                                type: integer
+                              sales_order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                              from_status:
+                                type: string
+                              to_status:
+                                type: string
+                              reason_kept:
+                                type: string
+                  status:
+                    type: string
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    releasable_quantity: 8
+                    orders:
+                    - sales_order_id: 4602
+                      order_number: SO-10501
+                      customer_name: Acme Retail
+                      quantity: 5
+                    - sales_order_id: 4610
+                      order_number: SO-10509
+                      customer_name: Gamma Foods
+                      quantity: 3
+                    held_back:
+                    - allocation_id: 90311
+                      product_id: 123
+                      sales_order_id: 4620
+                      sales_order_line_id: 55123
+                      sales_order_number: SO-10518
+                      customer_name: Delta Mart
+                      quantity: 4
+                      from_status: planned
+                      to_status: allocated
+                      reason_kept: Insufficient supply
+                  status: success
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-return-receipts-preview-release-impact
   /api/return-reasons:
     get:
       tags:
@@ -436980,6 +437269,8 @@ paths:
                           type: string
                         purchase_order_email:
                           type: string
+                        messaging_phone:
+                          type: string
                         website:
                           type: string
                         leadtime:
@@ -437062,6 +437353,7 @@ paths:
                     email: orders@acmewholesale.com
                     primary_contact_name: Bob Johnson
                     purchase_order_email: po@acmewholesale.com
+                    messaging_phone: '+15551234567'
                     website: https://acmewholesale.com
                     leadtime: 7
                     minimum_order_quantity: 10
@@ -437123,6 +437415,9 @@ paths:
 
         - email and purchase_order_email accept comma-separated multiple email addresses
 
+        - messaging_phone: the supplier''s WhatsApp/SMS number in international format
+        (E.164, e.g. +15551234567), used to message them from a purchase order
+
         - name must be unique
 
         - po_processing_method: email, ftp, direct
@@ -437162,6 +437457,8 @@ paths:
                 email:
                   type: string
                 purchase_order_email:
+                  type: string
+                messaging_phone:
                   type: string
                 website:
                   type: string
@@ -437262,6 +437559,7 @@ paths:
                 primary_contact_name: Alice Brown
                 email: alice@newsupplier.com,billing@newsupplier.com
                 purchase_order_email: po@newsupplier.com
+                messaging_phone: '+15551234567'
                 website: https://newsupplier.com
                 leadtime: 14
                 minimum_order_quantity: 5
@@ -437554,6 +437852,8 @@ paths:
                         type: string
                       purchase_order_email:
                         type: string
+                      messaging_phone:
+                        type: string
                       website:
                         type: string
                       leadtime:
@@ -437660,6 +437960,7 @@ paths:
                     email: orders@acmewholesale.com
                     primary_contact_name: Bob Johnson
                     purchase_order_email: po@acmewholesale.com
+                    messaging_phone: '+15551234567'
                     website: https://acmewholesale.com
                     leadtime: 7
                     minimum_order_quantity: 10
@@ -437736,6 +438037,10 @@ paths:
         :::
 
 
+        - `messaging_phone` — the supplier''s WhatsApp/SMS number in international
+        format (E.164, e.g. +15551234567), used to message them from a purchase order.
+
+
         - `purchase_order_format` — only allowed on PUT.
 
         - `purchase_order_csv_columns` — optional array of column keys controlling
@@ -437779,6 +438084,8 @@ paths:
                 email:
                   type: string
                 purchase_order_email:
+                  type: string
+                messaging_phone:
                   type: string
                 leadtime:
                   type: integer
@@ -437842,6 +438149,7 @@ paths:
                 primary_contact_name: Bob Johnson
                 email: orders@acmewholesale.com
                 purchase_order_email: po@acmewholesale.com
+                messaging_phone: '+15551234567'
                 leadtime: 10
                 minimum_order_quantity: 15
                 target_stock_days: 45
@@ -438126,6 +438434,8 @@ paths:
                         type: string
                       purchase_order_email:
                         type: string
+                      messaging_phone:
+                        type: string
                       website:
                         type: string
                       leadtime:
@@ -438284,6 +438594,7 @@ paths:
                     email: orders@acme.com
                     primary_contact_name: John Doe
                     purchase_order_email: po@acme.com
+                    messaging_phone: '+15551234567'
                     website: https://acme.com
                     leadtime: 14
                     minimum_order_quantity: 50
@@ -451466,6 +451777,115 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-purchase-orders-purchase-order-communications
+  /api/purchase-orders/{purchase_order}/communications/supplier-phone:
+    put:
+      tags:
+      - Purchase Orders
+      summary: Set Supplier WhatsApp/SMS Number
+      description: 'Set the linked supplier''s WhatsApp/SMS number (E.164, e.g. +15551234567)
+        so the messaging channels become usable on this purchase order without opening
+        the supplier record. Send a blank value to clear the stored number. Returns
+        the updated channel availability for this purchase order.
+
+
+        Requires the `purchase_orders.update` permission. Returns 422 when the purchase
+        order has no linked supplier.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                messaging_phone:
+                  type: string
+              example:
+                messaging_phone: '+15551234567'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: string
+                  messaging:
+                    type: object
+                    properties:
+                      supplier_has_phone:
+                        type: boolean
+                      channels:
+                        type: object
+                        properties:
+                          whatsapp:
+                            type: object
+                            properties:
+                              available:
+                                type: boolean
+                              provider_ready:
+                                type: boolean
+                          sms:
+                            type: object
+                            properties:
+                              available:
+                                type: boolean
+                              provider_ready:
+                                type: boolean
+                example:
+                  data:
+                  - email
+                  - internal_note
+                  - whatsapp
+                  - sms
+                  messaging:
+                    supplier_has_phone: true
+                    channels:
+                      whatsapp:
+                        available: true
+                        provider_ready: true
+                      sms:
+                        available: true
+                        provider_ready: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This purchase order has no supplier to add a number to.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-purchase-orders-purchase-order-communications-supplier-phone
   /api/purchase-orders/{purchase_order}/communications/{communication}/read:
     post:
       tags:
@@ -465686,6 +466106,509 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-vendor-returns-vendorreturn-void
+  /api/vendor-returns/{vendorReturn}/allocations:
+    get:
+      tags:
+      - Vendor Returns
+      summary: List Vendor Return Allocations
+      description: 'List the inventory allocations linked to this vendor return''s
+        lines - its Planned stock reservations plus any successor allocations they
+        were promoted or demoted into. Paginated (10 per page by default). Each allocation
+        carries its product, warehouse, quantity, status, hard-allocated flag, priority,
+        and a `link_route` back to the source document.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query parameters:
+
+        - `page` (integer, optional) - page number.
+
+        - `per_page` (integer, optional) - items per page (default 10).'
+      parameters:
+      - name: vendorReturn
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Vendor return ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        product_id:
+                          type: integer
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                        warehouse_id:
+                          type: integer
+                        warehouse:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            locations_enabled:
+                              type: boolean
+                        warehouse_location_id:
+                          type: string
+                          nullable: true
+                        warehouse_location:
+                          type: string
+                          nullable: true
+                        link_id:
+                          type: integer
+                        link_type:
+                          type: string
+                        link_type_label:
+                          type: string
+                        link_route:
+                          type: string
+                        link_reference:
+                          type: string
+                          nullable: true
+                        date:
+                          type: string
+                          nullable: true
+                        quantity:
+                          type: integer
+                        status:
+                          type: string
+                        status_label:
+                          type: string
+                        hard_allocated:
+                          type: boolean
+                        priority:
+                          type: integer
+                        supplier_id:
+                          type: integer
+                        supplier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        purchase_order_line_id:
+                          type: integer
+                        is_tight_coverage:
+                          type: boolean
+                        release_source_id:
+                          type: string
+                          nullable: true
+                        release_source_type:
+                          type: string
+                          nullable: true
+                        fulfilled_at:
+                          type: string
+                          nullable: true
+                        cancelled_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                  current_page:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  data:
+                  - id: 88213
+                    product_id: 88
+                    product:
+                      id: 88
+                      sku: WIDGET-BLUE
+                      name: Blue Widget
+                    warehouse_id: 2
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                      locations_enabled: false
+                    warehouse_location_id: null
+                    warehouse_location: null
+                    link_id: 34
+                    link_type: App\Models\VendorReturnLine
+                    link_type_label: Vendor Return
+                    link_route: /purchases/vendor-returns/12
+                    link_reference: null
+                    date: null
+                    quantity: 10
+                    status: planned
+                    status_label: Planned
+                    hard_allocated: false
+                    priority: 100
+                    supplier_id: 5
+                    supplier:
+                      id: 5
+                      name: Acme Supplies Co.
+                    purchase_order_line_id: 210
+                    is_tight_coverage: false
+                    release_source_id: null
+                    release_source_type: null
+                    fulfilled_at: null
+                    cancelled_at: null
+                    created_at: '2026-03-14T15:22:08.000000Z'
+                    updated_at: '2026-03-14T16:02:31.000000Z'
+                  current_page: 1
+                  first_page_url: '{{protocol}}{{domain}}/api/vendor-returns/12/allocations?page=1'
+                  from: 1
+                  last_page: 1
+                  last_page_url: '{{protocol}}{{domain}}/api/vendor-returns/12/allocations?page=1'
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: '{{protocol}}{{domain}}/api/vendor-returns/12/allocations?page=1'
+                    label: '1'
+                    active: true
+                  - url: null
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: null
+                  path: '{{protocol}}{{domain}}/api/vendor-returns/12/allocations'
+                  per_page: 10
+                  prev_page_url: null
+                  to: 1
+                  total: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-vendor-returns-vendorreturn-allocations
+  /api/vendor-returns/{vendorReturn}/activity-log:
+    get:
+      tags:
+      - Vendor Returns
+      summary: Get Vendor Return Activity Log
+      description: 'Paginated activity feed for this vendor return - its own status
+        transitions plus events logged on its lines, shipments, and shipment lines,
+        all rolled up onto the return. Newest first, 15 per page by default.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query parameters:
+
+        - `page` (integer, optional) - page number.
+
+        - `per_page` (integer, optional) - items per page (default 15).
+
+        - `filter[search]` (string, optional) - filter entries by causer name, event,
+        subject type, or change payload.'
+      parameters:
+      - name: vendorReturn
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Vendor return ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        description:
+                          type: string
+                        event:
+                          type: string
+                        subject_type:
+                          type: string
+                        subject_id:
+                          type: integer
+                        properties:
+                          type: object
+                          properties:
+                            attributes:
+                              type: object
+                              properties:
+                                return_status:
+                                  type: string
+                            old:
+                              type: object
+                              properties:
+                                return_status:
+                                  type: string
+                        causer_name:
+                          type: string
+                        created_at:
+                          type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 4821
+                    description: updated
+                    event: updated
+                    subject_type: VendorReturn
+                    subject_id: 12
+                    properties:
+                      attributes:
+                        return_status: shipped
+                      old:
+                        return_status: authorized
+                    causer_name: Jane Buyer
+                    created_at: '2026-04-19T14:32:10.000000Z'
+                  - id: 4815
+                    description: created
+                    event: created
+                    subject_type: VendorReturnShipment
+                    subject_id: 30
+                    properties:
+                      attributes:
+                        vendor_return_id: 12
+                        status: shipped
+                        tracking_number: TRK-RETURN-1
+                    causer_name: Jane Buyer
+                    created_at: '2026-04-19T14:32:09.000000Z'
+                  first_page_url: '{{protocol}}{{domain}}/api/vendor-returns/12/activity-log?page=1'
+                  from: 1
+                  last_page: 1
+                  last_page_url: '{{protocol}}{{domain}}/api/vendor-returns/12/activity-log?page=1'
+                  next_page_url: null
+                  path: '{{protocol}}{{domain}}/api/vendor-returns/12/activity-log'
+                  per_page: 15
+                  prev_page_url: null
+                  to: 2
+                  total: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-vendor-returns-vendorreturn-activity-log
+  /api/vendor-returns/{vendorReturn}/ship-impact:
+    get:
+      tags:
+      - Vendor Returns
+      summary: Preview Vendor Return Ship Impact
+      description: 'Read-only preview of the allocation-demotion impact of shipping
+        this vendor return. Shipping consumes the source stock reserved for the return,
+        which can demote soft sales-order reservations to backorder and requires voiding
+        printed shipping labels for any hard-allocated units. This returns the per-product
+        rows describing exactly which order allocations would be affected, so the
+        caller can collect the necessary `void_confirmations` before calling Ship
+        Vendor Return.
+
+
+        Each row is one product whose stock the action would consume. `shortfall_quantity`
+        is how much more than available the action removes (stock goes negative when
+        above zero). `unallocated_quantity` / `soft_allocated_quantity` / `hard_allocated_quantity`
+        split the consumed quantity into free / soft-reserved / hard-allocated (label-printed)
+        units. `affected_allocations[]` lists the order allocations consumed, highest
+        priority first: `allocation_type` is `soft` or `hard`, and for hard rows `fulfillment_id`/`carrier`
+        identify the label while `carrier_void_supported` and `voidable_status` say
+        whether it can be voided through the API.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: vendorReturn
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Vendor return ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    shortfall_quantity: 0
+                    unallocated_quantity: 4
+                    soft_allocated_quantity: 3
+                    hard_allocated_quantity: 2
+                    affected_allocations:
+                    - allocation_id: 88213
+                      allocation_type: soft
+                      sales_order_id: 4521
+                      order_number: SO-10442
+                      customer_name: Acme Retail
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 3
+                    - allocation_id: 88240
+                      allocation_type: hard
+                      sales_order_id: 4530
+                      order_number: SO-10450
+                      customer_name: Beta Wholesale
+                      fulfillment_id: 77120
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-vendor-returns-vendorreturn-ship-impact
   /api/vendor-returns/{vendorReturn}/create-credit:
     post:
       tags:
@@ -467973,6 +468896,287 @@ paths:
         '404': *id004
         '422': *id005
       operationId: put-api-purchase-order-shipments-receipts-receipt-delete-lines
+  /api/inbound-shipments/receipts/{receipt}/delete-impact:
+    get:
+      tags:
+      - Purchase Order Shipments
+      summary: Preview Receipt Delete Impact
+      description: 'Read-only preview of the allocation-demotion impact of deleting
+        this inbound shipment receipt. Because deleting it removes the stock it added,
+        this behaves like a manual negative adjustment and returns one row per affected
+        product: how much of the removed quantity is unallocated vs soft-allocated
+        vs hard-allocated, plus every sales-order allocation and fulfillment (printed
+        shipping label) the removal would disturb. Use it to decide which fulfillments
+        to authorize voiding via `void_confirmations` on the deleting call. Nothing
+        is mutated. A removal that only re-adds stock returns an empty `data` array.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: receipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: InboundShipmentReceipt (ISR) ID — canonical wire id (Phase 4.4g.6a)
+        example: '9001'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 5567
+                    product_sku: WIDGET-BLUE
+                    product_name: Blue Widget
+                    shortfall_quantity: 0
+                    unallocated_quantity: 10
+                    soft_allocated_quantity: 6
+                    hard_allocated_quantity: 4
+                    affected_allocations:
+                    - allocation_id: 88201
+                      allocation_type: soft
+                      sales_order_id: 3120
+                      order_number: SO-3120
+                      customer_name: Acme Co.
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 6
+                    - allocation_id: 88205
+                      allocation_type: hard
+                      sales_order_id: 3125
+                      order_number: SO-3125
+                      customer_name: Beta LLC
+                      fulfillment_id: 90142
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 4
+                      allocation_ids:
+                      - 88205
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-inbound-shipments-receipts-receipt-delete-impact
+  /api/inbound-shipments/receive/preview-release-impact:
+    post:
+      tags:
+      - Inbound Shipments
+      summary: Preview Inbound Shipment Release Impact
+      description: 'Read-only preview of which back-ordered sales orders an inbound-shipment
+        receive would fill, per receipt line. Send the same payload you would POST
+        to receive the shipment; each line is resolved to its purchase order line,
+        product and receive warehouse and evaluated against waiting back-ordered demand.
+        Nothing is written.
+
+
+        Each row describes one product the receive would restock. `releasable_quantity`
+        is the number of incoming units that can be released to back-ordered demand;
+        `orders[]` are the back-ordered sales orders that would be filled; `held_back[]`
+        is demand that stays back-ordered, with `reason_kept` explaining why (e.g.
+        "Insufficient supply").
+
+
+        Body: the same shape as the receive call. Minimum: `received_at` plus either
+        a `purchase_order_id` or `receipt_lines` (each with `purchase_order_line_id`
+        or `purchase_order_line_reference` and a `quantity`). `warehouse_id` defaults
+        to the purchase order''s destination warehouse. `release_backorders` (true/false/null)
+        mirrors the receive call''s release control.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                purchase_order_id:
+                  type: integer
+                received_at:
+                  type: string
+                warehouse_id:
+                  type: integer
+                release_backorders:
+                  type: boolean
+                receipt_lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      purchase_order_line_id:
+                        type: integer
+                      quantity:
+                        type: integer
+              example:
+                purchase_order_id: 20
+                received_at: '2026-03-15'
+                warehouse_id: 2
+                release_backorders: true
+                receipt_lines:
+                - purchase_order_line_id: 50
+                  quantity: 8
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        releasable_quantity:
+                          type: integer
+                        orders:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                        held_back:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              product_id:
+                                type: integer
+                              sales_order_id:
+                                type: integer
+                              sales_order_line_id:
+                                type: integer
+                              sales_order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                              from_status:
+                                type: string
+                              to_status:
+                                type: string
+                              reason_kept:
+                                type: string
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    releasable_quantity: 8
+                    orders:
+                    - sales_order_id: 4602
+                      order_number: SO-10501
+                      customer_name: Acme Retail
+                      quantity: 5
+                    - sales_order_id: 4610
+                      order_number: SO-10509
+                      customer_name: Gamma Foods
+                      quantity: 3
+                    held_back:
+                    - allocation_id: 90311
+                      product_id: 123
+                      sales_order_id: 4620
+                      sales_order_line_id: 55123
+                      sales_order_number: SO-10518
+                      customer_name: Delta Mart
+                      quantity: 4
+                      from_status: planned
+                      to_status: allocated
+                      reason_kept: Insufficient supply
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-inbound-shipments-receive-preview-release-impact
   /api/purchase-order-shipments/{shipment}/activity-log:
     get:
       tags:
@@ -471715,6 +472919,105 @@ paths:
         '403': *id003
       x-required-scope: purchase-orders:read
       operationId: get-api-inbound-shipment-receipts-receipt
+    delete:
+      tags:
+      - Inbound Shipments
+      summary: Delete Inbound Shipment Receipt
+      description: 'Deletes an inbound shipment receipt and reverses the inventory
+        movements it created. Because it removes the stock the receipt added, it behaves
+        like a manual negative adjustment and rebalances any now-unbacked reservations
+        to backorder.
+
+
+        :::info[Required scope: `purchase-orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Voiding hard-allocated labels (`void_confirmations`):** When this removal
+        would consume stock that is hard-allocated to a fulfillment (a printed shipping
+        label), include a `void_confirmations` array in the request body — one entry
+        per fulfillment you authorize voiding: `{ "fulfillment_id": <int>, "attempt_void":
+        true, "reason": <string|null> }`. Each confirmed label is voided first so
+        the removal can proceed. Omit `void_confirmations` (or leave out a fulfillment
+        that is in the way) and the request is rejected with 422 when hard-allocated
+        stock blocks the operation. Call the matching delete-impact / reverse-impact
+        preview endpoint first to see exactly which fulfillments block it.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: receipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Inbound shipment receipt ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: Inbound shipment receipt deleted successfully.
+                  status: success
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Protected Inventory Conflict
+                  value:
+                    message: Cannot take 100 units. Only 20 available after protecting
+                      80 units allocated to submitted or acknowledged fulfillments.
+                    conflict:
+                      requested_quantity: 100
+                      available_quantity: 20
+                      protected_quantity: 80
+                      conflicting_allocations:
+                      - type: sales_order_fulfillment
+                        id: 123
+                        reference: SO-12345
+                        quantity_allocated: 5
+                        line_details:
+                          sales_order_number: SO-12345
+                          sales_order_line_id: 456
+                          product_sku: ABC-123
+                example-1:
+                  summary: 422 Label Not Voidable
+                  value:
+                    message: 'Fulfillment #90142 can''t be voided (its label cannot
+                      be voided), so this reduction isn''t allowed.'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: purchase-orders:write
+      operationId: delete-api-inbound-shipment-receipts-receipt
   /api/inbound-shipment-receipts/{receipt}/activity-log:
     get:
       tags:
@@ -472277,6 +473580,947 @@ paths:
         '422': *id005
       x-required-scope: purchase-orders:write
       operationId: post-api-inbound-shipment-receipts-receipt-generate-accounting-transaction
+  /api/inbound-shipment-receipts/{receipt}/delete-impact:
+    get:
+      tags:
+      - Inbound Shipments
+      summary: Preview Inbound Shipment Receipt Delete Impact
+      description: 'Read-only preview of the allocation-demotion impact of deleting
+        this inbound shipment receipt. Because deleting it removes the stock it added,
+        this behaves like a manual negative adjustment and returns one row per affected
+        product: how much of the removed quantity is unallocated vs soft-allocated
+        vs hard-allocated, plus every sales-order allocation and fulfillment (printed
+        shipping label) the removal would disturb. Use it to decide which fulfillments
+        to authorize voiding via `void_confirmations` on the deleting call. Nothing
+        is mutated. A removal that only re-adds stock returns an empty `data` array.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: receipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Inbound shipment receipt ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 5567
+                    product_sku: WIDGET-BLUE
+                    product_name: Blue Widget
+                    shortfall_quantity: 0
+                    unallocated_quantity: 10
+                    soft_allocated_quantity: 6
+                    hard_allocated_quantity: 4
+                    affected_allocations:
+                    - allocation_id: 88201
+                      allocation_type: soft
+                      sales_order_id: 3120
+                      order_number: SO-3120
+                      customer_name: Acme Co.
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 6
+                    - allocation_id: 88205
+                      allocation_type: hard
+                      sales_order_id: 3125
+                      order_number: SO-3125
+                      customer_name: Beta LLC
+                      fulfillment_id: 90142
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 4
+                      allocation_ids:
+                      - 88205
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-inbound-shipment-receipts-receipt-delete-impact
+  /api/inbound-shipment-receipts/{receipt}/lines/{line}/quantity-preview:
+    get:
+      tags:
+      - Inbound Shipments
+      summary: Preview Receipt Line Quantity
+      description: 'Read-only preview of the effect of changing a receipt line''s
+        received quantity before saving. Returns how the change flows onto the inbound
+        shipment line quantity and the purchase order line quantity (`implications`),
+        the FIFO teardown/redistribution needed for a reduction (`inventory`), and
+        - when the new quantity is LOWER than the current one - a `demotion_impact`
+        list describing which order allocations the reduction would consume.
+
+
+        :::info[Required scope: `purchase-orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Each row is one product whose stock the action would consume. `shortfall_quantity`
+        is how much more than available the action removes (stock goes negative when
+        above zero). `unallocated_quantity` / `soft_allocated_quantity` / `hard_allocated_quantity`
+        split the consumed quantity into free / soft-reserved / hard-allocated (label-printed)
+        units. `affected_allocations[]` lists the order allocations consumed, highest
+        priority first: `allocation_type` is `soft` or `hard`, and for hard rows `fulfillment_id`/`carrier`
+        identify the label while `carrier_void_supported` and `voidable_status` say
+        whether it can be voided through the API.
+
+
+        `demotion_impact` is empty for an increase or a no-op; only a reduction can
+        strand an allocation. Use it to decide whether Update Receipt Line Quantity
+        needs `void_confirmations`.
+
+
+        Query parameters:
+
+        - `quantity` (integer, required) - the proposed new received quantity.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: quantity
+        in: query
+        schema:
+          type: integer
+        description: Proposed new received quantity
+        example: '8'
+      - name: receipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Inbound shipment receipt ID
+        example: '1'
+      - name: line
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Receipt line ID
+        example: '5012'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      receipt_type:
+                        type: string
+                      line_id:
+                        type: integer
+                      current_quantity:
+                        type: integer
+                      new_quantity:
+                        type: integer
+                      delta:
+                        type: integer
+                      requires_confirmation:
+                        type: boolean
+                      can_update:
+                        type: boolean
+                      implications:
+                        type: object
+                        properties:
+                          shipment_quantity:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              current:
+                                type: integer
+                              after_if_updated:
+                                type: integer
+                              differs_after_edit:
+                                type: boolean
+                          order_quantity:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              current:
+                                type: integer
+                              after_if_updated:
+                                type: integer
+                              received_after_edit:
+                                type: integer
+                              differs_after_edit:
+                                type: boolean
+                      inventory:
+                        type: object
+                        properties:
+                          fifo_layer:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              product_id:
+                                type: integer
+                              warehouse_id:
+                                type: integer
+                              original_quantity:
+                                type: integer
+                              fulfilled_quantity:
+                                type: integer
+                              available_quantity:
+                                type: integer
+                          decrease_quantity:
+                            type: integer
+                          available_without_reassignment:
+                            type: integer
+                          usage_quantity_to_redistribute:
+                            type: integer
+                          requires_redistribution:
+                            type: boolean
+                          can_redistribute:
+                            type: boolean
+                          blocks_update:
+                            type: boolean
+                          alternative_available_quantity:
+                            type: integer
+                          alternative_shortage_quantity:
+                            type: integer
+                          movable_usage_quantity:
+                            type: integer
+                          movable_usage_shortage_quantity:
+                            type: integer
+                          usages:
+                            type: array
+                          alternative_layers:
+                            type: array
+                      demotion_impact:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            product_id:
+                              type: integer
+                            product_sku:
+                              type: string
+                            product_name:
+                              type: string
+                            shortfall_quantity:
+                              type: integer
+                            unallocated_quantity:
+                              type: integer
+                            soft_allocated_quantity:
+                              type: integer
+                            hard_allocated_quantity:
+                              type: integer
+                            affected_allocations:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  allocation_id:
+                                    type: integer
+                                  allocation_type:
+                                    type: string
+                                  sales_order_id:
+                                    type: integer
+                                  order_number:
+                                    type: string
+                                  customer_name:
+                                    type: string
+                                  fulfillment_id:
+                                    type: string
+                                    nullable: true
+                                  carrier:
+                                    type: string
+                                    nullable: true
+                                  carrier_void_supported:
+                                    type: string
+                                    nullable: true
+                                  voidable_status:
+                                    type: string
+                                    nullable: true
+                                  voidable_detail:
+                                    type: string
+                                    nullable: true
+                                  quantity:
+                                    type: integer
+                example:
+                  data:
+                    receipt_type: inbound_shipment
+                    line_id: 5012
+                    current_quantity: 12
+                    new_quantity: 8
+                    delta: -4
+                    requires_confirmation: true
+                    can_update: true
+                    implications:
+                      shipment_quantity:
+                        label: Inbound shipment line quantity
+                        current: 12
+                        after_if_updated: 8
+                        differs_after_edit: true
+                      order_quantity:
+                        label: Purchase order line quantity
+                        current: 12
+                        after_if_updated: 8
+                        received_after_edit: 8
+                        differs_after_edit: true
+                    inventory:
+                      fifo_layer:
+                        id: 44120
+                        product_id: 123
+                        warehouse_id: 2
+                        original_quantity: 12
+                        fulfilled_quantity: 5
+                        available_quantity: 7
+                      decrease_quantity: 4
+                      available_without_reassignment: 7
+                      usage_quantity_to_redistribute: 0
+                      requires_redistribution: false
+                      can_redistribute: true
+                      blocks_update: false
+                      alternative_available_quantity: 0
+                      alternative_shortage_quantity: 0
+                      movable_usage_quantity: 0
+                      movable_usage_shortage_quantity: 0
+                      usages: []
+                      alternative_layers: []
+                    demotion_impact:
+                    - product_id: 123
+                      product_sku: WIDGET-001
+                      product_name: Blue Widget 500ml
+                      shortfall_quantity: 0
+                      unallocated_quantity: 4
+                      soft_allocated_quantity: 3
+                      hard_allocated_quantity: 2
+                      affected_allocations:
+                      - allocation_id: 88213
+                        allocation_type: soft
+                        sales_order_id: 4521
+                        order_number: SO-10442
+                        customer_name: Acme Retail
+                        fulfillment_id: null
+                        carrier: null
+                        carrier_void_supported: null
+                        voidable_status: null
+                        voidable_detail: null
+                        quantity: 3
+                      - allocation_id: 88240
+                        allocation_type: hard
+                        sales_order_id: 4530
+                        order_number: SO-10450
+                        customer_name: Beta Wholesale
+                        fulfillment_id: 77120
+                        carrier: ups
+                        carrier_void_supported: true
+                        voidable_status: voidable
+                        voidable_detail: null
+                        quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: purchase-orders:read
+      operationId: get-api-inbound-shipment-receipts-receipt-lines-line-quantity-preview
+  /api/inbound-shipment-receipts/{receipt}/lines/{line}:
+    patch:
+      tags:
+      - Inbound Shipments
+      summary: Update Receipt Line Quantity
+      description: 'Change a receipt line''s received quantity. An increase adds stock
+        to the line''s FIFO layer; a reduction removes it. Reducing below the currently
+        allocated quantity consumes order allocations - soft reservations are demoted
+        to backorder, and hard-allocated (label-printed) units require voiding their
+        labels first.
+
+
+        :::info[Required scope: `purchase-orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Confirmation flow: preview the change first (see Preview Receipt Line Quantity).
+        If the change alters the shipment or order line quantity, or needs FIFO redistribution,
+        the request returns 409 with the preview payload until you resubmit with `confirmed_implications`
+        (and, when redistribution is needed, `redistribute_usages`) set to true.
+
+
+        Body fields:
+
+        - `quantity` (integer, required) - the new received quantity (>= 0).
+
+        - `confirmed_implications` (boolean, optional) - acknowledge the shipment/order
+        quantity changes.
+
+        - `redistribute_usages` (boolean, optional) - authorize moving existing FIFO
+        usages to other layers.
+
+        - `update_shipment_quantity` (boolean, optional) - also adjust the inbound
+        shipment line quantity.
+
+        - `update_order_quantity` (boolean, optional) - also adjust the purchase order
+        line quantity.
+
+
+        Optional void confirmations (`void_confirmations`):
+
+        This action consumes the stock reserved for it. When that stock is hard-allocated
+        to a sales-order fulfillment whose shipping label is already printed, include
+        one `void_confirmations` entry per fulfillment to authorize voiding that label
+        and reclaiming its stock; omit it and the request fails with a 422 conflict
+        listing the blocking fulfillments.
+
+        - `void_confirmations` (array, optional)
+
+        - `void_confirmations[].fulfillment_id` (integer, required) - the fulfillment
+        whose label may be voided.
+
+        - `void_confirmations[].attempt_void` (boolean, required) - true to void the
+        label and consume its stock.
+
+        - `void_confirmations[].reason` (string, optional) - free-text audit note
+        for the void.
+
+
+        422 (hard-allocation conflict): returned when the action would consume stock
+        hard-allocated to a printed shipping label and no matching `void_confirmations`
+        entry authorized voiding it. `conflict.requested_quantity` is what the action
+        needs, `available_quantity` is what is free, `protected_quantity` is the hard-allocated
+        + held amount, and `conflicting_allocations` lists the blocking fulfillments
+        (`line_details.fulfillment_id`).
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                confirmed_implications:
+                  type: boolean
+                redistribute_usages:
+                  type: boolean
+                update_shipment_quantity:
+                  type: boolean
+                update_order_quantity:
+                  type: boolean
+                void_confirmations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fulfillment_id:
+                        type: integer
+                      attempt_void:
+                        type: boolean
+                      reason:
+                        type: string
+              example:
+                quantity: 8
+                confirmed_implications: true
+                redistribute_usages: false
+                update_shipment_quantity: false
+                update_order_quantity: false
+                void_confirmations:
+                - fulfillment_id: 77120
+                  attempt_void: true
+                  reason: Customer cancelled after the label was printed
+      parameters:
+      - name: receipt
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Inbound shipment receipt ID
+        example: '1'
+      - name: line
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Receipt line ID
+        example: '5012'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      received_at:
+                        type: string
+                      notes:
+                        type: string
+                        nullable: true
+                      inbound_shipment:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          shipment_number:
+                            type: string
+                          reference:
+                            type: string
+                      supplier:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      destination_warehouse:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          display_name:
+                            type: string
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            quantity:
+                              type: integer
+                            total_cost:
+                              type: integer
+                            purchase_order_line:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                quantity:
+                                  type: integer
+                                received_quantity:
+                                  type: integer
+                            product:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                name:
+                                  type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 1
+                    received_at: '2026-03-15T14:00:00Z'
+                    notes: null
+                    inbound_shipment:
+                      id: 12
+                      shipment_number: ISH-2026-0012
+                      reference: ISH-2026-0012
+                    supplier:
+                      id: 3
+                      name: Acme Supplies Co.
+                    destination_warehouse:
+                      id: 2
+                      name: Main Warehouse
+                      display_name: Main Warehouse
+                    lines:
+                    - id: 5012
+                      quantity: 8
+                      total_cost: 200
+                      purchase_order_line:
+                        id: 50
+                        quantity: 12
+                        received_quantity: 8
+                      product:
+                        id: 123
+                        sku: WIDGET-001
+                        name: Blue Widget 500ml
+                  message: Receipt line quantity updated successfully.
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      receipt_type:
+                        type: string
+                      line_id:
+                        type: integer
+                      current_quantity:
+                        type: integer
+                      new_quantity:
+                        type: integer
+                      delta:
+                        type: integer
+                      requires_confirmation:
+                        type: boolean
+                      can_update:
+                        type: boolean
+                      implications:
+                        type: object
+                        properties:
+                          shipment_quantity:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              current:
+                                type: integer
+                              after_if_updated:
+                                type: integer
+                              differs_after_edit:
+                                type: boolean
+                          order_quantity:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              current:
+                                type: integer
+                              after_if_updated:
+                                type: integer
+                              received_after_edit:
+                                type: integer
+                              differs_after_edit:
+                                type: boolean
+                      inventory:
+                        type: object
+                        properties:
+                          fifo_layer:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              product_id:
+                                type: integer
+                              warehouse_id:
+                                type: integer
+                              original_quantity:
+                                type: integer
+                              fulfilled_quantity:
+                                type: integer
+                              available_quantity:
+                                type: integer
+                          decrease_quantity:
+                            type: integer
+                          available_without_reassignment:
+                            type: integer
+                          usage_quantity_to_redistribute:
+                            type: integer
+                          requires_redistribution:
+                            type: boolean
+                          can_redistribute:
+                            type: boolean
+                          blocks_update:
+                            type: boolean
+                          alternative_available_quantity:
+                            type: integer
+                          alternative_shortage_quantity:
+                            type: integer
+                          movable_usage_quantity:
+                            type: integer
+                          movable_usage_shortage_quantity:
+                            type: integer
+                          usages:
+                            type: array
+                          alternative_layers:
+                            type: array
+                      demotion_impact:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            product_id:
+                              type: integer
+                            product_sku:
+                              type: string
+                            product_name:
+                              type: string
+                            shortfall_quantity:
+                              type: integer
+                            unallocated_quantity:
+                              type: integer
+                            soft_allocated_quantity:
+                              type: integer
+                            hard_allocated_quantity:
+                              type: integer
+                            affected_allocations:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  allocation_id:
+                                    type: integer
+                                  allocation_type:
+                                    type: string
+                                  sales_order_id:
+                                    type: integer
+                                  order_number:
+                                    type: string
+                                  customer_name:
+                                    type: string
+                                  fulfillment_id:
+                                    type: string
+                                    nullable: true
+                                  carrier:
+                                    type: string
+                                    nullable: true
+                                  carrier_void_supported:
+                                    type: string
+                                    nullable: true
+                                  voidable_status:
+                                    type: string
+                                    nullable: true
+                                  voidable_detail:
+                                    type: string
+                                    nullable: true
+                                  quantity:
+                                    type: integer
+                example:
+                  message: Confirm the receipt quantity implications before saving.
+                  data:
+                    receipt_type: inbound_shipment
+                    line_id: 5012
+                    current_quantity: 12
+                    new_quantity: 8
+                    delta: -4
+                    requires_confirmation: true
+                    can_update: true
+                    implications:
+                      shipment_quantity:
+                        label: Inbound shipment line quantity
+                        current: 12
+                        after_if_updated: 8
+                        differs_after_edit: true
+                      order_quantity:
+                        label: Purchase order line quantity
+                        current: 12
+                        after_if_updated: 8
+                        received_after_edit: 8
+                        differs_after_edit: true
+                    inventory:
+                      fifo_layer:
+                        id: 44120
+                        product_id: 123
+                        warehouse_id: 2
+                        original_quantity: 12
+                        fulfilled_quantity: 5
+                        available_quantity: 7
+                      decrease_quantity: 4
+                      available_without_reassignment: 7
+                      usage_quantity_to_redistribute: 0
+                      requires_redistribution: false
+                      can_redistribute: true
+                      blocks_update: false
+                      alternative_available_quantity: 0
+                      alternative_shortage_quantity: 0
+                      movable_usage_quantity: 0
+                      movable_usage_shortage_quantity: 0
+                      usages: []
+                      alternative_layers: []
+                    demotion_impact:
+                    - product_id: 123
+                      product_sku: WIDGET-001
+                      product_name: Blue Widget 500ml
+                      shortfall_quantity: 0
+                      unallocated_quantity: 4
+                      soft_allocated_quantity: 3
+                      hard_allocated_quantity: 2
+                      affected_allocations:
+                      - allocation_id: 88213
+                        allocation_type: soft
+                        sales_order_id: 4521
+                        order_number: SO-10442
+                        customer_name: Acme Retail
+                        fulfillment_id: null
+                        carrier: null
+                        carrier_void_supported: null
+                        voidable_status: null
+                        voidable_detail: null
+                        quantity: 3
+                      - allocation_id: 88240
+                        allocation_type: hard
+                        sales_order_id: 4530
+                        order_number: SO-10450
+                        customer_name: Beta Wholesale
+                        fulfillment_id: 77120
+                        carrier: ups
+                        carrier_void_supported: true
+                        voidable_status: voidable
+                        voidable_detail: null
+                        quantity: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  conflict:
+                    type: object
+                    properties:
+                      requested_quantity:
+                        type: integer
+                      available_quantity:
+                        type: integer
+                      protected_quantity:
+                        type: integer
+                      conflicting_allocations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            id:
+                              type: integer
+                            reference:
+                              type: string
+                            quantity_allocated:
+                              type: integer
+                            line_details:
+                              type: object
+                              properties:
+                                fulfillment_id:
+                                  type: integer
+                                fulfillment_status:
+                                  type: string
+                                tracking_number:
+                                  type: string
+                example:
+                  message: Cannot decrease 5 units. Only 3 available after protecting
+                    2 hard-allocated units and 0 active hold units.
+                  conflict:
+                    requested_quantity: 5
+                    available_quantity: 3
+                    protected_quantity: 2
+                    conflicting_allocations:
+                    - type: shipping_label
+                      id: 88240
+                      reference: SO-10450
+                      quantity_allocated: 2
+                      line_details:
+                        fulfillment_id: 77120
+                        fulfillment_status: label_purchased
+                        tracking_number: 1Z999AA10123456784
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: purchase-orders:write
+      operationId: patch-api-inbound-shipment-receipts-receipt-lines-line
   /api/sales-orders/ocr/upload:
     post:
       tags:
