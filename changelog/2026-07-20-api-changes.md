@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-20
-description: This release includes 17 additions.
+description: This release includes 18 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-20
 ---
 
-This release includes 17 additions.
+This release includes 18 additions.
 
 <!-- truncate -->
 
@@ -34,6 +34,7 @@ This release includes 17 additions.
 - `GET /api/reporting/irr/products/{product}/reconciliation-events` — List Product Reconciliation Events
 - `GET /api/reporting/irr/suppliers/{supplier}/reconciliation-events` — List Supplier Reconciliation Events
 - `GET /api/reporting/products/{product}/stock-coverage` — Get Product Stock Coverage
+- `GET /api/reporting/products/{product}/stock-coverage/export` — Export Product Stock Coverage
 
 ### Returns & RMAs
 - `POST /api/return-receipts/preview-release-impact` — Preview Return Receipt Release Impact
