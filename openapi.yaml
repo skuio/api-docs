@@ -64741,9 +64741,11 @@ paths:
       - BigCommerce
       summary: Import Pre-Start-Date Orders
       description: 'Import selected pre-start-date orders from BigCommerce by their
-        BigCommerce order IDs (max 50 per request). Full order data is downloaded
-        and stored flagged as a pre-start-date import so it does not affect inventory.
-        Orders that already exist locally are marked instead of duplicated.
+        BigCommerce order IDs (max 10,000 per request). Because each order is fetched
+        individually from BigCommerce, the import runs asynchronously as a background
+        job. The response returns a tracked_job_log_id you can poll to follow progress
+        and the per-order outcome (imported, marked, skipped, or error). Orders that
+        already exist locally are marked as pre-start-date imports instead of duplicated.
 
 
         :::info[Authorization]
@@ -64752,10 +64754,6 @@ paths:
         tokens](https://app.sku.io/settings/api).
 
         :::
-
-
-        The response details the outcome per order: imported, marked, skipped (already_exists
-        / not_found_in_bigcommerce), or error.
 
 
         Route name: big-commerce.pre-start-date-orders.import'
@@ -64794,31 +64792,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        bigcommerce_order_id:
-                          type: integer
-                        status:
-                          type: string
-                        bigcommerce_order_table_id:
-                          type: integer
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 2
-                  skipped: 0
-                  details:
-                  - bigcommerce_order_id: 118
-                    status: imported
-                    bigcommerce_order_table_id: 4512
-                  - bigcommerce_order_id: 119
-                    status: imported
-                    bigcommerce_order_table_id: 4513
+                  data:
+                    tracked_job_log_id: 8842
+                  message: Importing 2 pre-start-date orders — track progress in the
+                    job tray.
         '422':
           description: Unprocessable Entity
           headers:
@@ -87679,9 +87664,12 @@ paths:
       tags:
       - eBay
       summary: Import Pre-Start-Date eBay Orders
-      description: 'Import selected pre-start-date orders from eBay. Downloads the
-        full order data for each ID and stores it locally; orders that already exist
-        locally or cannot be found on eBay are skipped with a per-order reason.
+      description: 'Import selected pre-start-date orders from eBay. Each order is
+        fetched with its own throttled API call, so the import runs as a queued background
+        job rather than synchronously. Downloads the full order data for each ID and
+        stores it locally; orders that already exist locally, were cancelled, or cannot
+        be found on eBay are skipped with a per-order reason. Returns a tracked_job_log_id
+        whose progress can be polled while the import runs.
 
 
         :::info[Authorization]
@@ -87694,8 +87682,11 @@ paths:
 
         Body fields:
 
-        - ebay_order_ids (array of strings, required, 1-50 items): eBay order IDs
-        to import.'
+        - ebay_order_ids (array of strings, required, 1-10000 items): eBay order IDs
+        to import.
+
+
+        Returns 422 if the inventory start date has not been set.'
       requestBody:
         content:
           application/json:
@@ -87730,31 +87721,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        ebay_order_id:
-                          type: string
-                        status:
-                          type: string
-                        ebay_order_table_id:
-                          type: integer
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 1
-                  skipped: 1
-                  details:
-                  - ebay_order_id: 12-34567-89012
-                    status: imported
-                    ebay_order_table_id: 9310
-                  - ebay_order_id: 12-34567-89013
-                    status: skipped
-                    reason: already_exists
+                  data:
+                    tracked_job_log_id: 2212
+                  message: Importing 2 pre-start-date orders — track progress in the
+                    job tray.
         '422':
           description: Unprocessable Entity
           headers:
@@ -93325,27 +93303,60 @@ paths:
       tags:
       - Faire
       summary: Import Pre-Start-Date Orders
-      description: "Import selected pre-start-date orders from Faire into SKU.io.\
-        \ Each order is fetched from the Faire API and stored as a Faire order flagged\
-        \ as a pre-start-date import.\n\n:::info[Authorization]\nAny valid API token\
-        \ can call this endpoint — no specific scope required. [Manage tokens](https://app.sku.io/settings/api).\n\
-        :::\n\n**Requires the instance's order import start date to be set** — returns\
-        \ 422 otherwise.\n\n**Path Parameters:**\n- `integrationInstance` - The ID\
-        \ of the integration instance\n\n**Request Body:**\n- `faire_order_ids` (required,\
-        \ array of strings, 1-50 entries) - Faire order IDs to import (e.g. `bo_abc123xyz`)\n\
-        \n**Behavior:**\n- Runs synchronously — each order is fetched from Faire within\
-        \ the request, so keep batches small (max 50)\n- Orders already in SKU.io\
-        \ are marked as pre-start-date imports instead of being re-imported\n- Cancelled\
-        \ orders and orders whose fulfillment mode does not match the instance are\
-        \ skipped\n- Imported orders do NOT automatically create linked sales orders\
-        \ — use Create Linked Sales Orders afterwards\n\n**Response:**\n- `imported`\
-        \ - Count of orders imported or newly marked\n- `skipped` - Count of orders\
-        \ skipped\n- `details` - Per-order outcome, each with:\n  - `faire_order_id`\
-        \ - The Faire order ID\n  - `status` - `imported`, `marked` (already existed,\
-        \ now flagged), `skipped`, or `error`\n  - `order_id` - SKU.io Faire order\
-        \ record ID (present when imported)\n  - `reason` - Skip/error reason: `already_exists`,\
-        \ `api_error`, `order_cancelled`, `fulfillment_mode_mismatch`, or an error\
-        \ message"
+      description: 'Import selected pre-start-date orders from Faire into SKU.io.
+        Each order is fetched from the Faire API and stored as a Faire order flagged
+        as a pre-start-date import.
+
+
+        :::info[Authorization]
+
+        Any valid API token can call this endpoint — no specific scope required. [Manage
+        tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Because each order requires its own throttled Faire API call, the import runs
+        in the background. The request returns immediately with a tracked job log
+        ID that can be used to follow the import''s progress.
+
+
+        **Requires the instance''s order import start date to be set** — returns 422
+        otherwise.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - The ID of the integration instance
+
+
+        **Request Body:**
+
+        - `faire_order_ids` (required, array of strings, 1-10000 entries) - Faire
+        order IDs to import (e.g. `bo_abc123xyz`)
+
+
+        **Behavior:**
+
+        - Runs as a background import — the request returns right away with a tracked
+        job log ID; the orders are fetched and stored asynchronously
+
+        - Orders already in SKU.io are marked as pre-start-date imports instead of
+        being re-imported
+
+        - Cancelled orders and orders whose fulfillment mode does not match the instance
+        are skipped
+
+        - Imported orders do NOT automatically create linked sales orders — use Create
+        Linked Sales Orders afterwards
+
+
+        **Response:**
+
+        - `data.tracked_job_log_id` - ID of the tracked job log; poll it to follow
+        import progress
+
+        - `message` - Human-readable confirmation of how many orders are being imported'
       requestBody:
         content:
           application/json:
@@ -93382,33 +93393,18 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        faire_order_id:
-                          type: string
-                        status:
-                          type: string
-                        order_id:
-                          type: integer
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 2
-                  skipped: 1
-                  details:
-                  - faire_order_id: bo_abc123xyz
-                    status: imported
-                    order_id: 412
-                  - faire_order_id: bo_jkl789rst
-                    status: marked
-                  - faire_order_id: bo_mno012pqr
-                    status: skipped
-                    reason: order_cancelled
+                  data:
+                    tracked_job_log_id: 8412
+                  message: Importing 3 pre-start-date orders — track progress in the
+                    job tray.
         '422':
           description: Unprocessable Entity
           headers:
@@ -229975,7 +229971,9 @@ paths:
       tags:
       - TikTok Shop
       summary: Import Pre-Start-Date Orders
-      description: 'Import selected pre-start-date orders into SKU.io.
+      description: 'Import selected pre-start-date orders from TikTok Shop by their
+        TikTok order ids. Each order is fetched from the TikTok Shop API and stored,
+        flagged as a pre-start-date import.
 
 
         :::info[Authorization]
@@ -229986,13 +229984,26 @@ paths:
         :::
 
 
-        Body:
+        Because each order requires its own throttled TikTok Shop API call, the import
+        runs asynchronously as a queued background job. The request returns immediately
+        with a tracked job log id that can be polled to follow the import''s progress.
 
-        - `tiktok_order_ids` (required, array, 1-50 items, each a TikTok order id
-        string up to 100 chars)
+
+        **Requires `inventory_start_date` to be set** — returns 422 otherwise.
 
 
-        Returns 422 if `inventory_start_date` is not configured.'
+        **Request Body:**
+
+        - `tiktok_order_ids` (required, array of strings, 1-10,000 entries, each a
+        TikTok order id string up to 100 chars)
+
+
+        **Response:**
+
+        - `data.tracked_job_log_id` - id of the tracked job log; poll it to follow
+        import progress
+
+        - `message` - human-readable confirmation of how many orders are being imported'
       requestBody:
         content:
           application/json:
@@ -230016,9 +230027,28 @@ paths:
         description: The integration instance ID.
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 4821
+                  message: Importing 2 pre-start-date orders.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -246677,12 +246707,9 @@ paths:
       tags:
       - Temu
       summary: Import Pre-Start-Date Orders
-      description: 'Synchronously fetches each parent_order_sn from Temu and writes
-        it so it shows up in the local order list. Maximum 50 SNs per call (validated).
-        Skips orders that already exist locally (status: ''skipped'', reason: ''already_exists'')
-        and orders that the Temu API does not return (status: ''error'', reason: ''Order
-        not found on Temu''). Returns 422 if the local inventory_start_date is not
-        configured.
+      description: 'Import selected pre-start-date orders from Temu by their parent
+        order SNs. Each order is fetched from the Temu API and written so it shows
+        up in the local order list, flagged as a pre-start-date import.
 
 
         :::info[Authorization]
@@ -246690,7 +246717,38 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Because each order requires its own throttled Temu API call, the import runs
+        asynchronously as a queued background job. The request returns immediately
+        with a tracked job log id that can be polled to follow the import''s progress.
+
+
+        **Requires the local inventory_start_date to be set** — returns 422 otherwise.
+
+
+        **Request Body:**
+
+        - `parent_order_sns` (required, array of strings, 1-10,000 entries) — Temu
+        parent order SNs to import.
+
+
+        **Behavior:**
+
+        - Runs as a background import — the request returns right away with a tracked
+        job log id; the orders are fetched and stored asynchronously
+
+        - Orders that already exist locally are flagged as pre-start-date imports
+        instead of being re-imported
+
+
+        **Response:**
+
+        - `data.tracked_job_log_id` - id of the tracked job log; poll it to follow
+        import progress
+
+        - `message` - human-readable confirmation of how many orders are being imported'
       requestBody:
         content:
           application/json:
@@ -246725,28 +246783,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        parent_order_sn:
-                          type: string
-                        status:
-                          type: string
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 1
-                  skipped: 1
-                  details:
-                  - parent_order_sn: PO111122223333444
-                    status: imported
-                  - parent_order_sn: PO555566667777888
-                    status: skipped
-                    reason: already_exists
+                  data:
+                    tracked_job_log_id: 4821
+                  message: Importing 2 pre-start-date orders.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -515862,8 +515909,7 @@ paths:
       description: 'Import selected pre-start-date orders from Walmart. For each purchase
         order id, the full order is downloaded from the Walmart Marketplace API, saved
         through the standard order pipeline, and flagged as a pre-start-date import
-        (so it does not affect inventory). Orders that already exist locally are flagged
-        instead of re-imported; cancelled or not-found orders are skipped with a reason.
+        (so it does not affect inventory).
 
 
         :::info[Authorization]
@@ -515874,15 +515920,43 @@ paths:
         :::
 
 
-        Request body:
+        Because each order requires its own throttled Walmart Marketplace API call,
+        the import runs asynchronously as a queued background job. The request returns
+        immediately with a tracked job log id that can be polled to follow the import''s
+        progress.
 
-        - purchase_order_ids (required, array of strings, 1-50 entries) — Walmart
+
+        **Requires the inventory start date to be set** — returns 422 otherwise.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - The Walmart integration instance ID
+
+
+        **Request Body:**
+
+        - `purchase_order_ids` (required, array of strings, 1-10,000 entries) — Walmart
         purchase order ids to import.
 
 
-        The inventory start date must be configured (422 otherwise). The per-order
-        `status` in `details` is one of: imported, marked (already existed, flagged
-        as pre-start-date), skipped.'
+        **Behavior:**
+
+        - Runs as a background import — the request returns right away with a tracked
+        job log id; the orders are fetched and stored asynchronously
+
+        - Orders that already exist locally are flagged as pre-start-date imports
+        instead of being re-imported
+
+        - Cancelled or not-found orders are skipped
+
+
+        **Response:**
+
+        - `data.tracked_job_log_id` - id of the tracked job log; poll it to follow
+        import progress
+
+        - `message` - human-readable confirmation of how many orders are being imported'
       requestBody:
         content:
           application/json:
@@ -515919,35 +515993,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        purchase_order_id:
-                          type: string
-                        status:
-                          type: string
-                        walmart_order_table_id:
-                          type: integer
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 2
-                  skipped: 1
-                  details:
-                  - purchase_order_id: '1796277083022'
-                    status: imported
-                    walmart_order_table_id: 512
-                  - purchase_order_id: '1796277083055'
-                    status: marked
-                    walmart_order_table_id: 318
-                    reason: Already existed, marked as pre-start-date import
-                  - purchase_order_id: '1796277083060'
-                    status: skipped
-                    reason: order_cancelled
+                  data:
+                    tracked_job_log_id: 4821
+                  message: Importing 2 pre-start-date orders.
         '422':
           description: Unprocessable Entity
           headers:
@@ -523634,10 +523690,9 @@ paths:
       - WooCommerce
       summary: Import Pre-Start-Date Orders
       description: 'Import selected pre-start-date orders from WooCommerce by their
-        WooCommerce order IDs (max 50 per request). Full order data is downloaded
-        and stored flagged as a pre-start-date import so it does not affect inventory.
-        Orders that already exist locally are marked instead of duplicated, and cancelled
-        orders are skipped.
+        WooCommerce order IDs. Full order data is downloaded and stored flagged as
+        a pre-start-date import so it does not affect inventory. Orders that already
+        exist locally are marked instead of duplicated, and cancelled orders are skipped.
 
 
         :::info[Authorization]
@@ -523648,8 +523703,31 @@ paths:
         :::
 
 
-        The response details the outcome per order: imported, marked, skipped (already_exists
-        / not_found_in_woocommerce / order_cancelled), or error.
+        Because each order is fetched individually from WooCommerce, the import runs
+        asynchronously as a queued background job. The request returns immediately
+        with a tracked job log id that can be polled to follow the import''s progress.
+
+
+        **Requires the inventory start date to be set** — returns 422 otherwise.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - The WooCommerce integration instance ID
+
+
+        **Request Body:**
+
+        - `woo_commerce_order_ids` (required, array of integers, 1-10,000 entries)
+        — WooCommerce order IDs to import.
+
+
+        **Response:**
+
+        - `data.tracked_job_log_id` - id of the tracked job log; poll it to follow
+        import progress
+
+        - `message` - human-readable confirmation of how many orders are being imported
 
 
         Route name: woo-commerce.pre-start-date-orders.import'
@@ -523688,31 +523766,17 @@ paths:
               schema:
                 type: object
                 properties:
-                  imported:
-                    type: integer
-                  skipped:
-                    type: integer
-                  details:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        woo_commerce_order_id:
-                          type: integer
-                        status:
-                          type: string
-                        woo_commerce_order_table_id:
-                          type: integer
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
                 example:
-                  imported: 2
-                  skipped: 0
-                  details:
-                  - woo_commerce_order_id: 1189
-                    status: imported
-                    woo_commerce_order_table_id: 4512
-                  - woo_commerce_order_id: 1190
-                    status: imported
-                    woo_commerce_order_table_id: 4513
+                  data:
+                    tracked_job_log_id: 4821
+                  message: Importing 2 pre-start-date orders.
         '422':
           description: Unprocessable Entity
           headers:
