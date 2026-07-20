@@ -6299,40 +6299,24 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
                       ledger_entries:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            status:
-                              type: string
-                            reference:
-                              type: string
-                            total:
-                              type: number
-                            posted_at:
-                              type: string
-                              nullable: true
-                            effective_at:
-                              type: string
-                  message:
-                    type: string
-                example:
-                  data:
-                    ledger_entries:
-                    - id: 9954
-                      status: draft
-                      reference: BILL-319
-                      total: 250.0
-                      posted_at: null
-                      effective_at: '2026-03-30T00:00:00+00:00'
-                  message: Ledger entry generated successfully.
+                      - id: 9954
+                        status: draft
+                        reference: BILL-319
+                        total: 250.0
+                        posted_at: null
+                        effective_at: '2026-03-30T00:00:00+00:00'
+                    message: Ledger entry generated successfully.
+                example-1:
+                  summary: 200 OK (ledger disabled)
+                  value:
+                    data: []
+                    message: Ledger generation is disabled for this tenant.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -321179,6 +321163,96 @@ paths:
         '404': *id004
       x-required-scope: products:read
       operationId: get-api-products-productid-potential-bundles
+  /api/products/{product}/dropship-status:
+    get:
+      tags:
+      - Products
+      summary: Get Product Drop-ship Status
+      description: 'Return the drop-ship eligibility checklist for a product — whether
+        a sales order line for this product will auto-route to a supplier''s drop-ship
+        warehouse, and which gate conditions are currently met or failing.
+
+
+        Optionally scope the check to a specific supplier with the `supplier_id` query
+        parameter; omit it to evaluate against the product''s default supplier.
+
+
+        The `mode` field is one of `always` (auto-routes when out of stock), `optionally`
+        (suggested only), or `off`. The `gates` object reports each eligibility condition,
+        and `missing` lists the labels of the gates that are not yet satisfied.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product ID
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  product_id:
+                    type: integer
+                  supplier_id:
+                    type: integer
+                  supplier_name:
+                    type: string
+                  eligible:
+                    type: boolean
+                  auto_routing_enabled:
+                    type: boolean
+                  mode:
+                    type: string
+                  gates:
+                    type: object
+                    properties:
+                      supplier_product_link:
+                        type: boolean
+                      link_dropship_capable:
+                        type: boolean
+                      product_is_dropshippable:
+                        type: boolean
+                      supplier_warehouse_enabled:
+                        type: boolean
+                      supplier_feed_healthy:
+                        type: boolean
+                  missing:
+                    type: array
+                    items:
+                      type: string
+                example:
+                  product_id: 123
+                  supplier_id: 45
+                  supplier_name: Acme Supply
+                  eligible: false
+                  auto_routing_enabled: true
+                  mode: optionally
+                  gates:
+                    supplier_product_link: true
+                    link_dropship_capable: true
+                    product_is_dropshippable: true
+                    supplier_warehouse_enabled: true
+                    supplier_feed_healthy: false
+                  missing:
+                  - Supplier feed healthy
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-products-product-dropship-status
   /api/products/{product}/variations:
     get:
       tags:
@@ -338316,6 +338390,102 @@ paths:
         '404': *id004
       x-required-scope: products:read
       operationId: get-api-product-listings-product-listing
+    put:
+      tags:
+      - Product Listings
+      summary: Update Product Listing
+      description: 'Updates a product listing. If master_of_price or product_pricing_tier_id
+        change, the price is pushed to the sales channel. If inventoryLocations is
+        provided, inventory is synced to the channel.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                master_of_price:
+                  type: boolean
+                master_of_stock:
+                  type: boolean
+                product_pricing_tier_id:
+                  type: integer
+                inventoryLocations:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                master_of_price: true
+                master_of_stock: false
+                product_pricing_tier_id: 2
+                inventoryLocations:
+                - 1
+                - 2
+      parameters:
+      - name: product_listing
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Product listing ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      product_id:
+                        type: integer
+                      sales_channel_id:
+                        type: integer
+                      sales_channel_listing_id:
+                        type: string
+                      listing_sku:
+                        type: string
+                      master_of_price:
+                        type: boolean
+                      master_of_stock:
+                        type: boolean
+                      product_pricing_tier_id:
+                        type: integer
+                example:
+                  message: Successfully updated Product Listing 7823456789012
+                  data:
+                    id: 1
+                    product_id: 42
+                    sales_channel_id: 5
+                    sales_channel_listing_id: '7823456789012'
+                    listing_sku: PROD-001
+                    master_of_price: true
+                    master_of_stock: false
+                    product_pricing_tier_id: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-required-scope: products:write
+      operationId: put-api-product-listings-product-listing
   /api/v2/products/{product}/publish-readiness:
     get:
       tags:
@@ -348618,14 +348788,15 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  financial_lines_count:
-                    type: integer
-                example:
-                  message: Accounting transactions generated successfully.
-                  financial_lines_count: 6
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    message: 6 ledger entr(ies) generated successfully.
+                example-1:
+                  summary: 200 OK (ledger disabled)
+                  value:
+                    message: Ledger generation is disabled for this tenant.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -389374,141 +389545,25 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        transaction_date:
-                          type: string
-                        type:
-                          type: object
-                          properties:
-                            name:
-                              type: string
-                            link_type:
-                              type: string
-                            link_id:
-                              type: integer
-                            link_type_label:
-                              type: string
-                            link_route:
-                              type: string
-                        name:
-                          type: string
-                        total:
-                          type: integer
-                        reference:
-                          type: string
-                        status:
-                          type: string
-                        lines:
-                          type: array
-                          items:
-                            type: object
-                            properties:
-                              id:
-                                type: integer
-                              type:
-                                type: string
-                              nominal_code:
-                                type: object
-                                properties:
-                                  id:
-                                    type: integer
-                                  code:
-                                    type: string
-                                  name:
-                                    type: string
-                              description:
-                                type: string
-                              quantity:
-                                type: integer
-                              amount:
-                                type: integer
-                              subtotal:
-                                type: integer
-                example:
-                  message: Accounting transactions generated successfully.
-                  data:
-                  - id: 5012
-                    transaction_date: '2026-06-05T00:00:00+00:00'
-                    type:
-                      name: manufacturing_order
-                      link_type: App\Models\ManufacturingOrder
-                      link_id: 1
-                      link_type_label: Manufacturing Order
-                      link_route: /manufacturing/orders/1
-                    name: Coffee 250g Pouch
-                    total: 37
-                    reference: 'Production MO-000001 #1: QA-COFFEE-250'
-                    status: toSync
-                    lines:
-                    - id: 1
-                      type: debit
-                      nominal_code:
-                        id: 12
-                        code: '1030'
-                        name: Work In Process
-                      description: Work in process — production cost
-                      quantity: 1
-                      amount: 37
-                      subtotal: 37
-                    - id: 2
-                      type: credit
-                      nominal_code:
-                        id: 4
-                        code: '1000'
-                        name: Inventory Control
-                      description: Raw materials consumed
-                      quantity: 1
-                      amount: 31.25
-                      subtotal: 31.25
-                    - id: 3
-                      type: credit
-                      nominal_code:
-                        id: 13
-                        code: '5100'
-                        name: Direct Labor Applied
-                      description: Direct labor applied
-                      quantity: 1
-                      amount: 5
-                      subtotal: 5
-                    - id: 4
-                      type: credit
-                      nominal_code:
-                        id: 14
-                        code: '5110'
-                        name: Manufacturing Overhead Applied
-                      description: Manufacturing overhead applied
-                      quantity: 1
-                      amount: 0.75
-                      subtotal: 0.75
-                    - id: 5
-                      type: debit
-                      nominal_code:
-                        id: 4
-                        code: '1000'
-                        name: Inventory Control
-                      description: Finished goods produced
-                      quantity: 1
-                      amount: 37
-                      subtotal: 37
-                    - id: 6
-                      type: credit
-                      nominal_code:
-                        id: 12
-                        code: '1030'
-                        name: Work In Process
-                      description: WIP cleared to finished goods
-                      quantity: 1
-                      amount: 37
-                      subtotal: 37
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    message: Production journals generated successfully.
+                    data:
+                    - id: 5012
+                      display_status:
+                        label: Synced
+                        color: success
+                      total: 37
+                      reference: 'Production MO-000001 #1: QA-COFFEE-250'
+                      transaction_date: '2026-06-05T00:00:00+00:00'
+                      type: manufacturing_order
+                example-1:
+                  summary: 200 OK (ledger disabled)
+                  value:
+                    message: Ledger generation is disabled for this tenant.
+                    data: []
         '429': *id001
         '401': *id002
         '403': *id003
@@ -391479,6 +391534,295 @@ paths:
         '404': *id004
       x-required-scope: manufacturing:read
       operationId: get-api-manufacturing-manufacturing-orders-manufacturingorder-print
+  /api/manufacturing/manufacturing-orders/{id}/production-iterations/{id2}/reverse-impact:
+    get:
+      tags:
+      - Manufacturing Orders
+      summary: Preview Reverse Production Iteration Impact
+      description: 'Read-only preview of the allocation-demotion impact of reversing
+        this production iteration. Because reversing it removes the stock it added,
+        this behaves like a manual negative adjustment and returns one row per affected
+        product: how much of the removed quantity is unallocated vs soft-allocated
+        vs hard-allocated, plus every sales-order allocation and fulfillment (printed
+        shipping label) the removal would disturb. Use it to decide which fulfillments
+        to authorize voiding via `void_confirmations` on the reversing call. Nothing
+        is mutated. A removal that only re-adds stock returns an empty `data` array.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The id identifier
+      - name: id2
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The id2 identifier
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 5567
+                    product_sku: WIDGET-BLUE
+                    product_name: Blue Widget
+                    shortfall_quantity: 0
+                    unallocated_quantity: 10
+                    soft_allocated_quantity: 6
+                    hard_allocated_quantity: 4
+                    affected_allocations:
+                    - allocation_id: 88201
+                      allocation_type: soft
+                      sales_order_id: 3120
+                      order_number: SO-3120
+                      customer_name: Acme Co.
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 6
+                    - allocation_id: 88205
+                      allocation_type: hard
+                      sales_order_id: 3125
+                      order_number: SO-3125
+                      customer_name: Beta LLC
+                      fulfillment_id: 90142
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 4
+                      allocation_ids:
+                      - 88205
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-manufacturing-manufacturing-orders-id-production-iterations-id2-reverse-impact
+  /api/manufacturing/manufacturing-orders/{id}/record-production/preview-release-impact:
+    post:
+      tags:
+      - Manufacturing Orders
+      summary: Preview Record Production Release Impact
+      description: 'Read-only preview of which back-ordered sales orders the proposed
+        produced quantities would release finished-good stock to, returned one row
+        per output product. Nothing is mutated — post the outputs you intend to record
+        and get the release picture before committing.
+
+
+        **Request body:**
+
+        - `outputs` (array, optional) — the produced outputs to evaluate.
+
+        - `outputs[].mo_output_line_id` (integer, required) — the output line being
+        produced.
+
+        - `outputs[].actual_produced_quantity` (number, required, min 0) — the quantity
+        that would be produced.
+
+
+        **Response (`data[]`, one row per output product):**
+
+        - `releasable_quantity` — units of the newly produced stock that can be released
+        to back-ordered demand.
+
+        - `orders[]` — the back-ordered sales orders that would be filled (`sales_order_id`,
+        `order_number`, `customer_name`, `quantity`).
+
+        - `held_back[]` — demand that stays back-ordered, each with `reason_kept`
+        explaining why (e.g. "Insufficient supply").
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                outputs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      mo_output_line_id:
+                        type: integer
+                      actual_produced_quantity:
+                        type: integer
+              example:
+                outputs:
+                - mo_output_line_id: 1
+                  actual_produced_quantity: 100
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The id identifier
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        releasable_quantity:
+                          type: integer
+                        orders:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                        held_back:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              product_id:
+                                type: integer
+                              sales_order_id:
+                                type: integer
+                              sales_order_line_id:
+                                type: integer
+                              sales_order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              quantity:
+                                type: integer
+                              from_status:
+                                type: string
+                              to_status:
+                                type: string
+                              reason_kept:
+                                type: string
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    releasable_quantity: 8
+                    orders:
+                    - sales_order_id: 4602
+                      order_number: SO-10501
+                      customer_name: Acme Retail
+                      quantity: 5
+                    - sales_order_id: 4610
+                      order_number: SO-10509
+                      customer_name: Gamma Foods
+                      quantity: 3
+                    held_back:
+                    - allocation_id: 90311
+                      product_id: 123
+                      sales_order_id: 4620
+                      sales_order_line_id: 55123
+                      sales_order_number: SO-10518
+                      customer_name: Delta Mart
+                      quantity: 4
+                      from_status: planned
+                      to_status: allocated
+                      reason_kept: Insufficient supply
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-manufacturing-manufacturing-orders-id-record-production-preview-release-impact
   /api/manufacturing/manufacturing-orders/{manufacturingOrder}/operations:
     post:
       tags:
@@ -408757,9 +409101,6 @@ paths:
                         type: array
                       invoices:
                         type: array
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       amazon_pending_inbound:
                         type: string
                         nullable: true
@@ -408835,7 +409176,6 @@ paths:
                     financial_lines: []
                     bills: []
                     invoices: []
-                    accounting_transaction: null
                     amazon_pending_inbound: null
                     has_active_allocations: false
                     walmart_wfs_inbound_shipment: null
@@ -427883,9 +428223,6 @@ paths:
                       tax_rate_id:
                         type: string
                         nullable: true
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                 example:
                   data:
                     id: 55
@@ -427952,7 +428289,6 @@ paths:
                       sales_channel_refund_id: '5012345678'
                     is_tax_included: false
                     tax_rate_id: null
-                    accounting_transaction: null
         '429': *id001
         '401': *id002
         '403': *id003
@@ -429071,24 +429407,6 @@ paths:
                         type: string
                       amount:
                         type: number
-                      accounting_transaction_lines:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                code:
-                                  type: string
-                                name:
-                                  type: string
-                            amount:
-                              type: number
                   message:
                     type: string
                 example:
@@ -429096,13 +429414,6 @@ paths:
                     id: 78
                     reference: SC-00055
                     amount: 150.0
-                    accounting_transaction_lines:
-                    - id: 201
-                      nominal_code:
-                        id: 5
-                        code: '4000'
-                        name: Sales Revenue
-                      amount: 150.0
                   message: Accounting transaction generated successfully.
         '429': *id001
         '401': *id002
@@ -447943,8 +448254,6 @@ paths:
                             type: number
                           date:
                             type: string
-                          accounting_transaction_id:
-                            type: integer
                           reference:
                             type: string
                             nullable: true
@@ -448018,9 +448327,6 @@ paths:
                         type: array
                       invoices:
                         type: array
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       amazon_pending_inbound:
                         type: string
                         nullable: true
@@ -448126,7 +448432,6 @@ paths:
                       quantity: 16
                       cost_impact: 1002.94
                       date: '2025-12-17'
-                      accounting_transaction_id: 4659154
                       reference: null
                     needs_shortfall_reconciliation: false
                     shipment_status: pending
@@ -448160,7 +448465,6 @@ paths:
                     financial_lines: []
                     bills: []
                     invoices: []
-                    accounting_transaction: null
                     amazon_pending_inbound: null
                     has_active_allocations: false
                     walmart_wfs_inbound_shipment: null
@@ -455758,9 +456062,6 @@ paths:
                     type: array
                   refunds:
                     type: array
-                  accounting_transaction:
-                    type: string
-                    nullable: true
                   created_at:
                     type: string
                   updated_at:
@@ -455844,7 +456145,6 @@ paths:
                   applications: []
                   payments: []
                   refunds: []
-                  accounting_transaction: null
                   created_at: '2026-07-06T09:14:22+00:00'
                   updated_at: '2026-07-06T09:14:22+00:00'
                   archived_at: null
@@ -458133,9 +458433,6 @@ paths:
                               type: string
                             total:
                               type: integer
-                            accounting_transaction:
-                              type: string
-                              nullable: true
                             receipts:
                               type: array
                         supplier_invoice_number:
@@ -458185,9 +458482,6 @@ paths:
                         total_paid:
                           type: integer
                         payments:
-                          type: string
-                          nullable: true
-                        accounting_transaction:
                           type: string
                           nullable: true
                         approval_status:
@@ -458243,7 +458537,6 @@ paths:
                       purchase_order_number: PO-2024-0015
                       purchase_order_date: '2024-01-15T00:00:00+00:00'
                       total: 1250
-                      accounting_transaction: null
                       receipts: []
                     supplier_invoice_number: INV-2024-001
                     supplier_id: 7
@@ -458267,7 +458560,6 @@ paths:
                     tax_total: 125
                     total_paid: 0
                     payments: null
-                    accounting_transaction: null
                     approval_status: approved
                     approved_by: null
                     approved_by_name: null
@@ -458649,9 +458941,6 @@ paths:
                         type: integer
                       payments:
                         type: array
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       approval_status:
                         type: string
                       approved_by:
@@ -458712,7 +459001,6 @@ paths:
                     tax_total: 0
                     total_paid: 0
                     payments: []
-                    accounting_transaction: null
                     approval_status: approved
                     approved_by: null
                     approved_by_name: null
@@ -460011,24 +460299,6 @@ paths:
                         type: string
                       type:
                         type: string
-                      accounting_transaction_lines:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            amount:
-                              type: integer
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                name:
-                                  type: string
-                                code:
-                                  type: string
                   message:
                     type: string
                 example:
@@ -460039,13 +460309,6 @@ paths:
                     reference: INV-2024-001
                     transaction_date: '2024-01-20T00:00:00+00:00'
                     type: purchase_invoice
-                    accounting_transaction_lines:
-                    - id: 201
-                      amount: 250
-                      nominal_code:
-                        id: 1
-                        name: Purchases
-                        code: '5000'
                   message: Accounting transaction generated successfully.
         '429': *id001
         '401': *id002
@@ -467974,11 +468237,6 @@ paths:
                             type: integer
                           total_units:
                             type: integer
-                      accounting_transaction:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
                   status:
                     type: string
                 example:
@@ -468022,8 +468280,6 @@ paths:
                     summary:
                       total_lines: 1
                       total_units: 100
-                    accounting_transaction:
-                      id: 88
                   status: success
         '404':
           description: Not Found
@@ -468745,24 +469001,6 @@ paths:
                         type: string
                       amount:
                         type: number
-                      accounting_transaction_lines:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            amount:
-                              type: number
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                code:
-                                  type: string
-                                name:
-                                  type: string
                   message:
                     type: string
                   status:
@@ -468773,13 +469011,6 @@ paths:
                     transaction_date: '2024-01-15'
                     reference: PO-2024-0020
                     amount: 1250.0
-                    accounting_transaction_lines:
-                    - id: 150
-                      amount: 1250.0
-                      nominal_code:
-                        id: 10
-                        code: '5000'
-                        name: Cost of Goods
                   message: Accounting transaction generated successfully.
                   status: success
         '422':
@@ -473768,11 +473999,6 @@ paths:
                             type: integer
                           total_purchase_orders:
                             type: integer
-                      accounting_transaction:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
                   status:
                     type: string
                 example:
@@ -473832,8 +474058,6 @@ paths:
                       total_lines: 1
                       total_units: 100
                       total_purchase_orders: 2
-                    accounting_transaction:
-                      id: 88
                   status: success
         '404':
           description: Not Found
@@ -474464,26 +474688,6 @@ paths:
                         type: string
                       reference:
                         type: string
-                      accounting_transaction_lines:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            amount:
-                              type: number
-                            is_debit:
-                              type: boolean
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                code:
-                                  type: string
-                                name:
-                                  type: string
                   message:
                     type: string
                   status:
@@ -474493,21 +474697,6 @@ paths:
                     id: 88
                     transaction_date: '2024-04-15'
                     reference: ISR-1
-                    accounting_transaction_lines:
-                    - id: 201
-                      amount: 1250.0
-                      is_debit: true
-                      nominal_code:
-                        id: 11
-                        code: '1300'
-                        name: Inventory
-                    - id: 202
-                      amount: 1250.0
-                      is_debit: false
-                      nominal_code:
-                        id: 22
-                        code: '2100'
-                        name: Accounts Payable - Accrued
                   message: Accounting transaction generated successfully.
                   status: success
         '429': *id001
@@ -498973,9 +499162,6 @@ paths:
                           type: array
                           items:
                             type: string
-                        accounting_transaction:
-                          type: string
-                          nullable: true
                         inventory_movements:
                           type: array
                         link_reference:
@@ -499089,7 +499275,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -499378,9 +499563,6 @@ paths:
                           type: array
                           items:
                             type: string
-                        accounting_transaction:
-                          type: string
-                          nullable: true
                         inventory_movements:
                           type: array
                         link_reference:
@@ -499494,7 +499676,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -499789,9 +499970,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -499906,7 +500084,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -500247,9 +500424,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -500365,7 +500539,6 @@ paths:
                     tags:
                     - damaged-goods
                     - q3-review
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -500810,9 +500983,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -500927,7 +501097,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -501255,9 +501424,6 @@ paths:
                         type: integer
                       tags:
                         type: array
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -501371,7 +501537,6 @@ paths:
                     payments: []
                     shipments_count: 0
                     tags: []
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -501699,9 +501864,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -501816,7 +501978,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -501828,6 +501989,152 @@ paths:
         '422': *id005
       x-required-scope: accounting:write
       operationId: post-api-vendor-credits-vendor-credit-reopen
+  /api/vendor-credits/{vendor_credit}/write-off-impact:
+    get:
+      tags:
+      - Vendor Credits
+      summary: Preview Vendor Credit Write-Off Impact
+      description: 'Get a read-only preview of the order allocations that authorizing
+        this vendor credit would consume when its write-off lines post their outbound
+        decrement. Each row is one product whose stock the write-off would remove,
+        split into free, soft-reserved and hard-allocated quantities, and lists the
+        affected sales-order allocations highest-priority first so you can see which
+        orders — and which printed shipping labels — would be demoted or voided before
+        you authorize the credit.
+
+
+        This endpoint makes no changes.
+
+
+        Response fields:
+
+        - `data[].product_id` / `product_sku` / `product_name` — the product the action
+        would consume stock for.
+
+        - `data[].shortfall_quantity` — how much more than the available quantity
+        the action removes; stock goes negative when greater than 0.
+
+        - `data[].unallocated_quantity` / `soft_allocated_quantity` / `hard_allocated_quantity`
+        — the free / soft-reserved / hard-allocated (label-printed) split of the consumed
+        quantity.
+
+        - `data[].affected_allocations[]` — the order allocations that would be consumed,
+        highest priority first. `allocation_type` is `soft` or `hard`. For hard rows,
+        `fulfillment_id` and `carrier` identify the printed label and `carrier_void_supported`
+        / `voidable_status` (`voidable` or otherwise) indicate whether the label can
+        be voided through the API.
+
+
+        Authentication: Requires Bearer token (PAT).'
+      parameters:
+      - name: vendor_credit
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Vendor credit ID
+        example: '17'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    shortfall_quantity: 0
+                    unallocated_quantity: 4
+                    soft_allocated_quantity: 3
+                    hard_allocated_quantity: 2
+                    affected_allocations:
+                    - allocation_id: 88213
+                      allocation_type: soft
+                      sales_order_id: 4521
+                      order_number: SO-10442
+                      customer_name: Acme Retail
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 3
+                    - allocation_id: 88240
+                      allocation_type: hard
+                      sales_order_id: 4530
+                      order_number: SO-10450
+                      customer_name: Beta Wholesale
+                      fulfillment_id: 77120
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-vendor-credits-vendor-credit-write-off-impact
   /api/vendor-credits/{vendor_credit}/allocate:
     post:
       tags:
@@ -502630,9 +502937,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -502759,7 +503063,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -503130,9 +503433,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -503258,7 +503558,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -503582,9 +503881,6 @@ paths:
                         type: array
                         items:
                           type: string
-                      accounting_transaction:
-                        type: string
-                        nullable: true
                       inventory_movements:
                         type: array
                       link_reference:
@@ -503699,7 +503995,6 @@ paths:
                     shipments_count: 0
                     tags:
                     - damaged-goods
-                    accounting_transaction: null
                     inventory_movements: []
                     link_reference: VC-000017
                     link_type_label: Vendor Credit
@@ -505206,6 +505501,151 @@ paths:
         '404': *id004
       x-required-scope: accounting:read
       operationId: get-api-vendor-credits-shipments-shipment-activity-log
+  /api/vendor-credits/{vendor_credit}/ship-impact:
+    get:
+      tags:
+      - Vendor Credits
+      summary: Preview Vendor Credit Ship Impact
+      description: 'Get a read-only preview of the order allocations that creating
+        a return shipment for this vendor credit''s restock lines would consume. Each
+        row is one product whose stock the shipment would remove, split into free,
+        soft-reserved and hard-allocated quantities, and lists the affected sales-order
+        allocations highest-priority first so you can see which orders — and which
+        printed shipping labels — would be demoted or voided before you post the shipment.
+
+
+        This endpoint makes no changes.
+
+
+        Response fields:
+
+        - `data[].product_id` / `product_sku` / `product_name` — the product the action
+        would consume stock for.
+
+        - `data[].shortfall_quantity` — how much more than the available quantity
+        the action removes; stock goes negative when greater than 0.
+
+        - `data[].unallocated_quantity` / `soft_allocated_quantity` / `hard_allocated_quantity`
+        — the free / soft-reserved / hard-allocated (label-printed) split of the consumed
+        quantity.
+
+        - `data[].affected_allocations[]` — the order allocations that would be consumed,
+        highest priority first. `allocation_type` is `soft` or `hard`. For hard rows,
+        `fulfillment_id` and `carrier` identify the printed label and `carrier_void_supported`
+        / `voidable_status` (`voidable` or otherwise) indicate whether the label can
+        be voided through the API.
+
+
+        Authentication: Requires Bearer token (PAT).'
+      parameters:
+      - name: vendor_credit
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Vendor credit ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    shortfall_quantity: 0
+                    unallocated_quantity: 4
+                    soft_allocated_quantity: 3
+                    hard_allocated_quantity: 2
+                    affected_allocations:
+                    - allocation_id: 88213
+                      allocation_type: soft
+                      sales_order_id: 4521
+                      order_number: SO-10442
+                      customer_name: Acme Retail
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 3
+                    - allocation_id: 88240
+                      allocation_type: hard
+                      sales_order_id: 4530
+                      order_number: SO-10450
+                      customer_name: Beta Wholesale
+                      fulfillment_id: 77120
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-vendor-credits-vendor-credit-ship-impact
   /api/vendor-credits/archive:
     put:
       tags:
@@ -509505,9 +509945,6 @@ paths:
                     type: array
                   refunds:
                     type: array
-                  accounting_transaction:
-                    type: string
-                    nullable: true
                   created_at:
                     type: string
                   updated_at:
@@ -509599,7 +510036,6 @@ paths:
                   applications: []
                   payments: []
                   refunds: []
-                  accounting_transaction: null
                   created_at: '2026-06-15T14:02:11+00:00'
                   updated_at: '2026-07-01T09:30:00+00:00'
                   archived_at: null
@@ -509863,9 +510299,6 @@ paths:
                     type: array
                   refunds:
                     type: array
-                  accounting_transaction:
-                    type: string
-                    nullable: true
                   created_at:
                     type: string
                   updated_at:
@@ -509957,7 +510390,6 @@ paths:
                   applications: []
                   payments: []
                   refunds: []
-                  accounting_transaction: null
                   created_at: '2026-06-15T14:02:11+00:00'
                   updated_at: '2026-07-01T09:30:00+00:00'
                   archived_at: null
@@ -510220,9 +510652,6 @@ paths:
                     type: array
                   refunds:
                     type: array
-                  accounting_transaction:
-                    type: string
-                    nullable: true
                   created_at:
                     type: string
                   updated_at:
@@ -510314,7 +510743,6 @@ paths:
                   applications: []
                   payments: []
                   refunds: []
-                  accounting_transaction: null
                   created_at: '2026-06-15T14:02:11+00:00'
                   updated_at: '2026-07-01T09:30:00+00:00'
                   archived_at: null
@@ -511691,11 +512119,7 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::
-
-
-        Returns 422 when the deposit is not eligible — the response includes an eligibility
-        object explaining why (missing nominal-code configuration or nothing to post).'
+        :::'
       requestBody:
         content: {}
       parameters:
@@ -511717,176 +512141,22 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      transaction_date:
-                        type: string
-                      type:
-                        type: object
-                        properties:
-                          name:
-                            type: string
-                          link_type:
-                            type: string
-                          link_id:
-                            type: integer
-                          link_type_label:
-                            type: string
-                          link_route:
-                            type: string
-                      integration_invoice_number_override:
-                        type: string
-                        nullable: true
-                      name:
-                        type: string
-                      is_tax_included:
-                        type: boolean
-                      total:
-                        type: integer
-                      reference:
-                        type: string
-                      last_sync_error:
-                        type: string
-                        nullable: true
-                      is_sync_enabled:
-                        type: boolean
-                      is_type_sync_enabled:
-                        type: boolean
-                      lines:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            type:
-                              type: string
-                            nominal_code:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                code:
-                                  type: string
-                                name:
-                                  type: string
-                            description:
-                              type: string
-                            quantity:
-                              type: integer
-                            amount:
-                              type: integer
-                            subtotal:
-                              type: integer
-                            tax_amount:
-                              type: integer
-                            created_at:
-                              type: string
-                            updated_at:
-                              type: string
-                      status:
-                        type: string
-                      is_locked:
-                        type: boolean
-                      is_batchable:
-                        type: boolean
-                      updated_at:
-                        type: string
-                      created_at:
-                        type: string
-                example:
-                  message: Accounting transaction generated successfully.
-                  data:
-                    id: 501
-                    transaction_date: '2026-06-15'
-                    type:
-                      name: vendor_deposit_paid
-                      link_type: App\Models\VendorDeposit
-                      link_id: 42
-                      link_type_label: Vendor Deposit Paid
-                      link_route: /orders/vendor-deposits/42
-                    integration_invoice_number_override: null
-                    name: Vendor Deposit Paid
-                    is_tax_included: false
-                    total: 1500
-                    reference: DEP-000042
-                    last_sync_error: null
-                    is_sync_enabled: true
-                    is_type_sync_enabled: true
-                    lines:
-                    - id: 9001
-                      type: debit
-                      nominal_code:
-                        id: 21
-                        code: '1350'
-                        name: Prepaid Vendor Deposits
-                      description: Deposit paid to Acme Components Ltd
-                      quantity: 1
-                      amount: 1500
-                      subtotal: 1500
-                      tax_amount: 0
-                      created_at: '2026-06-15T14:10:00.000000Z'
-                      updated_at: '2026-06-15T14:10:00.000000Z'
-                    - id: 9002
-                      type: credit
-                      nominal_code:
-                        id: 5
-                        code: '1200'
-                        name: Bank Account
-                      description: Deposit paid to Acme Components Ltd
-                      quantity: 1
-                      amount: -1500
-                      subtotal: -1500
-                      tax_amount: 0
-                      created_at: '2026-06-15T14:10:00.000000Z'
-                      updated_at: '2026-06-15T14:10:00.000000Z'
-                    status: approved
-                    is_locked: false
-                    is_batchable: true
-                    updated_at: '2026-06-15T14:10:00.000000Z'
-                    created_at: '2026-06-15T14:10:00.000000Z'
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  eligibility:
-                    type: object
-                    properties:
-                      eligible:
-                        type: boolean
-                      reason:
-                        type: string
-                      settings_route:
-                        type: string
-                      settings_label:
-                        type: string
-                example:
-                  message: Prepaid Vendor Deposits nominal code is not configured.
-                  eligibility:
-                    eligible: false
-                    reason: Prepaid Vendor Deposits nominal code is not configured.
-                    settings_route: /settings/nominal-code-mappings
-                    settings_label: Configure Nominal Code Mappings
+              examples:
+                example-0:
+                  summary: Generated
+                  value:
+                    message: Ledger entry generated successfully.
+                    data: null
+                example-1:
+                  summary: Ledger Disabled
+                  value:
+                    message: Ledger generation is disabled for this tenant.
+                    data: null
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
+        '422': *id005
       x-required-scope: accounting:write
       operationId: post-api-vendor-deposits-vendordepositid-generate-accounting-transaction
   /api/vendor-deposits/{vendorDepositId}/push-to-qbo:
@@ -514377,9 +514647,6 @@ paths:
                           type: array
                         refunds:
                           type: array
-                        accounting_transaction:
-                          type: string
-                          nullable: true
                         created_at:
                           type: string
                         updated_at:
@@ -514474,7 +514741,6 @@ paths:
                     applications: []
                     payments: []
                     refunds: []
-                    accounting_transaction: null
                     created_at: '2026-06-15T14:02:11+00:00'
                     updated_at: '2026-07-01T09:30:00+00:00'
                     archived_at: null

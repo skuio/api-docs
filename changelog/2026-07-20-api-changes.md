@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-20
-description: This release includes 18 additions.
+description: This release includes 24 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-20
 ---
 
-This release includes 18 additions.
+This release includes 24 additions.
 
 <!-- truncate -->
 
@@ -23,6 +23,16 @@ This release includes 18 additions.
 
 ### Ledger (Accounting v2)
 - `GET /api/ledger/reconciliation/inventory/day-detail` — Get Inventory Reconciliation Day Detail
+
+### Manufacturing Orders
+- `GET /api/manufacturing/manufacturing-orders/{id}/production-iterations/{id2}/reverse-impact` — Preview Reverse Production Iteration Impact
+- `POST /api/manufacturing/manufacturing-orders/{id}/record-production/preview-release-impact` — Preview Record Production Release Impact
+
+### Product Listings
+- `PUT /api/product-listings/{product_listing}` — Update Product Listing
+
+### Products
+- `GET /api/products/{product}/dropship-status` — Get Product Drop-ship Status
 
 ### Purchase Order Shipments
 - `GET /api/inbound-shipments/receipts/{receipt}/delete-impact` — Preview Receipt Delete Impact
@@ -42,6 +52,10 @@ This release includes 18 additions.
 
 ### Shopify
 - `GET /api/shopify/{integrationInstance}/products/{product}/raw-graphql` — Get Raw Product (GraphQL)
+
+### Vendor Credits
+- `GET /api/vendor-credits/{vendor_credit}/ship-impact` — Preview Vendor Credit Ship Impact
+- `GET /api/vendor-credits/{vendor_credit}/write-off-impact` — Preview Vendor Credit Write-Off Impact
 
 ### Vendor Returns
 - `GET /api/vendor-returns/{vendorReturn}/activity-log` — Get Vendor Return Activity Log
