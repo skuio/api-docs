@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-20
-description: This release includes 14 additions.
+description: This release includes 15 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-20
 ---
 
-This release includes 14 additions.
+This release includes 15 additions.
 
 <!-- truncate -->
 
@@ -34,6 +34,9 @@ This release includes 14 additions.
 ### Returns & RMAs
 - `POST /api/return-receipts/preview-release-impact` — Preview Return Receipt Release Impact
 - `GET /api/return-receipts/{returnReceipt}/delete-impact` — Preview Return Receipt Delete Impact
+
+### Shopify
+- `GET /api/shopify/{integrationInstance}/products/{product}/raw-graphql` — Get Raw Product (GraphQL)
 
 ### Vendor Returns
 - `GET /api/vendor-returns/{vendorReturn}/activity-log` — Get Vendor Return Activity Log
