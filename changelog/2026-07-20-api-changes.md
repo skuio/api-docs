@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-20
-description: This release includes 15 additions.
+description: This release includes 16 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-20
 ---
 
-This release includes 15 additions.
+This release includes 16 additions.
 
 <!-- truncate -->
 
@@ -20,6 +20,9 @@ This release includes 15 additions.
 - `PATCH /api/inbound-shipment-receipts/{receipt}/lines/{line}` — Update Receipt Line Quantity
 - `GET /api/inbound-shipment-receipts/{receipt}/lines/{line}/quantity-preview` — Preview Receipt Line Quantity
 - `POST /api/inbound-shipments/receive/preview-release-impact` — Preview Inbound Shipment Release Impact
+
+### Ledger (Accounting v2)
+- `GET /api/ledger/reconciliation/inventory/day-detail` — Get Inventory Reconciliation Day Detail
 
 ### Purchase Order Shipments
 - `GET /api/inbound-shipments/receipts/{receipt}/delete-impact` — Preview Receipt Delete Impact
