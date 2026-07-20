@@ -3,7 +3,7 @@ title: "Automatic Daily Exchange Rates — current multi-currency, hands-off"
 description: "SKU.io now fetches exchange rates every day and converts every currency to your base currency automatically — with a custom-rate override and a full rate history."
 authors: [product-team]
 tags: [major-feature, new, accounting]
-date: 2026-07-19T14:50:42
+date: 2026-07-20T06:16:45
 ---
 
 If you buy or sell in more than one currency, keeping exchange rates accurate used to be a manual chore — someone had to remember to update the conversion for each currency, and a rate that quietly went stale skewed your margins, costs, and reports. **Automatic Daily Exchange Rates** takes that job off your plate: SKU.io now pulls fresh rates every day and keeps every currency current, converted to *your* base currency automatically — whatever that base currency is.
