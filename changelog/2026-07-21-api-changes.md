@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 44 additions.
+description: This release includes 46 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 44 additions.
+This release includes 46 additions.
 
 <!-- truncate -->
 
@@ -17,6 +17,10 @@ This release includes 44 additions.
 ### Adjustments & Transfers
 - `POST /api/v2/inventory-allocations/pull-stock` — Pull Stock To Line
 - `GET /api/v2/inventory-allocations/pull-stock-donors` — List Pull-Stock Donors
+
+### Fulfillment Orders
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/accept-discrepancy` — Accept Fulfillment Order Discrepancy
+- `POST /api/fulfillment-orders/{fulfillmentOrder}/reopen-discrepancy` — Reopen Fulfillment Order Discrepancy
 
 ### Inventory Expiry & Shelf-Life
 - `GET /api/inventory-expiry/lots/{fifoLayer}/write-off-impact` — Preview Lot Write-Off Impact

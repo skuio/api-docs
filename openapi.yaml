@@ -428315,7 +428315,15 @@ paths:
         tracking is flagged only when that tracking matches a shipment already recorded
         on the order. Shipped orphans sharing a tracking with a recorded shipment
         classify as orphan_linkable (free shipment) or orphan_duplicate with import_voided_fo
-        (shipment already provider-backed).'
+        (shipment already provider-backed).
+
+
+        Each attached snapshot may carry a `discrepancy` object when a shipping provider
+        shipped a fulfillment order whose line SKU cannot fulfill from on-hand stock:
+        `{ fulfillment_order_id, can_accept, accepted, discrepant_lines[], fulfillable_lines[]
+        }`. When `can_accept` is true, POST the fulfillment order''s accept-discrepancy
+        endpoint to ship the fulfillable lines and park the rest. Null when there
+        is no discrepancy to surface.'
       parameters:
       - name: salesOrder
         in: path
@@ -428441,6 +428449,37 @@ paths:
                                         type: integer
                                       state:
                                         type: string
+                            discrepancy:
+                              type: object
+                              properties:
+                                fulfillment_order_id:
+                                  type: integer
+                                can_accept:
+                                  type: boolean
+                                accepted:
+                                  type: boolean
+                                discrepant_lines:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      sku:
+                                        type: string
+                                      name:
+                                        type: string
+                                      quantity:
+                                        type: integer
+                                fulfillable_lines:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      sku:
+                                        type: string
+                                      name:
+                                        type: string
+                                      quantity:
+                                        type: integer
                       orphans:
                         type: array
                         items:
@@ -428526,6 +428565,9 @@ paths:
                                   nullable: true
                                 lines:
                                   type: array
+                            discrepancy:
+                              type: string
+                              nullable: true
                       summary:
                         type: object
                         properties:
@@ -428582,6 +428624,18 @@ paths:
                           our_qty: 2
                           provider_qty: 2
                           state: ok
+                      discrepancy:
+                        fulfillment_order_id: 4471
+                        can_accept: true
+                        accepted: false
+                        discrepant_lines:
+                        - sku: '195093200861'
+                          name: Mis-tagged item
+                          quantity: 1
+                        fulfillable_lines:
+                        - sku: ABC-1
+                          name: In-stock item
+                          quantity: 1
                     - provider: shipstation
                       provider_label: ShipStation
                       integration_instance_id: 7
@@ -428633,6 +428687,7 @@ paths:
                           our_qty: 3
                           provider_qty: 1
                           state: qty_diff
+                      discrepancy: null
                     orphans:
                     - provider: shipstation
                       provider_label: ShipStation
@@ -428669,6 +428724,7 @@ paths:
                       item_match:
                         matches: null
                         lines: []
+                      discrepancy: null
                     summary:
                       matched: 1
                       item_mismatch: 1
@@ -482303,12 +482359,9 @@ paths:
         (numeric, min 0), and either `purchase_order_line_id` (existing PO line) or
         `financial_line_id` (existing cost line).
 
-        - `unmatched_lines` (array, optional) — snapshot of document lines that were
-        not matched to a line above. Send each line back with its full detected content
-        (`description`, `quantity`, `unit_price`, `line_total`, `match_confidence`,
-        …) plus `ignored: true` on any line to exclude. The whole snapshot is saved
-        onto the extraction and shown on the next read, so omitting a field drops
-        it from that saved snapshot.
+        - `unmatched_lines` (array, optional) — snapshot of unmatched document lines;
+        set `ignored: true` on lines to exclude. Saved onto the extraction for future
+        reads.
 
 
         **Line replacement semantics:** entries with `purchase_order_line_id` fully
@@ -482358,14 +482411,8 @@ paths:
                     properties:
                       description:
                         type: string
-                      quantity:
-                        type: integer
-                      unit_price:
-                        type: integer
                       line_total:
                         type: integer
-                      match_confidence:
-                        type: string
                       ignored:
                         type: boolean
               example:
@@ -482382,10 +482429,7 @@ paths:
                   unit_price: 610
                 unmatched_lines:
                 - description: Fuel surcharge
-                  quantity: 1
-                  unit_price: 45
                   line_total: 45
-                  match_confidence: none
                   ignored: true
       parameters:
       - name: purchaseInvoice
@@ -488116,6 +488160,390 @@ paths:
         '404': *id004
       x-required-scope: orders:write
       operationId: post-api-fulfillment-orders-fulfillmentorder-record-shipment
+  /api/fulfillment-orders/{fulfillmentOrder}/accept-discrepancy:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Accept Fulfillment Order Discrepancy
+      description: 'Self-heal a shipping-provider ↔ fulfillment-order line discrepancy.
+        Use this when the shipping provider marked the order shipped but one line''s
+        product cannot be fulfilled (no on-hand to deduct) — a permanent mismatch
+        between what the provider shipped and what can actually leave the warehouse.
+
+
+        Accepting records a real shipment (with the provider''s tracking) for the
+        lines that DID ship and parks the discrepant line so it is never deducted
+        from inventory. The provider''s order record is left untouched (it stays the
+        source of truth for what the provider believes shipped), and the open discrepancy
+        alert is resolved.
+
+
+        Body:
+
+        - `acknowledged` (required, must be true): explicit confirmation that the
+        discrepant line will NOT be deducted from inventory. Any other value returns
+        422.
+
+
+        Side effects: records the SalesOrderFulfillment (+ tracking, inventory movements,
+        COGS) for the fulfillable lines, marks the discrepant line out-of-sync (parked),
+        stamps who/when accepted, advances the fulfillment order lifecycle, and resolves
+        the discrepancy alert.
+
+
+        Returns the fulfillment order with `discrepancy_accepted_at` / `discrepancy_accepted_by`
+        set. 422 if there is no shipped provider order, nothing discrepant to accept,
+        or the shipment cannot be recorded.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                acknowledged:
+                  type: boolean
+              example:
+                acknowledged: true
+      parameters:
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Fulfillment order id
+        example: '6'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      sales_order_id:
+                        type: integer
+                      sales_order_number:
+                        type: string
+                      warehouse_id:
+                        type: integer
+                      status:
+                        type: string
+                      status_label:
+                        type: string
+                      request_status:
+                        type: string
+                      provider_order_link:
+                        type: object
+                        properties:
+                          link_reference:
+                            type: string
+                          link_type_label:
+                            type: string
+                          link_id:
+                            type: integer
+                          link_route:
+                            type: string
+                      discrepancy_accepted_at:
+                        type: string
+                      discrepancy_accepted_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      is_pickup:
+                        type: boolean
+                      requested_shipping_method:
+                        type: string
+                      requested_ship_date:
+                        type: string
+                        nullable: true
+                      rejection_reason:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            fulfillment_order_id:
+                              type: integer
+                            sales_order_line_id:
+                              type: integer
+                            quantity:
+                              type: integer
+                            remaining_quantity:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            product_id:
+                              type: integer
+                      fulfillments:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            number:
+                              type: string
+                            status:
+                              type: string
+                            fulfillment_sequence:
+                              type: integer
+                      warehouse:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          type:
+                            type: string
+                          order_fulfillment:
+                            type: string
+                          supplier_id:
+                            type: string
+                            nullable: true
+                          supplier_name:
+                            type: string
+                            nullable: true
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 6
+                    sales_order_id: 1
+                    sales_order_number: SO-0001
+                    warehouse_id: 1
+                    status: closed
+                    status_label: Closed
+                    request_status: submitted
+                    provider_order_link:
+                      link_reference: C636160.1
+                      link_type_label: Starshipit Order
+                      link_id: 4821
+                      link_route: /v2/integrations/starshipit/orders/4821
+                    discrepancy_accepted_at: '2026-07-21T13:40:00+00:00'
+                    discrepancy_accepted_by:
+                      id: 3
+                      name: Warehouse Manager
+                    is_pickup: false
+                    requested_shipping_method: Standard
+                    requested_ship_date: null
+                    rejection_reason: null
+                    created_at: '2026-07-20T09:12:00+00:00'
+                    updated_at: '2026-07-21T13:40:00+00:00'
+                    lines:
+                    - id: 9
+                      fulfillment_order_id: 6
+                      sales_order_line_id: 14
+                      quantity: 1
+                      remaining_quantity: 0
+                      sku: abc
+                      name: In-stock item
+                      product_id: 3
+                    - id: 10
+                      fulfillment_order_id: 6
+                      sales_order_line_id: 15
+                      quantity: 1
+                      remaining_quantity: 1
+                      sku: '195093200861'
+                      name: Mis-tagged item (parked)
+                      product_id: 7
+                    fulfillments:
+                    - id: 21
+                      number: SO-0001.1
+                      status: fulfilled
+                      fulfillment_sequence: 1
+                    warehouse:
+                      id: 1
+                      name: Default Warehouse
+                      type: direct
+                      order_fulfillment: starshipit
+                      supplier_id: null
+                      supplier_name: null
+                  message: Discrepancy accepted; tracking processed for the shipped
+                    lines.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      acknowledged:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: You must acknowledge that the discrepant line will not
+                    be deducted from inventory.
+                  errors:
+                    acknowledged:
+                    - You must acknowledge that the discrepant line will not be deducted
+                      from inventory.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-fulfillment-orders-fulfillmentorder-accept-discrepancy
+  /api/fulfillment-orders/{fulfillmentOrder}/reopen-discrepancy:
+    post:
+      tags:
+      - Fulfillment Orders
+      summary: Reopen Fulfillment Order Discrepancy
+      description: 'Reverse a prior discrepancy acceptance and re-open the discrepancy
+        alert for a fulfillment order. This clears the accepted stamp (`discrepancy_accepted_at`
+        / `discrepancy_accepted_by`) and re-fires the discrepancy alert so the mismatch
+        is surfaced again.
+
+
+        This does NOT reverse an already-recorded shipment — the lines that shipped
+        genuinely shipped; it only re-opens the discrepancy state so it can be reviewed
+        or accepted again.
+
+
+        Returns the fulfillment order with the acceptance cleared.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: fulfillmentOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Fulfillment order id
+        example: '6'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      sales_order_id:
+                        type: integer
+                      sales_order_number:
+                        type: string
+                      warehouse_id:
+                        type: integer
+                      status:
+                        type: string
+                      status_label:
+                        type: string
+                      request_status:
+                        type: string
+                      discrepancy_accepted_at:
+                        type: string
+                        nullable: true
+                      discrepancy_accepted_by:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            fulfillment_order_id:
+                              type: integer
+                            sales_order_line_id:
+                              type: integer
+                            quantity:
+                              type: integer
+                            remaining_quantity:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            product_id:
+                              type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 6
+                    sales_order_id: 1
+                    sales_order_number: SO-0001
+                    warehouse_id: 1
+                    status: open
+                    status_label: Open
+                    request_status: submitted
+                    discrepancy_accepted_at: null
+                    discrepancy_accepted_by: null
+                    lines:
+                    - id: 9
+                      fulfillment_order_id: 6
+                      sales_order_line_id: 14
+                      quantity: 1
+                      remaining_quantity: 0
+                      sku: abc
+                      name: In-stock item
+                      product_id: 3
+                    - id: 10
+                      fulfillment_order_id: 6
+                      sales_order_line_id: 15
+                      quantity: 1
+                      remaining_quantity: 1
+                      sku: '195093200861'
+                      name: Mis-tagged item (parked)
+                      product_id: 7
+                  message: Discrepancy re-opened.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-fulfillment-orders-fulfillmentorder-reopen-discrepancy
   /api/fulfillment-orders/list:
     get:
       tags:
