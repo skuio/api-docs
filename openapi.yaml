@@ -193144,6 +193144,251 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-shopify-integrationinstance-pre-start-date-orders-import
+  /api/shopify/{integrationInstance}/pre-start-date-orders/search-all:
+    post:
+      tags:
+      - Shopify
+      summary: Search All Pre-Start-Date Orders (Async)
+      description: 'Start a background search for every order created before the inventory
+        start date. Unlike the synchronous browse endpoint, this fetches ALL matching
+        orders with no page cap and returns a tracked job id immediately. Poll the
+        tracked jobs API with that id; when it completes, read the full result set
+        from the results endpoint.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields:
+
+        - created_at_min (date, required): only orders created on or after this date
+        are searched. Must be before the inventory start date.
+
+        - created_at_max (date, optional): upper bound; defaults to the inventory
+        start date.
+
+        - fulfillment_status (string, optional): any | unfulfilled | partial | fulfilled.
+        Defaults to any.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                created_at_min:
+                  type: string
+                created_at_max:
+                  type: string
+                fulfillment_status:
+                  type: string
+              example:
+                created_at_min: '2024-10-01'
+                created_at_max: '2024-12-31'
+                fulfillment_status: any
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 4821
+                  message: Searching Shopify for pre-start-date orders.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-shopify-integrationinstance-pre-start-date-orders-search-all
+  /api/shopify/{integrationInstance}/pre-start-date-orders/results/{trackedJobLogId}:
+    get:
+      tags:
+      - Shopify
+      summary: Get Pre-Start-Date Order Search Results
+      description: 'Return the cached result set produced by a completed Search All
+        job. By default the full set is returned in one response; pass page and per_page
+        for server-side pagination. Results are cached for one hour after the search
+        completes.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Path params:
+
+        - trackedJobLogId (integer): the tracked job id returned by Search All.
+
+
+        Query params:
+
+        - eligible_only (0/1, optional): return only orders eligible for import.
+
+        - page (integer, optional): page number; when omitted the full set is returned.
+
+        - per_page (integer, optional, max 1000): items per page when page is set.
+
+
+        Returns 404 when the cached results have expired.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      - name: trackedJobLogId
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '4821'
+        description: The tracked job log ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        shopify_order_id:
+                          type: integer
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        created_at:
+                          type: string
+                        fulfillment_status:
+                          type: string
+                        financial_status:
+                          type: string
+                        total_price:
+                          type: string
+                        currency:
+                          type: string
+                        fulfillments:
+                          type: array
+                        line_items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              title:
+                                type: string
+                              sku:
+                                type: string
+                              quantity:
+                                type: integer
+                              current_quantity:
+                                type: integer
+                              price:
+                                type: string
+                              variant_title:
+                                type: string
+                                nullable: true
+                        eligible:
+                          type: boolean
+                        eligibility_reason:
+                          type: string
+                          nullable: true
+                        already_imported:
+                          type: boolean
+                  inventory_start_date:
+                    type: string
+                  meta:
+                    type: object
+                    properties:
+                      total_queried:
+                        type: integer
+                      eligible_count:
+                        type: integer
+                      already_imported_count:
+                        type: integer
+                      has_more:
+                        type: boolean
+                example:
+                  data:
+                  - shopify_order_id: 6000012345
+                    name: '#1001'
+                    email: customer@example.com
+                    created_at: '2024-11-01T10:00:00Z'
+                    fulfillment_status: UNFULFILLED
+                    financial_status: PAID
+                    total_price: '99.99'
+                    currency: USD
+                    fulfillments: []
+                    line_items:
+                    - title: Widget
+                      sku: WID-1
+                      quantity: 2
+                      current_quantity: 2
+                      price: '49.99'
+                      variant_title: null
+                    eligible: true
+                    eligibility_reason: null
+                    already_imported: false
+                  inventory_start_date: '2025-01-01'
+                  meta:
+                    total_queried: 9197
+                    eligible_count: 9176
+                    already_imported_count: 21
+                    has_more: false
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Search results are no longer available. Please run the search
+                    again.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-shopify-integrationinstance-pre-start-date-orders-results-trackedjoblogid
   /api/shopify/{integrationInstance}/products:
     get:
       tags:
