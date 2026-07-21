@@ -119907,7 +119907,12 @@ paths:
         response minimums block per supplier flags whether the forecast totals fall
         below the supplier''s minimum_purchase_order / minimum_purchase_order_quantity.
         Display-only on this endpoint; enforcement is applied at PO creation time
-        (POST /api/inventory-forecasting/purchase-orders).'
+        (POST /api/inventory-forecasting/purchase-orders).
+
+
+        Each line also carries a `confidence` object (tier high/medium/low/new, 0-100
+        score, drivers, reasons, actions), a `prediction_interval` (point/lower/upper
+        at a service level), and a plain-language `rationale`.'
       requestBody:
         content:
           application/json:
@@ -120106,6 +120111,56 @@ paths:
                                 type: integer
                               status:
                                 type: string
+                              confidence:
+                                type: object
+                                properties:
+                                  tier:
+                                    type: string
+                                  score:
+                                    type: integer
+                                  drivers:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        key:
+                                          type: string
+                                        label:
+                                          type: string
+                                        value:
+                                          type: string
+                                        status:
+                                          type: string
+                                  reasons:
+                                    type: array
+                                    items:
+                                      type: string
+                                  actions:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        type:
+                                          type: string
+                                        label:
+                                          type: string
+                              prediction_interval:
+                                type: object
+                                properties:
+                                  point:
+                                    type: integer
+                                  lower:
+                                    type: integer
+                                  upper:
+                                    type: integer
+                                  service_level:
+                                    type: number
+                                  method:
+                                    type: string
+                                  sigma:
+                                    type: number
+                              rationale:
+                                type: string
                         active_lines_count:
                           type: integer
                         skipped_lines_count:
@@ -120148,6 +120203,41 @@ paths:
                       avg_daily_sales: 2.5
                       leadtime_days: 14
                       status: order
+                      confidence:
+                        tier: medium
+                        score: 62
+                        drivers:
+                        - key: history_length
+                          label: History length
+                          value: 30 days
+                          status: ok
+                        - key: selling_density
+                          label: Selling density
+                          value: 12/30 days had sales
+                          status: warn
+                        - key: variability
+                          label: Demand variability (CV)
+                          value: '0.80'
+                          status: warn
+                        - key: recency
+                          label: Last sale
+                          value: 3 days ago
+                          status: ok
+                        reasons:
+                        - Only 12 of 30 days had sales
+                        actions:
+                        - type: extend_window
+                          label: Extend the sales window
+                      prediction_interval:
+                        point: 50
+                        lower: 38
+                        upper: 66
+                        service_level: 90.0
+                        method: cv_heuristic
+                        sigma: 9.4
+                      rationale: 'Ordering 50: 30 days of history at 2.5/day, 14-day
+                        lead time, 10 on hand. Confidence Medium (Only 12 of 30 days
+                        had sales). Likely range 38-66 at 90% service level.'
                     active_lines_count: 18
                     skipped_lines_count: 7
                     pricing_tiers: []
@@ -120213,7 +120303,12 @@ paths:
         response minimums block per supplier flags whether the forecast totals fall
         below the supplier''s minimum_purchase_order / minimum_purchase_order_quantity.
         Display-only on this endpoint; enforcement is applied at PO creation time
-        (POST /api/inventory-forecasting/purchase-orders).'
+        (POST /api/inventory-forecasting/purchase-orders).
+
+
+        Each line also carries a `confidence` object (tier high/medium/low/new, 0-100
+        score, drivers, reasons, actions), a `prediction_interval` (point/lower/upper
+        at a service level), and a plain-language `rationale`.'
       requestBody:
         content:
           application/json:
@@ -124296,7 +124391,11 @@ paths:
         config: the same forecast configuration used for the forecast.
 
 
-        Returns 422 if too many products.'
+        Returns 422 if too many products.
+
+
+        `include_confidence` (boolean, default true) adds the confidence tier/score,
+        the prediction interval, and the plain-language rationale columns to the export.'
       requestBody:
         content:
           application/json:
@@ -124336,6 +124435,8 @@ paths:
                       properties: {}
                     demand_modifiers:
                       type: array
+                include_confidence:
+                  type: boolean
               example:
                 supplier_ids:
                 - 1
@@ -124353,6 +124454,7 @@ paths:
                   product_filters: {}
                   sales_filters: {}
                   demand_modifiers: []
+                include_confidence: true
       parameters: []
       responses:
         '200':
