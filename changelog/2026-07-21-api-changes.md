@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 28 additions.
+description: This release includes 44 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 28 additions.
+This release includes 44 additions.
 
 <!-- truncate -->
 
@@ -20,6 +20,24 @@ This release includes 28 additions.
 
 ### Inventory Expiry & Shelf-Life
 - `GET /api/inventory-expiry/lots/{fifoLayer}/write-off-impact` — Preview Lot Write-Off Impact
+
+### Inventory Intelligence
+- `GET /api/inventory-forecasting/accuracy` — List Forecast Accuracy
+- `POST /api/inventory-forecasting/accuracy/evaluate` — Evaluate Forecast Accuracy
+- `GET /api/inventory-forecasting/anomalies` — List Demand Anomalies
+- `POST /api/inventory-forecasting/anomalies/bulk-resolve` — Bulk Resolve Demand Anomalies
+- `POST /api/inventory-forecasting/anomalies/detect` — Detect Demand Anomalies
+- `POST /api/inventory-forecasting/anomalies/{id}/resolve` — Resolve Demand Anomaly
+- `GET /api/inventory-forecasting/promo-windows` — List Promo Windows
+- `POST /api/inventory-forecasting/promo-windows` — Create Promo Window
+- `DELETE /api/inventory-forecasting/promo-windows/{id}` — Delete Promo Window
+- `GET /api/inventory-forecasting/promo-windows/{id}` — Get Promo Window
+- `PUT /api/inventory-forecasting/promo-windows/{id}` — Update Promo Window
+- `POST /api/inventory-forecasting/promo-windows/{id}/measure` — Measure Promo Lift
+- `GET /api/inventory-forecasting/schedule-runs/{runId}/accuracy` — Get Run Forecast Accuracy
+- `GET /api/inventory-forecasting/schedule-runs/{runId}/lines` — List Forecast Run Lines
+- `POST /api/inventory-forecasting/schedule-runs/{runId}/lines` — Persist Forecast Run Lines
+- `GET /api/inventory-forecasting/schedule-runs/{runId}/lines/{productId}` — Get Forecast Run Line
 
 ### Movement Composer
 - `POST /api/v2/inventory/movements/composer` — Commit Movement
