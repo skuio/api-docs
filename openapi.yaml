@@ -198,6 +198,7 @@ tags:
 - name: POS / Register
 - name: Pick Lists
 - name: Report Templates
+- name: Movement Composer
 - name: Product Import
 - name: Vendor Credits
 - name: Vendor Deposits
@@ -126781,6 +126782,22 @@ paths:
         Path param: fifoLayer — the FIFO layer (lot) id, route-model-bound.
 
 
+        void_confirmations (array, optional) — when the write-off would consume stock
+        that is hard-allocated to a fulfillment with a printed shipping label, list
+        one entry per fulfillment to authorize voiding that label and proceeding.
+        Omit it and the request is rejected with a 422 conflict if hard-allocated
+        stock is in the way.
+
+        void_confirmations[].fulfillment_id (integer, required) — the fulfillment
+        whose label may be voided.
+
+        void_confirmations[].attempt_void (boolean, required) — true to void the label
+        and consume its stock.
+
+        void_confirmations[].reason (string, optional) — free-text audit note for
+        the void.
+
+
         :::info[Required scope: `inventory:write`]
 
         Grant this scope to your token under [Settings → Developer → Personal Access
@@ -126797,9 +126814,24 @@ paths:
                   type: integer
                 notes:
                   type: string
+                void_confirmations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fulfillment_id:
+                        type: integer
+                      attempt_void:
+                        type: boolean
+                      reason:
+                        type: string
               example:
                 quantity: 50
                 notes: Past expiry — destroyed on site.
+                void_confirmations:
+                - fulfillment_id: 77120
+                  attempt_void: true
+                  reason: Customer cancelled after the label was printed
       parameters:
       - name: fifoLayer
         in: path
@@ -126896,6 +126928,24 @@ paths:
                     errors:
                       quantity:
                       - The write-off quantity must be greater than zero.
+                example-2:
+                  summary: 422 Conflict — Hard-Allocated Stock
+                  value:
+                    message: Cannot decrease 5 units. Only 3 available after protecting
+                      2 hard-allocated units and 0 active hold units.
+                    conflict:
+                      requested_quantity: 5
+                      available_quantity: 3
+                      protected_quantity: 2
+                      conflicting_allocations:
+                      - type: shipping_label
+                        id: 88240
+                        reference: SO-10450
+                        quantity_allocated: 2
+                        line_details:
+                          fulfillment_id: 77120
+                          fulfillment_status: label_purchased
+                          tracking_number: 1Z999AA10123456784
         '429': *id001
         '401': *id002
         '403': *id003
@@ -127304,6 +127354,142 @@ paths:
         '404': *id004
       x-required-scope: inventory:write
       operationId: put-api-inventory-expiry-lots-fifolayer-review-status
+  /api/inventory-expiry/lots/{fifoLayer}/write-off-impact:
+    get:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Preview Lot Write-Off Impact
+      description: 'Preview the demotion and label-void impact of writing off a lot
+        before committing the write-off. Read-only — mutates nothing.
+
+
+        Returns one row per product the write-off would consume stock for. shortfall_quantity
+        is how much MORE than available the write-off removes (stock goes negative
+        if greater than zero). unallocated_quantity / soft_allocated_quantity / hard_allocated_quantity
+        split the consumed quantity into free / soft-reserved / hard-allocated (label-printed).
+        affected_allocations[] lists the order allocations that would be consumed,
+        highest priority first; allocation_type is soft or hard. For hard rows, fulfillment_id
+        / carrier identify the printed shipping label and carrier_void_supported /
+        voidable_status (voidable, or otherwise) indicate whether it can be voided
+        through the API.
+
+
+        Authentication: Requires Bearer token. Scope: scope.rw:inventory + permission
+        inventory.adjust.
+
+
+        Path param: fifoLayer — the FIFO layer (lot) id, route-model-bound.
+
+        Query param: quantity (optional) — the portion to write off; omit to preview
+        writing off the layer''s full remaining available quantity.'
+      parameters:
+      - name: fifoLayer
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The fifo layer ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        shortfall_quantity:
+                          type: integer
+                        unallocated_quantity:
+                          type: integer
+                        soft_allocated_quantity:
+                          type: integer
+                        hard_allocated_quantity:
+                          type: integer
+                        affected_allocations:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              allocation_id:
+                                type: integer
+                              allocation_type:
+                                type: string
+                              sales_order_id:
+                                type: integer
+                              order_number:
+                                type: string
+                              customer_name:
+                                type: string
+                              fulfillment_id:
+                                type: string
+                                nullable: true
+                              carrier:
+                                type: string
+                                nullable: true
+                              carrier_void_supported:
+                                type: string
+                                nullable: true
+                              voidable_status:
+                                type: string
+                                nullable: true
+                              voidable_detail:
+                                type: string
+                                nullable: true
+                              quantity:
+                                type: integer
+                example:
+                  data:
+                  - product_id: 123
+                    product_sku: WIDGET-001
+                    product_name: Blue Widget 500ml
+                    shortfall_quantity: 0
+                    unallocated_quantity: 4
+                    soft_allocated_quantity: 3
+                    hard_allocated_quantity: 2
+                    affected_allocations:
+                    - allocation_id: 88213
+                      allocation_type: soft
+                      sales_order_id: 4521
+                      order_number: SO-10442
+                      customer_name: Acme Retail
+                      fulfillment_id: null
+                      carrier: null
+                      carrier_void_supported: null
+                      voidable_status: null
+                      voidable_detail: null
+                      quantity: 3
+                    - allocation_id: 88240
+                      allocation_type: hard
+                      sales_order_id: 4530
+                      order_number: SO-10450
+                      customer_name: Beta Wholesale
+                      fulfillment_id: 77120
+                      carrier: ups
+                      carrier_void_supported: true
+                      voidable_status: voidable
+                      voidable_detail: null
+                      quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-inventory-expiry-lots-fifolayer-write-off-impact
   /api/inventory-expiry/lot-backfill/template:
     get:
       tags:
@@ -498588,6 +498774,276 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-integrations-17track-instances-instance-id-push-pending
+  /api/v2/inventory/movements/preview-release-impact:
+    post:
+      tags:
+      - Movement Composer
+      summary: Preview Release Impact
+      description: "Dry-run preview: given a receipt payload, compute which pending\
+        \ backorder allocations would be released once the movement is committed.\n\
+        \n**Named route:** `v2.inventory.movements.preview-release-impact`\n\n**When\
+        \ to call:** UI should invoke this BEFORE committing a `direction=receive`\
+        \ movement so the operator can confirm how incoming stock will be consumed\
+        \ by existing backorders.\n\n**Request body:** Same shape as the commit endpoint\
+        \ (see `Commit Movement`). Only `direction`, `warehouse_id`, `movement_date`,\
+        \ and `lines[*].product_id` + `lines[*].quantity` are required for preview.\n\
+        \n**Response shape:**\n```\n{\n  \"data\": {\n    \"total_units_receiving\"\
+        : 50,\n    \"total_allocations_released\": 2,\n    \"releases\": [ { fulfillment_id,\
+        \ product_id, quantity_released, ... } ],\n    \"held_back\": [ ... ]\n  }\n\
+        }\n```"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                direction:
+                  type: string
+                warehouse_id:
+                  type: integer
+                movement_date:
+                  type: string
+                against_type:
+                  type: string
+                against_id:
+                  type: integer
+                reason:
+                  type: string
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      unit_cost:
+                        type: number
+              example:
+                direction: receive
+                warehouse_id: 1
+                movement_date: '2026-04-19'
+                against_type: purchase_order
+                against_id: 4521
+                reason: PO receipt
+                lines:
+                - product_id: 123
+                  quantity: 50
+                  unit_cost: 12.5
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-inventory-movements-preview-release-impact
+  /api/v2/inventory/movements/preview-demotion-impact:
+    post:
+      tags:
+      - Movement Composer
+      summary: Preview Demotion Impact
+      description: "Dry-run preview: given an outbound/adjust-down payload, compute\
+        \ which allocations (unallocated, soft-allocated, hard-allocated) would be\
+        \ consumed, and whether any hard-allocated fulfillments will require an explicit\
+        \ void confirmation before commit.\n\n**Named route:** `v2.inventory.movements.preview-demotion-impact`\n\
+        \n**When to call:** UI should invoke this BEFORE committing `direction=ship`\
+        \ or `direction=adjust_down` to surface any allocations that would be demoted,\
+        \ including hard-allocated fulfillments whose shipping labels may need to\
+        \ be voided.\n\n**Key response field:** `requires_void_confirmation` (bool)\
+        \ — when true, the caller MUST include a matching `void_confirmations[]` entry\
+        \ in the commit payload for every hard-allocated fulfillment listed in `lines[*].buckets.hard_allocated.fulfillments`.\n\
+        \n**Response shape:**\n```\n{\n  \"data\": {\n    \"requires_void_confirmation\"\
+        : true,\n    \"lines\": [\n      {\n        \"product_id\": 123,\n       \
+        \ \"product_sku\": \"SKU-ABC\",\n        \"product_name\": \"Widget\",\n \
+        \       \"quantity_requested\": 10,\n        \"buckets\": {\n          \"\
+        unallocated\": { quantity, ... },\n          \"soft_allocated\": { quantity,\
+        \ fulfillments: [...] },\n          \"hard_allocated\": { quantity, fulfillments:\
+        \ [ { fulfillment_id, provider, ... } ] }\n        }\n      }\n    ]\n  }\n\
+        }\n```"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                direction:
+                  type: string
+                warehouse_id:
+                  type: integer
+                movement_date:
+                  type: string
+                against_type:
+                  type: string
+                reason:
+                  type: string
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      quantity:
+                        type: integer
+              example:
+                direction: ship
+                warehouse_id: 1
+                movement_date: '2026-04-19'
+                against_type: none
+                reason: Manual shipment
+                lines:
+                - product_id: 123
+                  quantity: -10
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-inventory-movements-preview-demotion-impact
+  /api/v2/inventory/movements/composer:
+    post:
+      tags:
+      - Movement Composer
+      summary: Commit Movement
+      description: "Atomic commit of a composed movement: creates inventory adjustments,\
+        \ persists lot/serial detail, and triggers allocation release or demotion\
+        \ — all inside one DB transaction. When an outbound demotion consumes hard-allocated\
+        \ stock, each confirmed shipping label is voided in the same transaction (the\
+        \ fulfillment's inventory is reversed back to on-hand, its FulfillmentOrder\
+        \ budget reopened, and the shipment marked canceled).\n\n**Named route:**\
+        \ `v2.inventory.movements.composer`\n\n**Request fields:**\n- `direction`\
+        \ (required) — one of: `receive`, `ship`, `adjust_up`, `adjust_down`\n- `warehouse_id`\
+        \ (required) — must exist in `warehouses`\n- `movement_date` (required) —\
+        \ ISO date\n- `against_type` (optional) — `purchase_order`, `transfer`, or\
+        \ `none`\n- `against_id` (optional) — ID of the source doc when `against_type`\
+        \ is set\n- `reason` (optional, max 1000 chars)\n- `lines[]` (required, min\
+        \ 1):\n    - `product_id` (required)\n    - `quantity` (required, non-zero\
+        \ — positive for inbound, negative for outbound)\n    - `unit_cost` (optional,\
+        \ >= 0)\n    - `serials[]` (optional, each max 100 chars)\n    - `lot` (optional):\
+        \ `lot_number`, `expires_at`, `manufactured_at`\n    - `override_reason` (optional,\
+        \ max 500 chars)\n- `void_confirmations[]` (required when preview-demotion\
+        \ returned `requires_void_confirmation=true`):\n    - `fulfillment_id` (required)\n\
+        \    - `attempt_void` (required bool)\n    - `reason` (optional, max 500 chars)\n\
+        \n**Response shape (200):**\n```\n{\n  \"data\": {\n    \"adjustment_ids\"\
+        : [101, 102],\n    \"voided_fulfillment_ids\": [9001],\n    \"skipped_fulfillments\"\
+        : []\n  },\n  \"message\": \"Receipt committed — 1 line(s).\"\n}\n```\n\n\
+        `voided_fulfillment_ids` lists the fulfillments whose labels were voided.\
+        \ `skipped_fulfillments` lists any confirmed fulfillment that could not be\
+        \ voided (already voided, or part of a multi-shipment merge group) as `{ fulfillment_id,\
+        \ kind, reason }` — these are skipped, not fatal.\n\n**Error (422):** Returned\
+        \ when hard-allocated fulfillments are missing from `void_confirmations` or\
+        \ any other `\\InvalidArgumentException` is thrown by the manager.\n```\n\
+        { \"error\": \"Hard-allocated fulfillment #9001 requires an explicit void\
+        \ confirmation before committing.\" }\n```\n\n`release_backorders` (boolean,\
+        \ inbound only, default true): when true, the received stock is applied to\
+        \ any waiting back-orders (promoting them to allocated); when false, the stock\
+        \ is received as free inventory and the back-orders keep waiting.\n\n`release_sales_order_ids`\
+        \ (array of ints, inbound only, optional): granular release. Omit or null\
+        \ to release ALL waiting back-orders; pass a list of sales order ids to release\
+        \ only those orders' back-orders. Requires `release_backorders` = true."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                direction:
+                  type: string
+                warehouse_id:
+                  type: integer
+                movement_date:
+                  type: string
+                against_type:
+                  type: string
+                against_id:
+                  type: integer
+                reason:
+                  type: string
+                release_backorders:
+                  type: boolean
+                release_sales_order_ids:
+                  type: string
+                  nullable: true
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      unit_cost:
+                        type: number
+                      serials:
+                        type: array
+                        items:
+                          type: string
+                      lot:
+                        type: object
+                        properties:
+                          lot_number:
+                            type: string
+                          expires_at:
+                            type: string
+                          manufactured_at:
+                            type: string
+                void_confirmations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      fulfillment_id:
+                        type: integer
+                      attempt_void:
+                        type: boolean
+                      reason:
+                        type: string
+              example:
+                direction: receive
+                warehouse_id: 1
+                movement_date: '2026-04-19'
+                against_type: purchase_order
+                against_id: 4521
+                reason: PO receipt — truck 8821
+                release_backorders: true
+                release_sales_order_ids: null
+                lines:
+                - product_id: 123
+                  quantity: 50
+                  unit_cost: 12.5
+                  serials:
+                  - SN-0001
+                  - SN-0002
+                  lot:
+                    lot_number: LOT-2026-04
+                    expires_at: '2027-04-19'
+                    manufactured_at: '2026-03-15'
+                void_confirmations:
+                - fulfillment_id: 9001
+                  attempt_void: true
+                  reason: Operator override — customer cancelled
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-v2-inventory-movements-composer
   /api/vendor-credits:
     get:
       tags:
@@ -528469,6 +528925,7 @@ x-tagGroups:
   - Quotes
   - POS / Register
   - Pick Lists
+  - Movement Composer
   - Product Import
   - Vendor Credits
   - Vendor Deposits
