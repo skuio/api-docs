@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 25 additions.
+description: This release includes 26 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 25 additions.
+This release includes 26 additions.
 
 <!-- truncate -->
 
@@ -52,5 +52,8 @@ This release includes 25 additions.
 ### Shopify
 - `GET /api/shopify/{integrationInstance}/pre-start-date-orders/results/{trackedJobLogId}` — Get Pre-Start-Date Order Search Results
 - `POST /api/shopify/{integrationInstance}/pre-start-date-orders/search-all` — Search All Pre-Start-Date Orders (Async)
+
+### Suppliers
+- `PUT /api/v2/suppliers/{supplier}/messaging-contact` — Set Supplier WhatsApp Contact
 
 _Spec version 1.0.0 → 1.0.0._
