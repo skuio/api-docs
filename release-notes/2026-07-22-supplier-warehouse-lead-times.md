@@ -3,7 +3,7 @@ title: "Per-warehouse lead times — how long each supplier takes to reach each 
 description: "Set a different lead time per warehouse on any supplier, so demand planning orders on the real delivery time for each destination instead of one blended average."
 authors: [product-team]
 tags: [major-feature, new, purchasing, inventory]
-date: 2026-07-21T20:00:00
+date: 2026-07-22T00:05:00
 ---
 
 Your suppliers rarely reach every one of your warehouses in the same number of days. The same vendor might land stock at your main warehouse in two weeks but take six by sea to a warehouse in another region — yet SKU.io applied a single lead time to every destination, so one of those reorder recommendations was always built on the wrong number. **Per-warehouse lead times** let you set a default lead time on a supplier and then override it for individual warehouses, and demand planning automatically uses the right one for each destination you forecast.
