@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 16 additions.
+description: This release includes 25 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 16 additions.
+This release includes 25 additions.
 
 <!-- truncate -->
 
@@ -25,6 +25,19 @@ This release includes 16 additions.
 - `POST /api/v2/inventory/movements/composer` — Commit Movement
 - `POST /api/v2/inventory/movements/preview-demotion-impact` — Preview Demotion Impact
 - `POST /api/v2/inventory/movements/preview-release-impact` — Preview Release Impact
+
+### Returns & RMAs
+- `GET /api/returns/reconciliation/recent` — List Recently Received Returns
+- `GET /api/returns/reconciliation/unmatched` — List Unmatched Returns
+- `POST /api/returns/reconciliation/{returnReceipt}/link` — Link Return Receipt to RMA
+
+### Serial Numbers
+- `GET /api/v2/products/{product}/serial-numbers` — List Product Serial Numbers
+- `GET /api/v2/serial-numbers` — List Serial Numbers
+- `POST /api/v2/serial-numbers/quarantine` — Quarantine Serial Numbers
+- `GET /api/v2/serial-numbers/recall-impact` — Serial Recall Impact
+- `POST /api/v2/serial-numbers/release` — Release Serial Numbers
+- `GET /api/v2/serial-numbers/{serialNumber}` — Get Serial Number
 
 ### ShipHero
 - `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit` — List Inventory Changes
