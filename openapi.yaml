@@ -328637,12 +328637,15 @@ paths:
         \ array, max 500): Product IDs to update\n- changes (required, array): List\
         \ of changes, each with:\n  - field (required, string): Field name to change.\
         \ Supports scalar product fields (e.g. weight, weight_unit, unit_cost, brand_id),\
-        \ 'pricing' (customer pricing tiers), 'supplier_pricing' (per-supplier pricing\
-        \ tiers — applies to ALL suppliers of each product), 'attribute' (custom attributes),\
-        \ and 'supplier' (link suppliers).\n  - operation (required, string): Operation\
-        \ type. Scalars use 'set' / 'clear'. Numeric/pricing/supplier_pricing also\
-        \ accept 'increase_by_amount', 'decrease_by_amount', 'increase_by_percent',\
-        \ 'decrease_by_percent'.\n  - value (nullable): New value\n  - tier_id (nullable,\
+        \ 'tags' (product tags), 'pricing' (customer pricing tiers), 'supplier_pricing'\
+        \ (per-supplier pricing tiers — applies to ALL suppliers of each product),\
+        \ 'attribute' (custom attributes), and 'supplier' (link suppliers).\n  - operation\
+        \ (required, string): Operation type. Scalars use 'set' / 'clear'. Numeric/pricing/supplier_pricing\
+        \ also accept 'increase_by_amount', 'decrease_by_amount', 'increase_by_percent',\
+        \ 'decrease_by_percent'. Tags accept 'append' (add), 'replace' (purge then\
+        \ set), 'remove' (remove specific), and 'clear' (remove all).\n  - value (nullable):\
+        \ New value. For 'tags', provide a list of strings (e.g. [\"Summer Sale\"\
+        , \"Clearance\"]); non-string tag values are rejected.\n  - tier_id (nullable,\
         \ integer): Required for 'pricing' (references product_pricing_tiers) and\
         \ 'supplier_pricing' (references supplier_pricing_tiers). Validation routes\
         \ to the correct table based on the sibling 'field' value.\n  - attribute_id\
@@ -328682,6 +328685,10 @@ paths:
                 - field: weight_unit
                   operation: set
                   value: kg
+                - field: tags
+                  operation: remove
+                  value:
+                  - WA Brands - Kettering
                 - field: pricing
                   operation: set
                   tier_id: 1
@@ -345753,6 +345760,224 @@ paths:
         '403': *id003
         '404': *id004
       operationId: delete-api-v2-inventory-allocations-inventoryallocation-pin-bin
+  /api/v2/inventory-allocations/pull-stock-donors:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: List Pull-Stock Donors
+      description: 'Lists the sales order lines a backordered line can pull on-hand
+        stock from. Returns other sales orders holding **soft** allocations (`allocated`,
+        not yet committed to a printed shipping label) of the same product in the
+        same warehouse pool, excluding the backordered line''s own sales order.
+
+
+        Each donor entry reports `movable_quantity` (soft on-hand that can be pulled)
+        and `priority` (lower number = higher priority), ordered least-urgent first
+        so the safest donors appear at the top.
+
+
+        Query:
+
+        - `destination_sales_order_line_id` (required, integer) — the backordered
+        sales order line that would receive the stock.
+
+
+        Returns an empty list when no other order in the pool holds soft-allocated
+        stock.'
+      parameters:
+      - name: destination_sales_order_line_id
+        in: query
+        schema:
+          type: integer
+        description: Required. The backordered sales order line that would receive
+          the pulled stock.
+        example: '55600'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sales_order_line_id:
+                          type: integer
+                        sales_order_id:
+                          type: integer
+                        sales_order_number:
+                          type: string
+                        customer_id:
+                          type: integer
+                        customer_name:
+                          type: string
+                        order_date:
+                          type: string
+                        priority:
+                          type: integer
+                        movable_quantity:
+                          type: integer
+                example:
+                  data:
+                  - sales_order_line_id: 55540
+                    sales_order_id: 33104
+                    sales_order_number: SO-033104
+                    customer_id: 44011
+                    customer_name: Blue Mountain Co
+                    order_date: '2026-05-13'
+                    priority: 8
+                    movable_quantity: 5
+                  - sales_order_line_id: 55512
+                    sales_order_id: 33099
+                    sales_order_number: SO-033099
+                    customer_id: 44011
+                    customer_name: Acme Retail
+                    order_date: '2026-05-12'
+                    priority: 3
+                    movable_quantity: 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-inventory-allocations-pull-stock-donors
+  /api/v2/inventory-allocations/pull-stock:
+    post:
+      tags:
+      - Adjustments & Transfers
+      summary: Pull Stock To Line
+      description: 'Pulls soft on-hand stock from one or more donor sales order lines
+        onto a backordered line, atomically. Each donor''s soft allocation is backordered
+        by the pulled quantity and the freed on-hand is allocated to the destination
+        line — a **conserved swap** that preserves total demand and FIFO cost layering
+        across every affected order. All pulls succeed or roll back together.
+
+
+        **Body**:
+
+        - `destination_sales_order_line_id` (required, integer) — the backordered
+        line that receives the stock.
+
+        - `pulls` (required, array, min 1) — the donors to pull from.
+
+        - `pulls[].sales_order_line_id` (required, integer) — a donor sales order
+        line holding soft allocations of the same product + warehouse. Get valid donors
+        from `GET /pull-stock-donors`.
+
+        - `pulls[].quantity` (required, numeric, > 0) — how much soft on-hand to pull
+        from that donor.
+
+
+        Returns `422` when a donor no longer holds enough soft-allocated stock, a
+        donor is the same line as the destination, or the destination has no matching
+        backorder to receive the pull.
+
+
+        On success returns the total `pulled_quantity` and the refreshed donor list.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                destination_sales_order_line_id:
+                  type: integer
+                pulls:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      sales_order_line_id:
+                        type: integer
+                      quantity:
+                        type: integer
+              example:
+                destination_sales_order_line_id: 55600
+                pulls:
+                - sales_order_line_id: 55540
+                  quantity: 2
+                - sales_order_line_id: 55512
+                  quantity: 1
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      pulled_quantity:
+                        type: integer
+                      donors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_line_id:
+                              type: integer
+                            sales_order_id:
+                              type: integer
+                            sales_order_number:
+                              type: string
+                            customer_id:
+                              type: integer
+                            customer_name:
+                              type: string
+                            order_date:
+                              type: string
+                            priority:
+                              type: integer
+                            movable_quantity:
+                              type: integer
+                example:
+                  data:
+                    pulled_quantity: 3
+                    donors:
+                    - sales_order_line_id: 55540
+                      sales_order_id: 33104
+                      sales_order_number: SO-033104
+                      customer_id: 44011
+                      customer_name: Blue Mountain Co
+                      order_date: '2026-05-13'
+                      priority: 8
+                      movable_quantity: 3
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: One of the selected orders no longer holds enough soft-allocated
+                    stock to pull. Please refresh and try again.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-v2-inventory-allocations-pull-stock
   /api/v2/inventory-allocations/backorders:
     get:
       tags:

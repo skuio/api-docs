@@ -1,18 +1,22 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 14 additions.
+description: This release includes 16 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 14 additions.
+This release includes 16 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Adjustments & Transfers
+- `POST /api/v2/inventory-allocations/pull-stock` — Pull Stock To Line
+- `GET /api/v2/inventory-allocations/pull-stock-donors` — List Pull-Stock Donors
 
 ### Inventory Expiry & Shelf-Life
 - `GET /api/inventory-expiry/lots/{fifoLayer}/write-off-impact` — Preview Lot Write-Off Impact
