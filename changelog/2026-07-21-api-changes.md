@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 6 additions.
+description: This release includes 14 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 6 additions.
+This release includes 14 additions.
 
 <!-- truncate -->
 
@@ -21,6 +21,16 @@ This release includes 6 additions.
 - `POST /api/v2/inventory/movements/composer` — Commit Movement
 - `POST /api/v2/inventory/movements/preview-demotion-impact` — Preview Demotion Impact
 - `POST /api/v2/inventory/movements/preview-release-impact` — Preview Release Impact
+
+### ShipHero
+- `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit` — List Inventory Changes
+- `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit/export` — Export Inventory Audit
+- `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit/kpi-stats` — Get Inventory Audit KPI Stats
+- `POST /api/shiphero/integration-instances/{integration_instance}/inventory-audit/sync` — Sync Inventory Audit
+- `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit/sync-info` — Get Inventory Audit Sync Info
+- `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit/{inventoryChange}` — Get Inventory Change
+- `GET /api/shiphero/integration-instances/{integration_instance}/products` — List Products
+- `GET /api/shiphero/integration-instances/{integration_instance}/products/{sku}` — Get Product
 
 ### Shopify
 - `GET /api/shopify/{integrationInstance}/pre-start-date-orders/results/{trackedJobLogId}` — Get Pre-Start-Date Order Search Results
