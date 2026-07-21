@@ -75856,9 +75856,10 @@ paths:
 
         - field_mappings (optional, array) — the in-progress mappings to resolve.
         Each item: sales_channel_category_field_id (integer), source_type (one of
-        product_field, product_attribute, static, expression), source_value (string).
-        Blank or empty mappings are ignored and fall through to any existing channel
-        mapping or default.
+        product_field, product_attribute, static, expression), source_value (string),
+        OR core_field_name (string) to target a core listing field (Title/Description/Price)
+        by name. Blank or empty mappings are ignored and fall through to any existing
+        channel mapping or default.
 
 
         The response `values` object is keyed by channel field name; each entry has
@@ -75895,15 +75896,12 @@ paths:
                 - sales_channel_category_field_id: 501
                   source_type: product_field
                   source_value: brand
-                - sales_channel_category_field_id: 502
-                  source_type: product_attribute
-                  source_value: '17'
                 - sales_channel_category_field_id: 503
                   source_type: static
                   source_value: Clear
-                - sales_channel_category_field_id: 504
-                  source_type: expression
-                  source_value: '{{product.brand}} - {{product.name}}'
+                - core_field_name: Description
+                  source_type: static
+                  source_value: Durable, water-resistant, built to last.
       parameters:
       - name: salesChannel
         in: path
@@ -332868,7 +332866,7 @@ paths:
       description: 'Lightweight paginated product lookup that returns only core identifying
         fields (id, sku, name, barcode, type, unit_cost, price, image_url) — much
         faster than the full List Products endpoint when you only need to resolve
-        products by SKU, name, or barcode.
+        products by SKU, name, barcode, or id.
 
 
         :::info[Required scope: `products:read`]
@@ -332881,7 +332879,8 @@ paths:
 
         When a search term is given, results are ranked exact-SKU match first, SKU
         prefix match second, then everything else; within each rank results are ordered
-        by SKU. Without a search term, all products are returned ordered by SKU.
+        by SKU. A fully-numeric term additionally matches the product id directly.
+        Without a search term, all products are returned ordered by SKU.
 
 
         Archived products are excluded unless include_archived=true. Pass sellable_only=true
@@ -342110,7 +342109,11 @@ paths:
 
         Authentication: Requires Bearer token.
 
-        Feature flag: requires `listing-publishing` to be enabled.'
+        Feature flag: requires `listing-publishing` to be enabled.
+
+
+        Each item includes `type` — the column''s data type (`text` or `number`) —
+        so the mapping picker can show what kind of value a column carries.'
       parameters: []
       responses:
         '200':
@@ -342129,36 +342132,52 @@ paths:
                           type: string
                         label:
                           type: string
+                        type:
+                          type: string
                 example:
                   data:
                   - value: name
                     label: Name
+                    type: text
                   - value: sku
                     label: SKU
+                    type: text
                   - value: barcode
                     label: Barcode (UPC / EAN)
+                    type: text
                   - value: mpn
                     label: MPN
+                    type: text
                   - value: brand
                     label: Brand
+                    type: text
                   - value: price
                     label: Price (default tier)
+                    type: number
                   - value: weight
                     label: Weight
+                    type: number
                   - value: weight_unit
                     label: Weight unit
+                    type: text
                   - value: length
                     label: Length
+                    type: number
                   - value: width
                     label: Width
+                    type: number
                   - value: height
                     label: Height
+                    type: number
                   - value: dimension_unit
                     label: Dimension unit
+                    type: text
                   - value: case_quantity
                     label: Case quantity
+                    type: number
                   - value: fba_prep_instructions
                     label: FBA prep instructions
+                    type: text
         '429': *id001
         '401': *id002
         '403': *id003
@@ -343089,6 +343108,139 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-v2-listing-drafts-draft-validate
+  /api/v2/listing-drafts/{draft}/preview-against-product:
+    post:
+      tags:
+      - Product Listings
+      summary: Preview Draft Against Product
+      description: 'Resolve this draft''s mappings (its template + field overrides)
+        against a DIFFERENT product, returning the value each channel field would
+        receive for that product — with no persistence. Useful for a "preview against
+        another product" control: mapped fields (`product_field` / `product_attribute`
+        / `expression`) re-evaluate against the given product, while typed literal
+        values stay as-is.
+
+
+        Request body:
+
+        - `product_id` (integer, required) — the product to resolve against; must
+        exist.
+
+
+        Response: `data.product` echoes the previewed product, and `data.values` is
+        keyed by channel field name, each with the resolved `value` and its `provenance`
+        (override / template / channel_mapping / integration_mapping / channel_default
+        / blank).
+
+
+        Authentication: Requires Bearer token.
+
+        Feature flag: requires `listing-publishing` to be enabled.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id:
+                  type: integer
+              example:
+                product_id: 87
+      parameters:
+      - name: draft
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Listing draft ID
+        example: '42'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          sku:
+                            type: string
+                      values:
+                        type: object
+                        properties:
+                          Brand:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              provenance:
+                                type: string
+                          Color:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                              provenance:
+                                type: string
+                          Size:
+                            type: object
+                            properties:
+                              value:
+                                type: string
+                                nullable: true
+                              provenance:
+                                type: string
+                example:
+                  data:
+                    product:
+                      id: 87
+                      name: Blue Widget - 2 Pack
+                      sku: WIDGET-BLUE-2PK
+                    values:
+                      Brand:
+                        value: Acme
+                        provenance: override
+                      Color:
+                        value: Blue
+                        provenance: template
+                      Size:
+                        value: null
+                        provenance: blank
+        '422':
+          description: Unprocessable Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      product_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected product id is invalid.
+                  errors:
+                    product_id:
+                    - The selected product id is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-v2-listing-drafts-draft-preview-against-product
   /api/product-listings/{productListing}/get-inventory:
     get:
       tags:

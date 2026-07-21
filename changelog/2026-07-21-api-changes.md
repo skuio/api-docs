@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 46 additions.
+description: This release includes 47 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 46 additions.
+This release includes 47 additions.
 
 <!-- truncate -->
 
@@ -47,6 +47,9 @@ This release includes 46 additions.
 - `POST /api/v2/inventory/movements/composer` — Commit Movement
 - `POST /api/v2/inventory/movements/preview-demotion-impact` — Preview Demotion Impact
 - `POST /api/v2/inventory/movements/preview-release-impact` — Preview Release Impact
+
+### Product Listings
+- `POST /api/v2/listing-drafts/{draft}/preview-against-product` — Preview Draft Against Product
 
 ### Reporting
 - `GET /api/reporting/irr/products/{product}/cash-flows` — Get Product Cash-Flow Proof
