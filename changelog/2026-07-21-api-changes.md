@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-21
-description: This release includes 47 additions.
+description: This release includes 50 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-21
 ---
 
-This release includes 47 additions.
+This release includes 50 additions.
 
 <!-- truncate -->
 
@@ -32,6 +32,9 @@ This release includes 47 additions.
 - `POST /api/inventory-forecasting/anomalies/bulk-resolve` — Bulk Resolve Demand Anomalies
 - `POST /api/inventory-forecasting/anomalies/detect` — Detect Demand Anomalies
 - `POST /api/inventory-forecasting/anomalies/{id}/resolve` — Resolve Demand Anomaly
+- `POST /api/inventory-forecasting/lead-time-coverage/products` — List Measured Lead Time Coverage Products
+- `POST /api/inventory-forecasting/lead-time-coverage/summary` — Get Measured Lead Time Coverage Summary
+- `GET /api/inventory-forecasting/lead-time-coverage/{supplierProduct}/purchase-orders` — List Measured Lead Time Contributing Purchase Orders
 - `GET /api/inventory-forecasting/promo-windows` — List Promo Windows
 - `POST /api/inventory-forecasting/promo-windows` — Create Promo Window
 - `DELETE /api/inventory-forecasting/promo-windows/{id}` — Delete Promo Window
