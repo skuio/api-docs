@@ -121861,8 +121861,9 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Build Forecast
-      description: 'Build a forecast for one or more suppliers. Returns forecast results
-        per supplier including recommended order quantities.
+      description: 'Build a replenishment forecast for one or more suppliers and return
+        recommended order quantities per supplier, with a full per-line breakdown
+        of how each number was derived.
 
 
         :::info[Authorization]
@@ -121876,30 +121877,182 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Forecast types: sales_history, target_stock_level, fill_backorders.
+        FORECAST TYPES (forecast_type)
+
+        - with_sales_history: derive demand from historical sales velocity over the
+        chosen window. The most common mode.
+
+        - target_stock_level: order up to a fixed target quantity per product (target_quantity),
+        or up to each product''s minimum stock level when use_min_stock_level_as_target
+        is true. Velocity is not used to set the target.
+
+        - fill_backorders: order only what is needed to clear outstanding backorders.
+        Baseline and trend settings do not apply.
 
 
-        Product filters and sales filters accept a filter_groups tree structure (GroupedFilterSupport)
-        with optional legacy filters.filterSet format for backward compatibility.
+        BASELINE METHODS (baseline_method) - how the daily velocity baseline is derived
+        from sales history (applies to with_sales_history)
+
+        - flat (default): plain mean over the window (total units / days covered).
+        No trend. Legacy behaviour - stable and predictable. Use when demand is roughly
+        level.
+
+        - recency_weighted: weights recent history more heavily than older history,
+        so a recent shift in demand is reflected faster without projecting a hard
+        trend line. Use for choppy demand that has recently stepped up or down. Tune
+        with trend_half_life_days.
+
+        - damped_trend: fits the recent growth (or decline) trend and projects it
+        forward, attenuated by trend_damping_factor so a short surge does not overshoot
+        into over-ordering. Use for a SKU on a sustained growth or decline curve.
 
 
-        Filter operators available: is, is_not, contains, does_not_contain, starts_with,
-        ends_with, is_empty, is_not_empty, is_one_of, greater_than, less_than, between.
+        DAMPED-TREND CONTROLS
+
+        - trend_damping_factor (0..1, default 0.85): the damping factor phi. Each
+        period further out keeps only phi of the previous period''s growth, so the
+        projected trend flattens instead of compounding forever. Lower = more damping
+        (closer to flat mean); 1.0 = undamped.
+
+        - trend_max_growth_pct (>= 0, default 100): caps how far the trend may lift
+        the baseline above the flat mean. 100 means the trend may at most double the
+        flat mean; 0 disables any lift. When the cap binds, the line reports trend_capped:
+        true.
+
+        - trend_half_life_days (>= 1, nullable, default 21): reserved tuning for recency_weighted
+        - the age at which a day''s weight halves.
 
 
-        Returns 422 if too many products are found for any supplier.
+        SPARSE-HISTORY FALLBACK
 
+        A trend needs enough signal to be trustworthy. If a product has fewer than
+        roughly 8 weeks of history or fewer than 8 orders in the window, the trend
+        is skipped and the baseline falls back to the flat mean for that product (trend_factor
+        1.0), regardless of baseline_method. This stops a couple of early sales from
+        projecting a runaway trend.
+
+
+        ANOMALY CLEANSING (exclude_detected_anomalies, default false)
+
+        When true, days already resolved as excluded or smoothed anomalies for a product
+        are dropped (excluded) or replaced with their expected value (smoothed) before
+        the baseline is computed. This de-contaminates one-off promo spikes and stockout
+        gaps so they do not distort ordinary velocity. Detect and resolve anomalies
+        first (see the Anomalies folder). Each line reports how many days were affected
+        via inputs.anomaly_days_excluded and inputs.anomaly_days_smoothed.
+
+
+        DEMAND MODIFIERS (demand_modifiers[])
+
+        An array of adjustments layered onto the baseline. Each entry has a type:
+
+        - percentage: scale demand by (1 + value/100), e.g. value 10 = +10%.
+
+        - seasonal / event: a bounded uplift or reduction over a date range (start_date,
+        end_date) for a known seasonal peak or one-time event; value is the percent
+        change.
+
+        - override: replace the daily average outright with value.
+
+        - promo_lift: re-apply a previously measured promotion. Set promo_window_id
+        to a promo window whose lift has been measured; the server hydrates that window''s
+        live measured lift and applies it as a MULTIPLICATIVE factor on the current
+        baseline. Because it multiplies the CURRENT baseline (not a stored absolute
+        number), the same promo automatically re-scales as the business grows. Send
+        value 0 - it is ignored and hydrated server-side.
+
+        Optional per-modifier fields: apply_to (all or a scope key), name (label),
+        period_key, start_date, end_date, product_id (limit to one product), promo_window_id
+        (promo_lift only).
+
+
+        FILTERS (product_filters, sales_filters)
+
+        Both accept a filter_groups tree: a conjunction (and / or) plus a children
+        array of conditions and nested groups. Each condition has column, operator,
+        and value. product_filters narrows which products are forecast; sales_filters
+        narrows which historical orders feed the velocity baseline. A legacy filters.filterSet
+        shape is also accepted for older saved configurations.
+
+        Operators: is, is_not, contains, does_not_contain, starts_with, ends_with,
+        is_empty, is_not_empty, is_one_of, greater_than, less_than, between.
+
+        Example: {"filter_groups": {"conjunction": "and", "children": [{"type": "condition",
+        "condition": {"column": "order_status", "operator": "is_one_of", "value":
+        ["shipped", "fulfilled"]}}]}}
+
+
+        DECOMPOSITION RETURNED PER LINE (inputs object)
+
+        Each forecast line''s inputs object exposes the multiplicative decomposition:
+
+        - base_flat: the flat mean before any trend.
+
+        - trend_factor: the multiplicative trend baked into the baseline (1.0 = none).
+
+        - baseline_method: which method produced the baseline.
+
+        - trend_capped: true if trend_max_growth_pct clamped the trend.
+
+        - anomaly_days_excluded / anomaly_days_smoothed: how many history days were
+        dropped / replaced by anomaly cleansing.
+
+        - promo_factor: the multiplicative promo lift applied (null when no promo_lift
+        modifier applied).
+
+        - promo_window_name: the promo window that supplied the lift (null if none).
+
+        - promo_current_baseline: the baseline the promo factor multiplied.
+
+        The effective daily_average is base_flat x trend_factor x (promo_factor or
+        1), then any percentage/event/override demand modifiers.
+
+
+        SCENARIOS (copy a body variation for each)
+
+        1) Flat baseline (default / legacy): omit baseline_method or send "flat".
+        Velocity is the plain window mean; inputs.trend_factor is 1.0 and inputs.base_flat
+        equals daily_average.
+
+        2) Damped-trend for a growing SKU: baseline_method "damped_trend", trend_damping_factor
+        0.85, trend_max_growth_pct 100. Recent growth is projected forward but damped
+        and capped at 2x the flat mean; inputs.trend_factor rises above 1.0 and inputs.trend_capped
+        reports whether the cap bound.
+
+        3) Recency-weighted: baseline_method "recency_weighted", trend_half_life_days
+        21. Recent days count more; no hard trend line is projected.
+
+        4) Anomaly-cleansed baseline: exclude_detected_anomalies true (after resolving
+        anomalies as excluded/smoothed). Promo spikes and stockout gaps are removed
+        before the mean is taken; inputs.anomaly_days_excluded / inputs.anomaly_days_smoothed
+        report the count.
+
+        5) Re-apply a past promotion: add a demand_modifiers entry of type "promo_lift"
+        with promo_window_id set to a measured promo window and value 0. The window''s
+        live lift multiplies the current baseline, so it auto-scales with growth;
+        inputs.promo_factor, inputs.promo_window_name, and inputs.promo_current_baseline
+        are populated.
+
+        6) Target stock level / fill backorders: forecast_type "target_stock_level"
+        (with target_quantity, or use_min_stock_level_as_target true) orders up to
+        a fixed target; forecast_type "fill_backorders" clears backorders only. Baseline
+        and trend settings do not apply to fill_backorders.
+
+
+        MINIMUMS
 
         enforce_minimum_order_value / enforce_minimum_order_quantity: when true, the
-        response minimums block per supplier flags whether the forecast totals fall
-        below the supplier''s minimum_purchase_order / minimum_purchase_order_quantity.
-        Display-only on this endpoint; enforcement is applied at PO creation time
-        (POST /api/inventory-forecasting/purchase-orders).
+        per-supplier minimums block flags whether the forecast totals fall below the
+        supplier''s minimum_purchase_order / minimum_purchase_order_quantity. Display-only
+        here; enforcement is applied at PO creation time (POST /api/inventory-forecasting/purchase-orders).
 
 
-        Each line also carries a `confidence` object (tier high/medium/low/new, 0-100
-        score, drivers, reasons, actions), a `prediction_interval` (point/lower/upper
-        at a service level), and a plain-language `rationale`.'
+        Each line also carries a confidence object (tier high/medium/low/new, 0-100
+        score, drivers, reasons, actions), a prediction_interval (point/lower/upper
+        at a service level), and a plain-language rationale.
+
+
+        Returns 422 if too many products are found for any supplier.'
       requestBody:
         content:
           application/json:
@@ -121944,6 +122097,16 @@ paths:
                   nullable: true
                 ignore_min_stock_level:
                   type: boolean
+                baseline_method:
+                  type: string
+                trend_damping_factor:
+                  type: number
+                trend_max_growth_pct:
+                  type: integer
+                trend_half_life_days:
+                  type: integer
+                exclude_detected_anomalies:
+                  type: boolean
                 product_filters:
                   type: object
                   properties:
@@ -121970,7 +122133,30 @@ paths:
                                     type: string
                 sales_filters:
                   type: object
-                  properties: {}
+                  properties:
+                    filter_groups:
+                      type: object
+                      properties:
+                        conjunction:
+                          type: string
+                        children:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                              condition:
+                                type: object
+                                properties:
+                                  column:
+                                    type: string
+                                  operator:
+                                    type: string
+                                  value:
+                                    type: array
+                                    items:
+                                      type: string
                 demand_modifiers:
                   type: array
                   items:
@@ -122002,7 +122188,7 @@ paths:
                 supplier_ids:
                 - 1
                 - 2
-                forecast_type: sales_history
+                forecast_type: with_sales_history
                 target_stock_days: 30
                 sales_history_days: 90
                 sales_start_date: null
@@ -122017,6 +122203,11 @@ paths:
                 destination_warehouse_id: null
                 pricing_tier_id: null
                 ignore_min_stock_level: false
+                baseline_method: damped_trend
+                trend_damping_factor: 0.85
+                trend_max_growth_pct: 100
+                trend_half_life_days: 21
+                exclude_detected_anomalies: true
                 product_filters:
                   filter_groups:
                     conjunction: and
@@ -122026,16 +122217,32 @@ paths:
                         column: sku
                         operator: contains
                         value: PROD
-                sales_filters: {}
+                sales_filters:
+                  filter_groups:
+                    conjunction: and
+                    children:
+                    - type: condition
+                      condition:
+                        column: order_status
+                        operator: is_one_of
+                        value:
+                        - shipped
+                        - fulfilled
                 demand_modifiers:
-                - type: percentage
-                  value: 10
+                - type: event
+                  value: 15
                   apply_to: all
                   name: Holiday Boost
                   period_key: null
                   start_date: '2024-11-01'
                   end_date: '2024-12-31'
                   product_id: null
+                - type: promo_lift
+                  value: 0
+                  apply_to: all
+                  name: Re-apply Black Friday 2024
+                  product_id: 56
+                  promo_window_id: 12
                 enforce_minimum_order_value: false
                 enforce_minimum_order_quantity: false
       parameters: []
@@ -122101,6 +122308,68 @@ paths:
                                 type: integer
                               status:
                                 type: string
+                              inputs:
+                                type: object
+                                properties:
+                                  target_days:
+                                    type: integer
+                                  target_days_source:
+                                    type: string
+                                  leadtime:
+                                    type: integer
+                                  leadtime_source:
+                                    type: string
+                                  supplier_lead_time:
+                                    type: integer
+                                  effective_days:
+                                    type: integer
+                                  daily_average:
+                                    type: number
+                                  available:
+                                    type: integer
+                                  inbound:
+                                    type: integer
+                                  in_transit:
+                                    type: integer
+                                  backordered:
+                                    type: integer
+                                  moq:
+                                    type: integer
+                                  moq_source:
+                                    type: string
+                                  min_stock_level:
+                                    type: integer
+                                  min_stock_level_ignored:
+                                    type: boolean
+                                  order_trigger:
+                                    type: string
+                                  rounding_method:
+                                    type: string
+                                  base_daily_average:
+                                    type: number
+                                  base_flat:
+                                    type: number
+                                  trend_factor:
+                                    type: number
+                                  baseline_method:
+                                    type: string
+                                  trend_capped:
+                                    type: boolean
+                                  anomaly_days_excluded:
+                                    type: integer
+                                  anomaly_days_smoothed:
+                                    type: integer
+                                  promo_factor:
+                                    type: string
+                                    nullable: true
+                                  promo_window_name:
+                                    type: string
+                                    nullable: true
+                                  promo_current_baseline:
+                                    type: string
+                                    nullable: true
+                                  formula:
+                                    type: string
                               confidence:
                                 type: object
                                 properties:
@@ -122178,56 +122447,166 @@ paths:
                     summary:
                       total_products: 25
                       products_to_order: 18
-                      total_units: 450
-                      total_value: 12750.0
+                      total_units: 512
+                      total_value: 14380.0
                     lines:
                     - supplier_product_id: 101
                       product_id: 55
                       sku: PROD-001
                       name: Widget A
-                      recommended_quantity: 50
+                      recommended_quantity: 88
                       unit_cost: 12.5
-                      total_cost: 625.0
+                      total_cost: 1100.0
                       current_stock: 10
-                      days_of_stock: 4
-                      avg_daily_sales: 2.5
+                      days_of_stock: 2
+                      avg_daily_sales: 5.1618
                       leadtime_days: 14
                       status: order
+                      inputs:
+                        target_days: 30
+                        target_days_source: config
+                        leadtime: 14
+                        leadtime_source: supplier
+                        supplier_lead_time: 14
+                        effective_days: 44
+                        daily_average: 5.1618
+                        available: 10
+                        inbound: 0
+                        in_transit: 0
+                        backordered: 0
+                        moq: 25
+                        moq_source: supplier
+                        min_stock_level: 20
+                        min_stock_level_ignored: false
+                        order_trigger: velocity
+                        rounding_method: round_half_up
+                        base_daily_average: 5.1618
+                        base_flat: 3.08
+                        trend_factor: 1.6759
+                        baseline_method: damped_trend
+                        trend_capped: false
+                        anomaly_days_excluded: 2
+                        anomaly_days_smoothed: 0
+                        promo_factor: null
+                        promo_window_name: null
+                        promo_current_baseline: null
+                        formula: (daily_average x effective_days) - available - inbound
+                          + backordered
                       confidence:
                         tier: medium
                         score: 62
                         drivers:
                         - key: history_length
                           label: History length
-                          value: 30 days
+                          value: 90 days
                           status: ok
                         - key: selling_density
                           label: Selling density
-                          value: 12/30 days had sales
-                          status: warn
+                          value: 71/90 days had sales
+                          status: ok
                         - key: variability
                           label: Demand variability (CV)
                           value: '0.80'
                           status: warn
                         - key: recency
                           label: Last sale
-                          value: 3 days ago
+                          value: 1 day ago
                           status: ok
                         reasons:
-                        - Only 12 of 30 days had sales
+                        - Demand is moderately variable (CV 0.80)
                         actions:
                         - type: extend_window
                           label: Extend the sales window
                       prediction_interval:
-                        point: 50
-                        lower: 38
-                        upper: 66
+                        point: 88
+                        lower: 66
+                        upper: 116
                         service_level: 90.0
                         method: cv_heuristic
-                        sigma: 9.4
-                      rationale: 'Ordering 50: 30 days of history at 2.5/day, 14-day
-                        lead time, 10 on hand. Confidence Medium (Only 12 of 30 days
-                        had sales). Likely range 38-66 at 90% service level.'
+                        sigma: 15.1
+                      rationale: 'Ordering 88: 90 days of history, damped-trend baseline
+                        lifting a 3.08/day flat mean to 5.16/day (trend factor 1.68),
+                        2 promo-spike days excluded, 14-day lead time, 10 on hand.
+                        Confidence Medium. Likely range 66-116 at 90% service level.'
+                    - supplier_product_id: 102
+                      product_id: 56
+                      sku: PROD-002
+                      name: Widget B
+                      recommended_quantity: 140
+                      unit_cost: 8.0
+                      total_cost: 1120.0
+                      current_stock: 25
+                      days_of_stock: 3
+                      avg_daily_sales: 7.77
+                      leadtime_days: 14
+                      status: order
+                      inputs:
+                        target_days: 30
+                        target_days_source: config
+                        leadtime: 14
+                        leadtime_source: supplier
+                        supplier_lead_time: 14
+                        effective_days: 44
+                        daily_average: 7.77
+                        available: 25
+                        inbound: 0
+                        in_transit: 0
+                        backordered: 0
+                        moq: 50
+                        moq_source: supplier
+                        min_stock_level: 30
+                        min_stock_level_ignored: false
+                        order_trigger: velocity
+                        rounding_method: round_half_up
+                        base_daily_average: 4.2
+                        base_flat: 4.2
+                        trend_factor: 1.0
+                        baseline_method: damped_trend
+                        trend_capped: false
+                        anomaly_days_excluded: 0
+                        anomaly_days_smoothed: 0
+                        promo_factor: 1.85
+                        promo_window_name: Black Friday 2024
+                        promo_current_baseline: 4.2
+                        demand_modifier_description: 'Promo lift: Black Friday 2024
+                          (x1.85)'
+                        formula: (daily_average x effective_days) - available - inbound
+                          + backordered
+                      confidence:
+                        tier: high
+                        score: 84
+                        drivers:
+                        - key: history_length
+                          label: History length
+                          value: 90 days
+                          status: ok
+                        - key: selling_density
+                          label: Selling density
+                          value: 88/90 days had sales
+                          status: ok
+                        - key: variability
+                          label: Demand variability (CV)
+                          value: '0.42'
+                          status: ok
+                        - key: recency
+                          label: Last sale
+                          value: today
+                          status: ok
+                        reasons:
+                        - Dense, recent, low-variability history
+                        actions: []
+                      prediction_interval:
+                        point: 140
+                        lower: 118
+                        upper: 168
+                        service_level: 90.0
+                        method: cv_heuristic
+                        sigma: 17.2
+                      rationale: 'Ordering 140: flat 4.2/day baseline re-scaled by
+                        the measured Black Friday 2024 lift (x1.85) to 7.77/day, 14-day
+                        lead time, 25 on hand. The lift is multiplicative on the current
+                        baseline, so it tracks this year''s larger demand. Confidence
+                        High. Likely range 118-168 at 90% service level.'
                     active_lines_count: 18
                     skipped_lines_count: 7
                     pricing_tiers: []
@@ -122266,9 +122645,9 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Build Forecast (Single Supplier)
-      description: 'Build a forecast for a single supplier. If product count is large,
-        dispatches a background job and returns a job_id for polling. Otherwise returns
-        the result synchronously.
+      description: 'Build a forecast for a single supplier. If the product count is
+        large the request is queued as a background job and the response returns a
+        job_id for polling; otherwise the result is returned synchronously.
 
 
         :::info[Authorization]
@@ -122286,19 +122665,41 @@ paths:
         polling).
 
 
-        Returns 422 if too many products.
+        This endpoint accepts the same forecast controls as Build Forecast, including
+        the baseline decomposition:
+
+        - baseline_method: flat (default), recency_weighted, or damped_trend.
+
+        - trend_damping_factor (0..1, default 0.85): damping factor phi for damped_trend;
+        lower = more damping.
+
+        - trend_max_growth_pct (>= 0, default 100): caps the trend lift above the
+        flat mean (100 = may at most double it).
+
+        - trend_half_life_days (>= 1, nullable, default 21): reserved tuning for recency_weighted.
+
+        - exclude_detected_anomalies (default false): drop/replace resolved anomaly
+        days before computing the baseline.
+
+        - demand_modifiers[]: percentage, seasonal, event, override, or promo_lift
+        (carry promo_window_id and send value 0 - the window''s measured lift is applied
+        multiplicatively to the current baseline).
+
+
+        The sparse-history fallback applies here too: a product with fewer than roughly
+        8 weeks of history or fewer than 8 orders falls back to the flat mean (trend_factor
+        1.0). See Build Forecast for the full field guide and the per-line inputs
+        decomposition (base_flat, trend_factor, baseline_method, trend_capped, anomaly_days_excluded,
+        anomaly_days_smoothed, promo_factor, promo_window_name, promo_current_baseline).
 
 
         enforce_minimum_order_value / enforce_minimum_order_quantity: when true, the
-        response minimums block per supplier flags whether the forecast totals fall
-        below the supplier''s minimum_purchase_order / minimum_purchase_order_quantity.
-        Display-only on this endpoint; enforcement is applied at PO creation time
-        (POST /api/inventory-forecasting/purchase-orders).
+        minimums block flags whether the forecast totals fall below the supplier''s
+        minimum_purchase_order / minimum_purchase_order_quantity. Display-only here;
+        enforcement is applied at PO creation time (POST /api/inventory-forecasting/purchase-orders).
 
 
-        Each line also carries a `confidence` object (tier high/medium/low/new, 0-100
-        score, drivers, reasons, actions), a `prediction_interval` (point/lower/upper
-        at a service level), and a plain-language `rationale`.'
+        Returns 422 if too many products are found.'
       requestBody:
         content:
           application/json:
@@ -122327,6 +122728,16 @@ paths:
                   type: boolean
                 rounding_method:
                   type: string
+                baseline_method:
+                  type: string
+                trend_damping_factor:
+                  type: number
+                trend_max_growth_pct:
+                  type: integer
+                trend_half_life_days:
+                  type: integer
+                exclude_detected_anomalies:
+                  type: boolean
                 product_filters:
                   type: object
                   properties: {}
@@ -122335,6 +122746,21 @@ paths:
                   properties: {}
                 demand_modifiers:
                   type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      value:
+                        type: integer
+                      apply_to:
+                        type: string
+                      name:
+                        type: string
+                      product_id:
+                        type: integer
+                      promo_window_id:
+                        type: integer
                 enforce_minimum_order_value:
                   type: boolean
                 enforce_minimum_order_quantity:
@@ -122344,16 +122770,27 @@ paths:
                 product_count: 120
                 supplier_ids:
                 - 1
-                forecast_type: sales_history
+                forecast_type: with_sales_history
                 target_stock_days: 30
                 sales_history_days: 90
                 use_leadtime: true
                 use_measured_lead_time: false
                 use_moq: true
                 rounding_method: round_half_up
+                baseline_method: recency_weighted
+                trend_damping_factor: 0.85
+                trend_max_growth_pct: 100
+                trend_half_life_days: 21
+                exclude_detected_anomalies: false
                 product_filters: {}
                 sales_filters: {}
-                demand_modifiers: []
+                demand_modifiers:
+                - type: promo_lift
+                  value: 0
+                  apply_to: all
+                  name: Re-apply Prime Day
+                  product_id: 55
+                  promo_window_id: 8
                 enforce_minimum_order_value: false
                 enforce_minimum_order_quantity: false
       parameters: []
@@ -123779,7 +124216,33 @@ paths:
         - `demand_modifiers` (array) — adjustments to projected demand
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Baseline decomposition fields (persist onto the saved configuration and
+        drive scheduled runs):**
+
+        - `baseline_method` (enum: `flat` default, `recency_weighted`, `damped_trend`)
+        — how the daily velocity baseline is derived from sales history.
+
+        - `trend_damping_factor` (number 0..1, default 0.85) — damping factor phi
+        for `damped_trend`; lower = more damping.
+
+        - `trend_max_growth_pct` (number >= 0, default 100) — caps how far the trend
+        may lift the baseline above the flat mean (100 = may at most double it). When
+        the cap binds a line reports `trend_capped: true`.
+
+        - `trend_half_life_days` (integer >= 1, nullable, default 21) — reserved tuning
+        for `recency_weighted`.
+
+        - `exclude_detected_anomalies` (boolean, default false) — when true, days
+        resolved as excluded or smoothed anomalies are dropped/replaced before the
+        baseline is computed, de-contaminating promo spikes and stockout gaps.
+
+
+        These persist onto the configuration, so a schedule attached to it re-applies
+        the same trend and anomaly-cleansing settings on every run. Baseline settings
+        are ignored for `fill_backorders`.'
       requestBody:
         content:
           application/json:
@@ -123841,6 +124304,16 @@ paths:
                   type: array
                 demand_modifiers:
                   type: array
+                baseline_method:
+                  type: string
+                trend_damping_factor:
+                  type: number
+                trend_max_growth_pct:
+                  type: integer
+                trend_half_life_days:
+                  type: integer
+                exclude_detected_anomalies:
+                  type: boolean
               example:
                 name: Min Stock Replenishment — Main Warehouse
                 description: Target stock level forecast using each product's minimum
@@ -123869,6 +124342,11 @@ paths:
                 product_filters: []
                 sales_filters: []
                 demand_modifiers: []
+                baseline_method: damped_trend
+                trend_damping_factor: 0.85
+                trend_max_growth_pct: 100
+                trend_half_life_days: 21
+                exclude_detected_anomalies: true
       parameters: []
       responses:
         '201':
@@ -124401,7 +124879,20 @@ paths:
         uniqueness rule excludes the current record (so unchanged names pass validation).
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Baseline decomposition fields** (`baseline_method`, `trend_damping_factor`,
+        `trend_max_growth_pct`, `trend_half_life_days`, `exclude_detected_anomalies`)
+        persist onto the configuration and can be changed here; the new values apply
+        to the next on-demand build and to any schedule attached to this configuration.
+        `baseline_method` is `flat` (default), `recency_weighted`, or `damped_trend`;
+        `trend_damping_factor` (0..1, default 0.85) is the damping factor phi (lower
+        = more damping); `trend_max_growth_pct` (>= 0, default 100) caps the trend
+        lift above the flat mean; `trend_half_life_days` (>= 1, nullable, default
+        21) tunes `recency_weighted`; `exclude_detected_anomalies` (default false)
+        drops/replaces resolved anomaly days before the baseline is computed. Baseline
+        settings are ignored for `fill_backorders`.'
       requestBody:
         content:
           application/json:
@@ -124420,6 +124911,16 @@ paths:
                   type: string
                 ignore_min_stock_level:
                   type: boolean
+                baseline_method:
+                  type: string
+                trend_damping_factor:
+                  type: number
+                trend_max_growth_pct:
+                  type: integer
+                trend_half_life_days:
+                  type: integer
+                exclude_detected_anomalies:
+                  type: boolean
               example:
                 name: Min Stock Replenishment — Main Warehouse (v2)
                 forecast_type: target_stock_level
@@ -124427,6 +124928,11 @@ paths:
                 use_case_pack: true
                 case_pack_rounding: always_round_up
                 ignore_min_stock_level: false
+                baseline_method: damped_trend
+                trend_damping_factor: 0.8
+                trend_max_growth_pct: 75
+                trend_half_life_days: 28
+                exclude_detected_anomalies: true
       parameters:
       - name: configuration
         in: path
@@ -126852,21 +127358,50 @@ paths:
         format: csv (default) or excel.
 
 
-        include_calculation_details: include per-product calculation breakdown (default
-        true).
+        include_calculation_details: include the per-product calculation breakdown
+        (default true).
 
 
-        include_sales_history: include historical sales data (default false).
+        include_sales_history: include historical sales totals (default false).
 
 
-        config: the same forecast configuration used for the forecast.
+        config: the same forecast settings used for the build (forecast_type, sales
+        window, lead time, MOQ, rounding, filters, demand_modifiers, and so on).
 
 
-        Returns 422 if too many products.
+        BASELINE DECOMPOSITION COLUMNS
+
+        With include_calculation_details on (the default), the export adds the baseline-decomposition
+        columns that mirror each line''s inputs object:
+
+        - Baseline Method
+
+        - Base Velocity (the flat mean before trend, base_flat)
+
+        - Trend Factor
+
+        - Trend Capped
+
+        - Promo Factor
+
+        - Promo Window
+
+        - Promo Current Baseline
+
+        - Anomaly Days Excluded
+
+        - Anomaly Days Smoothed
+
+        Send the same baseline_method / trend / exclude_detected_anomalies / demand_modifiers
+        settings inside config that you would pass to the build endpoint so the exported
+        numbers match.
 
 
-        `include_confidence` (boolean, default true) adds the confidence tier/score,
-        the prediction interval, and the plain-language rationale columns to the export.'
+        include_confidence (boolean, default true) adds the confidence tier/score,
+        the prediction interval, and the plain-language rationale columns to the export.
+
+
+        Returns 422 if too many products.'
       requestBody:
         content:
           application/json:
@@ -127046,6 +127581,29 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        The detector scores each day with a robust modified z-score built from the
+        median and median absolute deviation, so a handful of extreme days cannot
+        mask the rest. The k threshold is expressed in robust standard deviations;
+        lower values flag more points. Each day is classified as:
+
+        - spike_up: demand far above the local norm (often a promotion).
+
+        - drop_down: demand far below the local norm.
+
+        - stockout_zero: a zero-sales gap consistent with being out of stock.
+
+
+        Detected points feed two workflows:
+
+        1. Resolve them (see Resolve / Bulk Resolve Demand Anomalies) as excluded,
+        smoothed, or kept_tagged. Points resolved as excluded or smoothed are the
+        ones a build with exclude_detected_anomalies true removes or replaces before
+        computing the baseline, de-contaminating the velocity.
+
+        2. Cluster spike_up points into candidate promotions via Suggest Promo Windows.
+        A spike can also be linked to a promo_window_id when resolved as kept_tagged.
+
+
         Body fields:
 
         - product_ids (required): array of product IDs, at least one.
@@ -127157,18 +127715,15 @@ paths:
       tags:
       - Inventory Intelligence
       summary: List Demand Anomalies
-      description: 'List a product''s detected demand anomalies, most recent first,
-        optionally scoped to a single resolution status.
-
-
-        Authentication: Requires Bearer token.
-
-
-        Query parameters:
-
-        - product_id (required): the product to list anomalies for.
-
-        - status (optional): detected, excluded, smoothed, or kept_tagged.'
+      description: "List a product's detected demand anomalies, most recent first,\
+        \ optionally scoped to a single resolution status.\n\nAuthentication: Requires\
+        \ Bearer token.\n\nQuery parameters:\n- product_id (required): the product\
+        \ to list anomalies for.\n- status (optional): filter by resolution status.\n\
+        \  - detected: flagged, not yet actioned.\n  - excluded: dropped from the\
+        \ baseline (a build with exclude_detected_anomalies true removes these days).\n\
+        \  - smoothed: replaced with the expected value before the baseline is computed.\n\
+        \  - kept_tagged: kept in the baseline, optionally attributed to a promotion\
+        \ via promo_window_id."
       parameters:
       - name: product_id
         in: query
@@ -127251,16 +127806,30 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        How each status affects a subsequent build (only when that build sets exclude_detected_anomalies
+        true):
+
+        - excluded: drop the day from the history before the baseline is computed.
+        Use for a true one-off that should not count.
+
+        - smoothed: replace the day with its expected (model) value, keeping the day
+        but removing the spike/gap. Use when the day should contribute a normal amount.
+
+        - kept_tagged: keep the day as-is, optionally attributed to a promotion via
+        promo_window_id. Excluded and smoothed days are the ones anomaly cleansing
+        acts on; kept_tagged days stay in the baseline. detected resets the point
+        to unresolved.
+
+
         Path parameter: id - the anomaly to resolve.
 
 
         Body fields:
 
-        - status (required): the decision - excluded (drop the point), smoothed (replace
-        with the expected value), or kept_tagged (keep it, attributed to a promotion).
-        detected is also accepted to reset.
+        - status (required): excluded, smoothed, kept_tagged, or detected.
 
-        - promo_window_id (optional): link the point to a promo window when kept_tagged.'
+        - promo_window_id (optional): link the point to a promo window when kept_tagged,
+        associating the spike with a known promotion.'
       requestBody:
         content:
           application/json:
@@ -127347,18 +127916,24 @@ paths:
       - Inventory Intelligence
       summary: Bulk Resolve Demand Anomalies
       description: 'Apply the same resolution decision to many demand anomalies at
-        once. Unknown IDs are skipped; the response reports how many were actually
-        updated.
+        once - the fast path after Detect Demand Anomalies. Unknown IDs are skipped;
+        the response reports how many were actually updated.
 
 
         Authentication: Requires Bearer token.
+
+
+        Status meanings match Resolve Demand Anomaly: excluded (drop from baseline),
+        smoothed (replace with expected value), kept_tagged (keep, optionally tagged
+        to a promotion), detected (reset). Only excluded and smoothed points are removed/replaced
+        when a build runs with exclude_detected_anomalies true.
 
 
         Body fields:
 
         - anomaly_ids (required): array of anomaly IDs, at least one.
 
-        - status (required): the decision - excluded, smoothed, kept_tagged, or detected.
+        - status (required): excluded, smoothed, kept_tagged, or detected.
 
         - promo_window_id (optional): link the points to a promo window when kept_tagged.'
       requestBody:
@@ -127415,8 +127990,10 @@ paths:
       tags:
       - Inventory Intelligence
       summary: List Promo Windows
-      description: 'List all promo windows, including any realised lift and post-promo
-        dip already measured for each.
+      description: 'List all promo windows, including any realised lift (measured_lift_pct)
+        and post-promo dip (post_promo_dip_pct) already measured for each. Use a window''s
+        id as the promo_window_id of a promo_lift demand modifier to re-apply its
+        lift on a build.
 
 
         Authentication: Requires Bearer token.'
@@ -127498,11 +128075,27 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Create Promo Window
-      description: 'Create a new promo window - a named date range, optionally scoped
-        to an order tag, set of products, and sales channels.
+      description: 'Create a promo window - a named date range, optionally scoped
+        to an order tag, a set of products, and sales channels. A promo window is
+        the anchor for measuring a promotion''s demand lift and later re-applying
+        it.
 
 
         Authentication: Requires Bearer token.
+
+
+        Typical flow:
+
+        1. Create the window over the promotion''s date range (optionally scoped by
+        order_tag, product_scope, channel_scope).
+
+        2. Call Measure Promo Lift for a product to compute the realised in-window
+        lift and the post-promo dip; the measured lift is stored on the window.
+
+        3. Reference the window from a build request as a demand_modifiers entry of
+        type promo_lift (promo_window_id). The stored lift is applied MULTIPLICATIVELY
+        to the current baseline, so a window measured last year automatically re-scales
+        to this year''s larger baseline.
 
 
         Body fields:
@@ -127516,7 +128109,9 @@ paths:
         - order_tag (optional): the order tag that marks orders belonging to this
         promotion.
 
-        - recurrence (optional): one_off or annual (default one_off).
+        - recurrence (optional): one_off (a single-date promotion) or annual (repeats
+        on the same dates each year, so its lift can be re-applied to the next occurrence).
+        Default one_off.
 
         - product_scope (optional): array of product IDs the window applies to.
 
@@ -127632,6 +128227,132 @@ paths:
         '403': *id003
         '422': *id005
       operationId: post-api-inventory-forecasting-promo-windows
+  /api/inventory-forecasting/promo-windows/suggest:
+    post:
+      tags:
+      - Inventory Intelligence
+      summary: Suggest Promo Windows
+      description: 'Suggest candidate promo windows for a product by clustering its
+        detected upward demand spikes into contiguous date ranges, so a promotion
+        can be confirmed instead of typed by hand.
+
+
+        Authentication: Requires Bearer token.
+
+
+        This consumes the same spike_up points produced by Detect Demand Anomalies:
+        it clusters unresolved upward spikes into candidate date ranges. Downward
+        and stockout anomalies are never suggested. Candidates are ranked by peak
+        spike severity and capped at 10. A confirmed suggestion can be created as
+        a promo window (Create Promo Window), measured (Measure Promo Lift), and then
+        re-applied on a future build as a promo_lift demand modifier.
+
+
+        Body fields:
+
+        - product_id (required): the product to analyse.
+
+        - min_gap_days (optional): a gap larger than this many days splits two spike
+        clusters into separate windows, 0-60 (default 3).
+
+        - lookback_days (optional): how far back to scan for spikes, 1-1095 (default
+        365).
+
+
+        Each suggestion reports the cluster''s start_date and end_date, the peak spike
+        score, the total excess units above expectation, the number of flagged days,
+        and whether an existing promo window already overlaps the range.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                product_id:
+                  type: integer
+                min_gap_days:
+                  type: integer
+                lookback_days:
+                  type: integer
+              example:
+                product_id: 55
+                min_gap_days: 3
+                lookback_days: 365
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        start_date:
+                          type: string
+                        end_date:
+                          type: string
+                        peak_residual_score:
+                          type: number
+                        total_excess_units:
+                          type: integer
+                        day_count:
+                          type: integer
+                        already_has_window:
+                          type: boolean
+                example:
+                  data:
+                  - start_date: '2024-11-22'
+                    end_date: '2024-11-29'
+                    peak_residual_score: 6.1
+                    total_excess_units: 420
+                    day_count: 8
+                    already_has_window: false
+                  - start_date: '2024-07-03'
+                    end_date: '2024-07-06'
+                    peak_residual_score: 4.2
+                    total_excess_units: 180
+                    day_count: 4
+                    already_has_window: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      product_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: A product must be provided to suggest promo windows.
+                  errors:
+                    product_id:
+                    - A product must be provided to suggest promo windows.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-inventory-forecasting-promo-windows-suggest
   /api/inventory-forecasting/promo-windows/{id}:
     get:
       tags:
@@ -127750,6 +128471,13 @@ paths:
 
 
         Authentication: Requires Bearer token.
+
+
+        Editing the date range, order_tag, or scope changes what a future Measure
+        Promo Lift call will consider; re-measure afterwards so any promo_lift demand
+        modifier that references this window applies the refreshed lift. Because the
+        lift is applied multiplicatively to the current baseline, the same window
+        keeps re-scaling as demand grows.
 
 
         Path parameter: id - the promo window to update.
@@ -127967,6 +128695,14 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        The measured lift is what a promo_lift demand modifier applies at build time.
+        It is reported as a percentage but is applied MULTIPLICATIVELY to whatever
+        the current baseline is, so it stays correct as demand grows - a promotion
+        that lifted demand 85% last year still lifts this year''s larger baseline
+        by 85%. Re-measure whenever you want the applied lift refreshed (for example
+        after editing the window or accruing more sales).
+
+
         Path parameter: id - the promo window to measure.
 
 
@@ -127984,7 +128720,8 @@ paths:
 
         The response reports measured_lift_pct, post_promo_dip_pct, the in-window
         and expected daily rates, and suggested_modifiers - event demand modifiers
-        pre-dated to the same window one year forward.'
+        pre-dated to the same window one year forward, ready to add to a build or
+        configuration.'
       requestBody:
         content:
           application/json:
