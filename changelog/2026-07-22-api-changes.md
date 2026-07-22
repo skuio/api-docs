@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-22
-description: This release includes 16 additions, 2 removals. 2 breaking changes — action required.
+description: This release includes 18 additions, 2 removals. 2 breaking changes — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-07-22
 ---
 
-This release includes 16 additions, 2 removals. 2 breaking changes — action required.
+This release includes 18 additions, 2 removals. 2 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -43,6 +43,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/pdf-templates/{id}/versions/{versionId}` — Get PDF Template Version
 - `POST /api/pdf-templates/{id}/versions/{versionId}/restore` — Restore PDF Template Version
 - `GET /api/pdf-templates/{type}/store-overrides` — List Store Overrides
+
+### Purchase Orders
+- `GET /api/purchase-orders/{purchase_order}/communications/threads` — List Purchase Order Communication Threads
+- `POST /api/purchase-orders/{purchase_order}/communications/threads` — Create Purchase Order Communication Thread
 
 ### Sales Channel Listing Profiles
 - `GET /api/v2/sales-channel-listing-profiles` — List Listing Profiles
