@@ -19,9 +19,17 @@ const apiOperationCount = (() => {
   }
 })();
 
+// Release Notes moved to docs.sku.io (skuio/docs) in 2026-07. These client-side
+// redirects forward every old developer.sku.io/release-notes/* URL to its new
+// home; the list was generated from the release-notes build at move time. The
+// app's "What's New" popover and the navbar/footer now point at docs.sku.io.
+const releaseNotesRedirects: { from: string; to: string }[] = JSON.parse(
+  fs.readFileSync("./release-notes-redirects.json", "utf8")
+);
+
 const config: Config = {
   title: "SKU.io Docs",
-  tagline: "API reference, release notes, and changelog for the SKU.io platform",
+  tagline: "API reference and changelog for the SKU.io platform",
   favicon: "img/favicon.ico",
 
   url: "https://developer.sku.io",
@@ -112,6 +120,8 @@ const config: Config = {
     [
       "@docusaurus/plugin-client-redirects",
       {
+        // Old /release-notes/* URLs → docs.sku.io (the feed moved off this site).
+        redirects: releaseNotesRedirects,
         createRedirects(existingPath: string) {
           const m = existingPath.match(
             /^\/docs\/api\/(get|post|put|patch|delete|head|options)-(api-.+)$/
@@ -171,50 +181,10 @@ const config: Config = {
         },
       },
     ],
-    // Indexes Release Notes posts by date and exposes the list as plugin
-    // global data, consumed by the BlogSidebar override to render the
-    // Year > Month > Week > Day drill-down tree.
-    [
-      "./plugins/release-notes-tree",
-      {
-        path: "release-notes",
-        routeBasePath: "release-notes",
-      },
-    ],
-    // ──────────────────────────────────────────────────────────────────
-    // Release Notes — user-facing product updates.
-    // Content is published from skuio/sku9 `release-notes/` by the
-    // publish-release-notes workflow. One post per feature, dated by its
-    // production-ship day; navigated by the date drill-down tree.
-    // ──────────────────────────────────────────────────────────────────
-    [
-      "@docusaurus/plugin-content-blog",
-      {
-        id: "release-notes",
-        path: "release-notes",
-        routeBasePath: "release-notes",
-        blogTitle: "Release Notes",
-        blogDescription:
-          "New features, improvements, and fixes for the SKU.io inventory platform.",
-        blogSidebarTitle: "Recent releases",
-        blogSidebarCount: "ALL",
-        postsPerPage: 10,
-        showReadingTime: false,
-        archiveBasePath: "archive",
-        tagsBasePath: "tags",
-        authorsMapPath: "authors.yml",
-        onInlineTags: "throw",
-        onInlineAuthors: "throw",
-        onUntruncatedBlogPosts: "ignore",
-        feedOptions: {
-          type: "all",
-          title: "SKU.io Release Notes",
-          description:
-            "New features, improvements, and fixes for the SKU.io platform.",
-          copyright: `Copyright © ${currentYear} SKU.io.`,
-        },
-      },
-    ],
+    // Release Notes moved to docs.sku.io (skuio/docs) in 2026-07 — the
+    // content-blog + release-notes-tree plugins now live there. Old URLs are
+    // forwarded by the client-redirects `releaseNotesRedirects` list above.
+    // The API Changelog blog below stays on this site.
     // ──────────────────────────────────────────────────────────────────
     // API Changelog — developer-facing additions, changes, and removals
     // to the API surface. Generated mechanically from the openapi.yaml
@@ -322,7 +292,7 @@ const config: Config = {
           position: "left",
         },
         {
-          to: "/release-notes",
+          href: "https://docs.sku.io/release-notes",
           label: "Release Notes",
           position: "left",
         },
@@ -355,7 +325,7 @@ const config: Config = {
             },
             {
               label: "Release Notes",
-              to: "/release-notes",
+              href: "https://docs.sku.io/release-notes",
             },
             {
               label: "API Changelog",
