@@ -1,18 +1,36 @@
 ---
 title: API changes — 2026-07-23
-description: This release includes 14 additions.
+description: This release includes 30 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-23
 ---
 
-This release includes 14 additions.
+This release includes 30 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Airtable
+- `GET /api/airtable/authorize` — Get OAuth Authorize URL
+- `GET /api/airtable/datasets` — List Syncable Datasets
+- `DELETE /api/airtable/instances/{instance}` — Disconnect Airtable
+- `GET /api/airtable/instances/{instance}/bases` — List Airtable Bases
+- `GET /api/airtable/instances/{instance}/bases/{baseId}/tables` — List Base Tables
+- `GET /api/airtable/instances/{instance}/inbound-changes` — List Inbound Changes
+- `POST /api/airtable/instances/{instance}/inbound-changes/apply` — Apply Inbound Changes
+- `POST /api/airtable/instances/{instance}/inbound-changes/reject` — Reject Inbound Changes
+- `GET /api/airtable/instances/{instance}/mappings` — List Mappings
+- `POST /api/airtable/instances/{instance}/mappings` — Create Mapping
+- `DELETE /api/airtable/instances/{instance}/mappings/{mapping}` — Delete Mapping
+- `PATCH /api/airtable/instances/{instance}/mappings/{mapping}` — Update Mapping
+- `POST /api/airtable/instances/{instance}/mappings/{mapping}/sync` — Sync Mapping
+- `POST /api/airtable/instances/{instance}/provision-template` — Provision Template Table
+- `GET /api/airtable/instances/{instance}/whoami` — Verify Connection
+- `GET /api/airtable/integrations` — List Airtable Connections
 
 ### Faire
 - `POST /api/faire/instances/{integrationInstance}/reuse-connection` — Reuse Existing Connection
