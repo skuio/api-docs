@@ -1,18 +1,22 @@
 ---
 title: API changes — 2026-07-23
-description: This release includes 12 additions.
+description: This release includes 14 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-23
 ---
 
-This release includes 12 additions.
+This release includes 14 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Faire
+- `POST /api/faire/instances/{integrationInstance}/reuse-connection` — Reuse Existing Connection
+- `POST /api/faire/instances/{integrationInstance}/validate-connection` — Validate Connection
 
 ### Ledger (Accounting v2)
 - `POST /api/ledger/reconciliation/inventory/adjustment` — Post Inventory Reconciliation Adjustment

@@ -93840,6 +93840,344 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-faire-instances-integrationinstance-access-token
+  /api/faire/instances/{integrationInstance}/reuse-connection:
+    post:
+      tags:
+      - Faire
+      summary: Reuse Existing Connection
+      description: 'Reuse the connection from another authorized Faire integration
+        instance instead of authorizing again.
+
+
+        **Why this exists:** Faire allows only **one live access token per brand**,
+        and the brand portal does not let you revoke or re-issue it. When you add
+        a second Faire integration for the same brand — typically a Fulfilled-by-Faire
+        (FBF) integration alongside an existing Fulfilled-by-Merchant (FBM) one —
+        authorizing again could invalidate the first integration''s token. Reuse copies
+        the existing integration''s long-lived token onto this one so both work on
+        the same Faire account.
+
+
+        **What it does:**
+
+        - Copies the source integration''s access token and scopes onto this integration
+
+        - Verifies the copied token against Faire before saving it (an invalid source
+        connection is rejected, nothing is persisted)
+
+        - Records the Faire brand so both integrations are grouped as one shared connection
+
+        - After success, `is_authorized` becomes `true` and `auth_method` is `reused`
+
+
+        **Requirements:** the source integration must be authorized and must have
+        the **opposite** fulfillment mode (FBM ↔ FBF). Reusing from a same-mode integration
+        is rejected, because one Faire account can only be one mode at a time.
+
+
+        **Disconnecting a shared connection** clears the token from that one integration
+        only — it does not sign the shared Faire login out, so the other integration
+        keeps working.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` (required) — the integration receiving the reused
+        connection
+
+
+        **Request Body:**
+
+        - `source_instance_id` (required, integer) — the authorized, opposite-mode
+        integration to copy the connection from
+
+
+        **Auth:** Requires Bearer token.
+
+
+        **Errors:**
+
+        - `422` — the source does not exist, is not authorized, is the same integration,
+        is the same fulfillment mode, or its token failed verification with Faire'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source_instance_id:
+                  type: integer
+              example:
+                source_instance_id: 1
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Faire integration instance ID (the new instance receiving the
+          reused connection)
+        example: '2'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      is_authorized:
+                        type: boolean
+                      auth_method:
+                        type: string
+                      granted_scopes:
+                        type: array
+                        items:
+                          type: string
+                      brand_id:
+                        type: string
+                      brand_name:
+                        type: string
+                      reused_from_instance_id:
+                        type: integer
+                      shared_connection:
+                        type: boolean
+                      connection_group_member_ids:
+                        type: array
+                        items:
+                          type: integer
+                      is_automatic_sync_enabled:
+                        type: boolean
+                      fulfillment_mode:
+                        type: string
+                      order_import_start_date:
+                        type: string
+                        nullable: true
+                      effective_order_import_start_date:
+                        type: string
+                      auto_create_products:
+                        type: boolean
+                      default_shipping_method_id:
+                        type: string
+                        nullable: true
+                      default_shipping_method:
+                        type: string
+                        nullable: true
+                      inventory:
+                        type: object
+                        properties:
+                          auto_sync:
+                            type: boolean
+                      financial_line_type_overrides:
+                        type: object
+                        properties:
+                          commission:
+                            type: string
+                            nullable: true
+                          payout_fee:
+                            type: string
+                            nullable: true
+                          payout_protection_fee:
+                            type: string
+                            nullable: true
+                          damaged_and_missing_items:
+                            type: string
+                            nullable: true
+                          covered_shipping:
+                            type: string
+                            nullable: true
+                      last_orders_sync:
+                        type: string
+                        nullable: true
+                      last_products_sync:
+                        type: string
+                        nullable: true
+                      orders_count:
+                        type: integer
+                      products_count:
+                        type: integer
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 2
+                    name: A Bar Above — FBF
+                    is_authorized: true
+                    auth_method: reused
+                    granted_scopes:
+                    - READ_PRODUCTS
+                    - WRITE_PRODUCTS
+                    - READ_ORDERS
+                    - WRITE_ORDERS
+                    - READ_BRAND
+                    - READ_INVENTORIES
+                    brand_id: b_abcd1234
+                    brand_name: A Bar Above
+                    reused_from_instance_id: 1
+                    shared_connection: true
+                    connection_group_member_ids:
+                    - 2
+                    - 1
+                    is_automatic_sync_enabled: false
+                    fulfillment_mode: fbf
+                    order_import_start_date: null
+                    effective_order_import_start_date: '2026-06-23'
+                    auto_create_products: false
+                    default_shipping_method_id: null
+                    default_shipping_method: null
+                    inventory:
+                      auto_sync: false
+                    financial_line_type_overrides:
+                      commission: null
+                      payout_fee: null
+                      payout_protection_fee: null
+                      damaged_and_missing_items: null
+                      covered_shipping: null
+                    last_orders_sync: null
+                    last_products_sync: null
+                    orders_count: 0
+                    products_count: 0
+                    created_at: '2026-07-23T14:05:00+00:00'
+                    updated_at: '2026-07-23T14:05:12+00:00'
+                  message: Connection reused from A Bar Above — FBM
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Validation Error (Same Mode / Not Authorized)
+                  value:
+                    message: The selected connection is not authorized.
+                    errors:
+                      source_instance_id:
+                      - Reuse is only available between opposite fulfillment modes
+                        (FBM ↔ FBF).
+                example-1:
+                  summary: Verification Failed (Dead Source Token)
+                  value:
+                    message: The selected connection is no longer valid — reconnect
+                      it first.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-faire-instances-integrationinstance-reuse-connection
+  /api/faire/instances/{integrationInstance}/validate-connection:
+    post:
+      tags:
+      - Faire
+      summary: Validate Connection
+      description: 'Verify this integration''s stored access token against Faire and
+        capture the brand it belongs to.
+
+
+        Calls Faire to confirm the token is live and reads the brand name/id, which
+        is stored on the integration. Use it to re-check a connection''s health or
+        to populate the brand before grouping two integrations that share one Faire
+        account.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` (required) — the integration to verify
+
+
+        **Auth:** Requires Bearer token.
+
+
+        **Errors:**
+
+        - `422` — the token could not be verified with Faire (missing, revoked, or
+        unreachable)'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Faire integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                      brand_id:
+                        type: string
+                      brand_name:
+                        type: string
+                example:
+                  data:
+                    valid: true
+                    brand_id: b_abcd1234
+                    brand_name: A Bar Above
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      valid:
+                        type: boolean
+                  message:
+                    type: string
+                example:
+                  data:
+                    valid: false
+                  message: Could not verify this connection with Faire.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-faire-instances-integrationinstance-validate-connection
   /api/faire/instances/{integrationInstance}/sync-orders:
     post:
       tags:
