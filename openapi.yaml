@@ -347206,6 +347206,318 @@ paths:
         '429': *id001
         '401': *id002
       operationId: get-api-v2-listings-coverage
+  /api/v2/products/channel-lifecycle/channels:
+    get:
+      tags:
+      - Product Listings
+      summary: List Channels for Products
+      description: 'List the sales channels the given products are currently listed
+        on, with how many of the selected products are listed vs not listed on each
+        channel, and whether the channel supports bulk archive / recover / delete.
+
+
+        Use this to build a channel picker before running a bulk channel action. Pass
+        the product ids you want to act on as a repeated `product_ids[]` query parameter.
+
+
+        `supports_archive` is true when the channel can deactivate a listing; `supports_lifecycle`
+        is true when it can also recover (reactivate/restore) and permanently delete
+        a listing. TikTok Shop is the first channel to support the full lifecycle.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: product_ids[]
+        in: query
+        schema:
+          type: integer
+        description: Product id to include (repeat for each product). Required.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total_selected:
+                        type: integer
+                      channels:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_channel_id:
+                              type: integer
+                            integration_instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            integration_name:
+                              type: string
+                            integration_image_url:
+                              type: string
+                            listed_count:
+                              type: integer
+                            not_listed_count:
+                              type: integer
+                            supports_archive:
+                              type: boolean
+                            supports_lifecycle:
+                              type: boolean
+                example:
+                  data:
+                    total_selected: 2
+                    channels:
+                    - sales_channel_id: 5
+                      integration_instance_id: 12
+                      name: TikTok Shop — US
+                      integration_name: TikTok Shop
+                      integration_image_url: https://cdn.sku.io/integrations/tiktok-shop.png
+                      listed_count: 2
+                      not_listed_count: 0
+                      supports_archive: true
+                      supports_lifecycle: true
+                    - sales_channel_id: 3
+                      integration_instance_id: 7
+                      name: Shopify — US
+                      integration_name: Shopify
+                      integration_image_url: https://cdn.sku.io/integrations/shopify.png
+                      listed_count: 1
+                      not_listed_count: 1
+                      supports_archive: true
+                      supports_lifecycle: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-products-channel-lifecycle-channels
+  /api/v2/products/channel-lifecycle/eligibility:
+    get:
+      tags:
+      - Product Listings
+      summary: Get Channel Action Eligibility
+      description: 'Return the per-state breakdown of the selected products on a single
+        sales channel plus, for each action, how many products are eligible and whether
+        the channel supports it.
+
+
+        `breakdown` counts the selected products by their state on the channel: `live`,
+        `pending`, `archived`, `missing`, `unknown`, and `not_listed`. Each entry
+        in `actions` reports the action (`publish`, `archive`, `recover`, `delete`),
+        its `eligible_count`, whether it is `destructive`, whether it runs as a bulk
+        background action here (`dispatchable`), and whether the channel `supported`
+        it.
+
+
+        Only archive, recover and delete are dispatchable; publish is handled by the
+        bulk publish flow.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: sales_channel_id
+        in: query
+        schema:
+          type: integer
+        description: The sales channel to evaluate against. Required.
+        example: '5'
+      - name: product_ids[]
+        in: query
+        schema:
+          type: integer
+        description: Product id to include (repeat for each product). Required.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      total_selected:
+                        type: integer
+                      breakdown:
+                        type: object
+                        properties:
+                          live:
+                            type: integer
+                          pending:
+                            type: integer
+                          archived:
+                            type: integer
+                          missing:
+                            type: integer
+                          unknown:
+                            type: integer
+                          not_listed:
+                            type: integer
+                      actions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            action:
+                              type: string
+                            label:
+                              type: string
+                            eligible_count:
+                              type: integer
+                            destructive:
+                              type: boolean
+                            dispatchable:
+                              type: boolean
+                            supported:
+                              type: boolean
+                example:
+                  data:
+                    total_selected: 60
+                    breakdown:
+                      live: 42
+                      pending: 0
+                      archived: 6
+                      missing: 0
+                      unknown: 0
+                      not_listed: 12
+                    actions:
+                    - action: publish
+                      label: Publish
+                      eligible_count: 12
+                      destructive: false
+                      dispatchable: false
+                      supported: true
+                    - action: archive
+                      label: Archive
+                      eligible_count: 42
+                      destructive: false
+                      dispatchable: true
+                      supported: true
+                    - action: recover
+                      label: Recover
+                      eligible_count: 6
+                      destructive: false
+                      dispatchable: true
+                      supported: true
+                    - action: delete
+                      label: Delete
+                      eligible_count: 48
+                      destructive: true
+                      dispatchable: true
+                      supported: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-v2-products-channel-lifecycle-eligibility
+  /api/v2/products/channel-lifecycle/dispatch:
+    post:
+      tags:
+      - Product Listings
+      summary: Run Bulk Channel Action
+      description: 'Run a bulk channel action (archive, recover or delete) against
+        the eligible listings of the selected products on a sales channel. The action
+        runs in the background and the response returns a `tracked_job_log_id` you
+        can poll for progress and a per-product success/failure summary.
+
+
+        Only `archive`, `recover` and `delete` are accepted here — publishing new
+        listings uses the bulk publish flow. Products with no eligible listing for
+        the chosen action are skipped; the request returns 422 when none of the selected
+        products are eligible.
+
+
+        - `archive` deactivates the listing on the channel (reversible).
+
+        - `recover` reactivates an archived listing or restores a deleted one.
+
+        - `delete` permanently removes the listing from the channel.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sales_channel_id:
+                  type: integer
+                action:
+                  type: string
+                product_ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                sales_channel_id: 5
+                action: archive
+                product_ids:
+                - 1
+                - 2
+                - 3
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 9174
+                  message: Bulk Archive started — track progress with the tracked
+                    job log id.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: None of the selected products are eligible for Archive
+                    on this channel.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-v2-products-channel-lifecycle-dispatch
   /api/inventory-adjustments/{inventory_adjustment}:
     get:
       tags:
