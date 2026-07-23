@@ -1,18 +1,21 @@
 ---
 title: API changes — 2026-07-23
-description: This release includes 30 additions.
+description: This release includes 31 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-23
 ---
 
-This release includes 30 additions.
+This release includes 31 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Adjustments & Transfers
+- `GET /api/cogs/sku-health/{productId}/cost-composition` — Get Product Cost Composition
 
 ### Airtable
 - `GET /api/airtable/authorize` — Get OAuth Authorize URL
