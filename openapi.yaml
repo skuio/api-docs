@@ -21608,6 +21608,8 @@ paths:
                                   type: string
                                 color:
                                   type: string
+                            can_sync_now:
+                              type: boolean
                             provider_link:
                               type: string
                               nullable: true
@@ -21679,6 +21681,7 @@ paths:
                         key: pending_sync
                         label: Pending Sync
                         color: info
+                      can_sync_now: true
                       provider_link: null
                       provider_status: null
                       total_debit: '48211.7500'
@@ -21706,6 +21709,7 @@ paths:
                         key: synced
                         label: Synced
                         color: success
+                      can_sync_now: true
                       provider_link:
                         provider: Xero
                         remote_type: xero_invoice
@@ -21850,6 +21854,8 @@ paths:
                                     type: string
                                   color:
                                     type: string
+                              can_sync_now:
+                                type: boolean
                               provider_link:
                                 type: string
                                 nullable: true
@@ -21905,6 +21911,7 @@ paths:
                           key: pending_sync
                           label: Pending Sync
                           color: info
+                        can_sync_now: true
                         provider_link: null
                         provider_status: null
                         total_debit: '48211.7500'
@@ -30356,6 +30363,812 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-inventory-day-detail
+  /api/ledger/reconciliation/inventory/unsynced:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Awaiting-Sync Items
+      description: 'Per earmarked inventory account, the SKU ledger activity not reflected
+        in the provider balance, split by sync disposition: `pending_ledger`/`pending_count`
+        WILL reach the provider once it syncs (self-resolving), while `excluded_ledger`/`excluded_count`
+        will NEVER sync (dated before the books'' sync start date, or internal-only)
+        — a permanent mismatch a measure-from baseline sets aside. Batch-aggregate
+        aware (a batched document counts once, via its batch). Requires connection_id.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      as_of_date:
+                        type: string
+                      accounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            nominal_code_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            pending_ledger:
+                              type: integer
+                            excluded_ledger:
+                              type: number
+                            pending_count:
+                              type: integer
+                            excluded_count:
+                              type: integer
+                example:
+                  data:
+                    as_of_date: '2026-07-20'
+                    accounts:
+                    - nominal_code_id: 87
+                      code: '141'
+                      name: Amazon FBA US Inventory
+                      pending_ledger: 0
+                      excluded_ledger: -299950.38
+                      pending_count: 0
+                      excluded_count: 41
+                    - nominal_code_id: 88
+                      code: '142'
+                      name: SMO Inventory
+                      pending_ledger: -1010.56
+                      excluded_ledger: 1498366.15
+                      pending_count: 2
+                      excluded_count: 239
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-unsynced
+  /api/ledger/reconciliation/inventory/opening-breakdown:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Opening Breakdown
+      description: 'The warehouse-first opening breakdown for reconciling inventory
+        to the accounting provider. For each earmarked inventory control account,
+        returns the provider general-ledger balance and its divergence from the SKU
+        inventory value at the opening date, broken down into the individual warehouses
+        that hold that account''s stock. The provider balance and divergence are reported
+        at the account level (a provider account has no warehouse dimension); the
+        SKU side sums standard and Amazon FBA inventory per warehouse. Warehouses
+        that currently hold no stock are still listed so an account''s full warehouse
+        footprint is visible. The opening date is the reconciliation baseline when
+        one has been set, otherwise the configured inventory start date. Reads materialized/cached
+        data only — no live provider call.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:** `as_of_date` (the effective opening date, null when no
+        accounts are earmarked or no opening date is configured), `from_baseline`
+        (whether `as_of_date` came from a set baseline rather than the inventory start
+        date), `accounts[]` — each with `nominal_code_id`, `code`, `name`, `provider_account_name`,
+        `sku_value` (sum of its warehouses), `sku_quantity`, `provider_balance`, `divergence`
+        (provider_balance minus sku_value, null when no provider balance is available),
+        `point_as_of_date` (the day the provider balance was measured), and `warehouses[]`
+        (`warehouse_id`, `warehouse_name`, `is_fba`, `sku_value`, `sku_quantity`).
+        Each account also carries `unsynced_ledger` — SKU ledger postings dated on/before
+        the opening that haven''t synced to the provider yet; adding it to `divergence`
+        shows how much of the opening gap is just unsynced pre-baseline activity (self-resolving)
+        versus a true gap. Each account also carries `pending_ledger` (unsynced activity
+        dated on/before the opening that WILL sync) and `excluded_ledger` (activity
+        that will never sync — the pre-baseline mismatch the baseline sets aside).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      as_of_date:
+                        type: string
+                      from_baseline:
+                        type: boolean
+                      accounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            nominal_code_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            provider_account_name:
+                              type: string
+                            sku_value:
+                              type: number
+                            sku_quantity:
+                              type: integer
+                            provider_balance:
+                              type: integer
+                            divergence:
+                              type: number
+                            pending_ledger:
+                              type: integer
+                            excluded_ledger:
+                              type: integer
+                            point_as_of_date:
+                              type: string
+                            warehouses:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  warehouse_id:
+                                    type: integer
+                                  warehouse_name:
+                                    type: string
+                                  is_fba:
+                                    type: boolean
+                                  sku_value:
+                                    type: number
+                                  sku_quantity:
+                                    type: integer
+                example:
+                  data:
+                    as_of_date: '2024-04-22'
+                    from_baseline: true
+                    accounts:
+                    - nominal_code_id: 88
+                      code: '141'
+                      name: Amazon FBA US Inventory
+                      provider_account_name: Amazon FBA US Inventory
+                      sku_value: 4024.84
+                      sku_quantity: 65
+                      provider_balance: 0
+                      divergence: -4024.84
+                      pending_ledger: 0
+                      excluded_ledger: 0
+                      point_as_of_date: '2024-04-22'
+                      warehouses:
+                      - warehouse_id: 29
+                        warehouse_name: FBA US (AMZ)
+                        is_fba: true
+                        sku_value: 4024.84
+                        sku_quantity: 65
+                    - nominal_code_id: 87
+                      code: '142'
+                      name: SMO Inventory
+                      provider_account_name: SMO Inventory
+                      sku_value: 569792.24
+                      sku_quantity: 41250
+                      provider_balance: 0
+                      divergence: -569792.24
+                      pending_ledger: 0
+                      excluded_ledger: -125000
+                      point_as_of_date: '2024-04-22'
+                      warehouses:
+                      - warehouse_id: 4
+                        warehouse_name: ShipMyOrders Warehouse
+                        is_fba: false
+                        sku_value: 569792.24
+                        sku_quantity: 41250
+                      - warehouse_id: 12
+                        warehouse_name: Overflow Warehouse
+                        is_fba: false
+                        sku_value: 0
+                        sku_quantity: 0
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-opening-breakdown
+  /api/ledger/reconciliation/inventory/baseline:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Baseline
+      description: 'The reconcile-opening context for an inventory reconciliation
+        connection: the current recon baseline (a "line in the sand" date the divergence
+        view is measured from — null when none is set), the inventory start date the
+        series otherwise opens from, and the accounting provider''s lock date.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:** `baseline_date` (null when no baseline is set), `baseline_note`,
+        `inventory_start_date` (where the series opens from without a baseline), `provider_lock_date`
+        (null when the provider reports no lock), `opening_locked` (true when the
+        correction date falls on/before the provider lock — corrections then must
+        be made on the SKU side, not posted to the provider).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      baseline_date:
+                        type: string
+                      baseline_note:
+                        type: string
+                      inventory_start_date:
+                        type: string
+                      provider_lock_date:
+                        type: string
+                      opening_locked:
+                        type: boolean
+                example:
+                  data:
+                    baseline_date: '2025-01-01'
+                    baseline_note: Pre-2025 books unreliable — fresh start
+                    inventory_start_date: '2024-04-22'
+                    provider_lock_date: '2013-12-31'
+                    opening_locked: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-baseline
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Set Inventory Reconciliation Baseline
+      description: 'Draw the reconciliation baseline: measure divergence from `baseline_date`
+        forward and freeze the history before it out of the view. View-only and reversible
+        — no reconciled figure, opening balance, or start date is changed. Returns
+        the refreshed context.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body:** `connection_id` (required), `baseline_date` (required, date), `note`
+        (optional, max 500 chars).
+
+
+        **Response fields:** `baseline_date` (null when no baseline is set), `baseline_note`,
+        `inventory_start_date` (where the series opens from without a baseline), `provider_lock_date`
+        (null when the provider reports no lock), `opening_locked` (true when the
+        correction date falls on/before the provider lock — corrections then must
+        be made on the SKU side, not posted to the provider).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+                baseline_date:
+                  type: string
+                note:
+                  type: string
+              example:
+                connection_id: 5
+                baseline_date: '2025-01-01'
+                note: Pre-2025 books unreliable — fresh start
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      baseline_date:
+                        type: string
+                      baseline_note:
+                        type: string
+                      inventory_start_date:
+                        type: string
+                      provider_lock_date:
+                        type: string
+                      opening_locked:
+                        type: boolean
+                example:
+                  data:
+                    baseline_date: '2025-01-01'
+                    baseline_note: Pre-2025 books unreliable — fresh start
+                    inventory_start_date: '2024-04-22'
+                    provider_lock_date: '2013-12-31'
+                    opening_locked: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: put-api-ledger-reconciliation-inventory-baseline
+    delete:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Clear Inventory Reconciliation Baseline
+      description: 'Remove the reconciliation baseline; the full history returns to
+        the divergence view. Returns the refreshed context.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:** `baseline_date` (null when no baseline is set), `baseline_note`,
+        `inventory_start_date` (where the series opens from without a baseline), `provider_lock_date`
+        (null when the provider reports no lock), `opening_locked` (true when the
+        correction date falls on/before the provider lock — corrections then must
+        be made on the SKU side, not posted to the provider).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      baseline_date:
+                        type: string
+                        nullable: true
+                      baseline_note:
+                        type: string
+                        nullable: true
+                      inventory_start_date:
+                        type: string
+                      provider_lock_date:
+                        type: string
+                      opening_locked:
+                        type: boolean
+                example:
+                  data:
+                    baseline_date: null
+                    baseline_note: null
+                    inventory_start_date: '2024-04-22'
+                    provider_lock_date: '2013-12-31'
+                    opening_locked: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: delete-api-ledger-reconciliation-inventory-baseline
+  /api/ledger/reconciliation/inventory/adjustment/preview:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Adjustment Preview
+      description: 'The proposed adjusting journal that would move the provider''s
+        inventory control account to match SKU as of a date — computed read-only so
+        you see exactly what would post. `divergence = provider − SKU`; a positive
+        gap credits the inventory control account (reducing it) and debits the counter,
+        both for the same amount. When the date is inside a locked provider period
+        `postable` is false: post the journal dated on or after `earliest_postable_date`
+        instead. Accounts backed by Amazon warehouses (FBA/AWD) are Amazon-sourced
+        — their stock comes from Amazon and cannot be adjusted in SKU (`sku_side_adjustable`
+        is false), so they can only be reconciled provider-side; other accounts may
+        instead correct SKU''s opening for the warehouses in `warehouses`.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:** `divergence`, `amount`, `needs_adjustment`, `direction_summary`,
+        `counter_nominal_code_id`/`counter_code`/`counter_name`, `postable`, `blocked_reason`,
+        `provider_lock_date`, `sku_side_adjustable` (whether the account has editable
+        non-Amazon warehouses), `earliest_postable_date` (first date the provider
+        accepts a post — lock date + 1 day, null when unlocked), `lines[]` (`nominal_code_id`,
+        `code`, `name`, `direction`, `amount`), `warehouses[]` (`id`, `name` — the
+        SKU-adjustable, non-Amazon warehouses the SKU-side fix can target). `already_adjusted`
+        is true when this account was already reconciled on this date (posting is
+        blocked to avoid double-correcting), with `existing_adjustment_id` pointing
+        at the prior adjustment.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account. Required.
+        example: '87'
+      - name: effective_date
+        in: query
+        schema:
+          type: string
+        description: The date to align at. Required.
+        example: '2024-04-22'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      nominal_code_id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                      provider_account_name:
+                        type: string
+                      effective_date:
+                        type: string
+                      divergence:
+                        type: number
+                      amount:
+                        type: number
+                      needs_adjustment:
+                        type: boolean
+                      direction_summary:
+                        type: string
+                      counter_nominal_code_id:
+                        type: integer
+                      counter_code:
+                        type: string
+                      counter_name:
+                        type: string
+                      postable:
+                        type: boolean
+                      blocked_reason:
+                        type: string
+                        nullable: true
+                      provider_lock_date:
+                        type: string
+                      sku_side_adjustable:
+                        type: boolean
+                      earliest_postable_date:
+                        type: string
+                      already_adjusted:
+                        type: boolean
+                      existing_adjustment_id:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            nominal_code_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            direction:
+                              type: string
+                            amount:
+                              type: number
+                      warehouses:
+                        type: array
+                example:
+                  data:
+                    nominal_code_id: 87
+                    code: '141'
+                    name: Amazon FBA US Inventory
+                    provider_account_name: Amazon FBA US Inventory
+                    effective_date: '2024-04-22'
+                    divergence: 104005.26
+                    amount: 104005.26
+                    needs_adjustment: true
+                    direction_summary: Credit Amazon FBA US Inventory and debit Opening
+                      Balance Equity — reduces the provider GL to match SKU.
+                    counter_nominal_code_id: 94
+                    counter_code: '970'
+                    counter_name: Opening Balance Equity
+                    postable: true
+                    blocked_reason: null
+                    provider_lock_date: '2013-12-31'
+                    sku_side_adjustable: false
+                    earliest_postable_date: '2014-01-01'
+                    already_adjusted: false
+                    existing_adjustment_id: null
+                    lines:
+                    - nominal_code_id: 87
+                      code: '141'
+                      name: Amazon FBA US Inventory
+                      direction: credit
+                      amount: 104005.26
+                    - nominal_code_id: 94
+                      code: '970'
+                      name: Opening Balance Equity
+                      direction: debit
+                      amount: 104005.26
+                    warehouses: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-adjustment-preview
+  /api/ledger/reconciliation/inventory/adjustment/journal:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Adjustment Journal
+      description: 'Where a posted inventory reconciliation adjustment landed in SKU''s
+        ledger — so a client can deep-link the user to the journal entry the adjustment
+        created. The adjustment posts asynchronously, so immediately after posting
+        this returns `pending: true` with null ids; poll it with the returned `adjustment_id`
+        until `pending` is false, then use `journal_entry_id` to open the journal.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Response fields:** `pending` (true until the journal exists), `journal_entry_id`
+        (the created journal entry''s id, null while pending), `reference` (the journal''s
+        reference, e.g. `INV-RECON-ADJ-1`), `status` (the journal''s lifecycle state,
+        e.g. `draft` or `posted`).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: adjustment_id
+        in: query
+        schema:
+          type: integer
+        description: The posted adjustment id (returned by the post endpoint). Required.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      pending:
+                        type: boolean
+                      journal_entry_id:
+                        type: integer
+                      reference:
+                        type: string
+                      status:
+                        type: string
+                example:
+                  data:
+                    pending: false
+                    journal_entry_id: 49687
+                    reference: INV-RECON-ADJ-1
+                    status: draft
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-adjustment-journal
+  /api/ledger/reconciliation/inventory/adjustment/counter-account:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Ensure Adjustment Counter Account
+      description: 'Ensure a conventional "Opening Balance Equity" counter account
+        exists (creating it if the chart of accounts has none), so the adjusting journal''s
+        balancing leg has a target. Idempotent — reuses an existing opening-balance-named
+        account.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body:** `connection_id` (required).
+
+
+        **Response:** `{ data: { id, code, name } }`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+              example:
+                connection_id: 5
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                example:
+                  data:
+                    id: 94
+                    code: '970'
+                    name: Opening Balance Equity
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-ledger-reconciliation-inventory-adjustment-counter-account
+  /api/ledger/reconciliation/inventory/adjustment:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Post Inventory Reconciliation Adjustment
+      description: 'Post the adjusting journal to bring the provider''s inventory
+        control account into line with SKU. The amount and direction are recomputed
+        server-side from the divergence (the client can''t post an arbitrary figure);
+        the balanced journal is posted to the provider as a manual journal. An already-aligned
+        or locked-period account is rejected 422.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body:** `connection_id` (required), `nominal_code_id` (required), `counter_nominal_code_id`
+        (required), `effective_date` (required, date), `note` (optional, max 500 chars).
+
+
+        **Response:** `{ data: { adjustment_id }, message }`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+                nominal_code_id:
+                  type: integer
+                counter_nominal_code_id:
+                  type: integer
+                effective_date:
+                  type: string
+                note:
+                  type: string
+              example:
+                connection_id: 5
+                nominal_code_id: 87
+                counter_nominal_code_id: 94
+                effective_date: '2024-04-22'
+                note: Align opening to SKU
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      adjustment_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    adjustment_id: 12
+                  message: Adjusting journal posted — it will sync to the provider.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: The provider period is locked on this date — post the fix
+                    on the SKU side instead.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-ledger-reconciliation-inventory-adjustment
   /api/ledger/reconciliation/inventory/sync-estimate:
     get:
       tags:
