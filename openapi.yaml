@@ -139609,7 +139609,22 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Returns 422 when the receipt cannot be reversed:
+
+        - it would consume stock hard-allocated to a shipment whose label cannot be
+        voided (void it at the carrier first, or supply a `void_confirmations` entry
+        to void it as part of the request), or
+
+        - it would consume stock committed to another in-flight process (a warehouse
+        transfer or an FBA inbound plan): cancel or adjust that transfer/plan first.
+
+
+        If the received units have already been sold or consumed with no live reservation
+        to release, the reversal fails with a server error (not a 422) — a data anomaly
+        worth investigating rather than a routine rejection.'
       parameters:
       - name: integrationInstance
         in: path
@@ -139656,6 +139671,23 @@ paths:
                     inventory_adjustments_deleted:
                     - 88001
                     - 88002
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This stock is committed to FBA Inbound Plan ABC — cancel
+                    or adjust it first, otherwise that reservation would be stranded.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -139683,7 +139715,22 @@ paths:
 
         - `receipt_ids` — required, array, min:1
 
-        - `receipt_ids.*` — integer, exists:inventory_adjustments,id'
+        - `receipt_ids.*` — integer, exists:inventory_adjustments,id
+
+
+        Returns 422 when the receipt cannot be reversed:
+
+        - it would consume stock hard-allocated to a shipment whose label cannot be
+        voided (void it at the carrier first, or supply a `void_confirmations` entry
+        to void it as part of the request), or
+
+        - it would consume stock committed to another in-flight process (a warehouse
+        transfer or an FBA inbound plan): cancel or adjust that transfer/plan first.
+
+
+        If the received units have already been sold or consumed with no live reservation
+        to release, the reversal fails with a server error (not a 422) — a data anomaly
+        worth investigating rather than a routine rejection.'
       requestBody:
         content:
           application/json:
@@ -139748,11 +139795,27 @@ paths:
                     shipments_affected:
                     - 12345
                     - 12346
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This stock is committed to FBA Inbound Plan ABC — cancel
+                    or adjust it first, otherwise that reservation would be stranded.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       operationId: post-api-amazon-integrationinstance-removal-shipments-bulk-remove-receipts
   /api/amazon/{integrationInstance}/removal-shipment-discards/bulk-remove:
     post:
@@ -140024,7 +140087,7 @@ paths:
       - Amazon
       summary: Undo All Receipts for Removal Order
       description: 'Undo every receipt across all shipments for a single Amazon removal
-        order. The controller verifies that at least one shipment exists for the given
+        order. The endpoint verifies that at least one shipment exists for the given
         `order_id` and integration instance, otherwise returns 404.
 
 
@@ -140033,7 +140096,28 @@ paths:
         Any valid API token can call this endpoint — no specific scope required. [Manage
         tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        **Voiding hard-allocated labels (`void_confirmations`):** When this removal
+        would consume stock that is hard-allocated to a fulfillment (a printed shipping
+        label), include a `void_confirmations` array in the request body — one entry
+        per fulfillment you authorize voiding: `{ "fulfillment_id": <int>, "attempt_void":
+        true, "reason": <string|null> }`. Each confirmed label is voided first so
+        the removal can proceed. Omit `void_confirmations` (or leave out a fulfillment
+        that is in the way) and the request is rejected with 422 when hard-allocated
+        stock blocks the operation. Call the matching preview-impact endpoint first
+        to see exactly which fulfillments block it.
+
+
+        The request is also rejected with 422 when the stock is committed to another
+        in-flight process (a warehouse transfer or an FBA inbound plan): cancel or
+        adjust that transfer/plan first.
+
+
+        If the received units have already been sold or consumed with no live reservation
+        to release, the reversal fails with a server error (not a 422) — a data anomaly
+        worth investigating rather than a routine rejection.'
       parameters:
       - name: integrationInstance
         in: path
@@ -140101,6 +140185,45 @@ paths:
                 example:
                   message: Removal order UNKNOWN not found or does not belong to integration
                     instance 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            undefined:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Protected Inventory Conflict
+                  value:
+                    message: Cannot take 100 units. Only 20 available after protecting
+                      80 units allocated to submitted or acknowledged fulfillments.
+                    conflict:
+                      requested_quantity: 100
+                      available_quantity: 20
+                      protected_quantity: 80
+                      conflicting_allocations:
+                      - type: sales_order_fulfillment
+                        id: 123
+                        reference: SO-12345
+                        quantity_allocated: 5
+                        line_details:
+                          sales_order_number: SO-12345
+                          sales_order_line_id: 456
+                          product_sku: ABC-123
+                example-1:
+                  summary: 422 Label Not Voidable
+                  value:
+                    message: 'Fulfillment #90142 can''t be voided (its label cannot
+                      be voided), so this reduction isn''t allowed.'
+                example-2:
+                  summary: Committed To Another Process
+                  value:
+                    message: This stock is committed to FBA Inbound Plan ABC — cancel
+                      or adjust it first, otherwise that reservation would be stranded.
         '429': *id001
         '401': *id002
         '403': *id003
