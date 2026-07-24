@@ -1,16 +1,28 @@
 ---
 title: API changes — 2026-07-24
-description: This release includes 18 additions, 2 changes.
+description: This release includes 18 additions, 3 changes. 1 breaking change — action required.
 authors: [product-team]
-tags: [added, changed]
+tags: [added, changed, breaking]
 date: 2026-07-24
 ---
 
-This release includes 18 additions, 2 changes.
+This release includes 18 additions, 3 changes. 1 breaking change — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Incompatible changes
+
+#### Inventory Intelligence
+- **Changed** `GET /api/inventory-forecasting/schedule-runs` — List All Runs
+  - removed parameter(s): `date_from`, `date_to`, `per_page`, `run_type`, `search`, `status`
 
 ## Added
 
