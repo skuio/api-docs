@@ -30973,7 +30973,8 @@ paths:
         **Response fields:** `pending` (true until the journal exists), `journal_entry_id`
         (the created journal entry''s id, null while pending), `reference` (the journal''s
         reference, e.g. `INV-RECON-ADJ-1`), `status` (the journal''s lifecycle state,
-        e.g. `draft` or `posted`).'
+        e.g. `draft` or `posted`), `deletable` (true while the journal has not yet
+        synced to the provider — so the adjustment can be reversed and discarded cleanly).'
       parameters:
       - name: connection_id
         in: query
@@ -31011,12 +31012,15 @@ paths:
                         type: string
                       status:
                         type: string
+                      deletable:
+                        type: boolean
                 example:
                   data:
                     pending: false
                     journal_entry_id: 49687
                     reference: INV-RECON-ADJ-1
                     status: draft
+                    deletable: true
         '429': *id001
         '401': *id002
         '403': *id003
@@ -31170,6 +31174,78 @@ paths:
         '401': *id002
         '403': *id003
       operationId: post-api-ledger-reconciliation-inventory-adjustment
+    delete:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Reverse Inventory Reconciliation Adjustment
+      description: 'Reverse (delete) a posted inventory reconciliation adjustment
+        while its journal has not yet synced to the accounting provider, discarding
+        the draft journal so the opening can be re-reconciled (for example, at a corrected
+        date). Once the journal has synced to the provider this returns 422 — undoing
+        it then requires posting a reversing entry in the provider.
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Query parameters:** `connection_id` (required), `adjustment_id` (required
+        — the adjustment returned by the post endpoint).
+
+
+        **Behavior:** discards the adjustment''s unsynced draft journal via the standard
+        source-deleted pathway; the SKU inventory value is unchanged.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: adjustment_id
+        in: query
+        schema:
+          type: integer
+        description: The posted adjustment id to reverse. Required.
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Adjustment reversed — its journal was discarded.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This adjustment's journal has already synced to your provider
+                    and can't be deleted here — post a reversing entry in your provider
+                    instead.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: delete-api-ledger-reconciliation-inventory-adjustment
   /api/ledger/reconciliation/inventory/sync-estimate:
     get:
       tags:
