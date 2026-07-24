@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-24
-description: This release includes 6 additions, 2 changes.
+description: This release includes 8 additions, 2 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-07-24
 ---
 
-This release includes 6 additions, 2 changes.
+This release includes 8 additions, 2 changes.
 
 <!-- truncate -->
 
@@ -18,6 +18,10 @@ This release includes 6 additions, 2 changes.
 - `GET /api/fulfillment-orders/{fulfillmentOrder}/packing-slip-print-events` — List Fulfillment Order Packing Slip Print Events
 - `PATCH /api/fulfillment-orders/{fulfillmentOrder}/packing-slip-print-events/{packingSlipPrintEvent}` — Update Packing Slip Print Event Reprint Reason
 - `GET /api/fulfillment-orders/{fulfillmentOrder}/packing-slip-print-events/{packingSlipPrintEvent}/download` — Download Fulfillment Order Packing Slip Print Copy
+
+### Reporting
+- `GET /api/reports/supplier-pickup-orders` — List Supplier Pickup Orders
+- `GET /api/reports/supplier-pickup-orders/summary` — Get Supplier Pickup Summary
 
 ### ShipHero
 - `POST /api/shiphero/integration-instances/{integration_instance}/orders/refresh-order` — Import Single Order
