@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-25
-description: This release includes 33 additions.
+description: This release includes 32 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-25
 ---
 
-This release includes 33 additions.
+This release includes 32 additions.
 
 <!-- truncate -->
 
@@ -28,7 +28,6 @@ This release includes 33 additions.
 - `POST /api/walmart/{integrationInstance}/item-tools/associations` — Get Item Associations
 - `POST /api/walmart/{integrationInstance}/item-tools/catalog-search` — Search My Catalogue
 - `GET /api/walmart/{integrationInstance}/item-tools/count` — Get Item Count by Status
-- `GET /api/walmart/{integrationInstance}/item-tools/count/groups` — Get Item Count by Group
 - `GET /api/walmart/{integrationInstance}/item-tools/search` — Search Walmart Catalogue
 - `POST /api/walmart/{integrationInstance}/pricing-programs/cap-sku` — Enroll Catalogue in CAP Program
 - `GET /api/walmart/{integrationInstance}/pricing-programs/incentives` — List Price-Incentive Items
