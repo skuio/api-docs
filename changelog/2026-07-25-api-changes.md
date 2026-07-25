@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-25
-description: This release includes 21 additions.
+description: This release includes 23 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-25
 ---
 
-This release includes 21 additions.
+This release includes 23 additions.
 
 <!-- truncate -->
 
@@ -18,6 +18,8 @@ This release includes 21 additions.
 - `POST /api/attributes/{attributeId}/option-swatch` — Set Attribute Option Swatch
 
 ### Walmart
+- `GET /api/walmart/{integrationInstance}/account/partner-configurations` — Get Partner Configurations
+- `GET /api/walmart/{integrationInstance}/account/shipping-configurations` — Get Shipping Configurations
 - `POST /api/walmart/{integrationInstance}/item-settings/disputes/contest` — Contest Duplicate-Listing Dispute
 - `POST /api/walmart/{integrationInstance}/item-settings/disputes/status` — Get Duplicate-Listing Dispute Status
 - `POST /api/walmart/{integrationInstance}/item-settings/lag-time` — Bulk Update Fulfilment Lag Time
