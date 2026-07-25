@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-25
-description: This release includes 23 additions.
+description: This release includes 33 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-25
 ---
 
-This release includes 23 additions.
+This release includes 33 additions.
 
 <!-- truncate -->
 
@@ -40,5 +40,15 @@ This release includes 23 additions.
 - `POST /api/walmart/{integrationInstance}/pricing-programs/strategies/assign` — Assign SKUs to Repricer Strategy
 - `DELETE /api/walmart/{integrationInstance}/pricing-programs/strategies/{strategyCollectionId}` — Delete Repricer Strategy
 - `PUT /api/walmart/{integrationInstance}/pricing-programs/strategies/{strategyCollectionId}` — Update Repricer Strategy
+- `GET /api/walmart/{integrationInstance}/wfs/fees` — List WFS Fees
+- `GET /api/walmart/{integrationInstance}/wfs/reconciliation` — List WFS Reconciliation
+- `GET /api/walmart/{integrationInstance}/wfs/reconciliation/discrepancies` — List WFS Discrepancies
+- `GET /api/walmart/{integrationInstance}/wfs/reconciliation/discrepancies/{discrepancy}/claim-packet` — Get WFS Discrepancy Claim Packet
+- `POST /api/walmart/{integrationInstance}/wfs/reconciliation/discrepancies/{discrepancy}/resolve` — Resolve WFS Discrepancy
+- `POST /api/walmart/{integrationInstance}/wfs/reconciliation/sync` — Sync WFS Reconciliation
+- `GET /api/walmart/{integrationInstance}/wfs/removals` — List WFS Removal Orders
+- `POST /api/walmart/{integrationInstance}/wfs/removals` — Create WFS Removal
+- `POST /api/walmart/{integrationInstance}/wfs/removals/sync` — Sync WFS Removals
+- `POST /api/walmart/{integrationInstance}/wfs/removals/{removal}/materialize` — Materialize WFS Removal
 
 _Spec version 1.0.0 → 1.0.0._
