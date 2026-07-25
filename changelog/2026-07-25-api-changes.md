@@ -1,18 +1,21 @@
 ---
 title: API changes — 2026-07-25
-description: This release includes 20 additions.
+description: This release includes 21 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-25
 ---
 
-This release includes 20 additions.
+This release includes 21 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Organization
+- `POST /api/attributes/{attributeId}/option-swatch` — Set Attribute Option Swatch
 
 ### Walmart
 - `POST /api/walmart/{integrationInstance}/item-settings/disputes/contest` — Contest Duplicate-Listing Dispute
