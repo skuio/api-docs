@@ -30221,7 +30221,16 @@ paths:
         `journal_date`, `source_type`, `source_id`, `account_code`, `account_name`,
         `net_amount`, `gross_amount`, `tax_amount`), `sku_movements[]` (`id`, `movement_date`,
         `type`, `warehouse_name`, `product_sku`, `product_name`, `quantity`, `unit_cost`,
-        `value_delta`, `reference`, `link_type`, `link_id`).'
+        `value_delta`, `reference`, `link_type`, `link_id`).
+
+
+        Each provider line and SKU movement carries a match_group: lines of the same
+        signed amount are paired (shared match_group id) and null means unmatched.
+        Matched pairs net to zero, so the day''s gap is exactly unmatched_provider_total
+        minus unmatched_sku_total — an unmatched provider line was booked in the accounting
+        GL with no SKU-side movement, and an unmatched SKU movement changed SKU inventory
+        but has not reached the GL. matched_count and matched_amount summarise what
+        reconciles.'
       parameters:
       - name: connection_id
         in: query
@@ -30277,7 +30286,7 @@ paths:
                       divergence:
                         type: number
                       provider_net_total:
-                        type: number
+                        type: integer
                       sku_value_delta_total:
                         type: number
                       provider_lines:
@@ -30302,6 +30311,8 @@ paths:
                             gross_amount:
                               type: number
                             tax_amount:
+                              type: integer
+                            match_group:
                               type: integer
                       sku_movements:
                         type: array
@@ -30332,6 +30343,18 @@ paths:
                               type: string
                             link_id:
                               type: integer
+                            match_group:
+                              type: integer
+                      matched_count:
+                        type: integer
+                      matched_amount:
+                        type: number
+                      unmatched_provider_total:
+                        type: number
+                      unmatched_sku_total:
+                        type: number
+                  success:
+                    type: boolean
                 example:
                   data:
                     as_of_date: '2026-06-27'
@@ -30343,19 +30366,43 @@ paths:
                     sku_quantity: 41250
                     provider_balance: 571675.22
                     divergence: 1882.98
-                    provider_net_total: 1882.98
-                    sku_value_delta_total: -63.28
+                    provider_net_total: 5000
+                    sku_value_delta_total: 3053.74
                     provider_lines:
                     - journal_number: '212538'
                       journal_date: '2026-06-27'
-                      source_type: ACCPAY
+                      source_type: ACCREC
                       source_id: b1f2c0d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                      account_code: '142'
+                      account_name: SMO Inventory
+                      net_amount: 3117.02
+                      gross_amount: 3117.02
+                      tax_amount: 0
+                      match_group: 1
+                    - journal_number: '212540'
+                      journal_date: '2026-06-27'
+                      source_type: ManualJournal
+                      source_id: c2a3b4c5-6d7e-4f80-91a2-b3c4d5e6f7a8
                       account_code: '142'
                       account_name: SMO Inventory
                       net_amount: 1882.98
                       gross_amount: 1882.98
                       tax_amount: 0
+                      match_group: null
                     sku_movements:
+                    - id: 3068
+                      movement_date: '2026-06-27T08:02:00.000000Z'
+                      type: sale
+                      warehouse_name: ShipMyOrders Warehouse
+                      product_sku: TM-191-O-124
+                      product_name: Titanium Mount 191
+                      quantity: -42
+                      unit_cost: 74.215
+                      value_delta: 3117.02
+                      reference: SO-10442
+                      link_type: SalesOrderLine
+                      link_id: 88231
+                      match_group: 1
                     - id: 3071
                       movement_date: '2026-06-27T09:14:00.000000Z'
                       type: adjustment
@@ -30368,10 +30415,154 @@ paths:
                       reference: '3071'
                       link_type: InventoryAdjustment
                       link_id: 3071
+                      match_group: null
+                    matched_count: 1
+                    matched_amount: 3117.02
+                    unmatched_provider_total: 1882.98
+                    unmatched_sku_total: -63.28
+                  success: true
         '429': *id001
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-inventory-day-detail
+  /api/ledger/reconciliation/inventory/divergence-breakdown:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Divergence Breakdown
+      description: 'The ongoing divergence for one earmarked inventory control account,
+        decomposed into buckets that reconcile to the total: the reconciled opening,
+        awaiting-sync postings that self-resolve once they reach the provider, permanently
+        excluded postings (before the start date / internal-only), and the residual
+        variance to investigate. Also returns a ranked worklist of the days that contributed
+        most to the gap (largest impact first); each day''s gap sums back to the ongoing
+        movement, and the untruncated tail is carried in other_days_gap so the list
+        always ties to the total. Authenticate with a Personal Access Token. Reads
+        cached data only (no live provider call).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account id to decompose. Required.
+        example: '87'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      nominal_code_id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                      provider_account_name:
+                        type: string
+                      as_of_date:
+                        type: string
+                      opening_divergence:
+                        type: integer
+                      opening_reconciled:
+                        type: boolean
+                      raw_divergence:
+                        type: number
+                      pending_ledger:
+                        type: number
+                      excluded_ledger:
+                        type: number
+                      residual:
+                        type: number
+                      ongoing_movement:
+                        type: number
+                      days:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            as_of_date:
+                              type: string
+                            provider_net:
+                              type: integer
+                            sku_delta:
+                              type: number
+                            daily_gap:
+                              type: number
+                            classification:
+                              type: string
+                            divergence_after:
+                              type: number
+                            share:
+                              type: number
+                      returned_days_count:
+                        type: integer
+                      other_days_count:
+                        type: integer
+                      other_days_gap:
+                        type: number
+                  success:
+                    type: boolean
+                example:
+                  data:
+                    nominal_code_id: 87
+                    code: '142'
+                    name: SMO Inventory
+                    provider_account_name: SMO Inventory
+                    as_of_date: '2026-06-27'
+                    opening_divergence: 0
+                    opening_reconciled: true
+                    raw_divergence: 446497.65
+                    pending_ledger: -1010.56
+                    excluded_ledger: 538152.01
+                    residual: 445487.09
+                    ongoing_movement: 446497.65
+                    days:
+                    - as_of_date: '2025-12-12'
+                      provider_net: 0
+                      sku_delta: -262899.87
+                      daily_gap: 262899.87
+                      classification: sku_only
+                      divergence_after: 262899.87
+                      share: 0.5888
+                    - as_of_date: '2025-12-15'
+                      provider_net: 0
+                      sku_delta: -213112.9
+                      daily_gap: 213112.9
+                      classification: sku_only
+                      divergence_after: 476012.77
+                      share: 0.4773
+                    - as_of_date: '2026-03-14'
+                      provider_net: 5000
+                      sku_delta: 0
+                      daily_gap: 5000
+                      classification: provider_only
+                      divergence_after: 451497.65
+                      share: 0.0112
+                    returned_days_count: 30
+                    other_days_count: 580
+                    other_days_gap: -37361.8
+                  success: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-divergence-breakdown
   /api/ledger/reconciliation/inventory/unsynced:
     get:
       tags:
@@ -30832,7 +31023,12 @@ paths:
         SKU-adjustable, non-Amazon warehouses the SKU-side fix can target). `already_adjusted`
         is true when this account was already reconciled on this date (posting is
         blocked to avoid double-correcting), with `existing_adjustment_id` pointing
-        at the prior adjustment.'
+        at the prior adjustment.
+
+
+        Set net_pending=1 for the ongoing (residual) true-up: it targets divergence
+        + pending so the journal will not over-correct once awaiting-sync postings
+        land.'
       parameters:
       - name: connection_id
         in: query
@@ -31113,7 +31309,11 @@ paths:
         (required), `effective_date` (required, date), `note` (optional, max 500 chars).
 
 
-        **Response:** `{ data: { adjustment_id }, message }`.'
+        **Response:** `{ data: { adjustment_id }, message }`.
+
+
+        Pass net_pending=true for the ongoing true-up (targets the residual = divergence
+        + pending). The amount and direction are always recomputed server-side.'
       requestBody:
         content:
           application/json:
@@ -31130,12 +31330,15 @@ paths:
                   type: string
                 note:
                   type: string
+                net_pending:
+                  type: boolean
               example:
                 connection_id: 5
                 nominal_code_id: 87
                 counter_nominal_code_id: 94
                 effective_date: '2024-04-22'
                 note: Align opening to SKU
+                net_pending: false
       parameters: []
       responses:
         '200':
