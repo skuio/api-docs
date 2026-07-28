@@ -92821,7 +92821,14 @@ paths:
         **Response:**
 
         Returns the created integration instance with `is_authorized: false` and `granted_scopes:
-        []`.'
+        []`.
+
+
+        **Instance names must be unique**
+
+        `name` must be unique across every integration instance in the account, not
+        just Faire ones. Reusing a name that is already taken returns `422` with a
+        `name` error — it does not create a second instance.'
       requestBody:
         content:
           application/json:
@@ -92922,10 +92929,52 @@ paths:
                     products_count: 0
                     created_at: '2026-04-30T12:00:00+00:00'
                     updated_at: '2026-04-30T12:00:00+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      name:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                example:
+                  message: An integration named "Faire Main Store" already exists.
+                    Open the existing integration to finish setting it up, or choose
+                    a different name.
+                  errors:
+                    name:
+                    - message: An integration named "Faire Main Store" already exists.
+                        Open the existing integration to finish setting it up, or
+                        choose a different name.
+                      code: NameMustBeUnique
+                      data:
+                        name: Faire Main Store
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       operationId: post-api-faire-instances
   /api/faire/instances/{integrationInstance}:
     get:
@@ -93117,7 +93166,10 @@ paths:
         \n**Note:** `fulfillment_mode` is fixed at creation time and ignored on update.\n\
         \n**Response:**\nReturns the updated integration instance, including the resolved\
         \ `financial_line_type_overrides` object (each branch is either `null` if\
-        \ no override is configured, or `{ id, name, classification }`)."
+        \ no override is configured, or `{ id, name, classification }`).\n\n**Instance\
+        \ names must be unique**\n`name` must be unique across every integration instance\
+        \ in the account, not just Faire ones. Reusing a name that is already taken\
+        \ returns `422` with a `name` error — it does not create a second instance."
       requestBody:
         content:
           application/json:
@@ -93364,23 +93416,26 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: Validation Error - Wrong Classification
+                  value:
+                    message: The selected financial line type for commission must
+                      be a Cost type.
+                    errors:
                       financial_line_type_overrides.commission:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The selected financial line type for commission must be
-                    a Cost type.
-                  errors:
-                    financial_line_type_overrides.commission:
-                    - The selected financial line type for commission must be a Cost
-                      type.
+                      - The selected financial line type for commission must be a
+                        Cost type.
+                example-1:
+                  summary: Duplicate Name (422)
+                  value:
+                    message: The name has already been taken.
+                    errors:
+                      name:
+                      - message: The name has already been taken.
+                        code: NameMustBeUnique
+                        data:
+                          name: Faire Main Store - Updated
         '429': *id001
         '401': *id002
         '403': *id003
@@ -332468,11 +332523,19 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Body fields (one required):
+        Body fields (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - ids (array): specific product IDs to delete
+        - ids (array, required without `filters`/`apply_to_all`): specific product
+        IDs to delete
 
-        - filters (object): filter criteria to select products for deletion
+        - filters (object, required without `ids`/`apply_to_all`): filter criteria
+        to select products for deletion
+
+        - apply_to_all (boolean, optional): Targets every product matching the active
+        `filters` instead of an explicit `ids` list. An empty `filters` object is
+        indistinguishable from an absent one, so this flag is what keeps an unfiltered
+        "select all" valid — send `{"apply_to_all": true, "filters": {}}` to delete
+        every product.
 
 
         **Requires permission:** `products.delete`'
@@ -376946,10 +377009,8 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        ids: array of product IDs to add. Required unless filters is provided.
-
-
-        filters: alternatively provide list view filters to select products dynamically.
+        ids: array of product IDs to add. Required (min 1) — this endpoint has no
+        filter-resolution path, so a body without `ids` is rejected with a 422.
 
 
         mode: full_count (default) or adjustment.
@@ -420020,13 +420081,21 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Request body (one of `ids` or `filters` is required):
+        Request body (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - ids (array of integers, required without filters): Sales order IDs to approve.
+        - ids (array of integers, required without `filters`/`apply_to_all`): Sales
+        order IDs to approve.
 
-        - filters (required without ids): Filter payload resolved against the sales-orders
-        list — accepts the grouped `filter_groups` shape (base64-encoded JSON, same
-        as the V2 sales-orders list) as well as the legacy JSON-string filter set.
+        - filters (required without `ids`/`apply_to_all`): Filter payload resolved
+        against the sales-orders list — accepts the grouped `filter_groups` shape
+        (base64-encoded JSON, same as the V2 sales-orders list) as well as the legacy
+        JSON-string filter set.
+
+        - apply_to_all (boolean, optional): Targets every order matching the active
+        `filters` instead of an explicit `ids` list. An empty `filters` object is
+        indistinguishable from an absent one, so this flag is what keeps an unfiltered
+        "select all" valid — send `{"apply_to_all": true, "filters": {}}` to target
+        every order.
 
         - archived (integer, optional, default 0): Used with `filters` — set to 1
         to include archived orders when resolving IDs.
@@ -420147,13 +420216,21 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Request body (one of `ids` or `filters` is required):
+        Request body (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - ids (array of integers, required without filters): Sales order IDs to revert.
+        - ids (array of integers, required without `filters`/`apply_to_all`): Sales
+        order IDs to revert.
 
-        - filters (required without ids): Filter payload resolved against the sales-orders
-        list — accepts the grouped `filter_groups` shape (base64-encoded JSON, same
-        as the V2 sales-orders list) as well as the legacy JSON-string filter set.
+        - filters (required without `ids`/`apply_to_all`): Filter payload resolved
+        against the sales-orders list — accepts the grouped `filter_groups` shape
+        (base64-encoded JSON, same as the V2 sales-orders list) as well as the legacy
+        JSON-string filter set.
+
+        - apply_to_all (boolean, optional): Targets every order matching the active
+        `filters` instead of an explicit `ids` list. An empty `filters` object is
+        indistinguishable from an absent one, so this flag is what keeps an unfiltered
+        "select all" valid — send `{"apply_to_all": true, "filters": {}}` to target
+        every order.
 
         - archived (integer, optional, default 0): Used with `filters` — set to 1
         to include archived orders when resolving IDs.
@@ -424907,35 +424984,40 @@ paths:
         \ scope: `orders:write`]\nGrant this scope to your token under [Settings →\
         \ Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body fields (one\
-        \ of `ids` or `filters` is required):\n- ids (array of integers, required\
-        \ without `filters`): Sales order IDs to target. Each ID must exist.\n- filters\
-        \ (object or string, required without `ids`): Resolves to the matching sales\
-        \ order IDs — the same targeting the sales-orders list uses. Two shapes are\
-        \ accepted:\n  - Grouped filters: `{ \"filter_groups\": \"<base64-encoded\
-        \ JSON tree>\" }`. The decoded tree looks like `{\"conjunction\":\"and\",\"\
-        children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"order_status\"\
-        ,\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter set (JSON\
-        \ string) for older clients.\n\nResponse fields:\n- orders[] — one entry per\
-        \ targeted order:\n  - sales_order_id (integer), sales_order_number (string)\n\
-        \  - status (string|null): Raw status value of the order, when available.\n\
-        \  - eligibility (string): `eligible`, `partially_eligible`, or `ineligible`.\n\
-        \  - reason (string|null): Populated only when the order is ineligible, with\
-        \ the shared line-level reason or an order-level summary.\n  - lines[] — one\
-        \ entry per warehoused product line:\n    - sales_order_line_id (integer),\
-        \ product_sku (string|null), product_name (string|null), warehouse_name (string|null)\n\
-        \    - eligible (boolean), reason (string|null)\n    - processable_quantity\
-        \ (integer): Ordered quantity net of cancellations.\n    - fulfilled_quantity\
-        \ (integer): Quantity already committed to non-cancelled fulfillments.\n \
-        \   - currently_allocated (integer): Units already covered by active allocations.\n\
-        \    - impact_quantity (integer): Units this action would change on the line.\n\
-        - totals — orders_total, orders_eligible, orders_partially_eligible, orders_ineligible,\
-        \ lines_total, lines_eligible, lines_impact_quantity (all integers).\n\nBehavior\
-        \ notes:\n- Only lines stocked in warehouses that track inventory allocations\
-        \ are considered; lines in warehouses that do not are reported with reason\
-        \ \"Warehouse does not require inventory allocation\".\n- Lines already fully\
-        \ allocated or fulfilled are ineligible with reason \"Already fully allocated\
-        \ or fulfilled\".\n- impact_quantity is the remaining unallocated demand that\
-        \ a bulk allocate would newly allocate.\n\n**Requires permission:** `sales_orders.update`"
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- ids (array of integers,\
+        \ required without `filters`/`apply_to_all`): Sales order IDs to target. Each\
+        \ ID must exist.\n- filters (object or string, required without `ids`/`apply_to_all`):\
+        \ Resolves to the matching sales order IDs — the same targeting the sales-orders\
+        \ list uses. Two shapes are accepted:\n  - Grouped filters: `{ \"filter_groups\"\
+        : \"<base64-encoded JSON tree>\" }`. The decoded tree looks like `{\"conjunction\"\
+        :\"and\",\"children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"\
+        order_status\",\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter\
+        \ set (JSON string) for older clients.\n- apply_to_all (boolean, optional):\
+        \ Targets every order matching the active `filters` instead of an explicit\
+        \ `ids` list. An empty `filters` object is indistinguishable from an absent\
+        \ one, so this flag is what keeps an unfiltered \"select all\" valid — send\
+        \ `{\"apply_to_all\": true, \"filters\": {}}` to target every order.\n\nResponse\
+        \ fields:\n- orders[] — one entry per targeted order:\n  - sales_order_id\
+        \ (integer), sales_order_number (string)\n  - status (string|null): Raw status\
+        \ value of the order, when available.\n  - eligibility (string): `eligible`,\
+        \ `partially_eligible`, or `ineligible`.\n  - reason (string|null): Populated\
+        \ only when the order is ineligible, with the shared line-level reason or\
+        \ an order-level summary.\n  - lines[] — one entry per warehoused product\
+        \ line:\n    - sales_order_line_id (integer), product_sku (string|null), product_name\
+        \ (string|null), warehouse_name (string|null)\n    - eligible (boolean), reason\
+        \ (string|null)\n    - processable_quantity (integer): Ordered quantity net\
+        \ of cancellations.\n    - fulfilled_quantity (integer): Quantity already\
+        \ committed to non-cancelled fulfillments.\n    - currently_allocated (integer):\
+        \ Units already covered by active allocations.\n    - impact_quantity (integer):\
+        \ Units this action would change on the line.\n- totals — orders_total, orders_eligible,\
+        \ orders_partially_eligible, orders_ineligible, lines_total, lines_eligible,\
+        \ lines_impact_quantity (all integers).\n\nBehavior notes:\n- Only lines stocked\
+        \ in warehouses that track inventory allocations are considered; lines in\
+        \ warehouses that do not are reported with reason \"Warehouse does not require\
+        \ inventory allocation\".\n- Lines already fully allocated or fulfilled are\
+        \ ineligible with reason \"Already fully allocated or fulfilled\".\n- impact_quantity\
+        \ is the remaining unallocated demand that a bulk allocate would newly allocate.\n\
+        \n**Requires permission:** `sales_orders.update`"
       requestBody:
         content:
           application/json:
@@ -425117,22 +425199,26 @@ paths:
         \ for progress and results.\n\n:::info[Required scope: `orders:write`]\nGrant\
         \ this scope to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body fields (one\
-        \ of `ids` or `filters` is required):\n- ids (array of integers, required\
-        \ without `filters`): Sales order IDs to target. Each ID must exist.\n- filters\
-        \ (object or string, required without `ids`): Resolves to the matching sales\
-        \ order IDs — the same targeting the sales-orders list uses. Two shapes are\
-        \ accepted:\n  - Grouped filters: `{ \"filter_groups\": \"<base64-encoded\
-        \ JSON tree>\" }`. The decoded tree looks like `{\"conjunction\":\"and\",\"\
-        children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"order_status\"\
-        ,\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter set (JSON\
-        \ string) for older clients.\n\nBehavior:\n- For each order, inventory is\
-        \ allocated to every eligible line's remaining unallocated demand. Lines whose\
-        \ warehouse does not track allocations, and lines already fully allocated\
-        \ or fulfilled, are skipped.\n- The operation runs in the background. Poll\
-        \ the tracked job log endpoints with the returned ID for progress and the\
-        \ completion summary (orders processed / fully allocated / partially allocated\
-        \ / skipped; lines allocated / already allocated / failed) plus any per-order\
-        \ errors.\n- Call the preview endpoint (`POST /api/sales-orders/bulk-allocate/preview`)\
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- ids (array of integers,\
+        \ required without `filters`/`apply_to_all`): Sales order IDs to target. Each\
+        \ ID must exist.\n- filters (object or string, required without `ids`/`apply_to_all`):\
+        \ Resolves to the matching sales order IDs — the same targeting the sales-orders\
+        \ list uses. Two shapes are accepted:\n  - Grouped filters: `{ \"filter_groups\"\
+        : \"<base64-encoded JSON tree>\" }`. The decoded tree looks like `{\"conjunction\"\
+        :\"and\",\"children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"\
+        order_status\",\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter\
+        \ set (JSON string) for older clients.\n- apply_to_all (boolean, optional):\
+        \ Targets every order matching the active `filters` instead of an explicit\
+        \ `ids` list. An empty `filters` object is indistinguishable from an absent\
+        \ one, so this flag is what keeps an unfiltered \"select all\" valid — send\
+        \ `{\"apply_to_all\": true, \"filters\": {}}` to target every order.\n\nBehavior:\n\
+        - For each order, inventory is allocated to every eligible line's remaining\
+        \ unallocated demand. Lines whose warehouse does not track allocations, and\
+        \ lines already fully allocated or fulfilled, are skipped.\n- The operation\
+        \ runs in the background. Poll the tracked job log endpoints with the returned\
+        \ ID for progress and the completion summary (orders processed / fully allocated\
+        \ / partially allocated / skipped; lines allocated / already allocated / failed)\
+        \ plus any per-order errors.\n- Call the preview endpoint (`POST /api/sales-orders/bulk-allocate/preview`)\
         \ first to see exactly which orders and lines will be affected.\n\n**Requires\
         \ permission:** `sales_orders.update`"
       requestBody:
@@ -425224,37 +425310,41 @@ paths:
         \ scope: `orders:write`]\nGrant this scope to your token under [Settings →\
         \ Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body fields (one\
-        \ of `ids` or `filters` is required):\n- ids (array of integers, required\
-        \ without `filters`): Sales order IDs to target. Each ID must exist.\n- filters\
-        \ (object or string, required without `ids`): Resolves to the matching sales\
-        \ order IDs — the same targeting the sales-orders list uses. Two shapes are\
-        \ accepted:\n  - Grouped filters: `{ \"filter_groups\": \"<base64-encoded\
-        \ JSON tree>\" }`. The decoded tree looks like `{\"conjunction\":\"and\",\"\
-        children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"order_status\"\
-        ,\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter set (JSON\
-        \ string) for older clients.\n\nResponse fields:\n- orders[] — one entry per\
-        \ targeted order:\n  - sales_order_id (integer), sales_order_number (string)\n\
-        \  - status (string|null): Raw status value of the order, when available.\n\
-        \  - eligibility (string): `eligible`, `partially_eligible`, or `ineligible`.\n\
-        \  - reason (string|null): Populated only when the order is ineligible, with\
-        \ the shared line-level reason or an order-level summary.\n  - lines[] — one\
-        \ entry per warehoused product line:\n    - sales_order_line_id (integer),\
-        \ product_sku (string|null), product_name (string|null), warehouse_name (string|null)\n\
-        \    - eligible (boolean), reason (string|null)\n    - processable_quantity\
-        \ (integer): Ordered quantity net of cancellations.\n    - fulfilled_quantity\
-        \ (integer): Quantity already committed to non-cancelled fulfillments.\n \
-        \   - currently_allocated (integer): Units already covered by active allocations.\n\
-        \    - impact_quantity (integer): Units this action would change on the line.\n\
-        - totals — orders_total, orders_eligible, orders_partially_eligible, orders_ineligible,\
-        \ lines_total, lines_eligible, lines_impact_quantity (all integers).\n\nBehavior\
-        \ notes:\n- Only lines stocked in warehouses that track inventory allocations\
-        \ are considered.\n- Lines with any non-cancelled fulfillment activity are\
-        \ ineligible with reason \"Line has fulfillment activity — cannot unallocate\"\
-        .\n- Lines without active allocations are ineligible with reason \"No active\
-        \ allocations to reverse\".\n- impact_quantity is the number of actively allocated\
-        \ units that would be released. Only active allocations are reversed — allocations\
-        \ already fulfilled or cancelled are untouched.\n\n**Requires permission:**\
-        \ `sales_orders.update`"
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- ids (array of integers,\
+        \ required without `filters`/`apply_to_all`): Sales order IDs to target. Each\
+        \ ID must exist.\n- filters (object or string, required without `ids`/`apply_to_all`):\
+        \ Resolves to the matching sales order IDs — the same targeting the sales-orders\
+        \ list uses. Two shapes are accepted:\n  - Grouped filters: `{ \"filter_groups\"\
+        : \"<base64-encoded JSON tree>\" }`. The decoded tree looks like `{\"conjunction\"\
+        :\"and\",\"children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"\
+        order_status\",\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter\
+        \ set (JSON string) for older clients.\n- apply_to_all (boolean, optional):\
+        \ Targets every order matching the active `filters` instead of an explicit\
+        \ `ids` list. An empty `filters` object is indistinguishable from an absent\
+        \ one, so this flag is what keeps an unfiltered \"select all\" valid — send\
+        \ `{\"apply_to_all\": true, \"filters\": {}}` to target every order.\n\nResponse\
+        \ fields:\n- orders[] — one entry per targeted order:\n  - sales_order_id\
+        \ (integer), sales_order_number (string)\n  - status (string|null): Raw status\
+        \ value of the order, when available.\n  - eligibility (string): `eligible`,\
+        \ `partially_eligible`, or `ineligible`.\n  - reason (string|null): Populated\
+        \ only when the order is ineligible, with the shared line-level reason or\
+        \ an order-level summary.\n  - lines[] — one entry per warehoused product\
+        \ line:\n    - sales_order_line_id (integer), product_sku (string|null), product_name\
+        \ (string|null), warehouse_name (string|null)\n    - eligible (boolean), reason\
+        \ (string|null)\n    - processable_quantity (integer): Ordered quantity net\
+        \ of cancellations.\n    - fulfilled_quantity (integer): Quantity already\
+        \ committed to non-cancelled fulfillments.\n    - currently_allocated (integer):\
+        \ Units already covered by active allocations.\n    - impact_quantity (integer):\
+        \ Units this action would change on the line.\n- totals — orders_total, orders_eligible,\
+        \ orders_partially_eligible, orders_ineligible, lines_total, lines_eligible,\
+        \ lines_impact_quantity (all integers).\n\nBehavior notes:\n- Only lines stocked\
+        \ in warehouses that track inventory allocations are considered.\n- Lines\
+        \ with any non-cancelled fulfillment activity are ineligible with reason \"\
+        Line has fulfillment activity — cannot unallocate\".\n- Lines without active\
+        \ allocations are ineligible with reason \"No active allocations to reverse\"\
+        .\n- impact_quantity is the number of actively allocated units that would\
+        \ be released. Only active allocations are reversed — allocations already\
+        \ fulfilled or cancelled are untouched.\n\n**Requires permission:** `sales_orders.update`"
       requestBody:
         content:
           application/json:
@@ -425446,21 +425536,25 @@ paths:
         \ for progress and results.\n\n:::info[Required scope: `orders:write`]\nGrant\
         \ this scope to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body fields (one\
-        \ of `ids` or `filters` is required):\n- ids (array of integers, required\
-        \ without `filters`): Sales order IDs to target. Each ID must exist.\n- filters\
-        \ (object or string, required without `ids`): Resolves to the matching sales\
-        \ order IDs — the same targeting the sales-orders list uses. Two shapes are\
-        \ accepted:\n  - Grouped filters: `{ \"filter_groups\": \"<base64-encoded\
-        \ JSON tree>\" }`. The decoded tree looks like `{\"conjunction\":\"and\",\"\
-        children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"order_status\"\
-        ,\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter set (JSON\
-        \ string) for older clients.\n\nBehavior:\n- For each order, active inventory\
-        \ allocations on eligible lines are released. Lines with any non-cancelled\
-        \ fulfillment activity are skipped, as are lines with no active allocations.\
-        \ Allocations that are already fulfilled or cancelled are never touched.\n\
-        - The operation runs in the background. Poll the tracked job log endpoints\
-        \ with the returned ID for progress and the completion summary plus any per-order\
-        \ errors.\n- Call the preview endpoint (`POST /api/sales-orders/bulk-unallocate/preview`)\
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- ids (array of integers,\
+        \ required without `filters`/`apply_to_all`): Sales order IDs to target. Each\
+        \ ID must exist.\n- filters (object or string, required without `ids`/`apply_to_all`):\
+        \ Resolves to the matching sales order IDs — the same targeting the sales-orders\
+        \ list uses. Two shapes are accepted:\n  - Grouped filters: `{ \"filter_groups\"\
+        : \"<base64-encoded JSON tree>\" }`. The decoded tree looks like `{\"conjunction\"\
+        :\"and\",\"children\":[{\"type\":\"condition\",\"condition\":{\"column\":\"\
+        order_status\",\"operator\":\"is\",\"value\":\"open\"}}]}`.\n  - Legacy filter\
+        \ set (JSON string) for older clients.\n- apply_to_all (boolean, optional):\
+        \ Targets every order matching the active `filters` instead of an explicit\
+        \ `ids` list. An empty `filters` object is indistinguishable from an absent\
+        \ one, so this flag is what keeps an unfiltered \"select all\" valid — send\
+        \ `{\"apply_to_all\": true, \"filters\": {}}` to target every order.\n\nBehavior:\n\
+        - For each order, active inventory allocations on eligible lines are released.\
+        \ Lines with any non-cancelled fulfillment activity are skipped, as are lines\
+        \ with no active allocations. Allocations that are already fulfilled or cancelled\
+        \ are never touched.\n- The operation runs in the background. Poll the tracked\
+        \ job log endpoints with the returned ID for progress and the completion summary\
+        \ plus any per-order errors.\n- Call the preview endpoint (`POST /api/sales-orders/bulk-unallocate/preview`)\
         \ first to see exactly which orders and lines will be affected.\n\n**Requires\
         \ permission:** `sales_orders.update`"
       requestBody:
@@ -432483,16 +432577,22 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Request body (one of `ids` or `filters` is required):
+        Request body (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - `ids` (array of integers, required without `filters`): Sales order IDs to
-        close.
+        - `ids` (array of integers, required without `filters`/`apply_to_all`): Sales
+        order IDs to close.
 
-        - `filters` (object, required without `ids`): Filter set that resolves to
-        a list of sales order IDs (same shape used by the V2 sales-orders listing
-        endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
+        - `filters` (object, required without `ids`/`apply_to_all`): Filter set that
+        resolves to a list of sales order IDs (same shape used by the V2 sales-orders
+        listing endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
         \"<base64 JSON>\" }`, same as the V2 list) as well as the legacy JSON-string
         filter set.
+
+        - apply_to_all (boolean, optional): Targets every order matching the active
+        `filters` instead of an explicit `ids` list. An empty `filters` object is
+        indistinguishable from an absent one, so this flag is what keeps an unfiltered
+        "select all" valid — send `{"apply_to_all": true, "filters": {}}` to target
+        every order.
 
         - `archived` (integer, optional, default 0): Used with `filters` — set to
         1 to include archived orders when resolving IDs.
@@ -432589,21 +432689,24 @@ paths:
         \ job log endpoints.\n\n:::info[Required scope: `orders:write`]\nGrant this\
         \ scope to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body (scope: one\
-        \ of `ids` or `filters` is required):\n- `ids` (array of int, required without\
-        \ `filters`): Explicit sales order IDs to delete.\n- `filters` (object, required\
-        \ without `ids`): Resolves to a list of sales order IDs via the same Spatie\
-        \ QueryBuilder pipeline the V2 sales-orders list/export use. Two shapes are\
-        \ accepted:\n  - Grouped filters (current list): `{ \\\"filter_groups\\\"\
-        : \\\"<base64-encoded JSON tree>\\\" }`. The decoded tree looks like `{\\\"\
-        conjunction\\\":\\\"and\\\",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\
-        \",\\\"condition\\\":{\\\"column\\\":\\\"order_status\\\",\\\"operator\\\"\
-        :\\\"is\\\",\\\"value\\\":\\\"open\\\"}}]}`.\n  - legacy filter set (JSON\
-        \ string) for older clients.\n- `apply_to_all` (bool, optional): When true\
-        \ the action targets every order matching the active `filters` rather than\
-        \ an explicit `ids` list.\n\nBehavior:\n- Returns the tracked job log ID immediately;\
-        \ deletion runs asynchronously.\n- Sending `filters` as the grouped `filter_groups`\
-        \ object is fully supported (previously returned a 500).\n\n**Requires permission:**\
-        \ `sales_orders.delete`"
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- `ids` (array of\
+        \ int, required without `filters`/`apply_to_all`): Explicit sales order IDs\
+        \ to delete.\n- `filters` (object, required without `ids`/`apply_to_all`):\
+        \ Resolves to a list of sales order IDs via the same Spatie QueryBuilder pipeline\
+        \ the V2 sales-orders list/export use. Two shapes are accepted:\n  - Grouped\
+        \ filters (current list): `{ \\\"filter_groups\\\": \\\"<base64-encoded JSON\
+        \ tree>\\\" }`. The decoded tree looks like `{\\\"conjunction\\\":\\\"and\\\
+        \",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\",\\\"condition\\\":{\\\
+        \"column\\\":\\\"order_status\\\",\\\"operator\\\":\\\"is\\\",\\\"value\\\"\
+        :\\\"open\\\"}}]}`.\n  - legacy filter set (JSON string) for older clients.\n\
+        - `apply_to_all` (bool, optional): When true the action targets every order\
+        \ matching the active `filters` rather than an explicit `ids` list. An empty\
+        \ `filters` object is indistinguishable from an absent one, so this flag is\
+        \ what keeps an unfiltered \"select all\" valid — send `{\"apply_to_all\"\
+        : true, \"filters\": {}}` to delete every order.\n\nBehavior:\n- Returns the\
+        \ tracked job log ID immediately; deletion runs asynchronously.\n- Sending\
+        \ `filters` as the grouped `filter_groups` object is fully supported (previously\
+        \ returned a 500).\n\n**Requires permission:** `sales_orders.delete`"
       parameters: []
       responses:
         '200':
@@ -432647,21 +432750,24 @@ paths:
         \n:::info[Required scope: `orders:write`]\nGrant this scope to your token\
         \ under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nAuthentication: Requires Bearer token.\n\nRequest body (scope: one\
-        \ of `ids` or `filters` is required):\n- `ids` (array of int, required without\
-        \ `filters`): Explicit sales order IDs to delete.\n- `filters` (object, required\
-        \ without `ids`): Resolves to a list of sales order IDs via the same Spatie\
-        \ QueryBuilder pipeline the V2 sales-orders list/export use. Two shapes are\
-        \ accepted:\n  - Grouped filters (current list): `{ \\\"filter_groups\\\"\
-        : \\\"<base64-encoded JSON tree>\\\" }`. The decoded tree looks like `{\\\"\
-        conjunction\\\":\\\"and\\\",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\
-        \",\\\"condition\\\":{\\\"column\\\":\\\"order_status\\\",\\\"operator\\\"\
-        :\\\"is\\\",\\\"value\\\":\\\"open\\\"}}]}`.\n  - legacy filter set (JSON\
-        \ string) for older clients.\n- `apply_to_all` (bool, optional): When true\
-        \ the action targets every order matching the active `filters` rather than\
-        \ an explicit `ids` list.\n\nBehavior:\n- Returns 200 immediately; deletion\
-        \ runs asynchronously via a background job batches.\n- Sending `filters` as\
-        \ the grouped `filter_groups` object is fully supported (previously returned\
-        \ a 500).\n\n**Requires permission:** `sales_orders.delete`"
+        \ of `ids`, `filters`, or `apply_to_all` is required):\n- `ids` (array of\
+        \ int, required without `filters`/`apply_to_all`): Explicit sales order IDs\
+        \ to delete.\n- `filters` (object, required without `ids`/`apply_to_all`):\
+        \ Resolves to a list of sales order IDs via the same Spatie QueryBuilder pipeline\
+        \ the V2 sales-orders list/export use. Two shapes are accepted:\n  - Grouped\
+        \ filters (current list): `{ \\\"filter_groups\\\": \\\"<base64-encoded JSON\
+        \ tree>\\\" }`. The decoded tree looks like `{\\\"conjunction\\\":\\\"and\\\
+        \",\\\"children\\\":[{\\\"type\\\":\\\"condition\\\",\\\"condition\\\":{\\\
+        \"column\\\":\\\"order_status\\\",\\\"operator\\\":\\\"is\\\",\\\"value\\\"\
+        :\\\"open\\\"}}]}`.\n  - legacy filter set (JSON string) for older clients.\n\
+        - `apply_to_all` (bool, optional): When true the action targets every order\
+        \ matching the active `filters` rather than an explicit `ids` list. An empty\
+        \ `filters` object is indistinguishable from an absent one, so this flag is\
+        \ what keeps an unfiltered \"select all\" valid — send `{\"apply_to_all\"\
+        : true, \"filters\": {}}` to delete every order.\n\nBehavior:\n- Returns 200\
+        \ immediately; deletion runs asynchronously via a background job batches.\n\
+        - Sending `filters` as the grouped `filter_groups` object is fully supported\
+        \ (previously returned a 500).\n\n**Requires permission:** `sales_orders.delete`"
       parameters: []
       responses:
         '200':
@@ -434193,19 +434299,22 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Request body (scope: one of `ids` or `filters` is required):
+        Request body (scope: one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - `ids` (array of int, required without `filters`): Sales order IDs to email
-        about.
+        - `ids` (array of int, required without `filters`/`apply_to_all`): Sales order
+        IDs to email about.
 
-        - `filters` (object, required without `ids`): Filter set that resolves to
-        a list of sales order IDs (same shape used by the V2 sales-orders listing
-        endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
+        - `filters` (object, required without `ids`/`apply_to_all`): Filter set that
+        resolves to a list of sales order IDs (same shape used by the V2 sales-orders
+        listing endpoint). It accepts the grouped `filter_groups` shape (`{ \"filter_groups\":
         \"<base64 JSON>\" }`, same as the V2 list) as well as the legacy JSON-string
         filter set. Combine with `apply_to_all`.
 
         - `apply_to_all` (bool, optional): When true, the action targets every order
-        matching the active `filters` rather than an explicit `ids` list.
+        matching the active `filters` rather than an explicit `ids` list. An empty
+        `filters` object is indistinguishable from an absent one, so this flag is
+        what keeps an unfiltered "select all" valid — send `{"apply_to_all": true,
+        "filters": {}}` to target every order.
 
         - `template_id` (int|null, optional): The `bulk_sales_order` store email template
         the content was loaded from. Null when the body was composed ad hoc.
@@ -434375,17 +434484,20 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Request body (scope: one of `ids` or `filters` is required):
+        Request body (scope: one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - `ids` (array of int, required without `filters`): Sales order IDs to email
-        about.
+        - `ids` (array of int, required without `filters`/`apply_to_all`): Sales order
+        IDs to email about.
 
-        - `filters` (object, required without `ids`): Filter set that resolves to
-        a list of sales order IDs (same shape used by the V2 sales-orders listing
-        endpoint). Combine with `apply_to_all`.
+        - `filters` (object, required without `ids`/`apply_to_all`): Filter set that
+        resolves to a list of sales order IDs (same shape used by the V2 sales-orders
+        listing endpoint). Combine with `apply_to_all`.
 
         - `apply_to_all` (bool, optional): When true, the action targets every order
-        matching the active `filters` rather than an explicit `ids` list.
+        matching the active `filters` rather than an explicit `ids` list. An empty
+        `filters` object is indistinguishable from an absent one, so this flag is
+        what keeps an unfiltered "select all" valid — send `{"apply_to_all": true,
+        "filters": {}}` to target every order.
 
         - `template_id` (int|null, optional): The `bulk_sales_order` store email template
         the content was loaded from. Null when the body was composed ad hoc.
@@ -465126,11 +465238,17 @@ paths:
         Returns warnings if some POs fail to approve, error if all fail.
 
 
-        Body:
+        Body (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - ids[]: Array of purchase order IDs (required without filters)
+        - ids[]: Array of purchase order IDs (required without `filters`/`apply_to_all`)
 
-        - filters: Spatie filter params to resolve IDs (required without ids)
+        - filters: Spatie filter params to resolve IDs (required without `ids`/`apply_to_all`)
+
+        - apply_to_all (boolean, optional): Targets every purchase order matching
+        the active `filters` instead of an explicit `ids` list. An empty `filters`
+        object is indistinguishable from an absent one, so this flag is what keeps
+        an unfiltered "select all" valid — send `{"apply_to_all": true, "filters":
+        {}}` to target every purchase order.
 
 
         **Requires permission:** `purchase_orders.approve`'
@@ -465225,11 +465343,17 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Body:
+        Body (one of `ids`, `filters`, or `apply_to_all` is required):
 
-        - ids[]: Array of purchase order IDs (required without filters)
+        - ids[]: Array of purchase order IDs (required without `filters`/`apply_to_all`)
 
-        - filters: Spatie filter params (required without ids)
+        - filters: Spatie filter params (required without `ids`/`apply_to_all`)
+
+        - apply_to_all (boolean, optional): Targets every purchase order matching
+        the active `filters` instead of an explicit `ids` list. An empty `filters`
+        object is indistinguishable from an absent one, so this flag is what keeps
+        an unfiltered "select all" valid — send `{"apply_to_all": true, "filters":
+        {}}` to target every purchase order.
 
 
         **Requires permission:** `purchase_orders.approve`'
@@ -469466,10 +469590,12 @@ paths:
         - body (required): the message text.
 
 
-        When channel is email the message is sent to the supplier''s purchase-order
-        email address and logged as an outbound entry; the supplier''s reply threads
-        back onto this order automatically. An internal_note is only visible to your
-        team and is never sent externally.
+        Outbound email/WhatsApp/SMS are held briefly before sending (a short undo
+        window). The entry is returned immediately with delivery_state="scheduled"
+        and can_unsend=true; send_after is the UTC timestamp at which it will actually
+        be sent. During that window it can be recalled via the Cancel (Unsend) endpoint;
+        after it, delivery proceeds and delivery_state becomes sent (or failed). An
+        internal_note is only visible to your team and is never sent externally.
 
 
         Authentication: Requires Bearer token.
@@ -469566,10 +469692,20 @@ paths:
                         properties:
                           delivery:
                             type: string
+                          send_after:
+                            type: string
+                      delivery_state:
+                        type: string
+                      send_after:
+                        type: string
+                      can_unsend:
+                        type: boolean
                       link_reference:
                         type: string
                       link_type_label:
                         type: string
+                      link_id:
+                        type: integer
                       link_route:
                         type: string
                       created_at:
@@ -469594,9 +469730,14 @@ paths:
                     is_read: true
                     external_message_id: null
                     meta:
-                      delivery: queued
+                      delivery: scheduled
+                      send_after: '2026-07-16T18:40:16+00:00'
+                    delivery_state: scheduled
+                    send_after: '2026-07-16T18:40:16+00:00'
+                    can_unsend: true
                     link_reference: PO-10293
                     link_type_label: Purchase Order
+                    link_id: 101
                     link_route: /orders/purchase-orders/101
                     created_at: '2026-07-16T18:40:11+00:00'
         '422':
@@ -469734,6 +469875,165 @@ paths:
         '403': *id003
         '404': *id004
       operationId: put-api-purchase-orders-purchase-order-communications-supplier-phone
+  /api/purchase-orders/{purchase_order}/communications/{communication}/cancel:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Cancel (Unsend) Purchase Order Communication
+      description: 'Unsend an outbound communication that is still within its undo
+        window (delivery_state="scheduled"). Recalls the message so it is never sent,
+        and returns the entry with delivery_state="cancelled".
+
+
+        Only messages still in the undo window can be unsent. Once the window has
+        elapsed and delivery has started, this returns 422 and the message cannot
+        be recalled.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '101'
+        description: The purchase order ID.
+      - name: communication
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '5013'
+        description: The communication ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      channel:
+                        type: string
+                      channel_label:
+                        type: string
+                      direction:
+                        type: string
+                      direction_label:
+                        type: string
+                      author_name:
+                        type: string
+                      author_type:
+                        type: string
+                      from_address:
+                        type: string
+                        nullable: true
+                      to_addresses:
+                        type: array
+                        items:
+                          type: string
+                      subject:
+                        type: string
+                      body_html:
+                        type: string
+                        nullable: true
+                      body_text:
+                        type: string
+                      attachments:
+                        type: array
+                      is_read:
+                        type: boolean
+                      external_message_id:
+                        type: string
+                        nullable: true
+                      meta:
+                        type: object
+                        properties:
+                          delivery:
+                            type: string
+                          send_after:
+                            type: string
+                      delivery_state:
+                        type: string
+                      send_after:
+                        type: string
+                      can_unsend:
+                        type: boolean
+                      link_reference:
+                        type: string
+                      link_type_label:
+                        type: string
+                      link_id:
+                        type: integer
+                      link_route:
+                        type: string
+                      created_at:
+                        type: string
+                example:
+                  data:
+                    id: 5013
+                    channel: email
+                    channel_label: Email
+                    direction: outbound
+                    direction_label: Outbound
+                    author_name: Jordan Buyer
+                    author_type: user
+                    from_address: null
+                    to_addresses:
+                    - sales@acme-supplies.com
+                    subject: Ship date confirmation
+                    body_html: null
+                    body_text: Hi, could you please confirm the ship date for this
+                      order?
+                    attachments: []
+                    is_read: true
+                    external_message_id: null
+                    meta:
+                      delivery: cancelled
+                      send_after: '2026-07-16T18:40:16+00:00'
+                    delivery_state: cancelled
+                    send_after: '2026-07-16T18:40:16+00:00'
+                    can_unsend: false
+                    link_reference: PO-10293
+                    link_type_label: Purchase Order
+                    link_id: 101
+                    link_route: /orders/purchase-orders/101
+                    created_at: '2026-07-16T18:40:11+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This message has already been sent and can no longer be
+                    unsent.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-purchase-orders-purchase-order-communications-communication-cancel
   /api/purchase-orders/{purchase_order}/communications/{communication}/read:
     post:
       tags:
@@ -469823,10 +470123,20 @@ paths:
                       meta:
                         type: string
                         nullable: true
+                      delivery_state:
+                        type: string
+                        nullable: true
+                      send_after:
+                        type: string
+                        nullable: true
+                      can_unsend:
+                        type: boolean
                       link_reference:
                         type: string
                       link_type_label:
                         type: string
+                      link_id:
+                        type: integer
                       link_route:
                         type: string
                       created_at:
@@ -469853,8 +470163,12 @@ paths:
                     is_read: true
                     external_message_id: <CAF7a2@mail.acme-supplies.com>
                     meta: null
+                    delivery_state: null
+                    send_after: null
+                    can_unsend: false
                     link_reference: PO-10293
                     link_type_label: Purchase Order
+                    link_id: 101
                     link_route: /orders/purchase-orders/101
                     created_at: '2026-07-16T18:22:04+00:00'
         '429': *id001
