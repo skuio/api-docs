@@ -46392,7 +46392,12 @@ paths:
         warehouse_name, sku, product_name
 
 
-        Archived layers are excluded by default.'
+        Archived layers are excluded by default.
+
+
+        `cost_version` is the revaluation generation of the layer''s current costs
+        — it starts at 1 and advances by one with each posted inventory revaluation
+        (e.g. a landed cost applied after receipt).'
       parameters:
       - name: sort
         in: query
@@ -46447,6 +46452,8 @@ paths:
                           type: string
                         total_cost:
                           type: string
+                        cost_version:
+                          type: integer
                         origin:
                           type: object
                           properties:
@@ -46513,6 +46520,7 @@ paths:
                     fulfilled_quantity: 35
                     avg_cost: '4.5000'
                     total_cost: '450.0000'
+                    cost_version: 2
                     origin:
                       link_type: purchase_order
                       link_id: 8
@@ -46826,7 +46834,15 @@ paths:
         (negative = already expired, null when the lot has no expiry).
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        `cost_version` is the revaluation generation of the layer''s current costs
+        (starts at 1, advances with each posted revaluation). The origin movement''s
+        `cost_version` is the generation its `unit_cost` snapshot was recorded against
+        — origin movements are immutable history, so a layer `cost_version` greater
+        than the origin movement''s means the layer has been revalued since receipt
+        and the deltas are recorded as inventory revaluations.'
       parameters:
       - name: fifoLayer
         in: path
@@ -46879,6 +46895,8 @@ paths:
                         type: string
                       total_cost:
                         type: string
+                      cost_version:
+                        type: integer
                       cost_breakdown:
                         type: string
                         nullable: true
@@ -46919,6 +46937,8 @@ paths:
                                 type: integer
                               unit_cost:
                                 type: string
+                              cost_version:
+                                type: integer
                               inventory_status:
                                 type: string
                               reference:
@@ -46988,6 +47008,7 @@ paths:
                     fulfilled_quantity: 35
                     avg_cost: '4.5000'
                     total_cost: '450.0000'
+                    cost_version: 2
                     cost_breakdown: null
                     origin:
                       link_type: purchase_order
@@ -47005,6 +47026,7 @@ paths:
                         link_id: 91
                         quantity: 100
                         unit_cost: '4.5000'
+                        cost_version: 1
                         inventory_status: active
                         reference: REF-123
                         batch_number: LOT-2024-03-001
@@ -60513,9 +60535,9 @@ paths:
   /api/pdf-templates:
     get:
       tags:
-      - PDF Templates
+      - UI Utilities
       summary: List PDF Templates
-      description: 'Returns every global (non store-specific) PDF template.
+      description: 'Returns all global (non-store-specific) PDF templates.
 
 
         :::warning[Not yet available to API tokens]
@@ -60526,14 +60548,10 @@ paths:
         :::
 
 
-        Authentication: Bearer Personal Access Token with the `settings` scope (read
-        access).
+        Authentication: Requires Bearer token.
 
 
-        Each template includes its raw `content`, resolved `variables`, a grouped
-        `variables_tree`/`schema`, and `type`. Template types: purchase_order, sales_order,
-        packing, quote, pick_list, vendor_credit, sales_credit. There is no server-side
-        type filter — request the full list and filter by `type` on the client.'
+        Template types: purchase_order, sales_order, packing'
       parameters: []
       responses:
         '200':
@@ -60566,183 +60584,48 @@ paths:
                         variables:
                           type: array
                           items:
-                            type: object
-                            properties:
-                              name:
-                                type: string
-                              variable:
-                                type: string
-                              mockValue:
-                                type: string
-                        variables_tree:
-                          type: object
-                          properties:
-                            order:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    number:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
-                        schema:
-                          type: object
-                          properties:
-                            order:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    number:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
+                            type: string
                         store_id:
                           type: string
                           nullable: true
                         store_name:
                           type: string
                           nullable: true
-                        updated_at:
-                          type: string
                 example:
                   data:
                   - id: 1
-                    name: Purchase Order
-                    content: <html><body><h1>Purchase Order {{order_number}}</h1></body></html>
+                    name: Purchase Order Template
+                    content: <html>...</html>
                     type: purchase_order
-                    description: Default purchase order layout.
+                    description: Default purchase order PDF template
                     variables:
-                    - name: Order Number
-                      variable: order_number
-                      mockValue: PO-2044
-                    - name: Vendor Name
-                      variable: vendor_name
-                      mockValue: Acme Supply Co.
-                    variables_tree:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: PO-2044
-                    schema:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: PO-2044
+                    - order_number
+                    - vendor_name
+                    - line_items
                     store_id: null
                     store_name: null
-                    updated_at: '2026-07-20T14:32:10+00:00'
                   - id: 2
-                    name: Sales Order
-                    content: <html><body><h1>Sales Order {{order_number}}</h1></body></html>
+                    name: Sales Order Template
+                    content: <html>...</html>
                     type: sales_order
-                    description: Default sales order layout.
+                    description: Default sales order PDF template
                     variables:
-                    - name: Order Number
-                      variable: order_number
-                      mockValue: SO-1001
-                    - name: Customer Name
-                      variable: customer_name
-                      mockValue: Jane Doe
-                    variables_tree:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
-                    schema:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
+                    - order_number
+                    - customer_name
+                    - line_items
                     store_id: null
                     store_name: null
-                    updated_at: '2026-07-20T14:32:10+00:00'
                   - id: 3
-                    name: Packing Slip
-                    content: <html><body><h1>Packing Slip {{order_number}}</h1>{{#items}}<p>{{sku}}
-                      x {{quantity}}</p>{{/items}}</body></html>
+                    name: Packing Slip Template
+                    content: <html>...</html>
                     type: packing
-                    description: Default packing slip layout.
+                    description: Default packing slip PDF template
                     variables:
-                    - name: Order Number
-                      variable: order_number
-                      mockValue: SO-1001
-                    - name: Warehouse
-                      variable: warehouse
-                      mockValue: Main Warehouse
-                    - name: Items
-                      variable: items
-                      mockValue: ''
-                    variables_tree:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
-                      items:
-                        label: Items
-                        type: section
-                        mock: ''
-                      asset:
-                        label: Custom Assets
-                        children:
-                          company_logo:
-                            label: Company Logo
-                            type: html
-                            mock: ''
-                    schema:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
-                      items:
-                        label: Items
-                        type: section
-                        mock: ''
-                      asset:
-                        label: Custom Assets
-                        children:
-                          company_logo:
-                            label: Company Logo
-                            type: html
-                            mock: ''
+                    - order_number
+                    - warehouse
+                    - items
                     store_id: null
                     store_name: null
-                    updated_at: '2026-07-20T14:32:10+00:00'
         '429': *id001
         '401': *id002
         '403': *id003
