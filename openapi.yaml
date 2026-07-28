@@ -425027,6 +425027,460 @@ paths:
         '422': *id005
       x-required-scope: orders:write
       operationId: post-api-sales-orders-dispatch-fulfillments
+  /api/sales-orders/release-candidates:
+    get:
+      tags:
+      - Sales Orders
+      summary: List Release Candidates
+      description: 'Lists open sales orders that never produced a fulfillment, split
+        into the ones that can be dispatched right now and the ones that are still
+        blocked, grouped by reason.
+
+
+        Automatic dispatch runs once per order, when the order is created or edited.
+        If that single attempt does not go through — or if it ran while something
+        was still blocking the order, such as an unmapped line or a warehouse with
+        no address — nothing tries again and the order stays open indefinitely. Clearing
+        the blocker afterwards does not re-trigger dispatch either. This endpoint
+        finds those orders so they can be reviewed and released.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Query parameters: none.
+
+
+        Response fields:
+
+        - releasable_count (integer): How many of the scanned orders have nothing
+        blocking them and can be dispatched now.
+
+        - blocked_count (integer): How many of the scanned orders are still blocked.
+
+        - scanned_count (integer): How many candidate orders were diagnosed in this
+        pass. At most 500 are diagnosed per request.
+
+        - candidate_count (integer): Total number of open orders with no fulfillment,
+        before the 500-order scan limit is applied.
+
+        - oldest_days_open (integer): Age in days of the longest-waiting candidate
+        order. Measured across every candidate, not just the scanned window, so it
+        stays accurate when truncated is true. 0 when there are no candidates.
+
+        - truncated (boolean): True when candidate_count is greater than scanned_count,
+        i.e. more candidates exist than were diagnosed.
+
+        - releasable (array of objects): One entry per releasable order — id (integer),
+        sales_order_number (string, nullable), customer_name (string, nullable), sales_channel_name
+        (string, nullable), order_date (string, Y-m-d, nullable), days_open (integer),
+        diagnosis (object, see below).
+
+        - blocker_breakdown (array of objects): One entry per distinct blocker, sorted
+        by count descending — blocker (string), label (string), description (string),
+        is_operator_actionable (boolean), count (integer), sales_order_ids (array
+        of integers).
+
+
+        Diagnosis object (returned on each releasable order):
+
+        - sales_order_id (integer)
+
+        - blocker (string, nullable): Blocker code. Null when nothing is blocking
+        the order.
+
+        - blocker_label (string, nullable): Short human-readable name for the blocker.
+
+        - detail (string, nullable): One sentence explaining the reason for this specific
+        order.
+
+        - is_releasable (boolean)
+
+        - is_operator_actionable (boolean): False for blockers only time or incoming
+        stock clears (awaiting_stock, held, before_inventory_start_date), and false
+        whenever blocker is null; true otherwise.
+
+
+        Blocker codes: not_from_sales_channel, unmapped_lines, no_shipping_method,
+        shipping_method_excluded, awaiting_stock, out_of_sync, held, before_inventory_start_date,
+        no_warehouse_on_lines, warehouse_auto_dispatch_disabled, warehouse_manual_fulfillment,
+        warehouse_missing_address, shipping_address_invalid.
+
+
+        Blockers reported with is_operator_actionable = false (awaiting_stock, held,
+        before_inventory_start_date) clear on their own once stock arrives, a hold
+        expires, or a date is reached. Every other blocker can be fixed and the order
+        then released.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Candidates Found
+                  value:
+                    status: success
+                    data:
+                      releasable_count: 2
+                      blocked_count: 3
+                      scanned_count: 5
+                      candidate_count: 5
+                      oldest_days_open: 14
+                      truncated: false
+                      releasable:
+                      - id: 48210
+                        sales_order_number: SO-10488
+                        customer_name: Marisol Vega
+                        sales_channel_name: Shopify - Main Store
+                        order_date: '2026-07-14'
+                        days_open: 13
+                        diagnosis:
+                          sales_order_id: 48210
+                          blocker: null
+                          blocker_label: null
+                          detail: Nothing is blocking this order — it can be dispatched
+                            now.
+                          is_releasable: true
+                          is_operator_actionable: false
+                      - id: 48211
+                        sales_order_number: SO-10489
+                        customer_name: Dermot Kelly
+                        sales_channel_name: Shopify - Main Store
+                        order_date: '2026-07-15'
+                        days_open: 12
+                        diagnosis:
+                          sales_order_id: 48211
+                          blocker: null
+                          blocker_label: null
+                          detail: Nothing is blocking this order — it can be dispatched
+                            now.
+                          is_releasable: true
+                          is_operator_actionable: false
+                      blocker_breakdown:
+                      - blocker: unmapped_lines
+                        label: Unmapped lines
+                        description: One or more lines are not mapped to a product
+                          yet. Map them and the order can be released.
+                        is_operator_actionable: true
+                        count: 2
+                        sales_order_ids:
+                        - 48195
+                        - 48203
+                      - blocker: awaiting_stock
+                        label: Awaiting stock
+                        description: Not everything on the order is in stock, and
+                          partial dispatch is turned off.
+                        is_operator_actionable: false
+                        count: 1
+                        sales_order_ids:
+                        - 48188
+                example-1:
+                  summary: 200 Nothing To Release
+                  value:
+                    status: success
+                    data:
+                      releasable_count: 0
+                      blocked_count: 0
+                      scanned_count: 0
+                      candidate_count: 0
+                      oldest_days_open: 0
+                      truncated: false
+                      releasable: []
+                      blocker_breakdown: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-sales-orders-release-candidates
+  /api/sales-orders/{salesOrder}/dispatch-diagnosis:
+    get:
+      tags:
+      - Sales Orders
+      summary: Get Sales Order Dispatch Diagnosis
+      description: 'Explains why one sales order is not being dispatched. The reason
+        is computed when you call this, so it always reflects the order as it stands
+        right now — nothing is stored and nothing is cached.
+
+
+        Automatic dispatch runs once per order, when the order is created or edited,
+        and leaves nothing behind when a check says no. An order can therefore sit
+        open for weeks with no visible explanation. This is the single-order counterpart
+        to the release-candidates scan: use it when you are already looking at one
+        order and want to know what is holding it up, and call it again after fixing
+        the blocker to confirm it cleared.
+
+
+        It answers for any order, including closed, cancelled and fully fulfilled
+        ones — in those cases blocker is null and detail says there is nothing left
+        to dispatch.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Path parameters:
+
+        - salesOrder (integer, required): ID of the sales order to diagnose.
+
+
+        Query parameters: none.
+
+
+        Response fields:
+
+        - sales_order_id (integer): The order that was diagnosed.
+
+        - blocker (string, nullable): Blocker code. Null both when nothing is blocking
+        the order and when there is nothing left to dispatch — is_releasable tells
+        the two apart.
+
+        - blocker_label (string, nullable): Short human-readable name for the blocker,
+        suitable for a chip or heading.
+
+        - detail (string, nullable): One sentence explaining the reason for this specific
+        order. For unmapped lines it names the lines; for a missing warehouse address
+        it names the warehouse.
+
+        - is_releasable (boolean): True only when nothing is blocking the order and
+        it can be dispatched now.
+
+        - is_operator_actionable (boolean): True when the blocker is one a person
+        can clear from inside SKU (map a line, add a warehouse address). False for
+        blockers only time or incoming stock clears (awaiting_stock, held, before_inventory_start_date),
+        and false whenever blocker is null.
+
+
+        Blocker codes: not_from_sales_channel, unmapped_lines, no_shipping_method,
+        shipping_method_excluded, awaiting_stock, out_of_sync, held, before_inventory_start_date,
+        no_warehouse_on_lines, warehouse_auto_dispatch_disabled, warehouse_manual_fulfillment,
+        warehouse_missing_address, shipping_address_invalid.'
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '48195'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Blocked
+                  value:
+                    status: success
+                    data:
+                      sales_order_id: 48195
+                      blocker: unmapped_lines
+                      blocker_label: Unmapped lines
+                      detail: 'Unmapped lines: Mystery widget, Gift wrap. Map them
+                        to a product and the order can be released.'
+                      is_releasable: false
+                      is_operator_actionable: true
+                example-1:
+                  summary: 200 Nothing Blocking
+                  value:
+                    status: success
+                    data:
+                      sales_order_id: 48210
+                      blocker: null
+                      blocker_label: null
+                      detail: Nothing is blocking this order — it can be dispatched
+                        now.
+                      is_releasable: true
+                      is_operator_actionable: false
+                example-2:
+                  summary: 200 Nothing Left To Dispatch
+                  value:
+                    status: success
+                    data:
+                      sales_order_id: 47990
+                      blocker: null
+                      blocker_label: null
+                      detail: The order is already fulfilled, so there is nothing
+                        left to dispatch.
+                      is_releasable: false
+                      is_operator_actionable: false
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: array
+                example:
+                  status: failure
+                  message: Sales order not found.
+                  errors: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-sales-orders-salesorder-dispatch-diagnosis
+  /api/sales-orders/release:
+    post:
+      tags:
+      - Sales Orders
+      summary: Release Sales Orders
+      description: 'Re-runs automatic dispatch for the selected sales orders.
+
+
+        Every order is re-diagnosed before it is dispatched. The list of releasable
+        orders may be minutes old by the time this is called, so an order whose blocker
+        reappeared in the meantime is reported back as skipped, with the reason, rather
+        than dispatched into a check that would reject it and annotate the order.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body fields:
+
+        - sales_order_ids (array of integers, required, min 1, max 500): IDs of the
+        sales orders to release. The cap exists because each ID costs a re-diagnosis
+        plus a queued dispatch.
+
+
+        Response fields:
+
+        - released (array of integers): IDs of the orders accepted for dispatch.
+
+        - skipped (array of objects): One entry per order that was not dispatched
+        — id (integer) and reason (string). Reasons include "Order no longer exists
+        or is no longer open." and the specific detail for whichever blocker is now
+        in place.
+
+
+        The message reflects the outcome: "Released N order(s) — fulfillment is being
+        created now." when every order went through, "Released N order(s); M skipped."
+        when only some did, and "No orders were released." when none did.
+
+
+        Dispatch itself is queued, so a successful response means the orders were
+        accepted for dispatch — not that their fulfillment records already exist.
+
+
+        **Requires permission:** `sales_orders.fulfill`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sales_order_ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                sales_order_ids:
+                - 48210
+                - 48211
+                - 48188
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 All Released
+                  value:
+                    status: success
+                    message: Released 2 order(s) — fulfillment is being created now.
+                    data:
+                      released:
+                      - 48210
+                      - 48211
+                      skipped: []
+                example-1:
+                  summary: 200 Partially Released
+                  value:
+                    status: success
+                    message: Released 2 order(s); 1 skipped.
+                    data:
+                      released:
+                      - 48210
+                      - 48211
+                      skipped:
+                      - id: 48188
+                        reason: Not everything on the order is in stock, and partial
+                          dispatch is turned off.
+                example-2:
+                  summary: 200 Nothing Released
+                  value:
+                    status: success
+                    message: No orders were released.
+                    data:
+                      released: []
+                      skipped:
+                      - id: 48188
+                        reason: Order no longer exists or is no longer open.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      sales_order_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The given data was invalid.
+                  errors:
+                    sales_order_ids:
+                    - Select at least one order to release.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-sales-orders-release
   /api/sales-orders/{salesOrder}/dropship-preview:
     get:
       tags:
@@ -432487,6 +432941,8 @@ paths:
                           type: boolean
                         unmapped_line_count:
                           type: integer
+                        unsubmitted_fulfillment_order_count:
+                          type: integer
                         allocation_required_quantity:
                           type: integer
                         allocation_covered_quantity:
@@ -432585,6 +433041,7 @@ paths:
                     has_dropship: false
                     has_submitted_dropship_po: false
                     unmapped_line_count: 0
+                    unsubmitted_fulfillment_order_count: 1
                     allocation_required_quantity: 10
                     allocation_covered_quantity: 10
                     allocation_percentage: 100
