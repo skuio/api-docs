@@ -1,18 +1,21 @@
 ---
 title: API changes — 2026-07-29
-description: This release includes 53 additions.
+description: This release includes 54 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-29
 ---
 
-This release includes 53 additions.
+This release includes 54 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Purchase Orders
+- `POST /api/purchase-orders/submit/preview` — Preview Bulk Submit Purchase Orders
 
 ### ShipBob
 - `POST /api/shipbob` — Create Instance
