@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-29
-description: This release includes 166 additions.
+description: This release includes 181 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-29
 ---
 
-This release includes 166 additions.
+This release includes 181 additions.
 
 <!-- truncate -->
 
@@ -59,9 +59,6 @@ This release includes 166 additions.
 - `DELETE /api/admin/portal/catalogs/{catalog}` — Delete Catalog
 - `GET /api/admin/portal/catalogs/{catalog}` — Get Catalog
 - `PATCH /api/admin/portal/catalogs/{catalog}` — Update Catalog
-- `POST /api/admin/portal/catalogs/{catalog}/assign` — Assign Catalog
-- `POST /api/admin/portal/catalogs/{catalog}/rules` — Add Catalog Rule
-- `POST /api/admin/portal/catalogs/{catalog}/rules/bulk` — Bulk Import Product Rules
 - `DELETE /api/admin/portal/catalogs/{catalog}/rules/{rule}` — Delete Catalog Rule
 
 ### Checkout & Orders
@@ -73,11 +70,8 @@ This release includes 166 additions.
 
 ### Companies
 - `GET /api/admin/portal/companies` — List Companies
-- `POST /api/admin/portal/companies` — Create Company
 - `GET /api/admin/portal/companies/{company}` — Get Company
 - `PATCH /api/admin/portal/companies/{company}` — Update Company
-- `POST /api/admin/portal/companies/{company}/disable` — Disable Company
-- `POST /api/admin/portal/companies/{company}/enable` — Enable Company
 
 ### Lists & Reorder
 - `GET /api/portal/lists` — List Saved Lists
@@ -102,6 +96,13 @@ This release includes 166 additions.
 - `DELETE /api/admin/portal/pricing/quantity-breaks/{quantityBreak}` — Delete Quantity Break
 - `PATCH /api/admin/portal/pricing/quantity-breaks/{quantityBreak}` — Update Quantity Break
 
+### Product Substitutions
+- `GET /api/product-substitutions` — List Product Substitutions
+- `GET /api/product-substitutions/export` — Export Product Substitutions
+- `GET /api/product-substitutions/import/template` — Download Substitution Import Template
+- `DELETE /api/product-substitutions/{substitutionId}` — Delete Product Substitution
+- `GET /api/products/{productId}/substitutions` — List Substitutions for a Product
+
 ### Quotes & RFQ
 - `GET /api/portal/quotes` — List Quotes
 - `GET /api/portal/quotes/{quote}` — Get Quote
@@ -116,6 +117,9 @@ This release includes 166 additions.
 - `GET /api/portal/orders/{order}/returnable` — Get Returnable Lines
 - `GET /api/portal/returns` — List Returns
 - `GET /api/portal/returns/{rma}` — Get Return
+
+### Sales Order Lines
+- `GET /api/sales-order-lines/{salesOrderLineId}/swap-suggestions` — List Swap Suggestions for a Line
 
 ### Session
 - `GET /api/portal/auth/profile` — Get Profile
@@ -158,6 +162,6 @@ This release includes 166 additions.
 - `GET /api/shipbob/{instance}/webhooks/events` — List Webhook Events
 - `GET /api/shipbob/{instance}/webhooks/subscriptions` — List Webhook Subscriptions
 
-_…plus 66 more (see the API reference)._
+_…plus 81 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
