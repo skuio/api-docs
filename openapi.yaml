@@ -30763,6 +30763,448 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-ledger-reconciliation-inventory-divergence-breakdown
+  /api/ledger/reconciliation/inventory/chain:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Chain
+      description: 'The cumulative reconciliation CHAIN for one earmarked inventory
+        control account, since the baseline: SKU inventory moved (physical) -> SKU
+        ledger moved (SKU''s own accounting books) -> provider (Xero) moved (actual
+        GL). Two checkpoints fall out of it: check_a = ledger - inventory (does SKU''s
+        ledger reflect its inventory? an internal booking discrepancy) and check_b
+        = provider - ledger (did the ledger reach the provider? sync status plus any
+        direct-in-Xero or synced-then-deleted residual). divergence = provider - inventory
+        = check_a + check_b. The ledger split (synced/awaiting/excluded) shows how
+        much of Check B is just pending sync. `rows` give the per-transaction-type
+        detail behind each. Done cumulatively so the monthly batch-sync lag washes
+        out. Authenticate with a Personal Access Token. Reads cached data only.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account id. Required.
+        example: '87'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      nominal_code_id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                      provider_account_name:
+                        type: string
+                      baseline_date:
+                        type: string
+                      as_of_date:
+                        type: string
+                      inventory_moved:
+                        type: number
+                      ledger_moved:
+                        type: number
+                      ledger_synced:
+                        type: number
+                      ledger_awaiting:
+                        type: number
+                      ledger_excluded:
+                        type: integer
+                      provider_moved:
+                        type: number
+                      check_a:
+                        type: integer
+                      check_b:
+                        type: number
+                      divergence:
+                        type: number
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            concept_key:
+                              type: string
+                            label:
+                              type: string
+                            sku_moved:
+                              type: number
+                            provider_moved:
+                              type: number
+                            gl_posted:
+                              type: number
+                            gl_synced:
+                              type: number
+                            gl_awaiting:
+                              type: integer
+                            gl_excluded:
+                              type: integer
+                            entry_count:
+                              type: integer
+                            is_batched:
+                              type: boolean
+                            sync_status:
+                              type: string
+                  success:
+                    type: boolean
+                example:
+                  data:
+                    nominal_code_id: 87
+                    code: '142'
+                    name: SMO Inventory
+                    provider_account_name: SMO Inventory
+                    baseline_date: '2025-01-01'
+                    as_of_date: '2026-07-18'
+                    inventory_moved: -508973.54
+                    ledger_moved: -103311.54
+                    ledger_synced: 310779.3
+                    ledger_awaiting: -414090.84
+                    ledger_excluded: 0
+                    provider_moved: 414576.4
+                    check_a: 405662
+                    check_b: 517887.94
+                    divergence: 923549.94
+                    rows:
+                    - concept_key: receipt
+                      label: Purchase receipts
+                      sku_moved: 727295.15
+                      provider_moved: 487353.25
+                      gl_posted: 151909.08
+                      gl_synced: 151909.08
+                      gl_awaiting: 0
+                      gl_excluded: 0
+                      entry_count: 42
+                      is_batched: true
+                      sync_status: synced
+                    - concept_key: transfer
+                      label: Warehouse transfers
+                      sku_moved: -1132840.13
+                      provider_moved: 0
+                      gl_posted: 0
+                      gl_synced: 0
+                      gl_awaiting: 0
+                      gl_excluded: 0
+                      entry_count: 0
+                      is_batched: false
+                      sync_status: none
+                    - concept_key: fulfillment
+                      label: Sales fulfillments
+                      sku_moved: -219148.4
+                      provider_moved: -125384.37
+                      gl_posted: -92787.33
+                      gl_synced: -30000
+                      gl_awaiting: -62787.33
+                      gl_excluded: 0
+                      entry_count: 90
+                      is_batched: true
+                      sync_status: partial
+                  success: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-chain
+  /api/ledger/reconciliation/inventory/period:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Period
+      description: 'The "reconcile ongoing" discovery for one earmarked inventory
+        control account and month. The header is authoritative and always reconciles:
+        during the month the provider balance moved provider_moved, SKU inventory
+        moved sku_moved, and the divergence went divergence_open -> divergence_close
+        (a gap of provider_moved - sku_moved). The rows break the month''s inventory
+        postings down by transaction-type concept, framed by sync status: how much
+        SKU inventory value moved for each concept (context) and where its postings
+        sit in the sync pipeline (gl_synced reached the provider, gl_awaiting is a
+        batch still closing or a manually-syncable opt-out, gl_excluded is structurally
+        held back). Postings are keyed by their batch period (a monthly batch''s consolidated
+        entry is dated at a period boundary), the opening reconciliation adjustment
+        is excluded, and the totals reconcile the ledger side. Authenticate with a
+        Personal Access Token. Reads cached data only (no live provider call).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account id to reconcile. Required.
+        example: '87'
+      - name: month
+        in: query
+        schema:
+          type: string
+        description: The month to reconcile, as YYYY-MM. Required.
+        example: 2025-01
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      nominal_code_id:
+                        type: integer
+                      code:
+                        type: string
+                      name:
+                        type: string
+                      provider_account_name:
+                        type: string
+                      month:
+                        type: string
+                      month_label:
+                        type: string
+                      divergence_open:
+                        type: integer
+                      divergence_close:
+                        type: number
+                      gap:
+                        type: number
+                      provider_moved:
+                        type: number
+                      sku_moved:
+                        type: number
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            concept_key:
+                              type: string
+                            label:
+                              type: string
+                            sku_moved:
+                              type: number
+                            provider_moved:
+                              type: number
+                            gl_posted:
+                              type: number
+                            gl_synced:
+                              type: integer
+                            gl_awaiting:
+                              type: number
+                            gl_excluded:
+                              type: integer
+                            entry_count:
+                              type: integer
+                            is_batched:
+                              type: boolean
+                            sync_status:
+                              type: string
+                      sku_moved_total:
+                        type: number
+                      gl_synced_total:
+                        type: integer
+                      gl_awaiting_total:
+                        type: number
+                      gl_excluded_total:
+                        type: integer
+                  success:
+                    type: boolean
+                example:
+                  data:
+                    nominal_code_id: 87
+                    code: '142'
+                    name: SMO Inventory
+                    provider_account_name: SMO Inventory
+                    month: 2025-01
+                    month_label: Jan 2025
+                    divergence_open: 0
+                    divergence_close: -5066.73
+                    gap: -5066.73
+                    provider_moved: -10139.28
+                    sku_moved: -5072.55
+                    rows:
+                    - concept_key: fulfillment
+                      label: Sales fulfillments
+                      sku_moved: -9976.04
+                      provider_moved: -10139.28
+                      gl_posted: -9920.55
+                      gl_synced: 0
+                      gl_awaiting: -9920.55
+                      gl_excluded: 0
+                      entry_count: 6
+                      is_batched: true
+                      sync_status: awaiting
+                    - concept_key: adjustment
+                      label: Inventory adjustments
+                      sku_moved: 7530.53
+                      provider_moved: 0
+                      gl_posted: -282.54
+                      gl_synced: 0
+                      gl_awaiting: -282.54
+                      gl_excluded: 0
+                      entry_count: 1
+                      is_batched: true
+                      sync_status: awaiting
+                    - concept_key: manufacturing
+                      label: Manufacturing
+                      sku_moved: -2627.04
+                      provider_moved: 0
+                      gl_posted: 0
+                      gl_synced: 0
+                      gl_awaiting: 0
+                      gl_excluded: 0
+                      entry_count: 0
+                      is_batched: false
+                      sync_status: none
+                    sku_moved_total: -5072.55
+                    gl_synced_total: 0
+                    gl_awaiting_total: -10203.09
+                    gl_excluded_total: 0
+                  success: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-period
+  /api/ledger/reconciliation/inventory/period-entries:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Period Entries
+      description: 'The individual ledger entries behind ONE transaction-type concept
+        of a month''s ongoing reconciliation — the expandable drill-down. Each entry
+        carries its amount, sync status and a route to inspect it: a batch aggregate
+        (is_batch=true) links to its batch (batch_route) to see the members; everything
+        else links to the journal entry (entry_route). Sorted by absolute amount,
+        largest first. Authenticate with a Personal Access Token. Reads cached data
+        only (no live provider call).'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account id. Required.
+        example: '87'
+      - name: month
+        in: query
+        schema:
+          type: string
+        description: The month to drill into, as YYYY-MM. Required.
+        example: 2025-01
+      - name: concept
+        in: query
+        schema:
+          type: string
+        description: The transaction-type concept whose entries to list (e.g. fulfillment,
+          receipt, adjustment, stock_take, transfer, customer_return, vendor_return,
+          manufacturing). Required.
+        example: fulfillment
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        journal_entry_id:
+                          type: integer
+                        number:
+                          type: string
+                        reference:
+                          type: string
+                        date:
+                          type: string
+                        posted_at:
+                          type: string
+                        net_amount:
+                          type: number
+                        sync_status:
+                          type: string
+                        source_type_label:
+                          type: string
+                        is_batch:
+                          type: boolean
+                        batch_id:
+                          type: integer
+                        entry_route:
+                          type: string
+                        batch_route:
+                          type: string
+                  success:
+                    type: boolean
+                example:
+                  data:
+                  - journal_entry_id: 49563
+                    number: SOF-49563
+                    reference: 'Batch: Sales fulfillment · Jan 2025'
+                    date: '2025-01-01'
+                    posted_at: '2025-01-31'
+                    net_amount: -4673.98
+                    sync_status: awaiting
+                    source_type_label: Ledger Batch
+                    is_batch: true
+                    batch_id: 360
+                    entry_route: /ledger/entries/49563
+                    batch_route: /ledger/batches/360
+                  - journal_entry_id: 50122
+                    number: SOF-50122
+                    reference: SO-10233
+                    date: '2025-01-14'
+                    posted_at: null
+                    net_amount: -50
+                    sync_status: synced
+                    source_type_label: Sales Order Fulfillment
+                    is_batch: false
+                    batch_id: null
+                    entry_route: /ledger/entries/50122
+                    batch_route: null
+                  success: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-ledger-reconciliation-inventory-period-entries
   /api/ledger/reconciliation/inventory/unsynced:
     get:
       tags:

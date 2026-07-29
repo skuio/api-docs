@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-29
-description: This release includes 183 additions.
+description: This release includes 186 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-29
 ---
 
-This release includes 183 additions.
+This release includes 186 additions.
 
 <!-- truncate -->
 
@@ -19,8 +19,6 @@ This release includes 183 additions.
 
 ### Applications
 - `GET /api/admin/portal/applications` — List Applications
-- `POST /api/admin/portal/applications/{application}/approve` — Approve Application
-- `POST /api/admin/portal/applications/{application}/reject` — Reject Application
 
 ### Approvals
 - `GET /api/portal/approvals` — List Approval Queue
@@ -55,7 +53,6 @@ This release includes 183 additions.
 
 ### Catalogs
 - `GET /api/admin/portal/catalogs` — List Catalogs
-- `POST /api/admin/portal/catalogs` — Create Catalog
 - `DELETE /api/admin/portal/catalogs/{catalog}` — Delete Catalog
 - `GET /api/admin/portal/catalogs/{catalog}` — Get Catalog
 - `PATCH /api/admin/portal/catalogs/{catalog}` — Update Catalog
@@ -72,6 +69,11 @@ This release includes 183 additions.
 - `GET /api/admin/portal/companies` — List Companies
 - `GET /api/admin/portal/companies/{company}` — Get Company
 - `PATCH /api/admin/portal/companies/{company}` — Update Company
+
+### Ledger (Accounting v2)
+- `GET /api/ledger/reconciliation/inventory/chain` — Get Inventory Reconciliation Chain
+- `GET /api/ledger/reconciliation/inventory/period` — Get Inventory Reconciliation Period
+- `GET /api/ledger/reconciliation/inventory/period-entries` — Get Inventory Reconciliation Period Entries
 
 ### Lists & Reorder
 - `GET /api/portal/lists` — List Saved Lists
@@ -162,6 +164,6 @@ This release includes 183 additions.
 - `GET /api/shipbob/{instance}/webhooks/events` — List Webhook Events
 - `GET /api/shipbob/{instance}/webhooks/subscriptions` — List Webhook Subscriptions
 
-_…plus 83 more (see the API reference)._
+_…plus 86 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
