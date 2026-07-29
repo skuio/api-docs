@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-29
-description: This release includes 181 additions.
+description: This release includes 183 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-29
 ---
 
-This release includes 181 additions.
+This release includes 183 additions.
 
 <!-- truncate -->
 
@@ -162,6 +162,6 @@ This release includes 181 additions.
 - `GET /api/shipbob/{instance}/webhooks/events` — List Webhook Events
 - `GET /api/shipbob/{instance}/webhooks/subscriptions` — List Webhook Subscriptions
 
-_…plus 81 more (see the API reference)._
+_…plus 83 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._

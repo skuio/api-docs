@@ -14131,6 +14131,21 @@ paths:
                               type: string
                             usesNetDays:
                               type: boolean
+                      schedule_revision:
+                        type: integer
+                      schedule_revisions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            revision:
+                              type: integer
+                            reason:
+                              type: string
+                            created_at:
+                              type: string
+                            created_by_name:
+                              type: string
                 example:
                   data:
                     id: 1
@@ -14178,6 +14193,16 @@ paths:
                       description: Due on a specific day of the next month.
                       netDaysLabel: Day of Month (1-31)
                       usesNetDays: true
+                    schedule_revision: 2
+                    schedule_revisions:
+                    - revision: 2
+                      reason: Supplier renegotiated the down payment to 30%
+                      created_at: '2026-07-29T14:05:00+00:00'
+                      created_by_name: Jane Buyer
+                    - revision: 1
+                      reason: Schedule as captured before revision tracking
+                      created_at: '2026-07-29T14:05:00+00:00'
+                      created_by_name: null
         '404':
           description: Not Found
           headers:
@@ -14226,7 +14251,19 @@ paths:
         (supplier-owned stock billed as it sells). consignment_settlement_frequency
         controls how often consigned sales are settled (on_demand, weekly, biweekly,
         monthly, quarterly). treat_as_purchase overrides consignment so goods received
-        on this term are capitalized as owned inventory immediately at receipt (substance-over-form).'
+        on this term are capitalized as owned inventory immediately at receipt (substance-over-form).
+
+
+        **Schedule versioning:** any change to `vendor_deposit_schedule` (or its `payment_schedule`
+        alias) bumps `schedule_revision` and archives the new schedule in the revision
+        history with the optional `schedule_revision_reason` (string, max 255). Vendor
+        deposits stamp the revision they were created under into their frozen snapshot,
+        so later drift reads as “created under revision 1; term now at revision 2”.
+
+
+        **422:** a schedule change that would remove a milestone line that linked
+        vendor deposits still reference is refused — resolve or delete those deposits
+        first, or keep the line and adjust it instead.'
       requestBody:
         content:
           application/json:
@@ -14254,6 +14291,8 @@ paths:
                   nullable: true
                 treat_as_purchase:
                   type: boolean
+                schedule_revision_reason:
+                  type: string
               example:
                 name: Net 45 Updated
                 net_days: 45
@@ -14265,6 +14304,8 @@ paths:
                 is_consignment: false
                 consignment_settlement_frequency: null
                 treat_as_purchase: false
+                schedule_revision_reason: Supplier renegotiated the down payment to
+                  30%
       parameters:
       - name: id
         in: path
@@ -14431,6 +14472,145 @@ paths:
         '404': *id004
       x-required-scope: settings:write
       operationId: delete-api-payment-terms-id
+  /api/payment-terms/{payment_term}/schedule-impact-preview:
+    post:
+      tags:
+      - Payment Terms
+      summary: Preview Schedule Impact
+      description: 'Dry-run a proposed vendor-deposit schedule against every non-terminal
+        vendor deposit already created from this payment term, BEFORE saving the edit.
+        Accepts the same `vendor_deposit_schedule` array as the update endpoint (`payment_schedule`
+        alias also accepted; requires `payment_terms.update` permission).
+
+
+        Per affected deposit the outcome is:
+
+        - `will_realign` — draft/pending deposits that Review & Resync can realign
+        after saving
+
+        - `shortfall` — settled deposits whose recorded amount is now below the new
+        expectation
+
+        - `overage` — settled deposits whose recorded amount now exceeds the new expectation
+
+        - `unchanged` — settled deposits whose amount still matches
+
+
+        Settled deposits are never mutated — shortfalls/overages surface on the vendor-deposit
+        cash-flow report.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vendor_deposit_schedule:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      label:
+                        type: string
+                      percentage:
+                        type: integer
+                      trigger_event:
+                        type: string
+                      offset_days:
+                        type: integer
+              example:
+                vendor_deposit_schedule:
+                - label: Deposit
+                  percentage: 30
+                  trigger_event: po_approved
+                  offset_days: 0
+                - label: Balance
+                  percentage: 70
+                  trigger_event: po_fully_received
+                  offset_days: 30
+      parameters:
+      - name: payment_term
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Payment term ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_revision:
+                    type: integer
+                  next_revision:
+                    type: integer
+                  affected_deposits:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        vendor_deposit_id:
+                          type: integer
+                        deposit_number:
+                          type: string
+                        deposit_status:
+                          type: string
+                        purchase_order_number:
+                          type: string
+                        currency_code:
+                          type: string
+                        line_index:
+                          type: integer
+                        recorded_amount:
+                          type: integer
+                        current_expected:
+                          type: integer
+                        proposed_expected:
+                          type: integer
+                        outcome:
+                          type: string
+                        delta:
+                          type: integer
+                example:
+                  current_revision: 1
+                  next_revision: 2
+                  affected_deposits:
+                  - vendor_deposit_id: 12
+                    deposit_number: VD-00012
+                    deposit_status: draft
+                    purchase_order_number: PO-00034
+                    currency_code: USD
+                    line_index: 1
+                    recorded_amount: 200
+                    current_expected: 200
+                    proposed_expected: 300
+                    outcome: will_realign
+                    delta: 100
+                  - vendor_deposit_id: 9
+                    deposit_number: VD-00009
+                    deposit_status: paid
+                    purchase_order_number: PO-00031
+                    currency_code: USD
+                    line_index: 1
+                    recorded_amount: 200
+                    current_expected: 200
+                    proposed_expected: 300
+                    outcome: shortfall
+                    delta: -100
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-payment-terms-payment-term-schedule-impact-preview
   /api/payment-terms/{id}/archive:
     put:
       tags:
@@ -479717,7 +479897,26 @@ paths:
         a `ready_to_create` milestone.
 
 
-        Read-only. Requires the `purchase-orders:read` token scope.'
+        Read-only. Requires the `purchase-orders:read` token scope.
+
+
+        **Drift classification (schedule revisions):** each milestone now returns
+        `drift_notes` (string[]) alongside `status_reasons`. For deposits that are
+        already settled (partially paid, paid, or applied), amount/due-date drift
+        is informational only — the row stays `created` and the drift appears in `drift_notes`
+        (money variance is owned by the shortfall/overage report). Only structural
+        drift (trigger event or shipment linkage changed) or any drift on an unsettled
+        deposit flags `out_of_sync`. When the deposit was created under an earlier
+        schedule revision, the first note reads “This deposit was created under schedule
+        revision N; the payment term is now at revision M.” `linked_vendor_deposit_amount`
+        (number|null) is the linked deposit''s recorded amount for old→new comparisons.
+
+
+        **Provenance fields:** `linked_vendor_deposit_created_via` (`auto_schedule`
+        | `milestone` | `manual`), `linked_vendor_deposit_created_via_label`, and
+        `linked_vendor_deposit_amount_overridden_at` (ISO timestamp when a user edited
+        the amount after creation, null otherwise). These power the user-authored
+        resync default and the provenance chips in the UI.'
       parameters:
       - name: purchase_order
         in: path
@@ -479867,6 +480066,22 @@ paths:
                         placeholder_reason:
                           type: string
                           nullable: true
+                        drift_notes:
+                          type: array
+                        linked_vendor_deposit_amount:
+                          type: string
+                          nullable: true
+                        linked_vendor_deposit_amount_is_user_authored:
+                          type: boolean
+                        linked_vendor_deposit_created_via:
+                          type: string
+                          nullable: true
+                        linked_vendor_deposit_created_via_label:
+                          type: string
+                          nullable: true
+                        linked_vendor_deposit_amount_overridden_at:
+                          type: string
+                          nullable: true
                 example:
                   data:
                   - key: line-1
@@ -479927,6 +480142,12 @@ paths:
                       expected_amount: 12499.95
                       due_date: '2026-07-01'
                     placeholder_reason: null
+                    drift_notes: []
+                    linked_vendor_deposit_amount: null
+                    linked_vendor_deposit_amount_is_user_authored: false
+                    linked_vendor_deposit_created_via: null
+                    linked_vendor_deposit_created_via_label: null
+                    linked_vendor_deposit_amount_overridden_at: null
                   - key: line-2-shipment-345
                     status: ready_to_create
                     status_label: Ready to Create
@@ -479986,6 +480207,12 @@ paths:
                       expected_amount: 29166.55
                       due_date: '2026-07-04'
                     placeholder_reason: null
+                    drift_notes: []
+                    linked_vendor_deposit_amount: null
+                    linked_vendor_deposit_amount_is_user_authored: false
+                    linked_vendor_deposit_created_via: null
+                    linked_vendor_deposit_created_via_label: null
+                    linked_vendor_deposit_amount_overridden_at: null
         '429': *id001
         '401': *id002
         '403': *id003
@@ -480242,6 +480469,13 @@ paths:
                   archived_at:
                     type: string
                     nullable: true
+                  created_via:
+                    type: string
+                  created_via_label:
+                    type: string
+                  amount_overridden_at:
+                    type: string
+                    nullable: true
                 example:
                   id: 92
                   deposit_number: VD-00092
@@ -480321,6 +480555,9 @@ paths:
                   created_at: '2026-07-06T09:14:22+00:00'
                   updated_at: '2026-07-06T09:14:22+00:00'
                   archived_at: null
+                  created_via: manual
+                  created_via_label: Manually recorded
+                  amount_overridden_at: null
         '404':
           description: Not Found
           headers:
@@ -480359,6 +480596,141 @@ paths:
         '403': *id003
       x-required-scope: purchase-orders:write
       operationId: post-api-purchase-orders-purchase-order-expected-vendor-deposit-milestones-milestonekey-create-deposit
+  /api/purchase-orders/{purchase_order}/expected-vendor-deposit-milestones/{milestoneKey}/resync-deposit:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Resync Vendor Deposit with Milestone
+      description: 'Resolve an out-of-sync schedule milestone by realigning its linked
+        vendor deposit with the milestone''s current state — the one-click alternative
+        to deleting and recreating the deposit.
+
+
+        Behavior depends on the deposit''s progress: **draft / pending-approval**
+        deposits are fully realigned (amount and due date update to the milestone''s
+        current expectation, and the stored schedule link refreshes); **approved /
+        paid / partially-applied** deposits have a locked amount, so the resync acknowledges
+        the schedule change (due date + schedule link refresh) while the amount stays
+        as recorded — any under-funding remains visible in the cash-flow shortfall
+        report.
+
+
+        Returns the resynced deposit plus the purchase order''s refreshed milestone
+        list. 404 when the milestone key is unknown; 422 when the milestone has no
+        linked deposit, is already in sync, or the deposit is in a terminal state
+        (cancelled, void, refunded, written off).
+
+
+        **Direction (`mode`, optional):** `realign` overwrites the deposit''s amount/due
+        date with the schedule''s current expectation; `keep_amount` keeps the recorded
+        amount and only refreshes the due date + frozen schedule snapshot so the milestone
+        stops flagging. When omitted, the server picks the safe default by amount
+        authorship: a deposit whose amount still equals its own frozen snapshot is
+        system-authored → `realign`; a manually recorded deposit (no snapshot) or
+        a draft whose amount was edited after creation is user-authored → `keep_amount`
+        (the deposit is the definitive document). Locked non-terminal deposits always
+        acknowledge only (amount never changes); terminal deposits are refused. The
+        milestone list response includes `linked_vendor_deposit_amount_is_user_authored`
+        (boolean) so clients can present the right default.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+              example:
+                mode: keep_amount
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '812'
+      - name: milestoneKey
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Milestone key from List Expected Vendor Deposit Milestones, e.g.
+          line-1 or line-2-shipment-345
+        example: line-2-shipment-345
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      deposit_number:
+                        type: string
+                      amount:
+                        type: integer
+                      due_date:
+                        type: string
+                      status:
+                        type: string
+                      created_via:
+                        type: string
+                      created_via_label:
+                        type: string
+                      amount_overridden_at:
+                        type: string
+                        nullable: true
+                  milestones:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        status:
+                          type: string
+                        status_label:
+                          type: string
+                        label:
+                          type: string
+                        expected_amount:
+                          type: integer
+                        due_date:
+                          type: string
+                example:
+                  data:
+                    id: 12
+                    deposit_number: VD-00012
+                    amount: 15000
+                    due_date: '2026-04-01'
+                    status: draft
+                    created_via: manual
+                    created_via_label: Manually recorded
+                    amount_overridden_at: null
+                  milestones:
+                  - key: line-1
+                    status: created
+                    status_label: Created
+                    label: 25% Down Payment
+                    expected_amount: 15000
+                    due_date: '2026-04-01'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-purchase-orders-purchase-order-expected-vendor-deposit-milestones-milestonekey-resync-deposit
   /api/purchase-orders/{purchaseOrder}/return-metrics:
     get:
       tags:
