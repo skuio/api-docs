@@ -28,10 +28,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     env:
-      # The client webpack compile peaks well above Node's default ~4 GB heap
-      # once the site carries a full day of API churn (2026-07-07: two deploys
-      # OOM'd at 3.7 GB). ubuntu-latest runners have 7 GB — use it.
-      NODE_OPTIONS: --max-old-space-size=6144
+      # The client webpack compile's heap scales with the number of API
+      # reference pages, so this ceiling has to be raised as the spec grows:
+      #   2026-07-07 — OOM at Node's default ~4 GB (4,700 operations) → 6 GB
+      #   2026-07-30 — OOM at 6 GB once the spec crossed 5,071 operations
+      #                (peak was ~6.2 GB); six consecutive deploys failed.
+      # This repo is public, so its ubuntu-latest runners are the 4-core /
+      # 16 GB tier (private repos get 2-core / 8 GB) — the old "runners have
+      # 7 GB" note here was wrong. 10 GB leaves ~6 GB for the parallel Terser
+      # workers and the OS, and roughly doubles the headroom over today's peak.
+      NODE_OPTIONS: --max-old-space-size=10240
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
