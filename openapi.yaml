@@ -30938,7 +30938,16 @@ paths:
         SKU inventory value moved for each concept (context) and where its postings
         sit in the sync pipeline (gl_synced reached the provider, gl_awaiting is a
         batch still closing or a manually-syncable opt-out, gl_excluded is structurally
-        held back). Postings are keyed by their batch period (a monthly batch''s consolidated
+        held back). Each row also carries syncable_count — how many of its entries
+        can be pushed to the provider right now (the same eligibility the bulk sync_now
+        action enforces), which is always <= the awaiting count because an entry waiting
+        on its batch to close cannot be pushed on its own. sync_status is the row''s
+        headline disposition and normally follows the amounts, but when they all net
+        to zero while entry_count > 0 (e.g. a warehouse transfer whose out and in
+        legs cancel on this one account) it follows the entries'' own dispositions
+        instead — so a row that still owes the provider a sync never reads as none
+        ("no postings"), and none is reserved for a concept with no SKU postings at
+        all. Postings are keyed by their batch period (a monthly batch''s consolidated
         entry is dated at a period boundary), the opening reconciliation adjustment
         is excluded, and the totals reconcile the ledger side. Authenticate with a
         Personal Access Token. Reads cached data only (no live provider call).'
@@ -31022,6 +31031,8 @@ paths:
                               type: integer
                             entry_count:
                               type: integer
+                            syncable_count:
+                              type: integer
                             is_batched:
                               type: boolean
                             sync_status:
@@ -31059,6 +31070,7 @@ paths:
                       gl_awaiting: -9920.55
                       gl_excluded: 0
                       entry_count: 6
+                      syncable_count: 6
                       is_batched: true
                       sync_status: awaiting
                     - concept_key: adjustment
@@ -31069,7 +31081,8 @@ paths:
                       gl_synced: 0
                       gl_awaiting: -282.54
                       gl_excluded: 0
-                      entry_count: 1
+                      entry_count: 4
+                      syncable_count: 1
                       is_batched: true
                       sync_status: awaiting
                     - concept_key: manufacturing
@@ -31081,6 +31094,7 @@ paths:
                       gl_awaiting: 0
                       gl_excluded: 0
                       entry_count: 0
+                      syncable_count: 0
                       is_batched: false
                       sync_status: none
                     sku_moved_total: -5072.55
@@ -31101,9 +31115,15 @@ paths:
         of a month''s ongoing reconciliation — the expandable drill-down. Each entry
         carries its amount, sync status and a route to inspect it: a batch aggregate
         (is_batch=true) links to its batch (batch_route) to see the members; everything
-        else links to the journal entry (entry_route). Sorted by absolute amount,
-        largest first. Authenticate with a Personal Access Token. Reads cached data
-        only (no live provider call).'
+        else links to the journal entry (entry_route). can_sync is whether that entry
+        can be pushed to the provider right now — the same eligibility the bulk sync_now
+        action enforces — so an already-synced entry is false, and an entry whose
+        sync_status is awaiting can still be false when it is a member of a batch
+        that has not closed yet (it syncs with the batch, not on its own). An entry
+        with net_amount 0 is still a real posting (its debit and credit legs cancel
+        on this one account) and can be pushed like any other. Sorted by absolute
+        amount, largest first. Authenticate with a Personal Access Token. Reads cached
+        data only (no live provider call).'
       parameters:
       - name: connection_id
         in: query
@@ -31169,6 +31189,8 @@ paths:
                           type: boolean
                         batch_id:
                           type: integer
+                        can_sync:
+                          type: boolean
                         entry_route:
                           type: string
                         batch_route:
@@ -31187,6 +31209,7 @@ paths:
                     source_type_label: Ledger Batch
                     is_batch: true
                     batch_id: 360
+                    can_sync: true
                     entry_route: /ledger/entries/49563
                     batch_route: /ledger/batches/360
                   - journal_entry_id: 50122
@@ -31199,8 +31222,22 @@ paths:
                     source_type_label: Sales Order Fulfillment
                     is_batch: false
                     batch_id: null
+                    can_sync: false
                     entry_route: /ledger/entries/50122
                     batch_route: null
+                  - journal_entry_id: 50331
+                    number: SOF-50331
+                    reference: SO-10318
+                    date: '2025-01-27'
+                    posted_at: null
+                    net_amount: -18.44
+                    sync_status: awaiting
+                    source_type_label: Sales Order Fulfillment
+                    is_batch: false
+                    batch_id: 412
+                    can_sync: false
+                    entry_route: /ledger/entries/50331
+                    batch_route: /ledger/batches/412
                   success: true
         '429': *id001
         '401': *id002
