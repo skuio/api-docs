@@ -455080,11 +455080,21 @@ paths:
       tags:
       - Returns & RMAs
       summary: List Unmatched Returns
-      description: 'Paginated list of received returns that are not yet linked to
-        a return authorization (RMA) — returns received without a matching authorization,
-        plus ambiguous matches flagged for review. Use it to reconcile or write off
-        aged, unmatched returns. Filter by warehouse, reconciliation status, aging,
-        received date, or product, and search by SKU/name.
+      description: 'Paginated list of received returns whose lines are not all linked
+        to a return authorization (RMA) — returns received without a matching authorization,
+        partially matched batches, plus ambiguous matches flagged for review. Use
+        it to reconcile or write off aged, unmatched returns.
+
+
+        A receipt stays listed while any one of its lines is unlinked, so a batch
+        that is otherwise fully reconciled can be held open by a single stray item.
+        Dismiss such a receipt (see Dismiss Unmatched Return) to acknowledge the residual
+        lines and drop it from this list; filter[dismissed] controls whether dismissed
+        receipts are returned.
+
+
+        Filter by warehouse, reconciliation status, dismissal scope, aging, received
+        date, or product, and search by SKU/name.
 
 
         Requires a Bearer token.'
@@ -455124,6 +455134,17 @@ paths:
                           type: boolean
                         is_blind:
                           type: boolean
+                        is_dismissed:
+                          type: boolean
+                        dismissed_at:
+                          type: string
+                          nullable: true
+                        dismissal_reason:
+                          type: string
+                          nullable: true
+                        dismissed_by:
+                          type: string
+                          nullable: true
                         notes:
                           type: string
                           nullable: true
@@ -455161,6 +455182,21 @@ paths:
                                 type: integer
                               unexpected_item:
                                 type: boolean
+                              rma_line_id:
+                                type: integer
+                              matched_rma:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  rma_number:
+                                    type: string
+                                  link_route:
+                                    type: string
+                        matched_line_count:
+                          type: integer
+                        line_count:
+                          type: integer
                   current_page:
                     type: integer
                   first_page_url:
@@ -455189,12 +455225,16 @@ paths:
                   data:
                   - id: 4821
                     received_at: '2026-07-21T02:14:00.000000Z'
-                    age_days: 0
+                    age_days: 9
                     reconciliation_status:
-                      value: blind_unmatched
-                      label: Unmatched
+                      value: partially_matched
+                      label: Partially Matched
                     needs_review: false
                     is_blind: true
+                    is_dismissed: false
+                    dismissed_at: null
+                    dismissal_reason: null
+                    dismissed_by: null
                     notes: null
                     warehouse:
                       id: 12
@@ -455210,6 +455250,21 @@ paths:
                       product_name: Burgundy Brief M
                       quantity: 1
                       unexpected_item: false
+                      rma_line_id: 3310
+                      matched_rma:
+                        id: 812
+                        rma_number: RMA-2026-15452
+                        link_route: /rma/812
+                    - id: 9902
+                      product_id: 61
+                      sku: SOCK-NVY-L
+                      product_name: Navy Sock L
+                      quantity: 1
+                      unexpected_item: true
+                      rma_line_id: null
+                      matched_rma: null
+                    matched_line_count: 1
+                    line_count: 2
                   current_page: 1
                   first_page_url: '{{protocol}}{{domain}}/api/returns/reconciliation/unmatched?page=1'
                   from: 1
@@ -455278,6 +455333,17 @@ paths:
                           type: boolean
                         is_blind:
                           type: boolean
+                        is_dismissed:
+                          type: boolean
+                        dismissed_at:
+                          type: string
+                          nullable: true
+                        dismissal_reason:
+                          type: string
+                          nullable: true
+                        dismissed_by:
+                          type: string
+                          nullable: true
                         notes:
                           type: string
                           nullable: true
@@ -455315,16 +455381,35 @@ paths:
                                 type: integer
                               unexpected_item:
                                 type: boolean
+                              rma_line_id:
+                                type: integer
+                              matched_rma:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  rma_number:
+                                    type: string
+                                  link_route:
+                                    type: string
+                        matched_line_count:
+                          type: integer
+                        line_count:
+                          type: integer
                 example:
                   data:
                   - id: 4821
                     received_at: '2026-07-21T02:14:00.000000Z'
-                    age_days: 0
+                    age_days: 9
                     reconciliation_status:
-                      value: blind_unmatched
-                      label: Unmatched
+                      value: partially_matched
+                      label: Partially Matched
                     needs_review: false
                     is_blind: true
+                    is_dismissed: false
+                    dismissed_at: null
+                    dismissal_reason: null
+                    dismissed_by: null
                     notes: null
                     warehouse:
                       id: 12
@@ -455340,6 +455425,21 @@ paths:
                       product_name: Burgundy Brief M
                       quantity: 1
                       unexpected_item: false
+                      rma_line_id: 3310
+                      matched_rma:
+                        id: 812
+                        rma_number: RMA-2026-15452
+                        link_route: /rma/812
+                    - id: 9902
+                      product_id: 61
+                      sku: SOCK-NVY-L
+                      product_name: Navy Sock L
+                      quantity: 1
+                      unexpected_item: true
+                      rma_line_id: null
+                      matched_rma: null
+                    matched_line_count: 1
+                    line_count: 2
         '429': *id001
         '401': *id002
         '403': *id003
@@ -455524,6 +455624,429 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-returns-reconciliation-returnreceipt-link
+  /api/returns/reconciliation/{returnReceipt}/dismiss:
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Dismiss Unmatched Return
+      description: 'Acknowledge a received return''s residual unlinked lines and drop
+        it from the unmatched returns list.
+
+
+        A receipt stays unmatched while any one of its lines is unlinked, so a batch
+        with (say) 31 of 32 lines linked stays open indefinitely because of one item
+        that will never match. Dismissing records who dismissed it, when, and an optional
+        reason.
+
+
+        Dismissal is bookkeeping only: inventory, the authorization links already
+        made, and the receipt''s reconciliation status are all left untouched, and
+        the receipt can be restored at any time. Dismissed receipts stay retrievable
+        via filter[dismissed]=only (or =all) on List Unmatched Returns.
+
+
+        Body: reason (optional string, max 500 characters).
+
+
+        Returns 422 if the receipt is already dismissed, or if it is linked to a return
+        authorization and therefore never appeared on the unmatched list.
+
+
+        Requires a Bearer token and the returns.update permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+              example:
+                reason: Unlabelled item returned by mistake - written off at stock
+                  take
+      parameters:
+      - name: returnReceipt
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The return receipt ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      received_at:
+                        type: string
+                      age_days:
+                        type: integer
+                      reconciliation_status:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          label:
+                            type: string
+                      needs_review:
+                        type: boolean
+                      is_blind:
+                        type: boolean
+                      is_dismissed:
+                        type: boolean
+                      dismissed_at:
+                        type: string
+                      dismissal_reason:
+                        type: string
+                      dismissed_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      notes:
+                        type: string
+                        nullable: true
+                      warehouse:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      received_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      rma:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            sku:
+                              type: string
+                            product_name:
+                              type: string
+                            quantity:
+                              type: integer
+                            unexpected_item:
+                              type: boolean
+                            rma_line_id:
+                              type: integer
+                            matched_rma:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                rma_number:
+                                  type: string
+                                link_route:
+                                  type: string
+                      matched_line_count:
+                        type: integer
+                      line_count:
+                        type: integer
+                example:
+                  message: Return receipt dismissed from the unmatched report.
+                  data:
+                    id: 4821
+                    received_at: '2026-07-21T02:14:00.000000Z'
+                    age_days: 9
+                    reconciliation_status:
+                      value: partially_matched
+                      label: Partially Matched
+                    needs_review: false
+                    is_blind: true
+                    is_dismissed: true
+                    dismissed_at: '2026-07-30T09:12:44.000000Z'
+                    dismissal_reason: Unlabelled item returned by mistake - written
+                      off at stock take
+                    dismissed_by:
+                      id: 3
+                      name: Warehouse Operator
+                    notes: null
+                    warehouse:
+                      id: 12
+                      name: Returns Warehouse
+                    received_by:
+                      id: 3
+                      name: Warehouse Operator
+                    rma: null
+                    lines:
+                    - id: 9901
+                      product_id: 55
+                      sku: BRIEF-BUR-M
+                      product_name: Burgundy Brief M
+                      quantity: 1
+                      unexpected_item: false
+                      rma_line_id: 3310
+                      matched_rma:
+                        id: 812
+                        rma_number: RMA-2026-15452
+                        link_route: /rma/812
+                    - id: 9902
+                      product_id: 61
+                      sku: SOCK-NVY-L
+                      product_name: Navy Sock L
+                      quantity: 1
+                      unexpected_item: true
+                      rma_line_id: null
+                      matched_rma: null
+                    matched_line_count: 1
+                    line_count: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Already Dismissed
+                  value:
+                    message: This receipt has already been dismissed.
+                    errors:
+                      return_receipt:
+                      - This receipt has already been dismissed.
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: Keep the dismissal reason under 500 characters.
+                    errors:
+                      reason:
+                      - Keep the dismissal reason under 500 characters.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-returns-reconciliation-returnreceipt-dismiss
+  /api/returns/reconciliation/{returnReceipt}/restore:
+    post:
+      tags:
+      - Returns & RMAs
+      summary: Restore Dismissed Return
+      description: 'Undo a dismissal and put the received return back on the unmatched
+        returns list. Clears the dismissal timestamp, the user who dismissed it, and
+        the reason; nothing else about the receipt changes.
+
+
+        Returns 422 if the receipt is not currently dismissed.
+
+
+        Requires a Bearer token and the returns.update permission.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: returnReceipt
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The return receipt ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      received_at:
+                        type: string
+                      age_days:
+                        type: integer
+                      reconciliation_status:
+                        type: object
+                        properties:
+                          value:
+                            type: string
+                          label:
+                            type: string
+                      needs_review:
+                        type: boolean
+                      is_blind:
+                        type: boolean
+                      is_dismissed:
+                        type: boolean
+                      dismissed_at:
+                        type: string
+                        nullable: true
+                      dismissal_reason:
+                        type: string
+                        nullable: true
+                      dismissed_by:
+                        type: string
+                        nullable: true
+                      notes:
+                        type: string
+                        nullable: true
+                      warehouse:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      received_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      rma:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            sku:
+                              type: string
+                            product_name:
+                              type: string
+                            quantity:
+                              type: integer
+                            unexpected_item:
+                              type: boolean
+                            rma_line_id:
+                              type: integer
+                            matched_rma:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                rma_number:
+                                  type: string
+                                link_route:
+                                  type: string
+                      matched_line_count:
+                        type: integer
+                      line_count:
+                        type: integer
+                example:
+                  message: Return receipt restored to the unmatched report.
+                  data:
+                    id: 4821
+                    received_at: '2026-07-21T02:14:00.000000Z'
+                    age_days: 9
+                    reconciliation_status:
+                      value: partially_matched
+                      label: Partially Matched
+                    needs_review: false
+                    is_blind: true
+                    is_dismissed: false
+                    dismissed_at: null
+                    dismissal_reason: null
+                    dismissed_by: null
+                    notes: null
+                    warehouse:
+                      id: 12
+                      name: Returns Warehouse
+                    received_by:
+                      id: 3
+                      name: Warehouse Operator
+                    rma: null
+                    lines:
+                    - id: 9901
+                      product_id: 55
+                      sku: BRIEF-BUR-M
+                      product_name: Burgundy Brief M
+                      quantity: 1
+                      unexpected_item: false
+                      rma_line_id: 3310
+                      matched_rma:
+                        id: 812
+                        rma_number: RMA-2026-15452
+                        link_route: /rma/812
+                    - id: 9902
+                      product_id: 61
+                      sku: SOCK-NVY-L
+                      product_name: Navy Sock L
+                      quantity: 1
+                      unexpected_item: true
+                      rma_line_id: null
+                      matched_rma: null
+                    matched_line_count: 1
+                    line_count: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      return_receipt:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: This receipt is not dismissed.
+                  errors:
+                    return_receipt:
+                    - This receipt is not dismissed.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-returns-reconciliation-returnreceipt-restore
   /api/suppliers:
     get:
       tags:

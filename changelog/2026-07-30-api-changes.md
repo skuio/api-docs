@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-30
-description: This release includes 15 additions, 1 change. 1 breaking change — action required.
+description: This release includes 17 additions, 1 change. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-30
 ---
 
-This release includes 15 additions, 1 change. 1 breaking change — action required.
+This release includes 17 additions, 1 change. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -44,5 +44,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/product-listings/{productListing}/content-changes/history` — Get Content Change History
 - `POST /api/product-listings/{productListing}/content-changes/ignore` — Ignore Content Changes
 - `POST /api/product-listings/{productListing}/content-changes/reconcile` — Reconcile Listing Content
+
+### Returns & RMAs
+- `POST /api/returns/reconciliation/{returnReceipt}/dismiss` — Dismiss Unmatched Return
+- `POST /api/returns/reconciliation/{returnReceipt}/restore` — Restore Dismissed Return
 
 _Spec version 1.0.0 → 1.0.0._
