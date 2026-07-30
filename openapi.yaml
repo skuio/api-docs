@@ -194535,7 +194535,7 @@ paths:
       - Shopify
       summary: Get Authorization URL
       description: 'Returns the Shopify OAuth authorization URL for an integration
-        instance. The frontend redirects the merchant''s browser to this URL to begin
+        instance. The caller redirects the merchant''s browser to this URL to begin
         authorization.
 
 
@@ -194557,7 +194557,21 @@ paths:
 
         Notes:
 
-        - Requires connection_settings.url (or legacy shop_url) to be set on the instance.
+        - Requires connection_settings.url (or legacy shop_url) to be set on the instance;
+        a 422 is returned when it is missing.
+
+        - The stored shop address is normalized before use. A full admin address such
+        as https://admin.shopify.com/store/my-store resolves to my-store.myshopify.com.
+
+        - The store is proven to exist before a URL is handed back. Because *.myshopify.com
+        resolves for any handle, a mistyped handle would otherwise produce a valid-looking
+        URL that Shopify answers with an unrecoverable error page. A domain that cannot
+        be a store (for example admin.shopify.com or a value with no dot) is rejected
+        without contacting Shopify, and a domain with no store behind it returns a
+        422 naming the shop.
+
+        - The existence check fails open: if Shopify cannot be reached, the URL is
+        still returned.
 
         - Uses per-instance credentials in custom-app mode, otherwise SKU.io''s central
         public-app Client ID.
@@ -194589,6 +194603,30 @@ paths:
                     type: string
                 example:
                   data: https://my-store.myshopify.com/admin/oauth/authorize?client_id=8e894995d119436434f0f28e8ec69eb4&scope=write_orders%2Cread_orders%2Cwrite_products%2Cread_products&redirect_uri=https%3A%2F%2Fapp.sku.io%2Fshopify%2Fcallback&state=acme_12
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Store Not Found
+                  value:
+                    message: We can't find a Shopify store at not-a-store.myshopify.com
+                      — check the handle in your Shopify admin URL.
+                    shop: not-a-store.myshopify.com
+                example-1:
+                  summary: 422 Shop URL Missing
+                  value:
+                    message: This integration has no Shop URL yet. Enter your store
+                      address (for example my-store.myshopify.com) on the Authentication
+                      section, then connect again.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -194811,7 +194849,18 @@ paths:
 
 
         integration_settings.cost_sync.fallback_to_default_cost (boolean): when a
-        product has no average cost, fall back to its default cost for the cost push.'
+        product has no average cost, fall back to its default cost for the cost push.
+
+
+        Shop URL lock: once Shopify has granted an access token for the instance,
+        connection_settings.url can no longer be pointed at a different store and
+        a 422 is returned naming the store it is currently connected to. The token
+        belongs to the store that issued it, so repointing the domain underneath it
+        would read one store''s data with another store''s credentials. Reset the
+        connection first (POST /api/shopify/{integrationInstance}/reset-connection),
+        then save the new address. Re-saving the same store in a different shape (scheme,
+        casing, or an admin address) is not treated as a repoint, and an update that
+        does not include connection_settings.url is unaffected.'
       requestBody:
         content:
           application/json:
@@ -195059,23 +195108,23 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The integration settings.start date field must be a date
+                      after or equal to 2024-01-01.
+                    errors:
                       integration_settings.start_date:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The integration settings.start date field must be a date
-                    after or equal to 2024-01-01.
-                  errors:
-                    integration_settings.start_date:
-                    - The integration settings.start date field must be a date after
-                      or equal to 2024-01-01.
+                      - The integration settings.start date field must be a date after
+                        or equal to 2024-01-01.
+                example-1:
+                  summary: 422 Shop URL Locked
+                  value:
+                    message: This integration is already connected to my-store.myshopify.com.
+                      Use Reset Connection to drop the existing authorization before
+                      pointing it at a different store.
+                    current_shop: my-store.myshopify.com
         '429': *id001
         '401': *id002
         '403': *id003
@@ -195136,9 +195185,9 @@ paths:
       - Shopify
       summary: Get Auth Settings
       description: 'Returns the connection settings for an integration instance with
-        secrets masked (only the last 4 characters are visible), plus the current
-        sync status and shop URL. Useful for showing connection state without exposing
-        credentials.
+        secrets masked (only the last 4 characters are visible), plus the authorization
+        state, current sync status and shop URL. Useful for showing connection state
+        without exposing credentials.
 
 
         :::info[Authorization]
@@ -195149,7 +195198,111 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Response fields:
+
+        - connection_settings (object): stored settings; consumer_secret, client_secret
+        and password are masked.
+
+        - is_authorized (boolean): true once Shopify has granted an access token for
+        this instance (always true in legacy custom-app mode, which authenticates
+        with stored credentials instead of OAuth). An instance that was created but
+        never completed the handshake reports false.
+
+        - sync_status (string): Active or Inactive. This is independent of is_authorized
+        — it says whether syncing is switched on, not whether the store is connected.
+
+        - shop_url (string|null): the stored store address.
+
+        - name (string): display name.
+
+        - is_automatic_sync_enabled (boolean).'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      connection_settings:
+                        url: https://my-store.myshopify.com
+                        consumer_key: 8e894995d119436434f0f28e8ec69eb4
+                        consumer_secret: '********************************ab12'
+                      sync_status: Active
+                      is_authorized: true
+                      shop_url: https://my-store.myshopify.com
+                      name: Main Shopify Store
+                      is_automatic_sync_enabled: true
+                example-1:
+                  summary: 200 OK (never authorized)
+                  value:
+                    data:
+                      connection_settings:
+                        url: https://my-store.myshopify.com
+                      sync_status: Active
+                      is_authorized: false
+                      shop_url: https://my-store.myshopify.com
+                      name: Main Shopify Store
+                      is_automatic_sync_enabled: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-shopify-integrationinstance-auth-settings
+  /api/shopify/{integrationInstance}/reset-connection:
+    post:
+      tags:
+      - Shopify
+      summary: Reset Connection
+      description: 'Drops the stored Shopify authorization for an integration instance
+        so it can be authorized again — against the same store or a different one.
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+
+
+        Path params:
+
+        - integrationInstance (int, required): the integration instance id.
+
+
+        Effects:
+
+        - The stored access token is discarded and sync_status is set to Inactive,
+        so nothing keeps calling Shopify with a token the merchant is replacing.
+
+        - Everything else is preserved: connection settings, product and warehouse
+        mappings, field mappings and imported orders all survive. This is a re-handshake,
+        not a teardown.
+
+        - The shop address becomes editable again (see the shop URL lock on the update
+        endpoint).
+
+
+        Typical use: an integration was connected to the wrong store, or the merchant
+        needs to re-grant scopes.'
+      requestBody:
+        content: {}
       parameters:
       - name: integrationInstance
         in: path
@@ -195174,38 +195327,20 @@ paths:
                   data:
                     type: object
                     properties:
-                      connection_settings:
-                        type: object
-                        properties:
-                          url:
-                            type: string
-                          consumer_key:
-                            type: string
-                          consumer_secret:
-                            type: string
+                      is_authorized:
+                        type: boolean
                       sync_status:
                         type: string
-                      shop_url:
-                        type: string
-                      name:
-                        type: string
-                      is_automatic_sync_enabled:
-                        type: boolean
                 example:
                   data:
-                    connection_settings:
-                      url: https://my-store.myshopify.com
-                      consumer_key: 8e894995d119436434f0f28e8ec69eb4
-                      consumer_secret: '********************************ab12'
-                    sync_status: active
-                    shop_url: https://my-store.myshopify.com
-                    name: Main Shopify Store
-                    is_automatic_sync_enabled: true
+                    is_authorized: false
+                    sync_status: Inactive
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-      operationId: get-api-shopify-integrationinstance-auth-settings
+        '422': *id005
+      operationId: post-api-shopify-integrationinstance-reset-connection
   /api/shopify/install/{claimToken}:
     get:
       tags:

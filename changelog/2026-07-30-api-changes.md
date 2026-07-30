@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-30
-description: This release includes 147 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+description: This release includes 148 additions, 3 changes, 1 removal. 3 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-30
 ---
 
-This release includes 147 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+This release includes 148 additions, 3 changes, 1 removal. 3 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -152,6 +152,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Xero
 - `DELETE /api/xero/v2/contacts/{contact}/unlink-sku-entity` — Unlink Contact from SKU Entity
 
-_…plus 47 more (see the API reference)._
+_…plus 48 more (see the API reference)._
+
+## Changed
+
+### Shopify
+- `GET /api/shopify/{integrationInstance}/authorization-url` — Get Authorization URL
+  - new response code(s): `422`
 
 _Spec version 1.0.0 → 1.0.0._
