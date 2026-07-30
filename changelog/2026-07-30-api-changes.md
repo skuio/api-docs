@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-30
-description: This release includes 14 additions, 1 change. 1 breaking change — action required.
+description: This release includes 15 additions, 1 change. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-07-30
 ---
 
-This release includes 14 additions, 1 change. 1 breaking change — action required.
+This release includes 15 additions, 1 change. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -25,6 +25,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `archived`, `excluded[]`, `included[]`, `limit`, `page`, `search`, `sort`
 
 ## Added
+
+### Google Sheets
+- `POST /api/v2/google/sheets/export-products` — Export Products to Google Sheets by Filter
 
 ### Product Listings
 - `POST /api/content-sync/bulk-apply` — Bulk Apply Content Changes
