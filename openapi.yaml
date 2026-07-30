@@ -355503,12 +355503,32 @@ paths:
       tags:
       - Products
       summary: Validate Supplier Link Import
-      description: "Validate supplier link import data and return a preview.\n\n:::info[Required\
-        \ scope: `products:write`]\nGrant this scope to your token under [Settings\
-        \ → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
-        :::\n\nAuthentication: Requires Bearer token.\n\nFields:\n- rows (required,\
-        \ array, min 1): Rows to validate\n  - product_sku (present): Product SKU\n\
-        \  - supplier_name (present): Supplier name"
+      description: "Validate supplier link import rows and return a per-row preview\
+        \ before importing.\n\n:::info[Required scope: `products:write`]\nGrant this\
+        \ scope to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nRows whose supplier_name\
+        \ is blank are skipped (products exported without a supplier link) and counted\
+        \ in summary.total_skipped.\n\nA supplier_name that does not match an existing\
+        \ supplier is reported as a warning and the supplier is created during the\
+        \ import. Send create_missing_suppliers=false to have those rows fail validation\
+        \ with an error instead.\n\nRequest fields:\n- rows (required, array, min\
+        \ 1): rows to validate\n  - product_sku (required, string): must match an\
+        \ existing product SKU\n  - supplier_name (required, string): matched case-insensitively;\
+        \ created on import when new\n  - supplier_sku (optional, string): supplier's\
+        \ own SKU for the product. Omit the key entirely to leave an existing value\
+        \ untouched on update\n  - moq (optional, numeric): minimum order quantity,\
+        \ non-negative\n  - leadtime (optional, integer): lead time in days, non-negative\n\
+        \  - target_stock_days (optional, integer): target days of stock, non-negative\n\
+        \  - is_default (optional, string): yes / true / 1 / y marks this supplier\
+        \ as the product's default\n  - tier_{pricingTierId} (optional, numeric):\
+        \ price for that supplier pricing tier, e.g. tier_1\n- create_missing_suppliers\
+        \ (optional, boolean, default true): when false, an unknown supplier_name\
+        \ is an error rather than a warning\n\nEach returned link carries errors and\
+        \ warnings arrays; a link is importable when errors is empty. supplier_will_be_created\
+        \ is true when the supplier does not exist yet, in which case supplier is\
+        \ null and the supplier is created during the import. is_update / supplier_product_id\
+        \ are set when the product+supplier combination already exists, so the import\
+        \ updates it instead of creating a duplicate."
       requestBody:
         content:
           application/json:
@@ -355524,10 +355544,33 @@ paths:
                         type: string
                       supplier_name:
                         type: string
+                      supplier_sku:
+                        type: string
+                      moq:
+                        type: string
+                      leadtime:
+                        type: string
+                      target_stock_days:
+                        type: string
+                      is_default:
+                        type: string
+                      tier_1:
+                        type: string
+                create_missing_suppliers:
+                  type: boolean
               example:
                 rows:
                 - product_sku: WDG-001
                   supplier_name: Global Supplies Ltd
+                  supplier_sku: GS-WDG-001
+                  moq: '50'
+                  leadtime: '14'
+                  target_stock_days: '30'
+                  is_default: 'yes'
+                  tier_1: '12.50'
+                - product_sku: WDG-002
+                  supplier_name: Northwind Trading
+                create_missing_suppliers: true
       parameters: []
       responses:
         '200':
@@ -355542,32 +355585,162 @@ paths:
               schema:
                 type: object
                 properties:
-                  valid:
-                    type: integer
-                  invalid:
-                    type: integer
-                  rows:
+                  links:
                     type: array
                     items:
                       type: object
                       properties:
+                        row_index:
+                          type: integer
                         product_sku:
                           type: string
+                        product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
                         supplier_name:
                           type: string
-                        valid:
+                        supplier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        supplier_will_be_created:
                           type: boolean
+                        supplier_sku:
+                          type: string
+                        supplier_sku_column_present:
+                          type: boolean
+                        moq:
+                          type: integer
+                        leadtime:
+                          type: integer
+                        target_stock_days:
+                          type: integer
+                        is_default:
+                          type: boolean
+                        is_update:
+                          type: boolean
+                        supplier_product_id:
+                          type: integer
+                        pricing:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              tier_id:
+                                type: integer
+                              tier_name:
+                                type: string
+                              price:
+                                type: number
+                        errors:
+                          type: array
+                        warnings:
+                          type: array
+                          items:
+                            type: string
+                  summary:
+                    type: object
+                    properties:
+                      total_links:
+                        type: integer
+                      total_errors:
+                        type: integer
+                      total_warnings:
+                        type: integer
+                      total_skipped:
+                        type: integer
+                      new_suppliers:
+                        type: integer
                 example:
-                  valid: 1
-                  invalid: 0
-                  rows:
-                  - product_sku: WDG-001
+                  links:
+                  - row_index: 0
+                    product_sku: WDG-001
+                    product:
+                      id: 42
+                      name: Widget Pro - Blue
                     supplier_name: Global Supplies Ltd
-                    valid: true
+                    supplier:
+                      id: 3
+                      name: Global Supplies Ltd
+                    supplier_will_be_created: false
+                    supplier_sku: GS-WDG-001
+                    supplier_sku_column_present: true
+                    moq: 50
+                    leadtime: 14
+                    target_stock_days: 30
+                    is_default: true
+                    is_update: true
+                    supplier_product_id: 918
+                    pricing:
+                    - tier_id: 1
+                      tier_name: standard
+                      price: 12.5
+                    errors: []
+                    warnings:
+                    - This will replace the current default supplier for 'WDG-001'.
+                  - row_index: 1
+                    product_sku: WDG-002
+                    product:
+                      id: 43
+                      name: Widget Pro - Red
+                    supplier_name: Northwind Trading
+                    supplier: null
+                    supplier_will_be_created: true
+                    supplier_sku: ''
+                    supplier_sku_column_present: false
+                    moq: null
+                    leadtime: null
+                    target_stock_days: null
+                    is_default: false
+                    is_update: false
+                    supplier_product_id: null
+                    pricing: []
+                    errors: []
+                    warnings:
+                    - Supplier 'Northwind Trading' does not exist yet - it will be
+                      created.
+                  summary:
+                    total_links: 2
+                    total_errors: 0
+                    total_warnings: 2
+                    total_skipped: 0
+                    new_suppliers: 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      rows:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The rows field is required.
+                  errors:
+                    rows:
+                    - The rows field is required.
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       x-required-scope: products:write
       operationId: post-api-v2-products-import-supplier-links-validate
   /api/v2/products/import-supplier-links:
@@ -355575,18 +355748,33 @@ paths:
       tags:
       - Products
       summary: Import Supplier Links
-      description: 'Imports run as a tracked job — a bulk import can exceed a ~100s
-        edge-proxy limit (Cloudflare 524), so the rows are processed off the request
-        cycle. Returns a tracked_job_log_id; progress and the created/updated/failed
-        counts surface via the tracked job log endpoints.
-
-
-        :::info[Required scope: `products:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::'
+      description: "Import supplier links previewed by the validate endpoint. Send\
+        \ back the links the preview returned, minus any row whose errors array was\
+        \ non-empty.\n\n:::info[Required scope: `products:write`]\nGrant this scope\
+        \ to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nsupplier_id may be omitted\
+        \ when the supplier does not exist yet - the supplier is created from supplier_name,\
+        \ once per distinct name across the whole payload, so ten rows naming the\
+        \ same new supplier produce one supplier. Either supplier_id or supplier_name\
+        \ must be present on every link.\n\nA link carrying supplier_product_id updates\
+        \ that existing supplier link; without it a new link is created.\n\nRequest\
+        \ fields:\n- links (required, array, min 1)\n  - product_id (required, integer):\
+        \ must exist\n  - supplier_id (optional, integer): must exist when present;\
+        \ omit for a supplier that will be created\n  - supplier_name (required when\
+        \ supplier_id is absent, string, max 255): name of the supplier to create\
+        \ or match\n  - supplier_product_id (optional, integer): existing supplier\
+        \ link to update; must exist when present\n  - product_sku (optional, string):\
+        \ echoed back in the result summary\n  - supplier_sku (optional, string):\
+        \ supplier's own SKU for the product\n  - supplier_sku_column_present (optional,\
+        \ boolean): false leaves an existing supplier_sku untouched on update\n  -\
+        \ moq (optional, numeric), leadtime (optional, integer), target_stock_days\
+        \ (optional, integer)\n  - is_default (optional, boolean): makes this the\
+        \ product's default supplier\n  - pricing (optional, array): [{ tier_id, price\
+        \ }] per supplier pricing tier\n\nImports run in the background - a bulk import\
+        \ can exceed a ~100s edge-proxy limit (Cloudflare 524), so the rows are processed\
+        \ off the request cycle. The response returns a tracked_job_log_id; poll the\
+        \ tracked job log endpoints for progress and for the created / updated / failed\
+        \ counts plus the names of any suppliers created along the way."
       requestBody:
         content:
           application/json:
@@ -355602,14 +355790,54 @@ paths:
                         type: integer
                       supplier_id:
                         type: integer
-                      supplier_product_id:
+                      supplier_name:
                         type: string
-                        nullable: true
+                      supplier_product_id:
+                        type: integer
+                      product_sku:
+                        type: string
+                      supplier_sku:
+                        type: string
+                      supplier_sku_column_present:
+                        type: boolean
+                      moq:
+                        type: integer
+                      leadtime:
+                        type: integer
+                      target_stock_days:
+                        type: integer
+                      is_default:
+                        type: boolean
+                      pricing:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            tier_id:
+                              type: integer
+                            price:
+                              type: number
               example:
                 links:
                 - product_id: 42
                   supplier_id: 3
-                  supplier_product_id: null
+                  supplier_name: Global Supplies Ltd
+                  supplier_product_id: 918
+                  product_sku: WDG-001
+                  supplier_sku: GS-WDG-001
+                  supplier_sku_column_present: true
+                  moq: 50
+                  leadtime: 14
+                  target_stock_days: 30
+                  is_default: true
+                  pricing:
+                  - tier_id: 1
+                    price: 12.5
+                - product_id: 43
+                  supplier_name: Northwind Trading
+                  product_sku: WDG-002
+                  is_default: false
+                  pricing: []
       parameters: []
       responses:
         '202':
@@ -355635,10 +355863,37 @@ paths:
                   data:
                     tracked_job_log_id: 5123
                   message: Import queued — track progress in the job tray.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      links.0.supplier_name:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The links.0.supplier name field is required when none of
+                    links.0.supplier id are present.
+                  errors:
+                    links.0.supplier_name:
+                    - The links.0.supplier name field is required when none of links.0.supplier
+                      id are present.
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       x-required-scope: products:write
       operationId: post-api-v2-products-import-supplier-links
   /api/v2/products/list/export:
