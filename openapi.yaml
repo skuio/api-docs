@@ -95012,8 +95012,10 @@ paths:
         :::
 
 
-        Generates a CSRF state token (format: `{app.url}_{instance_id}`), stores it
-        in the user''s session, and returns the fully-formed Faire authorization URL.
+        Generates a CSRF state token (format: `{app_url}~{workspace}_{instance_id}`)
+        and returns the fully-formed Faire authorization URL. The state identifies
+        both the workspace that started the flow and the integration instance being
+        authorized, so the callback resolves them without relying on a browser session.
 
 
         **Path Parameters:**
@@ -95027,8 +95029,7 @@ paths:
         brand admin.
 
 
-        **Auth:** Requires Bearer token. CSRF state is bound to the user''s session,
-        so the same session must complete the callback.'
+        **Auth:** Requires Bearer token.'
       parameters:
       - name: integrationInstance
         in: path
@@ -95057,7 +95058,7 @@ paths:
                         type: string
                 example:
                   data:
-                    authorization_url: https://faire.com/oauth2/authorize?applicationId=test-app-id&scope=READ_PRODUCTS%2CWRITE_PRODUCTS%2CREAD_ORDERS%2CWRITE_ORDERS%2CREAD_BRAND%2CREAD_RETAILER%2CREAD_INVENTORIES%2CWRITE_INVENTORIES%2CREAD_SHIPMENTS%2CREAD_REVIEWS&state=https%3A%2F%2Fapp.sku.io_1&redirectUrl=https%3A%2F%2Fapp.sku.io%2Ffaire%2Fcallback
+                    authorization_url: https://faire.com/oauth2/authorize?applicationId=test-app-id&scope=READ_PRODUCTS%2CWRITE_PRODUCTS%2CREAD_ORDERS%2CWRITE_ORDERS%2CREAD_BRAND%2CREAD_RETAILER%2CREAD_INVENTORIES%2CWRITE_INVENTORIES%2CREAD_SHIPMENTS%2CREAD_REVIEWS&state=https%3A%2F%2Fapp.sku.io~acme_1&redirectUrl=https%3A%2F%2Fapp.sku.io%2Ffaire%2Fcallback
         '429': *id001
         '401': *id002
         '403': *id003
@@ -95074,33 +95075,41 @@ paths:
 
         **Flow:**
 
-        1. Validates the `state` parameter against the value stored in the user''s
-        session (CSRF protection).
+        1. Reads the `state` parameter to resolve the workspace and the integration
+        instance the flow started from (CSRF protection).
 
         2. Calls Faire''s token endpoint to exchange `authorization_code` for a long-lived
         `access_token`.
 
         3. Persists the access token + granted scopes on the integration instance.
 
-        4. Redirects to `/v2/integrations/faire/{id}/dashboard` on success, or `/v2/integrations/faire/{id}/settings?oauth_error=...`
+        4. Redirects the browser back to the workspace''s own host — `https://{workspace}.sku.io/v2/integrations/faire?filter[integration_instance_ids]={id}`
+        on success, or `https://{workspace}.sku.io/v2/integrations/faire/settings?filter[integration_instance_ids]={id}&oauth_error=...`
         on failure.
+
+
+        Faire is registered with a single shared callback URL, so the callback can
+        land on a host other than the workspace''s own. The `state` value carries
+        the originating workspace, and the redirect in step 4 always points back at
+        that workspace''s host.
 
 
         **Query Parameters:**
 
-        - `state` (required) - CSRF state, format `{app.url}_{instance_id}`
+        - `state` (required) - CSRF state, format `{app_url}~{workspace}_{instance_id}`
 
         - `authorization_code` (required, alias `code`) - One-time auth code from
         Faire
 
 
-        **Auth:** Web session (no Bearer token). Faire redirects the user''s browser,
-        so the call lands on the `web` middleware group, not `auth:sanctum`.
+        **Auth:** No Bearer token. Faire redirects the user''s browser, so the request
+        arrives unauthenticated and is authorized by the `state` value alone.
 
 
         **Errors:**
 
-        - `400 State mismatch` - The state in the request doesn''t match the session
+        - `400 State mismatch` - The state is missing, expired, or does not resolve
+        to an instance
 
         - `404 Faire integration not found` - Instance referenced by state has been
         deleted
@@ -95111,10 +95120,9 @@ paths:
         in: query
         schema:
           type: string
-        description: 'CSRF state token returned by Faire. Format: `{app.url}_{integration_instance_id}`.
-          Must match the value stored in the session by the Get Authorization URL
-          endpoint.'
-        example: https%3A%2F%2Fapp.sku.io_1
+        description: 'CSRF state token returned by Faire. Format: `{app_url}~{workspace}_{integration_instance_id}`.
+          Must match the value issued by the Get Authorization URL endpoint.'
+        example: https%3A%2F%2Fapp.sku.io~acme_1
       - name: authorization_code
         in: query
         schema:
@@ -95128,7 +95136,7 @@ paths:
             Location:
               schema:
                 type: string
-                example: /v2/integrations/faire/1/dashboard
+                example: https://acme.sku.io/v2/integrations/faire?filter[integration_instance_ids]=1
           content:
             text/plain:
               schema:
