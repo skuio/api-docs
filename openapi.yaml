@@ -439367,17 +439367,26 @@ paths:
       tags:
       - Sales Orders
       summary: List Release Candidates
-      description: 'Lists open sales orders that never produced a fulfillment order,
-        split into the ones that can be dispatched right now and the ones that are
-        still blocked, grouped by reason.
+      description: 'Lists open sales orders that were never dispatched, as one flat
+        list. Every stranded order appears exactly once, releasable and blocked alike,
+        and each one carries its own diagnosis, so releasable_count plus blocked_count
+        always equals the number of entries in orders.
 
 
         An order is a candidate only when all of the following hold: it is open and
-        not fully fulfilled, it has no fulfillment order other than a cancelled one,
-        it came from a sales channel rather than being entered by hand, and it is
-        at least minimum_age_days old. The age floor exists because dispatch runs
-        from a queue, so a just-placed order is legitimately undispatched for a short
-        while.
+        not fully fulfilled; it holds no fulfillment order that has already been dispatched
+        (a cancelled one, or one still unsubmitted or rejected, does not count as
+        dispatched); it came from a sales channel rather than being entered by hand;
+        it is at least minimum_age_days old; and it is not sitting in a state that
+        was deliberately configured. The age floor exists because dispatch runs from
+        a queue, so a just-placed order is legitimately undispatched for a short while.
+
+
+        Deliberately configured states are excluded outright rather than reported
+        as blockers: an order under an unexpired hold, an order whose warehouse has
+        auto-dispatch switched off or is set to manual fulfillment, and an order before
+        the configured inventory start date. Those are the system doing exactly what
+        it was told to do, so they are not stranded and never appear in this response.
 
 
         Automatic dispatch runs once per order, when the order is created or edited.
@@ -439396,16 +439405,18 @@ paths:
 
         Response fields:
 
-        - releasable_count (integer): How many of the scanned orders have nothing
-        blocking them and can be dispatched now.
+        - releasable_count (integer): How many entries in orders have nothing blocking
+        them and can be dispatched now.
 
-        - blocked_count (integer): How many of the scanned orders are still blocked.
+        - blocked_count (integer): How many entries in orders are still blocked.
 
         - scanned_count (integer): How many candidate orders were diagnosed in this
-        pass. At most 500 are diagnosed per request.
+        pass. At most 500 are diagnosed per request. It can exceed the number of entries
+        in orders by the handful of orders that turned out to have nothing left to
+        dispatch — those finished by another route and are omitted.
 
-        - candidate_count (integer): Total number of open orders with no fulfillment,
-        before the 500-order scan limit is applied.
+        - candidate_count (integer): Total number of candidate orders, before the
+        500-order scan limit is applied.
 
         - oldest_days_open (integer): Age in days of the longest-waiting candidate
         order. Measured across every candidate, not just the scanned window, so it
@@ -439418,18 +439429,14 @@ paths:
         - truncated (boolean): True when candidate_count is greater than scanned_count,
         i.e. more candidates exist than were diagnosed.
 
-        - releasable (array of objects): One entry per releasable order — id (integer),
-        sales_order_number (string, nullable), customer_name (string, nullable), sales_channel_name
-        (string, nullable), order_date (string, Y-m-d, nullable), days_open (integer),
-        diagnosis (object, see below).
-
-        - blocker_breakdown (array of objects): One entry per distinct blocker, sorted
-        by count descending — blocker (string), label (string), description (string),
-        is_operator_actionable (boolean), count (integer), sales_order_ids (array
-        of integers).
+        - orders (array of objects): One entry per stranded order, releasable ones
+        first and then blocked ones, each group longest-waiting first. Each entry
+        has id (integer), sales_order_number (string, nullable), customer_name (string,
+        nullable), sales_channel_name (string, nullable), order_date (string, Y-m-d,
+        nullable), days_open (integer), and diagnosis (object, see below).
 
 
-        Diagnosis object (returned on each releasable order):
+        Diagnosis object (returned on every entry in orders):
 
         - sales_order_id (integer)
 
@@ -439443,21 +439450,21 @@ paths:
 
         - is_releasable (boolean)
 
-        - is_operator_actionable (boolean): False for blockers only time or incoming
-        stock clears (awaiting_stock, held, before_inventory_start_date), and false
-        whenever blocker is null; true otherwise.
+        - is_operator_actionable (boolean): False when the blocker only clears with
+        time or incoming stock (awaiting_stock), and false whenever blocker is null;
+        true otherwise.
 
 
-        Blocker codes: not_from_sales_channel, unmapped_lines, no_shipping_method,
-        shipping_method_excluded, awaiting_stock, out_of_sync, held, before_inventory_start_date,
-        no_warehouse_on_lines, warehouse_auto_dispatch_disabled, warehouse_manual_fulfillment,
+        Blocker codes that can be reported here: unmapped_lines, no_shipping_method,
+        shipping_method_excluded, awaiting_stock, out_of_sync, no_warehouse_on_lines,
         warehouse_missing_address, shipping_address_invalid.
 
 
-        Blockers reported with is_operator_actionable = false (awaiting_stock, held,
-        before_inventory_start_date) clear on their own once stock arrives, a hold
-        expires, or a date is reached. Every other blocker can be fixed and the order
-        then released.'
+        When an order is blocked for more than one reason, the reported blocker is
+        the one worth acting on. The remaining codes in the wider blocker set — not_from_sales_channel,
+        held, before_inventory_start_date, warehouse_auto_dispatch_disabled, warehouse_manual_fulfillment
+        — describe the deliberately configured states above, so an order carrying
+        only those is never returned by this endpoint.'
       parameters: []
       responses:
         '200':
@@ -439477,28 +439484,14 @@ paths:
                   value:
                     status: success
                     data:
-                      releasable_count: 2
-                      blocked_count: 3
-                      scanned_count: 5
-                      candidate_count: 5
+                      releasable_count: 1
+                      blocked_count: 2
+                      scanned_count: 4
+                      candidate_count: 4
                       oldest_days_open: 14
                       minimum_age_days: 1
                       truncated: false
-                      releasable:
-                      - id: 48210
-                        sales_order_number: SO-10488
-                        customer_name: Marisol Vega
-                        sales_channel_name: Shopify - Main Store
-                        order_date: '2026-07-14'
-                        days_open: 13
-                        diagnosis:
-                          sales_order_id: 48210
-                          blocker: null
-                          blocker_label: null
-                          detail: Nothing is blocking this order — it can be dispatched
-                            now.
-                          is_releasable: true
-                          is_operator_actionable: false
+                      orders:
                       - id: 48211
                         sales_order_number: SO-10489
                         customer_name: Dermot Kelly
@@ -439513,24 +439506,34 @@ paths:
                             now.
                           is_releasable: true
                           is_operator_actionable: false
-                      blocker_breakdown:
-                      - blocker: unmapped_lines
-                        label: Unmapped lines
-                        description: One or more lines are not mapped to a product
-                          yet. Map them and the order can be released.
-                        is_operator_actionable: true
-                        count: 2
-                        sales_order_ids:
-                        - 48195
-                        - 48203
-                      - blocker: awaiting_stock
-                        label: Awaiting stock
-                        description: Not everything on the order is in stock, and
-                          partial dispatch is turned off.
-                        is_operator_actionable: false
-                        count: 1
-                        sales_order_ids:
-                        - 48188
+                      - id: 48195
+                        sales_order_number: SO-10473
+                        customer_name: Marisol Vega
+                        sales_channel_name: Shopify - Main Store
+                        order_date: '2026-07-13'
+                        days_open: 14
+                        diagnosis:
+                          sales_order_id: 48195
+                          blocker: unmapped_lines
+                          blocker_label: Unmapped lines
+                          detail: One or more lines are not mapped to a product yet.
+                            Map them and the order can be released.
+                          is_releasable: false
+                          is_operator_actionable: true
+                      - id: 48188
+                        sales_order_number: SO-10466
+                        customer_name: Beatriz Okonkwo
+                        sales_channel_name: Amazon - US
+                        order_date: '2026-07-19'
+                        days_open: 8
+                        diagnosis:
+                          sales_order_id: 48188
+                          blocker: awaiting_stock
+                          blocker_label: Awaiting stock
+                          detail: Not everything on the order is in stock, and partial
+                            dispatch is turned off.
+                          is_releasable: false
+                          is_operator_actionable: false
                 example-1:
                   summary: 200 Nothing To Release
                   value:
@@ -439543,8 +439546,7 @@ paths:
                       oldest_days_open: 0
                       minimum_age_days: 1
                       truncated: false
-                      releasable: []
-                      blocker_breakdown: []
+                      orders: []
         '429': *id001
         '401': *id002
         '403': *id003
