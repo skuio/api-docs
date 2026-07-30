@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-30
-description: This release includes 141 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+description: This release includes 142 additions, 2 changes, 1 removal. 3 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-30
 ---
 
-This release includes 141 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+This release includes 142 additions, 2 changes, 1 removal. 3 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -98,7 +98,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/qbo/items/sync-info` — Get Items Sync Info
 - `GET /api/qbo/items/{id}/activity-log` — Get Item Activity Log
 - `POST /api/qbo/journals/refresh-single` — Pull Journal from QuickBooks
-- `POST /api/qbo/journals/refresh-tracked` — Refresh Journals in Background
 - `GET /api/qbo/journals/sync-info` — Get Journals Sync Info
 - `GET /api/qbo/payments/sync-info` — Get Payments Sync Info
 - `GET /api/qbo/purchase-orders/sync-info` — Get Purchase Orders Sync Info
@@ -109,6 +108,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/qbo/vendor-credits/{id}/activity-log` — Get Vendor Credit Activity Log
 - `GET /api/qbo/vendors/sync-info` — Get Vendors Sync Info
 - `GET /api/qbo/vendors/{id}/activity-log` — Get Vendor Activity Log
+
+### Reporting
+- `GET /api/reporting/realtime-inventory/pivot` — Get Realtime Inventory Pivot
 
 ### ShipHero
 - `GET /api/shiphero/integration-instances/{integration_instance}/inventory-audit` — List Inventory Changes
@@ -150,6 +152,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Xero
 - `DELETE /api/xero/v2/contacts/{contact}/unlink-sku-entity` — Unlink Contact from SKU Entity
 
-_…plus 41 more (see the API reference)._
+_…plus 42 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
