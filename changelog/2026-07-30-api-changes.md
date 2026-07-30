@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-30
-description: This release includes 142 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+description: This release includes 147 additions, 2 changes, 1 removal. 3 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-07-30
 ---
 
-This release includes 142 additions, 2 changes, 1 removal. 3 breaking changes — action required.
+This release includes 147 additions, 2 changes, 1 removal. 3 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -60,6 +60,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/content-sync/conflicts` — List Content Conflicts
 - `POST /api/content-sync/conflicts/{contentChange}/resolve` — Resolve Content Conflict
 - `GET /api/content-sync/drift` — List Content Drift
+- `POST /api/content-sync/group-apply` — Apply Content Change Group
+- `GET /api/content-sync/groups` — List Drift Groups
 - `POST /api/content-sync/reconcile` — Reconcile Content Drift
 - `GET /api/content-sync/summary` — Get Content Sync Summary
 - `GET /api/integration-instances/{integrationInstance}/content-sync-settings` — Get Content Sync Settings
@@ -68,6 +70,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/product-listings/{productListing}/content-changes/history` — Get Content Change History
 - `POST /api/product-listings/{productListing}/content-changes/ignore` — Ignore Content Changes
 - `POST /api/product-listings/{productListing}/content-changes/reconcile` — Reconcile Listing Content
+- `POST /api/product-listings/{productListing}/content-changes/{contentChange}/rollback` — Roll Back Content Change
+- `GET /api/product-listings/{productListing}/content-sync-rules` — Get Listing Content Rules
 
 ### QuickBooks Online
 - `POST /api/qbo/accounts/refresh-single` — Pull Account from QuickBooks
@@ -92,12 +96,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/qbo/invoices/refresh-tracked` — Refresh Invoices in Background
 - `POST /api/qbo/invoices/search-qbo` — Search Invoices in QuickBooks
 - `GET /api/qbo/invoices/sync-info` — Get Invoices Sync Info
-- `POST /api/qbo/items/refresh-single` — Pull Item from QuickBooks
-- `POST /api/qbo/items/refresh-tracked` — Refresh Items in Background
-- `POST /api/qbo/items/search-qbo` — Search Items in QuickBooks
 - `GET /api/qbo/items/sync-info` — Get Items Sync Info
 - `GET /api/qbo/items/{id}/activity-log` — Get Item Activity Log
-- `POST /api/qbo/journals/refresh-single` — Pull Journal from QuickBooks
 - `GET /api/qbo/journals/sync-info` — Get Journals Sync Info
 - `GET /api/qbo/payments/sync-info` — Get Payments Sync Info
 - `GET /api/qbo/purchase-orders/sync-info` — Get Purchase Orders Sync Info
@@ -152,6 +152,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Xero
 - `DELETE /api/xero/v2/contacts/{contact}/unlink-sku-entity` — Unlink Contact from SKU Entity
 
-_…plus 42 more (see the API reference)._
+_…plus 47 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._

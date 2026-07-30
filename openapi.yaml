@@ -368821,16 +368821,23 @@ paths:
       - Product Listings
       summary: Get Content Sync Settings
       description: 'Get the ongoing content-sync configuration for a sales-channel
-        integration instance: whether sync is enabled, the reconcile cadence, and
-        per field-group / per-field ownership and auto-apply defaults.
+        integration instance: whether sync is enabled, the reconcile cadence, per
+        field-group / per-field ownership and auto-apply defaults, and the governance
+        gate.
 
 
         Ownership values: catalog (channel edits are flagged only), channel (channel
         edits can be pulled into the catalog), two_way (both sides may edit; simultaneous
         edits become conflicts).
 
-        Field groups: identity (barcode), descriptive (name, brand, attributes), media
-        (images), physical (weight).
+        Field groups: identity (barcode, mpn), descriptive (name, brand, attributes),
+        media (images), physical (weight, dimensions).
+
+        governance_gate: when enabled, a product is held back from publishing to this
+        channel while any field listed in governance_gate.require is empty on the
+        catalog record. Only outbound publishing is blocked — pulling content in from
+        the channel is never gated, since that is how an incomplete product gets filled
+        in. An enabled gate with an empty require list blocks nothing.
 
         Requires Bearer token.'
       parameters:
@@ -368903,6 +368910,15 @@ paths:
                                 type: string
                               auto_apply:
                                 type: boolean
+                      governance_gate:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          require:
+                            type: array
+                            items:
+                              type: string
                 example:
                   data:
                     enabled: true
@@ -368925,6 +368941,12 @@ paths:
                       name:
                         owner: channel
                         auto_apply: false
+                    governance_gate:
+                      enabled: true
+                      require:
+                      - barcode
+                      - images
+                      - weight
         '429': *id001
         '401': *id002
         '403': *id003
@@ -368935,8 +368957,9 @@ paths:
       - Product Listings
       summary: Update Content Sync Settings
       description: 'Update the instance-level content-sync configuration. Partial
-        updates are merged onto the current settings. Enabling sync for the first
-        time starts a background baseline job over every mapped listing on the instance,
+        updates are merged onto the current settings, so only the keys you send change
+        — but enabled is required on every request. Enabling sync for the first time
+        starts a background baseline job over every mapped listing on the instance,
         so pre-existing differences are not flagged as drift on day one; poll the
         jobs API to watch it complete.
 
@@ -368947,7 +368970,19 @@ paths:
         edits can be pulled into the catalog), two_way (both sides may edit; simultaneous
         edits become conflicts).
 
-        Unknown group or field keys are rejected with a 422.
+        governance_gate.enabled: hold products back from publishing to this channel
+        until their catalog content is complete. Outbound publishing only — inbound
+        content is never blocked.
+
+        governance_gate.require: the fields that must be present before a product
+        may publish. Accepted values: barcode, mpn, name, brand, attributes, images,
+        weight, dimensions. An enabled gate with an empty require list lets every
+        product through.
+
+        The governance gate is evaluated independently of enabled, so it still applies
+        when ongoing drift detection is switched off.
+
+        Unknown group, field, or required-field keys are rejected with a 422.
 
         Requires Bearer token.'
       requestBody:
@@ -368989,6 +369024,15 @@ paths:
                           type: string
                         auto_apply:
                           type: boolean
+                governance_gate:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    require:
+                      type: array
+                      items:
+                        type: string
               example:
                 enabled: true
                 reconcile_frequency: daily
@@ -369004,6 +369048,12 @@ paths:
                   name:
                     owner: channel
                     auto_apply: false
+                governance_gate:
+                  enabled: true
+                  require:
+                  - barcode
+                  - images
+                  - weight
       parameters:
       - name: integrationInstance
         in: path
@@ -369074,6 +369124,15 @@ paths:
                                 type: string
                               auto_apply:
                                 type: boolean
+                      governance_gate:
+                        type: object
+                        properties:
+                          enabled:
+                            type: boolean
+                          require:
+                            type: array
+                            items:
+                              type: string
                   message:
                     type: string
                 example:
@@ -369098,12 +369157,43 @@ paths:
                       name:
                         owner: channel
                         auto_apply: false
+                    governance_gate:
+                      enabled: true
+                      require:
+                      - barcode
+                      - images
+                      - weight
                   message: Content sync settings updated.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      governance_gate.require.0:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected governance_gate.require.0 is invalid.
+                  errors:
+                    governance_gate.require.0:
+                    - The selected governance_gate.require.0 is invalid.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       operationId: put-api-integration-instances-integrationinstance-content-sync-settings
   /api/product-listings/{productListing}/content-changes:
     get:
@@ -369295,8 +369385,14 @@ paths:
       - Product Listings
       summary: Get Content Change History
       description: 'Full audit trail of content changes for a listing, newest first
-        — including applied, auto-applied, ignored, superseded, and resolved-conflict
-        entries. Optionally narrow to one field.
+        — including applied, auto-applied, ignored, superseded, rolled-back, and resolved-conflict
+        entries. Every filter is optional; the unfiltered call returns the most recent
+        entries (default 200, max 500).
+
+
+        Alongside the entries, the response returns the set of users who have ever
+        resolved a change on this listing, so a "resolved by" filter can be built
+        without a second call.
 
         Requires Bearer token.'
       parameters:
@@ -369320,118 +369416,344 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        product_listing_id:
-                          type: integer
-                        product_id:
-                          type: integer
-                        field:
-                          type: string
-                        field_group:
-                          type: string
-                        direction:
-                          type: string
-                        owner_at_detection:
-                          type: string
-                        recommended_action:
-                          type: string
-                        catalog_value:
-                          type: string
-                        channel_value:
-                          type: string
-                        status:
-                          type: string
-                        source:
-                          type: string
-                        is_risky:
-                          type: boolean
-                        conflict_resolution:
-                          type: string
-                          nullable: true
-                        error_message:
-                          type: string
-                          nullable: true
-                        detected_at:
-                          type: string
-                        resolved_at:
-                          type: string
-                        listing:
+                    type: object
+                    properties:
+                      changes:
+                        type: array
+                        items:
                           type: object
                           properties:
                             id:
                               type: integer
-                            listing_sku:
-                              type: string
-                            title:
-                              type: string
-                            content_sync_status:
-                              type: string
-                            integration_instance_id:
+                            product_listing_id:
                               type: integer
-                            integration_instance_name:
-                              type: string
-                            integration_name:
-                              type: string
-                        product:
-                          type: object
-                          properties:
-                            id:
+                            product_id:
                               type: integer
-                            sku:
+                            field:
                               type: string
-                            name:
+                            field_group:
                               type: string
-                        resolved_by:
+                            direction:
+                              type: string
+                            owner_at_detection:
+                              type: string
+                            recommended_action:
+                              type: string
+                            catalog_value:
+                              type: string
+                            channel_value:
+                              type: string
+                            status:
+                              type: string
+                            source:
+                              type: string
+                            is_risky:
+                              type: boolean
+                            conflict_resolution:
+                              type: string
+                              nullable: true
+                            error_message:
+                              type: string
+                              nullable: true
+                            detected_at:
+                              type: string
+                            resolved_at:
+                              type: string
+                            resolved_by:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                      resolvers:
+                        type: array
+                        items:
                           type: object
                           properties:
                             id:
                               type: integer
                             name:
                               type: string
+                  message:
+                    type: string
+                    nullable: true
+                  status:
+                    type: string
                 example:
                   data:
-                  - id: 42
-                    product_listing_id: 315
-                    product_id: 88
-                    field: name
-                    field_group: descriptive
-                    direction: inbound
-                    owner_at_detection: channel
-                    recommended_action: apply
-                    catalog_value: Stainless Water Bottle 750ml
-                    channel_value: Stainless Steel Water Bottle - 750 ml
-                    status: applied
-                    source: webhook
-                    is_risky: true
-                    conflict_resolution: null
-                    error_message: null
-                    detected_at: '2026-07-29T14:05:12.000000Z'
-                    resolved_at: '2026-07-29T15:00:00.000000Z'
-                    listing:
-                      id: 315
-                      listing_sku: SWB-750
-                      title: Stainless Steel Water Bottle - 750 ml
-                      content_sync_status: pending_review
-                      integration_instance_id: 3
-                      integration_instance_name: Blue Bottle Retail
-                      integration_name: Shopify
-                    product:
-                      id: 88
-                      sku: SWB-750
-                      name: Stainless Water Bottle 750ml
-                    resolved_by:
-                      id: 1
+                    changes:
+                    - id: 61
+                      product_listing_id: 315
+                      product_id: 88
+                      field: name
+                      field_group: descriptive
+                      direction: rollback
+                      owner_at_detection: channel
+                      recommended_action: informational
+                      catalog_value: Stainless Steel Water Bottle - 750 ml
+                      channel_value: Stainless Water Bottle 750ml
+                      status: rolled_back
+                      source: manual
+                      is_risky: true
+                      conflict_resolution: null
+                      error_message: null
+                      detected_at: '2026-07-29T16:20:44.000000Z'
+                      resolved_at: '2026-07-29T16:20:44.000000Z'
+                      resolved_by:
+                        id: 1
+                        name: Jane Doe
+                    - id: 42
+                      product_listing_id: 315
+                      product_id: 88
+                      field: name
+                      field_group: descriptive
+                      direction: inbound
+                      owner_at_detection: channel
+                      recommended_action: apply
+                      catalog_value: Stainless Water Bottle 750ml
+                      channel_value: Stainless Steel Water Bottle - 750 ml
+                      status: rolled_back
+                      source: webhook
+                      is_risky: true
+                      conflict_resolution: null
+                      error_message: null
+                      detected_at: '2026-07-29T14:05:12.000000Z'
+                      resolved_at: '2026-07-29T16:20:44.000000Z'
+                      resolved_by:
+                        id: 1
+                        name: Jane Doe
+                    resolvers:
+                    - id: 1
                       name: Jane Doe
+                  message: null
+                  status: success
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
       operationId: get-api-product-listings-productlisting-content-changes-history
+  /api/product-listings/{productListing}/content-changes/{contentChange}/rollback:
+    post:
+      tags:
+      - Product Listings
+      summary: Roll Back Content Change
+      description: 'Restore the catalog value that an applied change replaced. Nothing
+        is deleted: the original entry is marked rolled_back and a new audit entry
+        records the restore, so the history stays complete.
+
+
+        Only a change that actually reached the catalog can be rolled back (applied,
+        auto-applied, or a previous rollback) — anything else returns 409. The change
+        must belong to the listing in the path, otherwise 404. The listing''s content
+        baseline moves with the restore, so the next sync does not read the rollback
+        as fresh drift.
+
+        Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: productListing
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The product listing ID.
+      - name: contentChange
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The content change ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product_listing_id:
+                        type: integer
+                      content_sync_status:
+                        type: string
+                      content_sync_checked_at:
+                        type: string
+                      last_inbound_synced_at:
+                        type: string
+                      changes:
+                        type: array
+                      rollback:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          product_listing_id:
+                            type: integer
+                          product_id:
+                            type: integer
+                          field:
+                            type: string
+                          field_group:
+                            type: string
+                          direction:
+                            type: string
+                          owner_at_detection:
+                            type: string
+                          recommended_action:
+                            type: string
+                          catalog_value:
+                            type: string
+                          channel_value:
+                            type: string
+                          status:
+                            type: string
+                          source:
+                            type: string
+                          is_risky:
+                            type: boolean
+                          conflict_resolution:
+                            type: string
+                            nullable: true
+                          error_message:
+                            type: string
+                            nullable: true
+                          detected_at:
+                            type: string
+                          resolved_at:
+                            type: string
+                          resolved_by:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  data:
+                    product_listing_id: 315
+                    content_sync_status: in_sync
+                    content_sync_checked_at: '2026-07-29T14:05:12.000000Z'
+                    last_inbound_synced_at: '2026-07-28T02:11:40.000000Z'
+                    changes: []
+                    rollback:
+                      id: 61
+                      product_listing_id: 315
+                      product_id: 88
+                      field: name
+                      field_group: descriptive
+                      direction: rollback
+                      owner_at_detection: channel
+                      recommended_action: informational
+                      catalog_value: Stainless Steel Water Bottle - 750 ml
+                      channel_value: Stainless Water Bottle 750ml
+                      status: rolled_back
+                      source: manual
+                      is_risky: true
+                      conflict_resolution: null
+                      error_message: null
+                      detected_at: '2026-07-29T16:20:44.000000Z'
+                      resolved_at: '2026-07-29T16:20:44.000000Z'
+                      resolved_by:
+                        id: 1
+                        name: Jane Doe
+                  message: Name rolled back to its previous value.
+                  status: success
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      content_change:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                  status:
+                    type: string
+                example:
+                  message: That change does not belong to this listing.
+                  errors:
+                    content_change:
+                    - message: That change does not belong to this listing.
+                      code: IsUnacceptable
+                      data: []
+                  status: failure
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      content_change:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                  status:
+                    type: string
+                example:
+                  message: 'Change #42 was never applied to the catalog (status: pending)
+                    — there is nothing to roll back.'
+                  errors:
+                    content_change:
+                    - message: 'Change #42 was never applied to the catalog (status:
+                        pending) — there is nothing to roll back.'
+                      code: IsUnacceptable
+                      data: []
+                  status: failure
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-product-listings-productlisting-content-changes-contentchange-rollback
   /api/product-listings/{productListing}/content-changes/apply:
     post:
       tags:
@@ -369444,9 +369766,9 @@ paths:
         preserving the catalog value for outbound re-push).
 
 
-        Applying a change updates the catalog product (name, barcode, brand, attributes,
-        images, or weight — weight is converted into the catalog''s unit) and advances
-        the listing''s content baseline.
+        Applying a change updates the catalog product (name, barcode, mpn, brand,
+        attributes, images, weight, or dimensions — weight is converted into the catalog''s
+        unit) and advances the listing''s content baseline.
 
         Requires Bearer token.'
       requestBody:
@@ -369921,6 +370243,536 @@ paths:
         '404': *id004
         '422': *id005
       operationId: post-api-product-listings-productlisting-content-changes-reconcile
+  /api/product-listings/{productListing}/content-sync-rules:
+    get:
+      tags:
+      - Product Listings
+      summary: Get Listing Content Rules
+      description: 'Get the content ownership rules in force for a single product
+        listing, and where each one comes from.
+
+
+        A listing normally follows its sales channel''s content-sync settings. This
+        endpoint returns three things side by side: `instance_defaults` (what the
+        channel says), `overrides` (what this listing has been customised to say),
+        and `effective` (the resolved answer for every governed field).
+
+
+        Each entry in `effective` carries a `source` naming the level that decided
+        it, most specific first: listing_field, listing_group, instance_field, instance_group,
+        default. `inherited` is false once the listing itself decided the field, true
+        while it still follows the channel.
+
+        `risky` marks a field whose change needs a human look before it is applied
+        in bulk.
+
+        Governed fields: barcode and mpn (identity), name, brand and attributes (descriptive),
+        images (media), weight and dimensions (physical).
+
+        Ownership values: catalog (channel edits are flagged only), channel (channel
+        edits can be pulled into the catalog), two_way (both sides may edit; simultaneous
+        edits become conflicts).
+
+        `enabled` reflects the channel — rules can be saved on a listing whose channel
+        has content sync turned off, they simply are not acted on until it is enabled.
+
+        Requires Bearer token.'
+      parameters:
+      - name: productListing
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The product listing ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product_listing_id:
+                        type: integer
+                      sales_channel_name:
+                        type: string
+                      enabled:
+                        type: boolean
+                      instance_defaults:
+                        type: object
+                        properties:
+                          groups:
+                            type: object
+                            properties:
+                              identity:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                              descriptive:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                              media:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                              physical:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                          fields:
+                            type: object
+                            properties:
+                              name:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                      overrides:
+                        type: object
+                        properties:
+                          groups:
+                            type: object
+                            properties:
+                              media:
+                                type: object
+                                properties:
+                                  owner:
+                                    type: string
+                                  auto_apply:
+                                    type: boolean
+                          fields:
+                            type: object
+                            properties: {}
+                      effective:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            field:
+                              type: string
+                            group:
+                              type: string
+                            risky:
+                              type: boolean
+                            owner:
+                              type: string
+                            auto_apply:
+                              type: boolean
+                            source:
+                              type: string
+                            inherited:
+                              type: boolean
+                example:
+                  data:
+                    product_listing_id: 8412
+                    sales_channel_name: Amazon US
+                    enabled: true
+                    instance_defaults:
+                      groups:
+                        identity:
+                          owner: catalog
+                          auto_apply: false
+                        descriptive:
+                          owner: channel
+                          auto_apply: true
+                        media:
+                          owner: catalog
+                          auto_apply: false
+                        physical:
+                          owner: catalog
+                          auto_apply: false
+                      fields:
+                        name:
+                          owner: two_way
+                          auto_apply: false
+                    overrides:
+                      groups:
+                        media:
+                          owner: channel
+                          auto_apply: false
+                      fields: {}
+                    effective:
+                    - field: barcode
+                      group: identity
+                      risky: false
+                      owner: catalog
+                      auto_apply: false
+                      source: instance_group
+                      inherited: true
+                    - field: mpn
+                      group: identity
+                      risky: false
+                      owner: catalog
+                      auto_apply: false
+                      source: instance_group
+                      inherited: true
+                    - field: name
+                      group: descriptive
+                      risky: true
+                      owner: two_way
+                      auto_apply: false
+                      source: instance_field
+                      inherited: true
+                    - field: brand
+                      group: descriptive
+                      risky: false
+                      owner: channel
+                      auto_apply: true
+                      source: instance_group
+                      inherited: true
+                    - field: attributes
+                      group: descriptive
+                      risky: false
+                      owner: channel
+                      auto_apply: true
+                      source: instance_group
+                      inherited: true
+                    - field: images
+                      group: media
+                      risky: false
+                      owner: channel
+                      auto_apply: false
+                      source: listing_group
+                      inherited: false
+                    - field: weight
+                      group: physical
+                      risky: false
+                      owner: catalog
+                      auto_apply: false
+                      source: instance_group
+                      inherited: true
+                    - field: dimensions
+                      group: physical
+                      risky: false
+                      owner: catalog
+                      auto_apply: false
+                      source: instance_group
+                      inherited: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-product-listings-productlisting-content-sync-rules
+    put:
+      tags:
+      - Product Listings
+      summary: Update Listing Content Rules
+      description: 'Customise the content ownership rules for a single product listing,
+        overriding what its sales channel says.
+
+
+        Send only what should differ from the channel: `groups` keyed by field group
+        and `fields` keyed by field name, each holding an `owner` and an optional
+        `auto_apply`. Anything left out keeps following the channel, so a later change
+        to the channel''s defaults still flows through to it.
+
+
+        Both `groups` and `fields` are required keys — send them as empty objects
+        to clear every customisation and put the listing back on the channel defaults.
+
+        Field-level entries beat group-level entries, and anything set here beats
+        the channel.
+
+        Group keys: identity, descriptive, media, physical. Field keys: barcode, mpn,
+        name, brand, attributes, images, weight, dimensions.
+
+        Ownership values: catalog (channel edits are flagged only), channel (channel
+        edits can be pulled into the catalog), two_way (both sides may edit; simultaneous
+        edits become conflicts).
+
+        Unknown group keys, unknown field keys, and unknown ownership values are rejected
+        with a 422.
+
+        The full resolved rule set is returned, exactly as the GET returns it.
+
+        Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                groups:
+                  type: object
+                  properties:
+                    descriptive:
+                      type: object
+                      properties:
+                        owner:
+                          type: string
+                        auto_apply:
+                          type: boolean
+                fields:
+                  type: object
+                  properties:
+                    name:
+                      type: object
+                      properties:
+                        owner:
+                          type: string
+                        auto_apply:
+                          type: boolean
+              example:
+                groups:
+                  descriptive:
+                    owner: channel
+                    auto_apply: false
+                fields:
+                  name:
+                    owner: catalog
+                    auto_apply: false
+      parameters:
+      - name: productListing
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The product listing ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Updated
+                  value:
+                    data:
+                      product_listing_id: 8412
+                      sales_channel_name: Amazon US
+                      enabled: true
+                      instance_defaults:
+                        groups:
+                          identity:
+                            owner: catalog
+                            auto_apply: false
+                          descriptive:
+                            owner: catalog
+                            auto_apply: false
+                          media:
+                            owner: catalog
+                            auto_apply: false
+                          physical:
+                            owner: catalog
+                            auto_apply: false
+                        fields: {}
+                      overrides:
+                        groups:
+                          descriptive:
+                            owner: channel
+                            auto_apply: false
+                        fields:
+                          name:
+                            owner: catalog
+                            auto_apply: false
+                      effective:
+                      - field: barcode
+                        group: identity
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: mpn
+                        group: identity
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: name
+                        group: descriptive
+                        risky: true
+                        owner: catalog
+                        auto_apply: false
+                        source: listing_field
+                        inherited: false
+                      - field: brand
+                        group: descriptive
+                        risky: false
+                        owner: channel
+                        auto_apply: false
+                        source: listing_group
+                        inherited: false
+                      - field: attributes
+                        group: descriptive
+                        risky: false
+                        owner: channel
+                        auto_apply: false
+                        source: listing_group
+                        inherited: false
+                      - field: images
+                        group: media
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: weight
+                        group: physical
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: dimensions
+                        group: physical
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                    message: Listing content rules updated.
+                example-1:
+                  summary: Reset To Channel Defaults
+                  value:
+                    data:
+                      product_listing_id: 8412
+                      sales_channel_name: Amazon US
+                      enabled: true
+                      instance_defaults:
+                        groups:
+                          identity:
+                            owner: catalog
+                            auto_apply: false
+                          descriptive:
+                            owner: catalog
+                            auto_apply: false
+                          media:
+                            owner: catalog
+                            auto_apply: false
+                          physical:
+                            owner: catalog
+                            auto_apply: false
+                        fields: {}
+                      overrides:
+                        groups: {}
+                        fields: {}
+                      effective:
+                      - field: barcode
+                        group: identity
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: mpn
+                        group: identity
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: name
+                        group: descriptive
+                        risky: true
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: brand
+                        group: descriptive
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: attributes
+                        group: descriptive
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: images
+                        group: media
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: weight
+                        group: physical
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                      - field: dimensions
+                        group: physical
+                        risky: false
+                        owner: catalog
+                        auto_apply: false
+                        source: instance_group
+                        inherited: true
+                    message: Listing reset to the channel defaults.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      groups.pricing:
+                        type: array
+                        items:
+                          type: string
+                      fields.price:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Unknown content field group [pricing].
+                  errors:
+                    groups.pricing:
+                    - Unknown content field group [pricing].
+                    fields.price:
+                    - Unknown content field [price].
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: put-api-product-listings-productlisting-content-sync-rules
   /api/content-sync/drift:
     get:
       tags:
@@ -370180,6 +371032,184 @@ paths:
         '401': *id002
         '403': *id003
       operationId: get-api-content-sync-summary
+  /api/content-sync/groups:
+    get:
+      tags:
+      - Product Listings
+      summary: List Drift Groups
+      description: 'Pre-bucketed view of the same drift feed, so a templated update
+        such as a weight change across 120 listings can be reviewed as one row instead
+        of 120. Buckets honour every filter the feed accepts, so a bucket''s counts
+        always match what listing the same filters returns. has_risky marks buckets
+        containing high-impact fields that must be reviewed one listing at a time.
+
+        Requires Bearer token.'
+      parameters:
+      - name: group_by
+        in: query
+        schema:
+          type: string
+        description: 'Bucket axis: field (default) or field_group.'
+        example: field
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      group_by:
+                        type: string
+                      groups:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            field:
+                              type: string
+                            field_group:
+                              type: string
+                            has_risky:
+                              type: boolean
+                            change_count:
+                              type: integer
+                            listing_count:
+                              type: integer
+                example:
+                  data:
+                    group_by: field
+                    groups:
+                    - key: weight
+                      field: weight
+                      field_group: physical
+                      has_risky: false
+                      change_count: 128
+                      listing_count: 120
+                    - key: images
+                      field: images
+                      field_group: media
+                      has_risky: false
+                      change_count: 42
+                      listing_count: 39
+                    - key: name
+                      field: name
+                      field_group: descriptive
+                      has_risky: true
+                      change_count: 11
+                      listing_count: 11
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-content-sync-groups
+  /api/content-sync/group-apply:
+    post:
+      tags:
+      - Product Listings
+      summary: Apply Content Change Group
+      description: 'Applies every open change in one bucket in the background, without
+        listing ids. The bucket is described by the same filters used to list it,
+        so a bucket of several thousand listings needs no enumeration by the caller.
+        Send the filters in the QUERY STRING — filters in the request body are ignored,
+        which would silently widen the apply. The apply must be scoped by at least
+        one of filter[field], filter[field_group], or filter[integration_instance_ids];
+        an unscoped call returns 422. High-impact fields such as product name are
+        rejected with 422 and must be applied one listing at a time. Very large buckets
+        are applied in passes: listings_queued below listings_total means the call
+        should be repeated to continue. Follow progress with the returned tracked_job_log_id.
+
+        Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: filter[field]
+        in: query
+        schema:
+          type: string
+        description: 'Exact field filter: barcode, mpn, brand, attributes, images,
+          weight, or dimensions. Required unless filter[field_group] or filter[integration_instance_ids]
+          is supplied.'
+        example: weight
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                      listings_queued:
+                        type: integer
+                      listings_total:
+                        type: integer
+                example:
+                  success: true
+                  message: Group apply started — follow its progress from the background
+                    activity list.
+                  data:
+                    tracked_job_log_id: 9182
+                    listings_queued: 120
+                    listings_total: 120
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        code:
+                          type: string
+                        field:
+                          type: string
+                example:
+                  success: false
+                  errors:
+                  - message: Risky fields have to be reviewed listing by listing —
+                      open a row to apply them.
+                    code: unacceptable
+                    field: filter.field
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: post-api-content-sync-group-apply
   /api/content-sync/bulk-apply:
     post:
       tags:
@@ -370196,7 +371226,7 @@ paths:
         Requires Bearer token.
 
         Limits: up to 1000 listing ids per call; ids must be unique; field names must
-        be one of barcode, name, brand, attributes, images, weight.'
+        be one of barcode, mpn, name, brand, attributes, images, weight, dimensions.'
       requestBody:
         content:
           application/json:
