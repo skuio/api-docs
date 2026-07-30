@@ -37,6 +37,23 @@ jobs:
       # 16 GB tier (private repos get 2-core / 8 GB) — the old "runners have
       # 7 GB" note here was wrong. 10 GB leaves ~6 GB for the parallel Terser
       # workers and the OS, and roughly doubles the headroom over today's peak.
+      #
+      # Raising this ceiling is, for now, the only lever that works. Before the
+      # next bump, don't re-try @docusaurus/faster — it was measured on
+      # 2026-07-30 and every variant is worse than the Babel/Terser default
+      # (clean tree, same 10 GB ceiling, 5,077 operations):
+      #   Babel + parallel Terser (current) ...... built OK, peak 8,751 MB
+      #   faster, full ........................... OOM at 166s, peak 9,030 MB
+      #   faster, no mdxCrossCompilerCache ....... OOM at 283s
+      #   faster, no swcJsLoader ................. built, but client compile
+      #                                            5.52m vs 2.37m — pure loss
+      #   faster + rspackBundler ................. OOM at 348s, peak 10,105 MB
+      # swcJsLoader is what tips it over. The premise that SWC would help was
+      # wrong twice: Terser already runs in parallel worker *processes*, so it
+      # was never on the heap that OOMs, and Rspack's Rust module graph doesn't
+      # help either because the memory is held by the JS-side loaders compiling
+      # 5,077 MDX pages and resolving their ~15,200 JSON prop sidecars. Any real
+      # fix has to cut that per-page loader work, not swap the bundler.
       NODE_OPTIONS: --max-old-space-size=10240
     steps:
       - uses: actions/checkout@v4
@@ -45,7 +62,14 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npx docusaurus gen-api-docs all
+      # Purges docs/api (except the hand-written introduction.mdx) before
+      # regenerating — same as the publisher bot in skuio/sku. gen-api-docs is
+      # skip-if-exists per operation, so any leftover .api.mdx suppresses the
+      # write of its .json sidecars too; a partially-stale tree then fails the
+      # build with "Module not found: ./<op>.ParamsDetails.json". CI checkouts
+      # are fresh, but the tracked sidecars mean stale ones can be checked out,
+      # and locally this bites every time. Purge-then-generate is unconditional.
+      - run: npm run gen:api
       - run: npm run build
       - uses: actions/configure-pages@v4
       - name: Delete stale github-pages artifacts from earlier attempts
