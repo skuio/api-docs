@@ -128,7 +128,7 @@ Missing, malformed, expired, or revoked credentials all produce `401 Unauthorize
 | `code` | What went wrong | What to do |
 |--------|-----------------|------------|
 | `ERR_UNAUTHENTICATED` | No credential was sent. `message` stays the literal `Unauthenticated.` | Add the `Authorization` header. |
-| `ERR_TOKEN_EXPIRED` | Real credential, past its expiry. Includes `expired_at`. | Issue a new PAT, or refresh the OAuth token. |
+| `ERR_TOKEN_EXPIRED` | Real credential, past its expiry. Includes `expired_at`. | For a PAT, rotate it (or just set a new expiry) — the token id survives. For OAuth, refresh the token. |
 | `ERR_TOKEN_REVOKED` | The credential no longer exists. Revocation deletes it, so "revoked" and "never issued" are the same answer. | Issue a new one. |
 | `ERR_TOKEN_INVALID` | Right shape, wrong secret. | Check you're sending the whole secret, not a re-typed copy. |
 | `ERR_TOKEN_MALFORMED` | Not a shape SKU.io issues — usually a truncated paste, a doubled `Bearer` prefix, or an unsubstituted `{{token}}` placeholder. | Re-copy the token; it's only shown once. |
@@ -139,9 +139,10 @@ Only `code` is stable — treat `message` as human-readable text that may be rew
 
 ## Token lifecycle
 
-- **Expiry** — optional, set at creation. The create dialog suggests 90 days; a token created without an expiry never expires. Expired tokens return 401.
+- **Expiry** — optional. The create dialog suggests 90 days; a token created without an expiry never expires. Expired tokens return 401. The expiry is not fixed at creation — you can extend it, shorten it, or remove it later, and you can set one on a token that has already lapsed to bring it back. A new expiry is always counted **from now**, not added to the remaining time.
+- **Rotation** — issue a new secret for an existing token from **Settings → Developer → Personal Access Tokens**. The token keeps its id, name, scopes, restrictions and usage history; only the secret changes, and the replacement is shown once. The previous secret stops working immediately, so swap it in your integration in the same sitting. Rotating a token that carries a `:write` or `:manage` scope re-issues a credential that can write, so it is gated exactly like creating one: re-enter your password (and your 2FA code, if enabled). Rotation is how you replace a leaked or expiring credential without standing up a second token and re-pointing every integration at a new id.
 - **Revocation** — delete the token in **Settings → Developer → Personal Access Tokens**. Revocation is immediate.
-- **Editing** — name, scopes, IP allowlist, and rate limit can be changed after creation. Adding a `:write` or `:manage` scope to an existing token requires re-entering your password (and your 2FA code, if enabled).
+- **Editing** — name, scopes, expiry, IP allowlist, and rate limit can all be changed after creation. Adding a `:write` or `:manage` scope to an existing token requires re-entering your password (and your 2FA code, if enabled).
 - **IP allowlist** — optional CIDR list per token. Requests from other addresses get `403`: `"This token is not permitted from 203.0.113.5."`
 - **Per-token rate limit** — optional requests-per-minute cap per token; see [Rate Limits](/docs/guides/rate-limits).
 - **Usage log** — every token-authenticated request is recorded. Open a token in Developer Settings to see its request history and usage analytics.
@@ -155,7 +156,7 @@ SKU.io does also speak OAuth 2.0 (authorization code with PKCE), but that exists
 To run automation unattended:
 
 1. A user with the necessary permissions creates one **dedicated token per integration**, scoped to exactly the `{resource}:{action}` pairs it needs.
-2. Give it **no expiry** (or a long one you rotate on a schedule) so the integration doesn't break while unattended — the trade-off is that a long-lived token must be guarded carefully.
+2. Give it a **long expiry you rotate on a schedule** rather than no expiry at all. Rotation replaces the secret in place, so the integration keeps the same token id and only needs the new secret swapped into your secrets manager — you no longer have to choose between an unattended job that breaks on expiry and a credential that lives forever.
 3. **Pin it to your egress IPs** with the token's IP allowlist, so a leaked token is unusable from anywhere else.
 4. Store the plaintext in a **secrets manager** and inject it at runtime; never commit it.
 
