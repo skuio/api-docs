@@ -103,6 +103,7 @@ tags:
 - name: Custom Report Builder
 - name: eBay
 - name: Faire
+- name: Getting Started
 - name: Gift Cards
 - name: House Accounts
 - name: Export
@@ -36885,10 +36886,13 @@ paths:
         :::
 
 
+        Only active users are returned — deactivated users keep their tenant membership
+        so they stay manageable, and are filtered out of this list explicitly.
+
+
         Tenant scoping: Results are restricted to users who are members of the current
-        tenant. The `users` table lives on the central connection and is shared across
-        all tenants, so without scoping every dropdown would leak users from every
-        tenant in the installation.
+        tenant. The user directory is shared across all tenants in an installation,
+        so without scoping every dropdown would leak users from every tenant.
 
 
         Authentication: Requires Bearer token.'
@@ -36951,13 +36955,28 @@ paths:
 
         Fields:
 
-        - email (required, unique, max:255) — User''s email address
+        - email (required, valid email, max:255, must be available) — User''s email
+        address
 
         - name (required, string, max:255) — User''s full name
 
         - is_admin (optional, boolean, default: false) — Grant admin privileges
 
         - is_power_user (optional, boolean, default: false) — Grant power user privileges
+
+
+        Email availability:
+
+        - Address held by an active user, in this tenant or any other — rejected (422).
+
+        - Address held by a deactivated user who is still a member of this tenant
+        — rejected (422) with a message pointing at reactivation; reactivate them
+        with `DELETE /api/users/{user}` instead of inviting again.
+
+        - Address held by a deactivated user who belongs to no tenant at all — accepted.
+        The dormant account is reclaimed in place under the new name, its credentials,
+        sessions and roles are cleared, and it is attached to the current tenant.
+        The user id is preserved, so historical records still resolve.
 
 
         **Requires permission:** `users.create`'
@@ -37023,12 +37042,23 @@ paths:
                       email:
                         type: array
                         items:
-                          type: string
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
                 example:
-                  message: The email has already been taken.
+                  message: This email belongs to a deactivated user. Reactivate them
+                    from the users list instead of adding them again.
                   errors:
                     email:
-                    - The email has already been taken.
+                    - message: This email belongs to a deactivated user. Reactivate
+                        them from the users list instead of adding them again.
+                      code: validation
+                      data: []
         '429': *id001
         '401': *id002
         '403': *id003
@@ -37264,22 +37294,27 @@ paths:
         :::
 
 
-        Delete (user not trashed): detaches the `tenant_users` pivot row for the current
-        tenant. If the user has no remaining pivot rows after the detach, the central
-        `users` row is soft-deleted as well; otherwise the central row stays intact
-        so the user remains usable in other tenants.
+        Deactivate (user is currently active): if the user belongs to more than one
+        tenant, they are removed from the current tenant only and their account stays
+        active elsewhere. If the current tenant is their last one, the account is
+        deactivated and their membership of this tenant is retained — that retained
+        membership is what keeps a deactivated user listed and reactivatable.
 
 
-        Restore (user trashed): re-attaches the pivot row for the current tenant (mirroring
-        central''s is_admin / is_power_user flags) and un-soft-deletes the central
-        row. Restore is allowed when the user is already attached here OR is fully
-        orphaned (no pivot rows anywhere). Restoring a user whose only pivots are
-        to OTHER tenants is rejected (404) to prevent cross-tenant claim attacks.
+        Reactivate (user is currently deactivated): re-attaches the membership for
+        the current tenant (mirroring the account''s is_admin / is_power_user flags)
+        and reactivates the account. Allowed when the user is already a member here
+        OR belongs to no tenant at all. Reactivating a user whose only memberships
+        are to OTHER tenants is rejected (404) to prevent cross-tenant claim attacks.
+
+
+        A deactivated account cannot sign in and will not be issued a password-reset
+        link.
 
 
         Tenant scoping: Returns 404 if the user is not a member of the current tenant
-        on the delete path. Prevents any tenant admin from deactivating users system-wide
-        by guessing IDs.
+        on the deactivate path. Prevents any tenant admin from deactivating users
+        system-wide by guessing IDs.
 
 
         Authentication: Requires Bearer token.
@@ -50048,11 +50083,11 @@ paths:
         audio alert on the device when the app loses connection to the server, and
         a confirmation tone when restored.
 
-        - `stranded_order_minimum_age_days` (integer, default `1`) — whole days an
-        order must go without producing a fulfillment order before the "Stuck, Never
-        Dispatched" dashboard tile counts it as stranded. Auto-dispatch runs from
-        a queue, so a just-placed order is legitimately undispatched for a short while.
-        `0` disables the floor.
+        - `stranded_order_minimum_age_days` (integer, default `3`) — whole business
+        days (Mon-Fri) an order must go without producing a fulfillment order before
+        the "Stuck, Never Dispatched" dashboard tile counts it as stranded. Auto-dispatch
+        runs from a queue, so a just-placed order is legitimately undispatched for
+        a short while. `0` disables the floor.
 
 
         Authentication: Requires Bearer token.'
@@ -50088,7 +50123,7 @@ paths:
                     dimension_unit: in
                     fulfill_on_mapped_shipping_method: false
                     auto_dispatch_excluded_shipping_methods: null
-                    stranded_order_minimum_age_days: 1
+                    stranded_order_minimum_age_days: 3
                     blemished_sku_pattern: RETURN-{{sku}}-{{date:YYYYMMDD}}
                     use_blemished_sku_pattern: false
                     asn_cc_email: null
@@ -50130,10 +50165,10 @@ paths:
         on the device when the app loses connection to the server, and a confirmation
         tone when restored. Non-boolean values are rejected with 422.
 
-        - `stranded_order_minimum_age_days` (integer, 0-90) — whole days an order
-        must go without producing a fulfillment order before the "Stuck, Never Dispatched"
-        dashboard tile counts it as stranded. `0` disables the floor; values outside
-        0-90 are rejected with 422.
+        - `stranded_order_minimum_age_days` (integer, 0-90) — whole business days
+        (Mon-Fri; weekends do not count) an order must go without producing a fulfillment
+        order before the "Stuck, Never Dispatched" dashboard tile counts it as stranded.
+        `0` disables the floor; values outside 0-90 are rejected with 422.
 
 
         Authentication: Requires Bearer token.
@@ -50182,7 +50217,7 @@ paths:
                     dimension_unit: in
                     fulfill_on_mapped_shipping_method: false
                     auto_dispatch_excluded_shipping_methods: null
-                    stranded_order_minimum_age_days: 1
+                    stranded_order_minimum_age_days: 3
                     blemished_sku_pattern: RETURN-{{sku}}-{{date:YYYYMMDD}}
                     use_blemished_sku_pattern: false
                     asn_cc_email: null
@@ -102249,6 +102284,167 @@ paths:
         '403': *id003
         '422': *id005
       operationId: post-api-webhooks-faire
+  /api/me:
+    get:
+      tags:
+      - Getting Started
+      summary: Verify Token
+      description: 'Confirms your token works, names the account it belongs to, and
+        lists the scopes it carries. Requires no scopes, so it succeeds with any valid
+        token — run it first.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Check `tenant_id`.** A `200` on its own only proves that some real account
+        answered. Every SKU.io account answers on its own hostname, and an unrecognised
+        hostname still resolves, so a mistyped `{{domain}}` fails with the same `401`
+        as a bad token. Confirming `tenant_id` is what catches it.
+
+
+        **Check `token.scopes`.** This is exactly what the token may do. Reading it
+        up front beats discovering a missing scope from a `403` partway through a
+        multi-step job, with the earlier steps already committed. `token` is null
+        when you are authenticated by browser session rather than a token.
+
+
+        **If it fails:**
+
+        - `401` — the token is missing, wrong, revoked, or expired; or `{{domain}}`
+        names an account that isn''t yours. Set `{{domain}}` to everything you see
+        before `.sku.io` when you sign in, keeping any extra labels (`beta.acme.sku.io`,
+        not `acme.sku.io`).
+
+        - `404` — the path is wrong. Every API route lives under `/api`.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      email_verified_at:
+                        type: string
+                      activated_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      deleted_at:
+                        type: string
+                        nullable: true
+                      is_admin:
+                        type: boolean
+                      is_power_user:
+                        type: boolean
+                      is_super_admin:
+                        type: boolean
+                      features:
+                        type: object
+                        properties:
+                          granular_permissions:
+                            type: boolean
+                          accounting_v2:
+                            type: boolean
+                      role:
+                        type: string
+                  tenant_id:
+                    type: string
+                  tenant_name:
+                    type: string
+                  home_pod_host:
+                    type: string
+                  token:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      type:
+                        type: string
+                      scopes:
+                        type: array
+                        items:
+                          type: string
+                      expires_at:
+                        type: string
+                        nullable: true
+                      is_expired:
+                        type: boolean
+                example:
+                  data:
+                    id: 42
+                    name: Jane Merchant
+                    email: jane@acme.test
+                    email_verified_at: '2026-01-15T09:30:00.000000Z'
+                    activated_at: '2026-01-15T09:32:11.000000Z'
+                    created_at: '2026-01-15T09:30:00.000000Z'
+                    updated_at: '2026-06-10T14:22:05.000000Z'
+                    deleted_at: null
+                    is_admin: true
+                    is_power_user: false
+                    is_super_admin: false
+                    features:
+                      granular_permissions: false
+                      accounting_v2: false
+                    role: Admin
+                  tenant_id: acme
+                  tenant_name: Acme Supply Co.
+                  home_pod_host: acme.sku.io
+                  token:
+                    id: 105
+                    name: integration agent
+                    type: pat
+                    scopes:
+                    - orders:read
+                    - orders:write
+                    - products:read
+                    expires_at: null
+                    is_expired: false
+        '401':
+          description: Unauthorized
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Unauthenticated.
+        '429': *id001
+        '403': *id003
+      x-session-only: true
+      operationId: get-api-me
   /api/gift-cards:
     get:
       tags:
@@ -114700,6 +114896,400 @@ paths:
         '403': *id003
       x-required-scope: reports:read
       operationId: get-api-reporting-suppliers-supplier-analytics
+  /api/reporting/suppliers/{supplier}/margin-ladder:
+    get:
+      tags:
+      - Reporting
+      summary: Get Supplier Margin Ladder
+      description: 'Plan-versus-actual margin for one supplier over the resolved period.
+
+
+        Authentication: Requires Bearer token (scope: reports)
+
+
+        Two halves, deliberately kept apart because they are not the same measurement:
+
+
+        **`list` — the plan, from price lists only.** The gap between the retail price
+        on the chosen sell tier and this supplier''s cost on the chosen cost tier,
+        across the products they supply. Two reads:
+
+        - `catalogue` — a straight average across every priced product (each SKU counts
+        once)
+
+        - `units_weighted` — weighted by units actually sold in the period, so the
+        busy SKUs dominate
+
+
+        The two diverge whenever sales concentrate in a subset of the catalogue; `units_weighted`
+        is the fairer thing to compare the actuals against. `avg_sell_price` / `avg_cost_price`
+        / `weighted_sell_price` / `weighted_cost_price` expose the inputs, and `coverage`
+        reports how many of the supplier''s products carry both a price and a cost
+        (`available` is false when none do).
+
+
+        **`actual` — what really happened**, from shipped sales lines in the period.
+        Three rungs, each subtracting one more layer of cost from the same revenue:
+
+        - `gross` — revenue less cost of goods sold, net of returned goods
+
+        - `net` — gross less direct costs (shipping, fees, packaging)
+
+        - `contribution` — net less allocated indirect costs
+
+
+        `gross_vs_list_pts`, `gross_to_net_pts` and `net_to_contribution_pts` are
+        the step sizes in percentage points (negative = margin lost at that step).
+        `coverage` reports how many sold lines had a recorded cost of goods, which
+        is the honesty check on the whole actual half.
+
+
+        **Margin conventions.** Every margin object restates one gap five ways: `margin_pct`
+        ((sell - cost) / sell), `off_retail_pct` (the same number read as a discount
+        off the retail list price), `cost_ratio_pct` (cost / sell), `markup_pct` ((sell
+        - cost) / cost), `multiplier` (sell / cost) and `amount` (the money). `off_retail_pct`
+        is null on `net` and `contribution` — once shipping and overhead are subtracted
+        the result is no longer a discount off a list price, so publishing it there
+        would be wrong. Every field is null when either side is missing or revenue
+        is zero.
+
+
+        Only the actual half can carry direct and indirect costs; list prices have
+        none, so the plan half stops at gross by design.
+
+
+        Required: `period_mode`. When `period_mode=custom`, `date_from` and `date_to`
+        are both required (YYYY-MM-DD or MM/DD/YYYY) and `date_to` must be on or after
+        `date_from`. `sell_tier_id` / `cost_tier_id` default to the account''s default
+        retail and supplier tiers; `tiers` and `selected_tiers` come back on every
+        response so a caller can render the pickers without a second request.'
+      parameters:
+      - name: period_mode
+        in: query
+        schema:
+          type: string
+        description: 'Required. Period comparison model: yoy | qoq | mom | custom'
+        example: yoy
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: object
+                        properties:
+                          available:
+                            type: boolean
+                          catalogue:
+                            type: object
+                            properties:
+                              margin_pct:
+                                type: number
+                              off_retail_pct:
+                                type: number
+                              cost_ratio_pct:
+                                type: number
+                              markup_pct:
+                                type: number
+                              multiplier:
+                                type: number
+                              amount:
+                                type: number
+                          units_weighted:
+                            type: object
+                            properties:
+                              margin_pct:
+                                type: number
+                              off_retail_pct:
+                                type: number
+                              cost_ratio_pct:
+                                type: number
+                              markup_pct:
+                                type: number
+                              multiplier:
+                                type: number
+                              amount:
+                                type: number
+                          avg_sell_price:
+                            type: number
+                          avg_cost_price:
+                            type: number
+                          weighted_sell_price:
+                            type: number
+                          weighted_cost_price:
+                            type: number
+                          weighted_units:
+                            type: integer
+                          coverage:
+                            type: object
+                            properties:
+                              total_products:
+                                type: integer
+                              priced_products:
+                                type: integer
+                              pct:
+                                type: number
+                      actual:
+                        type: object
+                        properties:
+                          available:
+                            type: boolean
+                          revenue:
+                            type: number
+                          cogs:
+                            type: number
+                          cogs_returned:
+                            type: integer
+                          direct_cost:
+                            type: number
+                          indirect_cost:
+                            type: integer
+                          units_sold:
+                            type: integer
+                          gross:
+                            type: object
+                            properties:
+                              margin_pct:
+                                type: number
+                              off_retail_pct:
+                                type: number
+                              cost_ratio_pct:
+                                type: number
+                              markup_pct:
+                                type: number
+                              multiplier:
+                                type: number
+                              amount:
+                                type: number
+                          net:
+                            type: object
+                            properties:
+                              margin_pct:
+                                type: number
+                              off_retail_pct:
+                                type: string
+                                nullable: true
+                              cost_ratio_pct:
+                                type: number
+                              markup_pct:
+                                type: number
+                              multiplier:
+                                type: number
+                              amount:
+                                type: number
+                          contribution:
+                            type: object
+                            properties:
+                              margin_pct:
+                                type: number
+                              off_retail_pct:
+                                type: string
+                                nullable: true
+                              cost_ratio_pct:
+                                type: number
+                              markup_pct:
+                                type: number
+                              multiplier:
+                                type: number
+                              amount:
+                                type: number
+                          gross_vs_list_pts:
+                            type: number
+                          gross_to_net_pts:
+                            type: number
+                          net_to_contribution_pts:
+                            type: integer
+                          coverage:
+                            type: object
+                            properties:
+                              total_lines:
+                                type: integer
+                              lines_with_cogs:
+                                type: integer
+                              pct:
+                                type: number
+                      tiers:
+                        type: object
+                        properties:
+                          sell:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                                currency_code:
+                                  type: string
+                                is_default:
+                                  type: boolean
+                          cost:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                                currency_code:
+                                  type: string
+                                is_default:
+                                  type: boolean
+                      selected_tiers:
+                        type: object
+                        properties:
+                          sell_tier_id:
+                            type: integer
+                          sell_tier_name:
+                            type: string
+                          sell_tier_currency:
+                            type: string
+                          cost_tier_id:
+                            type: integer
+                          cost_tier_name:
+                            type: string
+                          cost_tier_currency:
+                            type: string
+                example:
+                  data:
+                    list:
+                      available: true
+                      catalogue:
+                        margin_pct: 55.4
+                        off_retail_pct: 55.4
+                        cost_ratio_pct: 44.6
+                        markup_pct: 124.4
+                        multiplier: 2.24
+                        amount: 13.64
+                      units_weighted:
+                        margin_pct: 65.3
+                        off_retail_pct: 65.3
+                        cost_ratio_pct: 34.7
+                        markup_pct: 188.3
+                        multiplier: 2.88
+                        amount: 16.32
+                      avg_sell_price: 24.61
+                      avg_cost_price: 10.96
+                      weighted_sell_price: 24.99
+                      weighted_cost_price: 8.67
+                      weighted_units: 1686
+                      coverage:
+                        total_products: 171
+                        priced_products: 170
+                        pct: 99.4
+                    actual:
+                      available: true
+                      revenue: 39875.56
+                      cogs: 15066.61
+                      cogs_returned: 0
+                      direct_cost: 11790.54
+                      indirect_cost: 0
+                      units_sold: 1686
+                      gross:
+                        margin_pct: 62.2
+                        off_retail_pct: 62.2
+                        cost_ratio_pct: 37.8
+                        markup_pct: 164.7
+                        multiplier: 2.65
+                        amount: 24808.95
+                      net:
+                        margin_pct: 32.6
+                        off_retail_pct: null
+                        cost_ratio_pct: 67.4
+                        markup_pct: 48.5
+                        multiplier: 1.48
+                        amount: 13018.41
+                      contribution:
+                        margin_pct: 32.6
+                        off_retail_pct: null
+                        cost_ratio_pct: 67.4
+                        markup_pct: 48.5
+                        multiplier: 1.48
+                        amount: 13018.41
+                      gross_vs_list_pts: 6.8
+                      gross_to_net_pts: -29.6
+                      net_to_contribution_pts: 0
+                      coverage:
+                        total_lines: 1439
+                        lines_with_cogs: 1424
+                        pct: 98.96
+                    tiers:
+                      sell:
+                      - id: 1
+                        name: Retail
+                        currency_code: USD
+                        is_default: true
+                      - id: 4
+                        name: Wholesale
+                        currency_code: USD
+                        is_default: false
+                      cost:
+                      - id: 1
+                        name: Wholesale
+                        currency_code: USD
+                        is_default: true
+                      - id: 3
+                        name: Volume 500+
+                        currency_code: USD
+                        is_default: false
+                    selected_tiers:
+                      sell_tier_id: 1
+                      sell_tier_name: Retail
+                      sell_tier_currency: USD
+                      cost_tier_id: 1
+                      cost_tier_name: Wholesale
+                      cost_tier_currency: USD
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      period_mode:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: A period mode is required.
+                  errors:
+                    period_mode:
+                    - A period mode is required.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-reporting-suppliers-supplier-margin-ladder
   /api/reporting/suppliers/{supplier}/products:
     get:
       tags:
@@ -122837,6 +123427,8 @@ paths:
                               type: integer
                             pct_realized:
                               type: number
+                            sold_on_terms:
+                              type: boolean
                 example:
                   data:
                     entity:
@@ -122902,6 +123494,7 @@ paths:
                       xirr: 1.12
                       days_held: 544
                       pct_realized: 0.66
+                      sold_on_terms: false
         '429': *id001
         '401': *id002
         '403': *id003
@@ -123056,6 +123649,8 @@ paths:
                               type: integer
                             pct_realized:
                               type: number
+                            sold_on_terms:
+                              type: boolean
                 example:
                   data:
                     entity:
@@ -123121,6 +123716,7 @@ paths:
                       xirr: 1.12
                       days_held: 544
                       pct_realized: 0.66
+                      sold_on_terms: false
         '429': *id001
         '401': *id002
         '403': *id003
@@ -138620,12 +139216,22 @@ paths:
         \ field. Either a static field (e.g. `sku`, `name`, `vendor`), a pricing tier\
         \ path (e.g. `price.Default.value`), a supplier pricing tier path (e.g. `supplier_pricing.Wholesale.value`),\
         \ or an attribute path (e.g. `attributes.Color`).\n  - `parsers` (array, required):\
-        \ zero or more parser transformations applied in order to the incoming Amazon\
-        \ value before it is written to the SKU.io field. Each parser has a `rule`\
-        \ (must be one of the supported `FieldParserFactory::SUPPORTED_PARSERS` rules)\
-        \ and a stringified `args` payload.\n\nThe response echoes back the integration\
-        \ instance id/name plus the updated `mappings` and `effective_mappings` (custom\
-        \ merged on top of defaults)."
+        \ zero or more transformations applied in order to the incoming value before\
+        \ it is written to the SKU.io field. May be empty. Each entry is an object\
+        \ with a `rule` and an `args` **object** (not a string):\n    - `fr` — find\
+        \ and replace. `args.find` (string, required) is the text to match. `args.replace`\
+        \ (string, optional) is the replacement; omit it or send an empty string to\
+        \ delete the matched text.\n    - `tl` — remove characters from the start.\
+        \ `args.count` (integer, required, greater than zero). `num_chars` is accepted\
+        \ as an alias.\n    - `tr` — remove characters from the end. `args.count`\
+        \ (integer, required, greater than zero). `num_chars` is accepted as an alias.\n\
+        \    - `append` — append the value of another field. `args.field` (string,\
+        \ required) is the field to append (`field_name` is accepted as an alias).\
+        \ `args.separator` (string, optional) is placed between the two values.\n\
+        \    Any other `rule`, or `args` missing the keys its rule requires, is rejected\
+        \ with a 422 keyed to `mappings.{index}.parsers.{index}.args`.\n\nThe response\
+        \ echoes back the integration instance id/name plus the updated `mappings`\
+        \ and `effective_mappings` (custom merged on top of defaults)."
       requestBody:
         content:
           application/json:
@@ -138650,15 +139256,20 @@ paths:
                   parsers: []
                 - listing_field: item_name
                   sku_field: name
-                  parsers: []
+                  parsers:
+                  - rule: fr
+                    args:
+                      find: ' - Default'
+                      replace: ''
                 - listing_field: brand
                   sku_field: brand
                   parsers: []
                 - listing_field: price
                   sku_field: price.Default.value
                   parsers:
-                  - rule: trim
-                    args: ''
+                  - rule: tl
+                    args:
+                      count: 1
       parameters:
       - name: integrationInstance
         in: path
@@ -138730,12 +139341,28 @@ paths:
                       parsers: []
                       source: custom
                       description: 'Custom mapping: seller_sku → sku'
+                    - listing_field: price
+                      sku_field: price.Default.value
+                      parsers:
+                      - rule: tl
+                        args:
+                          count: 1
+                      source: custom
+                      description: 'Custom mapping: price → price.Default.value'
                     effective_mappings:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
                       source: custom
                       description: 'Custom mapping: seller_sku → sku'
+                    - listing_field: price
+                      sku_field: price.Default.value
+                      parsers:
+                      - rule: tl
+                        args:
+                          count: 1
+                      source: custom
+                      description: 'Custom mapping: price → price.Default.value'
                     - listing_field: item_name
                       sku_field: item_name
                       parsers: []
@@ -138759,22 +139386,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings.0.sku_field:
-                        type: array
-                        items:
-                          type: string
-                      mappings.0.parsers:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings.0.sku_field field is required. (and 1 more
-                    error)
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings.0.sku_field:
-                    - The mappings.0.sku_field field is required.
-                    mappings.0.parsers:
-                    - The mappings.0.parsers field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -194152,6 +194774,526 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-amazon-ads-integrationinstance-profiles-refresh
+  /api/shopify/dashboard:
+    get:
+      tags:
+      - Shopify
+      summary: Get Shopify Dashboard
+      description: 'Aggregate dashboard metrics across every Shopify connection the
+        user can see: connection summaries, synced entity counts, a financial summary
+        for an optional period, per-entity sync health with the next scheduled run,
+        and the initial order backfill state for each connection.
+
+
+        :::info[Authorization]
+
+        Any valid API token can call this endpoint — no specific scope required. [Manage
+        tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Query parameters:**
+
+        - `integration_instance_ids` (optional, comma-separated integers) — limit
+        the aggregation to specific connections; omit for every connection the user
+        can access.
+
+        - `period` (optional, one of `today`, `7d`, `30d`, `90d`) — window for the
+        financial summary; omit for all time. Any other value returns 422.
+
+
+        **`order_backfills[]`** — one entry per connection describing the first full
+        order import:
+
+        - `status` — `never` (not started), `running`, `completed`, or `failed`.
+
+        - `window_start` (ISO 8601) — how far back the import reaches. Resolved from
+        the connection''s start date, then the tenant inventory start date, then a
+        bounded 90-day fallback; it is never open-ended.
+
+        - `window_source` / `window_source_label` — which of those produced `window_start`.
+
+        - `window_is_explicit` — true when the merchant configured the date, false
+        when it was inferred.
+
+        - `started_at` / `completed_at` / `failed_at` / `error` — timestamps and the
+        last failure message.
+
+        - `orders_imported` — orders the import itself counted (null until it completes).
+
+        - `remote_order_count` — Shopify''s own count of orders in the same window,
+        taken when the import finished.
+
+        - `local_order_count` — orders stored locally for that window, counted live
+        on this request.
+
+        - `shortfall` — `remote_order_count - local_order_count` (never negative),
+        or null when either side is unknown. A non-zero value means the import is
+        still draining or fell short and should be re-run.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      integrations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            shop_url:
+                              type: string
+                            is_automatic_sync_enabled:
+                              type: boolean
+                            has_warehouse_mappings:
+                              type: boolean
+                            integration_settings:
+                              type: object
+                              properties:
+                                shop_plan:
+                                  type: string
+                                has_customer_pii_access:
+                                  type: boolean
+                                has_returns_access:
+                                  type: boolean
+                                customer_pii_access_blocked:
+                                  type: boolean
+                                access_token_invalid:
+                                  type: boolean
+                                shop_plan_checked_at:
+                                  type: string
+                            created_at:
+                              type: string
+                            updated_at:
+                              type: string
+                      entity_counts:
+                        type: object
+                        properties:
+                          entities:
+                            type: object
+                            properties:
+                              products:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              variants:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              orders:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              customers:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              locations:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              fulfillments:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              webhooks:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                          totals:
+                            type: object
+                            properties:
+                              total_records:
+                                type: integer
+                      financial_summary:
+                        type: object
+                        properties:
+                          gross_revenue:
+                            type: number
+                          total_refunds:
+                            type: number
+                          net_revenue:
+                            type: number
+                          units_sold:
+                            type: integer
+                          units_refunded:
+                            type: integer
+                          net_units_sold:
+                            type: integer
+                      sync_summary:
+                        type: object
+                        properties:
+                          entities:
+                            type: object
+                            properties:
+                              products:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  description:
+                                    type: string
+                                  last_sync_date:
+                                    type: string
+                                  last_sync_human:
+                                    type: string
+                                  records_synced_last_24h:
+                                    type: integer
+                                  is_stale:
+                                    type: boolean
+                                  schedule:
+                                    type: string
+                                  schedule_description:
+                                    type: string
+                              orders:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  description:
+                                    type: string
+                                  last_sync_date:
+                                    type: string
+                                  last_sync_human:
+                                    type: string
+                                  records_synced_last_24h:
+                                    type: integer
+                                  is_stale:
+                                    type: boolean
+                                  schedule:
+                                    type: string
+                                  schedule_description:
+                                    type: string
+                          overall_health:
+                            type: object
+                            properties:
+                              health_percentage:
+                                type: integer
+                              status:
+                                type: string
+                              total_entities:
+                                type: integer
+                              healthy_entities:
+                                type: integer
+                              stale_entities:
+                                type: integer
+                          auto_sync:
+                            type: object
+                            properties:
+                              is_enabled:
+                                type: boolean
+                              all_enabled:
+                                type: boolean
+                              enabled_count:
+                                type: integer
+                              total_count:
+                                type: integer
+                              status_text:
+                                type: string
+                              schedules:
+                                type: object
+                                properties:
+                                  products:
+                                    type: object
+                                    properties:
+                                      frequency:
+                                        type: string
+                                      next_sync:
+                                        type: string
+                                      next_sync_human:
+                                        type: string
+                                      seconds_until_next:
+                                        type: integer
+                                  orders:
+                                    type: object
+                                    properties:
+                                      frequency:
+                                        type: string
+                                      next_sync:
+                                        type: string
+                                      next_sync_human:
+                                        type: string
+                                      seconds_until_next:
+                                        type: integer
+                      order_backfills:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            integration_instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                            window_start:
+                              type: string
+                            window_source:
+                              type: string
+                            window_source_label:
+                              type: string
+                            window_is_explicit:
+                              type: boolean
+                            started_at:
+                              type: string
+                            completed_at:
+                              type: string
+                            failed_at:
+                              type: string
+                              nullable: true
+                            error:
+                              type: string
+                              nullable: true
+                            orders_imported:
+                              type: integer
+                            remote_order_count:
+                              type: integer
+                            local_order_count:
+                              type: integer
+                            shortfall:
+                              type: integer
+                      generated_at:
+                        type: string
+                      period:
+                        type: string
+                example:
+                  success: true
+                  data:
+                    integrations:
+                    - id: 12
+                      name: Acme Storefront
+                      shop_url: acme-storefront.myshopify.com
+                      is_automatic_sync_enabled: true
+                      has_warehouse_mappings: true
+                      integration_settings:
+                        shop_plan: shopify_plus
+                        has_customer_pii_access: true
+                        has_returns_access: true
+                        customer_pii_access_blocked: false
+                        access_token_invalid: false
+                        shop_plan_checked_at: '2026-07-29T22:10:00+00:00'
+                      created_at: '2026-07-28T14:02:11+00:00'
+                      updated_at: '2026-07-30T06:00:00+00:00'
+                    entity_counts:
+                      entities:
+                        products:
+                          display_name: Products
+                          total: 412
+                          entity_class: products
+                        variants:
+                          display_name: Variants
+                          total: 1180
+                          entity_class: variants
+                        orders:
+                          display_name: Orders
+                          total: 2934
+                          entity_class: orders
+                        customers:
+                          display_name: Customers
+                          total: 2210
+                          entity_class: customers
+                        locations:
+                          display_name: Locations
+                          total: 3
+                          entity_class: locations
+                        fulfillments:
+                          display_name: Fulfillments
+                          total: 2810
+                          entity_class: fulfillments
+                        webhooks:
+                          display_name: Webhooks
+                          total: 14
+                          entity_class: webhooks
+                      totals:
+                        total_records: 9564
+                    financial_summary:
+                      gross_revenue: 184320.44
+                      total_refunds: 4210.1
+                      net_revenue: 180110.34
+                      units_sold: 5312
+                      units_refunded: 118
+                      net_units_sold: 5194
+                    sync_summary:
+                      entities:
+                        products:
+                          display_name: Products
+                          description: Catalog products and variants
+                          last_sync_date: '2026-07-30T05:30:00+00:00'
+                          last_sync_human: 30 minutes ago
+                          records_synced_last_24h: 18
+                          is_stale: false
+                          schedule: hourly
+                          schedule_description: Every hour
+                        orders:
+                          display_name: Orders
+                          description: Orders, fulfillments and refunds
+                          last_sync_date: '2026-07-30T06:00:00+00:00'
+                          last_sync_human: a few seconds ago
+                          records_synced_last_24h: 96
+                          is_stale: false
+                          schedule: every_fifteen_minutes
+                          schedule_description: Every 15 minutes
+                      overall_health:
+                        health_percentage: 100
+                        status: healthy
+                        total_entities: 2
+                        healthy_entities: 2
+                        stale_entities: 0
+                      auto_sync:
+                        is_enabled: true
+                        all_enabled: true
+                        enabled_count: 1
+                        total_count: 1
+                        status_text: Automatic sync enabled
+                        schedules:
+                          products:
+                            frequency: hourly
+                            next_sync: '2026-07-30T07:00:00+00:00'
+                            next_sync_human: in 30 minutes
+                            seconds_until_next: 1800
+                          orders:
+                            frequency: every_fifteen_minutes
+                            next_sync: '2026-07-30T06:15:00+00:00'
+                            next_sync_human: in 15 minutes
+                            seconds_until_next: 900
+                    order_backfills:
+                    - integration_instance_id: 12
+                      name: Acme Storefront
+                      status: completed
+                      window_start: '2026-01-01T00:00:00+00:00'
+                      window_source: integration_start_date
+                      window_source_label: Connection start date
+                      window_is_explicit: true
+                      started_at: '2026-07-28T14:02:20+00:00'
+                      completed_at: '2026-07-28T14:19:48+00:00'
+                      failed_at: null
+                      error: null
+                      orders_imported: 2934
+                      remote_order_count: 2934
+                      local_order_count: 2934
+                      shortfall: 0
+                    - integration_instance_id: 13
+                      name: Acme EU
+                      status: running
+                      window_start: '2026-04-01T00:00:00+00:00'
+                      window_source: inventory_start_date
+                      window_source_label: Inventory start date
+                      window_is_explicit: false
+                      started_at: '2026-07-30T05:58:02+00:00'
+                      completed_at: null
+                      failed_at: null
+                      error: null
+                      orders_imported: null
+                      remote_order_count: null
+                      local_order_count: 214
+                      shortfall: null
+                    generated_at: '2026-07-30T06:00:12+00:00'
+                    period: 30d
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Invalid period
+                  message: 'Period must be one of: today, 7d, 30d, 90d'
+        '500':
+          description: Internal Server Error
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Failed to load Shopify dashboard
+                  message: 'SQLSTATE[HY000]: General error: 2006 MySQL server has
+                    gone away'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-shopify-dashboard
   /api/shopify/config:
     get:
       tags:
@@ -208685,27 +209827,28 @@ paths:
       tags:
       - Shopify
       summary: Update Field Mappings
-      description: 'Replaces the custom field mappings for an integration instance.
-        Each mapping pairs a Shopify field (listing_field) with a SKU.io field (sku_field)
-        and an optional list of value parsers. Field names must come from List Available
-        Mapping Fields.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.
-
-
-        Body fields:
-
-        - mappings (array, required): objects with listing_field (string, required),
-        sku_field (string, required), and parsers (array, required - may be empty).'
+      description: "Replaces the custom field mappings for an integration instance.\
+        \ Each mapping pairs a Shopify field (listing_field) with a SKU.io field (sku_field)\
+        \ and an optional list of value transformations. Field names must come from\
+        \ List Available Mapping Fields.\n\n:::info[Authorization]\nAny valid API\
+        \ token can call this endpoint — no specific scope required. [Manage tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nBody fields:\n- mappings\
+        \ (array, required): objects with listing_field (string, required), sku_field\
+        \ (string, required), and parsers (array, required - may be empty).\n  - `parsers`\
+        \ (array, required): zero or more transformations applied in order to the\
+        \ incoming value before it is written to the SKU.io field. May be empty. Each\
+        \ entry is an object with a `rule` and an `args` **object** (not a string):\n\
+        \    - `fr` — find and replace. `args.find` (string, required) is the text\
+        \ to match. `args.replace` (string, optional) is the replacement; omit it\
+        \ or send an empty string to delete the matched text.\n    - `tl` — remove\
+        \ characters from the start. `args.count` (integer, required, greater than\
+        \ zero). `num_chars` is accepted as an alias.\n    - `tr` — remove characters\
+        \ from the end. `args.count` (integer, required, greater than zero). `num_chars`\
+        \ is accepted as an alias.\n    - `append` — append the value of another field.\
+        \ `args.field` (string, required) is the field to append (`field_name` is\
+        \ accepted as an alias). `args.separator` (string, optional) is placed between\
+        \ the two values.\n    Any other `rule`, or `args` missing the keys its rule\
+        \ requires, is rejected with a 422 keyed to `mappings.{index}.parsers.{index}.args`."
       requestBody:
         content:
           application/json:
@@ -208730,10 +209873,21 @@ paths:
                   parsers: []
                 - listing_field: shopify_product_title
                   sku_field: name
-                  parsers: []
+                  parsers:
+                  - rule: fr
+                    args:
+                      find: ' - Default Title'
+                      replace: ''
+                  - rule: append
+                    args:
+                      field: sku
+                      separator: ' - '
                 - listing_field: barcode
                   sku_field: barcode
-                  parsers: []
+                  parsers:
+                  - rule: tr
+                    args:
+                      count: 2
       parameters:
       - name: integrationInstance
         in: path
@@ -208796,20 +209950,42 @@ paths:
                       parsers: []
                     - listing_field: shopify_product_title
                       sku_field: name
-                      parsers: []
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: ' - Default Title'
+                          replace: ''
+                      - rule: append
+                        args:
+                          field: sku
+                          separator: ' - '
                     - listing_field: barcode
                       sku_field: barcode
-                      parsers: []
+                      parsers:
+                      - rule: tr
+                        args:
+                          count: 2
                     effective_mappings:
                     - listing_field: sku
                       sku_field: sku
                       parsers: []
                     - listing_field: shopify_product_title
                       sku_field: name
-                      parsers: []
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: ' - Default Title'
+                          replace: ''
+                      - rule: append
+                        args:
+                          field: sku
+                          separator: ' - '
                     - listing_field: barcode
                       sku_field: barcode
-                      parsers: []
+                      parsers:
+                      - rule: tr
+                        args:
+                          count: 2
                   message: Field mappings updated successfully
         '422':
           description: Unprocessable Entity
@@ -208828,15 +210004,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings field is required.
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings:
-                    - The mappings field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -209040,6 +210218,12 @@ paths:
         "2024-01-01"}.
 
 
+        Response field tracked_job_log_id is the identifier of the background progress
+        record created for this run, so the run''s progress and completion summary
+        can be followed after the request returns. It is null when the request is
+        not attributed to a user.
+
+
         Returns 400 if no strategy is given, if more than 1000 ids are sent, or if
         no field mappings are configured yet.'
       requestBody:
@@ -209101,6 +210285,8 @@ paths:
                                 type: boolean
                               created_after:
                                 type: string
+                      tracked_job_log_id:
+                        type: integer
                 example:
                   data:
                     integration_instance_id: 1
@@ -209112,6 +210298,7 @@ paths:
                       filters:
                         unmapped_only: true
                         created_after: '2024-01-01'
+                    tracked_job_log_id: 41287
         '400':
           description: Bad Request
           headers:
@@ -231674,9 +232861,12 @@ paths:
       - Walmart
       summary: Void WFS Inbound Carrier Rate Quote
       description: 'Void the carrier rate quote / booking for an inbound shipment.
-        No request body. Scoped to the integration instance (404 if the shipment belongs
-        to another instance). A Walmart-side failure returns a 422. Requires a Bearer
-        token.
+        No request body. Accepts an optional `mode` query parameter (PARCEL or LTL,
+        defaults to PARCEL) identifying the transport mode the quote was created under
+        — Walmart requires it on the void call. Scoped to the integration instance
+        (404 if the shipment belongs to another instance). An unknown mode returns
+        a 422 validation error; a Walmart-side rejection returns a 422 carrying Walmart’s
+        own reason. Requires a Bearer token.
 
 
         :::info[Authorization]
@@ -231728,12 +232918,19 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                example:
-                  message: 'Failed to void carrier rate quote: No active rate quote
-                    to void for this shipment.'
+              examples:
+                example-0:
+                  summary: 422 Failed
+                  value:
+                    message: 'Failed to void carrier rate quote: Quote is no longer
+                      active for this shipment.'
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: The selected mode is invalid.
+                    errors:
+                      mode:
+                      - The selected mode is invalid.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -245965,21 +247162,28 @@ paths:
       tags:
       - TikTok Shop
       summary: Update Field Mappings
-      description: 'Replace the custom field mappings for this integration instance.
-        Body: `mappings` (array, required) — each entry has `listing_field` (string,
-        required), `sku_field` (string, required), and `parsers` (array, optional;
-        each parser has `rule` one of `fr`/`tl`/`tr`/`append` and `args` shape depending
-        on rule). The submitted set fully replaces any existing custom mappings; system
-        defaults remain in effect for fields not included. Returns the refreshed effective
-        mappings.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::'
+      description: "Replace the custom field mappings for this integration instance.\
+        \ The submitted set fully replaces any existing custom mappings; system defaults\
+        \ remain in effect for fields not included. Returns the refreshed effective\
+        \ mappings.\n\n:::info[Authorization]\nAny valid API token can call this endpoint\
+        \ — no specific scope required. [Manage tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nBody fields:\n- mappings\
+        \ (array, required): objects with listing_field (string, required), sku_field\
+        \ (string, required), and parsers (array, required - may be empty).\n  - `parsers`\
+        \ (array, required): zero or more transformations applied in order to the\
+        \ incoming value before it is written to the SKU.io field. May be empty. Each\
+        \ entry is an object with a `rule` and an `args` **object** (not a string):\n\
+        \    - `fr` — find and replace. `args.find` (string, required) is the text\
+        \ to match. `args.replace` (string, optional) is the replacement; omit it\
+        \ or send an empty string to delete the matched text.\n    - `tl` — remove\
+        \ characters from the start. `args.count` (integer, required, greater than\
+        \ zero). `num_chars` is accepted as an alias.\n    - `tr` — remove characters\
+        \ from the end. `args.count` (integer, required, greater than zero). `num_chars`\
+        \ is accepted as an alias.\n    - `append` — append the value of another field.\
+        \ `args.field` (string, required) is the field to append (`field_name` is\
+        \ accepted as an alias). `args.separator` (string, optional) is placed between\
+        \ the two values.\n    Any other `rule`, or `args` missing the keys its rule\
+        \ requires, is rejected with a 422 keyed to `mappings.{index}.parsers.{index}.args`."
       requestBody:
         content:
           application/json:
@@ -246074,6 +247278,13 @@ paths:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
+                    - listing_field: sale_price
+                      sku_field: price.1.value
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: USD
+                          replace: ''
                     effective_mappings:
                     - listing_field: title
                       sku_field: item_name
@@ -246081,6 +247292,13 @@ paths:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
+                    - listing_field: sale_price
+                      sku_field: price.1.value
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: USD
+                          replace: ''
                   message: Field mappings updated successfully
         '422':
           description: Unprocessable Entity
@@ -246099,15 +247317,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings field is required.
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings:
-                    - The mappings field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -341740,6 +342960,12 @@ paths:
         sheet_link_id to overwrite an existing linked sheet.
 
 
+        columns: optional comma-separated list of product column keys to place in
+        the sheet (for example sku,name,unit_cost,min_stock_level,attribute_12,pricing_tier_3).
+        Omit it to export every available column. id, sku and name are always included
+        because they key the write-back. Unknown keys are ignored.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -341759,6 +342985,8 @@ paths:
                   nullable: true
                 sort:
                   type: string
+                columns:
+                  type: string
                 filter_signature:
                   type: string
                   nullable: true
@@ -341771,6 +342999,7 @@ paths:
                   search: widget
                 filter_groups: null
                 sort: -created_at
+                columns: sku,name,unit_cost,min_stock_level,hts_code
                 filter_signature: null
                 sheet_link_id: null
       parameters: []
@@ -369107,7 +370336,10 @@ paths:
         jobs API to watch it complete.
 
 
-        reconcile_frequency: six_hours, daily, or weekly.
+        reconcile_frequency: six_hours, daily, weekly, or manual. manual switches
+        off the scheduled sweep for this instance — drift is still detected in real
+        time from channel webhooks, and a comparison can be triggered on demand through
+        the reconcile endpoint.
 
         Ownership values: catalog (channel edits are flagged only), channel (channel
         edits can be pulled into the catalog), two_way (both sides may edit; simultaneous
@@ -370206,9 +371438,31 @@ paths:
         right now and return the fresh set of open changes. Useful after editing the
         product on the channel when you don''t want to wait for the scheduled reconcile.
 
+
+        Body parameters:
+
+        - `force` (boolean, optional, default `false`) — run a full comparison instead
+        of an incremental one.
+
+
+        By default the comparison only reports fields the channel has changed since
+        the last sync, so a difference that already existed when content sync was
+        first enabled for the listing never surfaces. Send `force: true` to diff every
+        governed field against the catalog regardless of whether the channel content
+        moved — use it to backfill after enabling a new field group, or after importing
+        a product whose channel values were never compared.
+
         Requires Bearer token.'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                force:
+                  type: boolean
+              example:
+                force: true
       parameters:
       - name: productListing
         in: path
@@ -370228,158 +371482,151 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      product_listing_id:
-                        type: integer
-                      content_sync_status:
-                        type: string
-                      content_sync_checked_at:
-                        type: string
-                      last_inbound_synced_at:
-                        type: string
+              examples:
+                example-0:
+                  summary: Reconciled
+                  value:
+                    data:
+                      product_listing_id: 315
+                      content_sync_status: pending_review
+                      content_sync_checked_at: '2026-07-29T14:05:12.000000Z'
+                      last_inbound_synced_at: '2026-07-28T02:11:40.000000Z'
                       changes:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            product_listing_id:
-                              type: integer
-                            product_id:
-                              type: integer
-                            field:
-                              type: string
-                            field_group:
-                              type: string
-                            direction:
-                              type: string
-                            owner_at_detection:
-                              type: string
-                            recommended_action:
-                              type: string
-                            catalog_value:
-                              type: string
-                            channel_value:
-                              type: string
-                            status:
-                              type: string
-                            source:
-                              type: string
-                            is_risky:
-                              type: boolean
-                            conflict_resolution:
-                              type: string
-                              nullable: true
-                            error_message:
-                              type: string
-                              nullable: true
-                            detected_at:
-                              type: string
-                            resolved_at:
-                              type: string
-                              nullable: true
-                            listing:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                listing_sku:
-                                  type: string
-                                title:
-                                  type: string
-                                content_sync_status:
-                                  type: string
-                                integration_instance_id:
-                                  type: integer
-                                integration_instance_name:
-                                  type: string
-                                integration_name:
-                                  type: string
-                            product:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                sku:
-                                  type: string
-                                name:
-                                  type: string
-                  message:
-                    type: string
-                example:
-                  data:
-                    product_listing_id: 315
-                    content_sync_status: pending_review
-                    content_sync_checked_at: '2026-07-29T14:05:12.000000Z'
-                    last_inbound_synced_at: '2026-07-28T02:11:40.000000Z'
-                    changes:
-                    - id: 42
+                      - id: 42
+                        product_listing_id: 315
+                        product_id: 88
+                        field: name
+                        field_group: descriptive
+                        direction: inbound
+                        owner_at_detection: channel
+                        recommended_action: apply
+                        catalog_value: Stainless Water Bottle 750ml
+                        channel_value: Stainless Steel Water Bottle - 750 ml
+                        status: pending
+                        source: webhook
+                        is_risky: true
+                        conflict_resolution: null
+                        error_message: null
+                        detected_at: '2026-07-29T14:05:12.000000Z'
+                        resolved_at: null
+                        listing:
+                          id: 315
+                          listing_sku: SWB-750
+                          title: Stainless Steel Water Bottle - 750 ml
+                          content_sync_status: pending_review
+                          integration_instance_id: 3
+                          integration_instance_name: Blue Bottle Retail
+                          integration_name: Shopify
+                        product:
+                          id: 88
+                          sku: SWB-750
+                          name: Stainless Water Bottle 750ml
+                      - id: 43
+                        product_listing_id: 315
+                        product_id: 88
+                        field: weight
+                        field_group: physical
+                        direction: inbound
+                        owner_at_detection: channel
+                        recommended_action: apply
+                        catalog_value:
+                          value: 11.2
+                          unit: oz
+                        channel_value:
+                          value: 340
+                          unit: g
+                        status: pending
+                        source: webhook
+                        is_risky: false
+                        conflict_resolution: null
+                        error_message: null
+                        detected_at: '2026-07-29T14:05:12.000000Z'
+                        resolved_at: null
+                        listing:
+                          id: 315
+                          listing_sku: SWB-750
+                          title: Stainless Steel Water Bottle - 750 ml
+                          content_sync_status: pending_review
+                          integration_instance_id: 3
+                          integration_instance_name: Blue Bottle Retail
+                          integration_name: Shopify
+                        product:
+                          id: 88
+                          sku: SWB-750
+                          name: Stainless Water Bottle 750ml
+                    message: Listing reconciled against the channel.
+                example-1:
+                  summary: Fully compared
+                  value:
+                    data:
                       product_listing_id: 315
-                      product_id: 88
-                      field: name
-                      field_group: descriptive
-                      direction: inbound
-                      owner_at_detection: channel
-                      recommended_action: apply
-                      catalog_value: Stainless Water Bottle 750ml
-                      channel_value: Stainless Steel Water Bottle - 750 ml
-                      status: pending
-                      source: webhook
-                      is_risky: true
-                      conflict_resolution: null
-                      error_message: null
-                      detected_at: '2026-07-29T14:05:12.000000Z'
-                      resolved_at: null
-                      listing:
-                        id: 315
-                        listing_sku: SWB-750
-                        title: Stainless Steel Water Bottle - 750 ml
-                        content_sync_status: pending_review
-                        integration_instance_id: 3
-                        integration_instance_name: Blue Bottle Retail
-                        integration_name: Shopify
-                      product:
-                        id: 88
-                        sku: SWB-750
-                        name: Stainless Water Bottle 750ml
-                    - id: 43
-                      product_listing_id: 315
-                      product_id: 88
-                      field: weight
-                      field_group: physical
-                      direction: inbound
-                      owner_at_detection: channel
-                      recommended_action: apply
-                      catalog_value:
-                        value: 11.2
-                        unit: oz
-                      channel_value:
-                        value: 340
-                        unit: g
-                      status: pending
-                      source: webhook
-                      is_risky: false
-                      conflict_resolution: null
-                      error_message: null
-                      detected_at: '2026-07-29T14:05:12.000000Z'
-                      resolved_at: null
-                      listing:
-                        id: 315
-                        listing_sku: SWB-750
-                        title: Stainless Steel Water Bottle - 750 ml
-                        content_sync_status: pending_review
-                        integration_instance_id: 3
-                        integration_instance_name: Blue Bottle Retail
-                        integration_name: Shopify
-                      product:
-                        id: 88
-                        sku: SWB-750
-                        name: Stainless Water Bottle 750ml
-                  message: Listing reconciled against the channel.
+                      content_sync_status: pending_review
+                      content_sync_checked_at: '2026-07-29T14:05:12.000000Z'
+                      last_inbound_synced_at: '2026-07-28T02:11:40.000000Z'
+                      changes:
+                      - id: 42
+                        product_listing_id: 315
+                        product_id: 88
+                        field: name
+                        field_group: descriptive
+                        direction: inbound
+                        owner_at_detection: channel
+                        recommended_action: apply
+                        catalog_value: Stainless Water Bottle 750ml
+                        channel_value: Stainless Steel Water Bottle - 750 ml
+                        status: pending
+                        source: webhook
+                        is_risky: true
+                        conflict_resolution: null
+                        error_message: null
+                        detected_at: '2026-07-29T14:05:12.000000Z'
+                        resolved_at: null
+                        listing:
+                          id: 315
+                          listing_sku: SWB-750
+                          title: Stainless Steel Water Bottle - 750 ml
+                          content_sync_status: pending_review
+                          integration_instance_id: 3
+                          integration_instance_name: Blue Bottle Retail
+                          integration_name: Shopify
+                        product:
+                          id: 88
+                          sku: SWB-750
+                          name: Stainless Water Bottle 750ml
+                      - id: 43
+                        product_listing_id: 315
+                        product_id: 88
+                        field: weight
+                        field_group: physical
+                        direction: inbound
+                        owner_at_detection: channel
+                        recommended_action: apply
+                        catalog_value:
+                          value: 11.2
+                          unit: oz
+                        channel_value:
+                          value: 340
+                          unit: g
+                        status: pending
+                        source: webhook
+                        is_risky: false
+                        conflict_resolution: null
+                        error_message: null
+                        detected_at: '2026-07-29T14:05:12.000000Z'
+                        resolved_at: null
+                        listing:
+                          id: 315
+                          listing_sku: SWB-750
+                          title: Stainless Steel Water Bottle - 750 ml
+                          content_sync_status: pending_review
+                          integration_instance_id: 3
+                          integration_instance_name: Blue Bottle Retail
+                          integration_name: Shopify
+                        product:
+                          id: 88
+                          sku: SWB-750
+                          name: Stainless Water Bottle 750ml
+                    message: Listing fully compared against the channel.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -371123,6 +372370,11 @@ paths:
         (pending, conflict, error), the number of listings affected, and a breakdown
         by field group.
 
+        Also returns `content_sync_instance_ids` — the integration instance ids that
+        currently have content sync turned on. Content sync is opt-in per sales channel,
+        so a reconcile scoped to any other instance has nothing to compare; use this
+        list to scope reconcile requests to comparable channels.
+
         Requires Bearer token.'
       parameters: []
       responses:
@@ -371160,6 +372412,10 @@ paths:
                             type: integer
                           identity:
                             type: integer
+                      content_sync_instance_ids:
+                        type: array
+                        items:
+                          type: integer
                 example:
                   data:
                     pending: 31
@@ -371171,6 +372427,9 @@ paths:
                       media: 9
                       physical: 5
                       identity: 2
+                    content_sync_instance_ids:
+                    - 20
+                    - 21
         '429': *id001
         '401': *id002
         '403': *id003
@@ -371497,6 +372756,26 @@ paths:
         any missed webhook deliveries.
 
 
+        Body parameters:
+
+        - `integration_instance_ids` (array of integer, optional) — limit the sweep
+        to these integration instances.
+
+        - `product_listing_ids` (array of integer, optional) — limit the sweep to
+        these listings.
+
+        - `force` (boolean, optional, default `false`) — run a full comparison instead
+        of an incremental one.
+
+
+        By default each listing is only diffed when its channel content changed since
+        the last sync, so differences that pre-date content sync being enabled stay
+        invisible no matter how often the sweep runs. Send `force: true` to diff every
+        governed field on every listing in scope against the catalog — slower, and
+        it can raise a large number of changes at once, so scope it with `integration_instance_ids`
+        or `product_listing_ids` when backfilling.
+
+
         Returns the background job id; poll the jobs API to track progress.
 
         Requires Bearer token.'
@@ -371514,12 +372793,15 @@ paths:
                   type: array
                   items:
                     type: integer
+                force:
+                  type: boolean
               example:
                 integration_instance_ids:
                 - 3
                 product_listing_ids:
                 - 315
                 - 316
+                force: true
       parameters: []
       responses:
         '200':
@@ -371544,7 +372826,7 @@ paths:
                 example:
                   data:
                     tracked_job_log_id: 913
-                  message: Reconcile started - track progress in the job tray.
+                  message: Full comparison started - track progress in the job tray.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -440805,9 +442087,11 @@ paths:
         not fully fulfilled; it holds no fulfillment order that has already been dispatched
         (a cancelled one, or one still unsubmitted or rejected, does not count as
         dispatched); it came from a sales channel rather than being entered by hand;
-        it is at least minimum_age_days old; and it is not sitting in a state that
-        was deliberately configured. The age floor exists because dispatch runs from
-        a queue, so a just-placed order is legitimately undispatched for a short while.
+        it is at least minimum_age_days business days old; and it is not sitting in
+        a state that was deliberately configured. The age floor counts business days
+        (Mon-Fri), so a weekend does not age an order towards it. It exists because
+        dispatch runs from a queue, so a just-placed order is legitimately undispatched
+        for a short while.
 
 
         Deliberately configured states are excluded outright rather than reported
@@ -440853,9 +442137,9 @@ paths:
         across every candidate, not just the scanned window, so it stays accurate
         when truncated is true. 0 when there are no candidates.
 
-        - minimum_age_days (integer): The configured age floor, in whole days. Orders
-        younger than this are excluded from every count in this response. 0 means
-        no floor is applied.
+        - minimum_age_days (integer): The configured age floor, in whole business
+        days (Mon-Fri; weekends do not age an order towards it). Orders younger than
+        this are excluded from every count in this response. 0 means no floor is applied.
 
         - truncated (boolean): True when candidate_count is greater than scanned_count,
         i.e. more candidates exist than were diagnosed.
@@ -440865,9 +442149,10 @@ paths:
         has id (integer), sales_order_number (string, nullable), customer_name (string,
         nullable), sales_channel_name (string, nullable), order_date (string, Y-m-d,
         nullable), days_open (integer, whole calendar days in the account''s configured
-        timezone — the same count as oldest_days_open and as minimum_age_days, so
-        a returned entry is never younger than the floor), and diagnosis (object,
-        see below).
+        timezone, the same count as oldest_days_open; minimum_age_days is measured
+        in business days instead, and an order''s business-day age is never greater
+        than its calendar-day age, so a returned entry is still never younger than
+        the floor), and diagnosis (object, see below).
 
 
         Diagnosis object (returned on every entry in orders):
@@ -440923,7 +442208,7 @@ paths:
                       scanned_count: 4
                       candidate_count: 4
                       oldest_days_open: 14
-                      minimum_age_days: 1
+                      minimum_age_days: 3
                       truncated: false
                       orders:
                       - id: 48211
@@ -440978,7 +442263,7 @@ paths:
                       scanned_count: 0
                       candidate_count: 0
                       oldest_days_open: 0
-                      minimum_age_days: 1
+                      minimum_age_days: 3
                       truncated: false
                       orders: []
         '429': *id001
@@ -448113,6 +449398,14 @@ paths:
         :::
 
 
+        `released.sources[].source_type` is the model that supplied the stock, and
+        `source_label` is its human-readable form. Possible sources: purchase order
+        receipt (`InboundShipmentReceiptLine` → "PO {number} receipt"), inventory
+        adjustment ("Inventory Adjustment #{id}"), stock take ("Stock Take"), customer
+        return ("Customer Return"), warehouse transfer receipt ("Warehouse Transfer
+        Receipt"), vendor return ("Vendor Return"), and production ("Production").
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: salesOrderLine
@@ -448189,13 +449482,18 @@ paths:
                 example:
                   data:
                     released:
-                      total: 2
+                      total: 3
                       sources:
                       - quantity: 2
-                        source_type: App\Models\PurchaseOrderShipmentReceiptLine
+                        source_type: App\Models\InboundShipmentReceiptLine
                         source_id: 100
                         source_label: PO PO-2024-001 receipt
                         released_at: '2024-01-18T00:00:00.000000Z'
+                      - quantity: 1
+                        source_type: App\Models\WarehouseTransferShipmentReceiptLine
+                        source_id: 412
+                        source_label: Warehouse Transfer Receipt
+                        released_at: '2024-01-19T04:22:11.000000Z'
                     covered:
                       total: 1
                       sources:
@@ -481090,6 +482388,658 @@ paths:
         '404': *id004
       x-required-scope: suppliers:write
       operationId: post-api-supplier-inventories-id-import
+  /api/suppliers/{supplier}/price-list:
+    get:
+      tags:
+      - Suppliers
+      summary: List Supplier Price List
+      description: 'Paginated price list for one supplier: every product this supplier
+        can supply, joined against the chosen retail pricing tier and the chosen supplier
+        cost tier, with the margin between them pre-computed in five conventions.
+
+
+        Authentication: Requires Bearer token (scope: suppliers)
+
+
+        Each row''s `margin` object restates the same gap five ways so the caller
+        does not have to:
+
+        - `margin_pct` — (retail - cost) / retail
+
+        - `off_retail_pct` — the same number read as a discount off the retail list
+        price
+
+        - `cost_ratio_pct` — cost / retail
+
+        - `markup_pct` — (retail - cost) / cost
+
+        - `multiplier` — retail / cost
+
+        - `amount` — retail - cost, in the retail tier''s currency
+
+
+        Every margin field is null when either side is missing or the retail price
+        is zero, so unpriced products never produce a misleading 100%.
+
+
+        Tiers: when `sell_tier_id` / `cost_tier_id` are omitted the account''s default
+        retail and default supplier tiers are used. Call the metadata endpoint for
+        the selectable tiers, the supplier''s brands, and the column catalogue.
+
+
+        Filtering
+
+        ---------
+
+        Filters are sent as `filter[<name>]` query parameters.
+
+
+        Quick filters:
+
+        - `filter[search]` — partial match across SKU, product name, barcode, MPN
+        and supplier SKU
+
+        - `filter[brand_id]` — one or more brand ids, comma separated. Valid ids come
+        from the metadata endpoint
+
+        - `filter[only_priced]` — `1` keeps only products carrying both a retail price
+        and a supplier cost on the selected tiers
+
+        - `filter[archived]` — `active` (default), `only` for archived products only,
+        `all` for both
+
+
+        Column filters take the form `filter[<column>.<operator>]`, for example `filter[sku.starts_with]=CB-`,
+        `filter[margin_pct.greater_than]=50`, `filter[cost_price.between]=10,50`.
+
+
+        - Text columns — sku, name, barcode, mpn, hts_code, brand_name, supplier_sku.
+        Operators: contains, does_not_contain, is, is_not, is_one_of, is_not_one_of,
+        starts_with, does_not_start_with, ends_with, does_not_end_with, is_empty,
+        is_not_empty
+
+        - Numeric columns — sell_price, cost_price, margin_amount, margin_pct, off_retail_pct,
+        markup_pct, multiplier, minimum_order_quantity, leadtime, case_quantity, on_hand_quantity,
+        weight. Operators: is, is_not, is_one_of, is_not_one_of, greater_than, greater_than_or_equal,
+        less_than, less_than_or_equal, between, is_empty, is_not_empty
+
+        - Boolean columns — is_default_supplier, archived. Operator: `is` (and `is_not`
+        for archived)
+
+
+        For AND/OR logic and nested groups, send `filter_groups` instead: a base64-encoded
+        JSON tree of the shape `{"conjunction":"and","children":[{"type":"condition","condition":{"column":"margin_pct","operator":"greater_than","value":50}}]}`.
+        A `children` entry may also be `{"type":"group","group":{...}}` to nest a
+        sub-group with its own conjunction. Conditions naming a column or operator
+        that is not listed above are ignored.
+
+
+        Archived products are excluded unless the archived scope says otherwise.'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        name:
+                          type: string
+                        barcode:
+                          type: string
+                        mpn:
+                          type: string
+                        brand_name:
+                          type: string
+                        supplier_sku:
+                          type: string
+                        sell_price:
+                          type: number
+                        cost_price:
+                          type: integer
+                        margin:
+                          type: object
+                          properties:
+                            margin_pct:
+                              type: integer
+                            off_retail_pct:
+                              type: integer
+                            cost_ratio_pct:
+                              type: integer
+                            markup_pct:
+                              type: number
+                            multiplier:
+                              type: number
+                            amount:
+                              type: number
+                        minimum_order_quantity:
+                          type: integer
+                        leadtime:
+                          type: integer
+                        case_quantity:
+                          type: integer
+                        on_hand_quantity:
+                          type: integer
+                        weight:
+                          type: number
+                        weight_unit:
+                          type: string
+                        dimensions:
+                          type: string
+                        hts_code:
+                          type: string
+                        is_default_supplier:
+                          type: boolean
+                        is_archived:
+                          type: boolean
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                example:
+                  data:
+                  - product_id: 4821
+                    sku: '80687599'
+                    name: 1 Pack - Reusable Cloth Diaper One Size - Cactus Azul
+                    barcode: '6903148319130'
+                    mpn: CB-OS-CACTUS
+                    brand_name: Charlie Banana
+                    supplier_sku: CB-888-CACTUS
+                    sell_price: 24.99
+                    cost_price: 9
+                    margin:
+                      margin_pct: 64
+                      off_retail_pct: 64
+                      cost_ratio_pct: 36
+                      markup_pct: 177.7
+                      multiplier: 2.78
+                      amount: 15.99
+                    minimum_order_quantity: 1
+                    leadtime: 30
+                    case_quantity: 12
+                    on_hand_quantity: 24
+                    weight: 0.44
+                    weight_unit: lb
+                    dimensions: 6.8 x 1.5 x 7.08 in
+                    hts_code: 9619.00.7100
+                    is_default_supplier: true
+                    is_archived: false
+                  - product_id: 4822
+                    sku: '80687601'
+                    name: 3 Pack - Reusable Cloth Diaper One Size - Pastel Set
+                    barcode: '6903148319147'
+                    mpn: CB-OS-PASTEL3
+                    brand_name: Charlie Banana
+                    supplier_sku: CB-888-PASTEL3
+                    sell_price: 64.99
+                    cost_price: 26.5
+                    margin:
+                      margin_pct: 59.2
+                      off_retail_pct: 59.2
+                      cost_ratio_pct: 40.8
+                      markup_pct: 145.2
+                      multiplier: 2.45
+                      amount: 38.49
+                    minimum_order_quantity: 1
+                    leadtime: 30
+                    case_quantity: 6
+                    on_hand_quantity: 0
+                    weight: 1.32
+                    weight_unit: lb
+                    dimensions: 9.5 x 3.0 x 7.1 in
+                    hts_code: 9619.00.7100
+                    is_default_supplier: true
+                    is_archived: false
+                  current_page: 1
+                  last_page: 7
+                  per_page: 25
+                  total: 171
+                  from: 1
+                  to: 25
+                  first_page_url: https://example.sku.io/api/suppliers/14/price-list?page=1
+                  last_page_url: https://example.sku.io/api/suppliers/14/price-list?page=7
+                  next_page_url: https://example.sku.io/api/suppliers/14/price-list?page=2
+                  prev_page_url: null
+                  path: https://example.sku.io/api/suppliers/14/price-list
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      sell_tier_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected sell pricing tier does not exist.
+                  errors:
+                    sell_tier_id:
+                    - The selected sell pricing tier does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-suppliers-supplier-price-list
+  /api/suppliers/{supplier}/price-list/meta:
+    get:
+      tags:
+      - Suppliers
+      summary: Get Supplier Price List Metadata
+      description: 'Everything needed to drive the price list''s pickers, fetched
+        once rather than on every page:
+
+
+        - `tiers.sell` / `tiers.cost` — selectable retail and supplier pricing tiers
+        with their currency codes
+
+        - `selected_tiers` — the tier ids, names and currencies actually resolved
+        for this request
+
+        - `brands` — the distinct product brands this supplier supplies (id + name),
+        for the brand filter
+
+        - `columns` — the full column catalogue: `key`, human `label`, and `default`
+        (whether the column is shown/exported unless the caller overrides it)
+
+
+        The `columns[].key` values are the same tokens accepted by the export endpoint''s
+        `columns` parameter.
+
+
+        Authentication: Requires Bearer token (scope: suppliers)'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tiers:
+                        type: object
+                        properties:
+                          sell:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                                currency_code:
+                                  type: string
+                                is_default:
+                                  type: boolean
+                          cost:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                name:
+                                  type: string
+                                currency_code:
+                                  type: string
+                                is_default:
+                                  type: boolean
+                      selected_tiers:
+                        type: object
+                        properties:
+                          sell_tier_id:
+                            type: integer
+                          sell_tier_name:
+                            type: string
+                          sell_tier_currency:
+                            type: string
+                          cost_tier_id:
+                            type: integer
+                          cost_tier_name:
+                            type: string
+                          cost_tier_currency:
+                            type: string
+                      brands:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                      columns:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            label:
+                              type: string
+                            default:
+                              type: boolean
+                example:
+                  data:
+                    tiers:
+                      sell:
+                      - id: 1
+                        name: Retail
+                        currency_code: USD
+                        is_default: true
+                      - id: 4
+                        name: Wholesale
+                        currency_code: USD
+                        is_default: false
+                      - id: 9
+                        name: Retail (EUR)
+                        currency_code: EUR
+                        is_default: false
+                      cost:
+                      - id: 1
+                        name: Wholesale
+                        currency_code: USD
+                        is_default: true
+                      - id: 3
+                        name: Volume 500+
+                        currency_code: USD
+                        is_default: false
+                    selected_tiers:
+                      sell_tier_id: 1
+                      sell_tier_name: Retail
+                      sell_tier_currency: USD
+                      cost_tier_id: 1
+                      cost_tier_name: Wholesale
+                      cost_tier_currency: USD
+                    brands:
+                    - id: 16
+                      name: Charlie Banana
+                    columns:
+                    - key: sku
+                      label: SKU
+                      default: true
+                    - key: name
+                      label: Product Name
+                      default: true
+                    - key: barcode
+                      label: Barcode
+                      default: true
+                    - key: mpn
+                      label: MPN
+                      default: false
+                    - key: brand_name
+                      label: Brand
+                      default: true
+                    - key: supplier_sku
+                      label: Supplier SKU
+                      default: true
+                    - key: sell_price
+                      label: Retail Price
+                      default: true
+                    - key: cost_price
+                      label: Supplier Cost
+                      default: true
+                    - key: margin_amount
+                      label: Margin
+                      default: false
+                    - key: margin_pct
+                      label: Margin %
+                      default: true
+                    - key: off_retail_pct
+                      label: Off Retail %
+                      default: true
+                    - key: markup_pct
+                      label: Markup %
+                      default: false
+                    - key: multiplier
+                      label: Multiplier
+                      default: false
+                    - key: minimum_order_quantity
+                      label: MOQ
+                      default: true
+                    - key: leadtime
+                      label: Lead Time (days)
+                      default: true
+                    - key: case_quantity
+                      label: Case Qty
+                      default: false
+                    - key: on_hand_quantity
+                      label: On Hand
+                      default: true
+                    - key: weight
+                      label: Weight
+                      default: false
+                    - key: dimensions
+                      label: Dimensions
+                      default: false
+                    - key: hts_code
+                      label: HTS Code
+                      default: false
+                    - key: is_default_supplier
+                      label: Default Supplier
+                      default: false
+                    - key: archived
+                      label: Archived
+                      default: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-suppliers-supplier-price-list-meta
+  /api/suppliers/{supplier}/price-list/export:
+    get:
+      tags:
+      - Suppliers
+      summary: Export Supplier Price List
+      description: 'Downloads the supplier price list as a spreadsheet.
+
+
+        Authentication: Requires Bearer token (scope: suppliers)
+
+
+        Scope of the file:
+
+        - Pass `product_ids` to export an explicit set of rows.
+
+        - Otherwise the export mirrors whatever the filter and sort parameters resolve
+        to, so sending the same parameters as the list endpoint produces exactly the
+        rows that list returned.
+
+        - Send no filters at all to export the supplier''s whole price list.
+
+
+        Columns: `columns` accepts the `key` values from the metadata endpoint''s
+        column catalogue, and the file follows the order they are listed there. Omit
+        it and the default column set is used.
+
+
+        Response: a file download, not JSON. `format=xlsx` returns `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`;
+        `format=csv` returns `text/csv`. The filename is `<supplier-slug>-price-list-<YYYY-MM-DD>.<ext>`.
+
+
+        Tiers: when `sell_tier_id` / `cost_tier_id` are omitted the account''s default
+        retail and default supplier tiers are used. Call the metadata endpoint for
+        the selectable tiers, the supplier''s brands, and the column catalogue.
+
+
+        Filtering
+
+        ---------
+
+        Filters are sent as `filter[<name>]` query parameters.
+
+
+        Quick filters:
+
+        - `filter[search]` — partial match across SKU, product name, barcode, MPN
+        and supplier SKU
+
+        - `filter[brand_id]` — one or more brand ids, comma separated. Valid ids come
+        from the metadata endpoint
+
+        - `filter[only_priced]` — `1` keeps only products carrying both a retail price
+        and a supplier cost on the selected tiers
+
+        - `filter[archived]` — `active` (default), `only` for archived products only,
+        `all` for both
+
+
+        Column filters take the form `filter[<column>.<operator>]`, for example `filter[sku.starts_with]=CB-`,
+        `filter[margin_pct.greater_than]=50`, `filter[cost_price.between]=10,50`.
+
+
+        - Text columns — sku, name, barcode, mpn, hts_code, brand_name, supplier_sku.
+        Operators: contains, does_not_contain, is, is_not, is_one_of, is_not_one_of,
+        starts_with, does_not_start_with, ends_with, does_not_end_with, is_empty,
+        is_not_empty
+
+        - Numeric columns — sell_price, cost_price, margin_amount, margin_pct, off_retail_pct,
+        markup_pct, multiplier, minimum_order_quantity, leadtime, case_quantity, on_hand_quantity,
+        weight. Operators: is, is_not, is_one_of, is_not_one_of, greater_than, greater_than_or_equal,
+        less_than, less_than_or_equal, between, is_empty, is_not_empty
+
+        - Boolean columns — is_default_supplier, archived. Operator: `is` (and `is_not`
+        for archived)
+
+
+        For AND/OR logic and nested groups, send `filter_groups` instead: a base64-encoded
+        JSON tree of the shape `{"conjunction":"and","children":[{"type":"condition","condition":{"column":"margin_pct","operator":"greater_than","value":50}}]}`.
+        A `children` entry may also be `{"type":"group","group":{...}}` to nest a
+        sub-group with its own conjunction. Conditions naming a column or operator
+        that is not listed above are ignored.
+
+        '
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+        description: 'File format: xlsx (default) or csv.'
+        example: xlsx
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier id
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="charlie-banana-price-list-2026-07-30.xlsx"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ''
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      columns.0:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected column is not available on the price list.
+                  errors:
+                    columns.0:
+                    - The selected column is not available on the price list.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-suppliers-supplier-price-list-export
   /api/purchase-orders:
     get:
       tags:
@@ -487627,6 +489577,12 @@ paths:
                         type: boolean
                       supplier_has_phone:
                         type: boolean
+                      supplier_phone_dialable:
+                        type: boolean
+                      supplier_phone_e164:
+                        type: string
+                      supplier_phone_raw:
+                        type: string
                       channels:
                         type: object
                         properties:
@@ -487653,6 +489609,9 @@ paths:
                   messaging:
                     has_supplier: true
                     supplier_has_phone: true
+                    supplier_phone_dialable: true
+                    supplier_phone_e164: '+15551234567'
+                    supplier_phone_raw: '+15551234567'
                     channels:
                       whatsapp:
                         available: true
@@ -576692,5 +578651,6 @@ x-tagGroups:
   - Workflow Node Types
   - Workflow Templates
   - Workflow Credentials
+  - Getting Started
   - Report Templates
   - Webhooks
