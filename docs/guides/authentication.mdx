@@ -113,6 +113,42 @@ Missing scope response (`403 Forbidden`):
 }
 ```
 
+## Checking a token
+
+`GET /api/me` answers, in one request, both questions you have about a credential you're holding: does it work, and what may it do. It requires no scopes, so any valid token can call it — run it first when wiring up an integration.
+
+```bash
+curl "https://acme.sku.io/api/me" \
+  -H "Authorization: Bearer 142|hZk3vX9pQ7WmT2sLxCbNvA8dRfGjK4eYuI6oP1zq" \
+  -H "Accept: application/json"
+```
+
+```json
+{
+  "data": { "id": 42, "name": "Jane Merchant", "email": "jane@acme.test", "role": "Admin" },
+  "tenant_id": "acme",
+  "tenant_name": "Acme Supply Co.",
+  "token": {
+    "id": 105,
+    "name": "integration agent",
+    "type": "pat",
+    "scopes": ["orders:read", "orders:write", "products:read"],
+    "expires_at": "2026-10-28T09:14:00+00:00",
+    "is_expired": false
+  }
+}
+```
+
+Three fields are worth reading rather than glancing at:
+
+- **`token.scopes`** is the authoritative list of what this credential may do. Without it, the only way to discover a missing scope is to make the call and read `required_scope` off the `403` — which, partway through a multi-step job, means finding out after the earlier steps have already committed. Check the scopes up front instead.
+- **`tenant_id`** confirms you're talking to the account you meant to. Every SKU.io account answers on its own hostname, and an unrecognised hostname still resolves, so a mistyped domain fails with the same `401` as a bad token. A `200` alone only proves *some* real account answered; `tenant_id` is what tells you which.
+- **`token.expires_at`** lets a long-running integration see its own expiry approaching and rotate before it lapses, rather than discovering it as a `401` in production.
+
+`token` is `null` when the request is authenticated by browser session rather than by a token — there is no token to describe.
+
+To discover which scopes exist at all, `GET /api/developer/scopes` returns the full catalogue. Like `/api/me`, it needs no scopes: it is static reference data, and requiring a scope to find out which scopes exist would be circular. Neither endpoint exposes anything about the account beyond what the caller already has.
+
 ## What a 401 looks like
 
 Missing, malformed, expired, or revoked credentials all produce `401 Unauthorized`, with a `code` naming which of those it was so you don't have to guess:
