@@ -1,16 +1,27 @@
 ---
 title: API changes — 2026-07-31
-description: This release includes 14 additions.
+description: This release includes 15 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
-tags: [added]
+tags: [added, removed, breaking]
 date: 2026-07-31
 ---
 
-This release includes 14 additions.
+This release includes 15 additions, 1 removal. 1 breaking change — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Removed endpoints
+
+#### Product Listings
+- **Removed** `GET /api/v2/listings/coverage` — Get Catalog Coverage Matrix
 
 ## Added
 
@@ -21,6 +32,9 @@ This release includes 14 additions.
 
 ### Getting Started
 - `GET /api/me` — Verify Token
+
+### Product Listings
+- `GET /api/v2/listings/publish` — Get Publish Matrix
 
 ### Reporting
 - `GET /api/reporting/suppliers/{supplier}/margin-ladder` — Get Supplier Margin Ladder
