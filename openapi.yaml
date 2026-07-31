@@ -36885,10 +36885,13 @@ paths:
         :::
 
 
+        Only active users are returned — deactivated users keep their tenant membership
+        so they stay manageable, and are filtered out of this list explicitly.
+
+
         Tenant scoping: Results are restricted to users who are members of the current
-        tenant. The `users` table lives on the central connection and is shared across
-        all tenants, so without scoping every dropdown would leak users from every
-        tenant in the installation.
+        tenant. The user directory is shared across all tenants in an installation,
+        so without scoping every dropdown would leak users from every tenant.
 
 
         Authentication: Requires Bearer token.'
@@ -36951,13 +36954,28 @@ paths:
 
         Fields:
 
-        - email (required, unique, max:255) — User''s email address
+        - email (required, valid email, max:255, must be available) — User''s email
+        address
 
         - name (required, string, max:255) — User''s full name
 
         - is_admin (optional, boolean, default: false) — Grant admin privileges
 
         - is_power_user (optional, boolean, default: false) — Grant power user privileges
+
+
+        Email availability:
+
+        - Address held by an active user, in this tenant or any other — rejected (422).
+
+        - Address held by a deactivated user who is still a member of this tenant
+        — rejected (422) with a message pointing at reactivation; reactivate them
+        with `DELETE /api/users/{user}` instead of inviting again.
+
+        - Address held by a deactivated user who belongs to no tenant at all — accepted.
+        The dormant account is reclaimed in place under the new name, its credentials,
+        sessions and roles are cleared, and it is attached to the current tenant.
+        The user id is preserved, so historical records still resolve.
 
 
         **Requires permission:** `users.create`'
@@ -37023,12 +37041,23 @@ paths:
                       email:
                         type: array
                         items:
-                          type: string
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
                 example:
-                  message: The email has already been taken.
+                  message: This email belongs to a deactivated user. Reactivate them
+                    from the users list instead of adding them again.
                   errors:
                     email:
-                    - The email has already been taken.
+                    - message: This email belongs to a deactivated user. Reactivate
+                        them from the users list instead of adding them again.
+                      code: validation
+                      data: []
         '429': *id001
         '401': *id002
         '403': *id003
@@ -37264,22 +37293,27 @@ paths:
         :::
 
 
-        Delete (user not trashed): detaches the `tenant_users` pivot row for the current
-        tenant. If the user has no remaining pivot rows after the detach, the central
-        `users` row is soft-deleted as well; otherwise the central row stays intact
-        so the user remains usable in other tenants.
+        Deactivate (user is currently active): if the user belongs to more than one
+        tenant, they are removed from the current tenant only and their account stays
+        active elsewhere. If the current tenant is their last one, the account is
+        deactivated and their membership of this tenant is retained — that retained
+        membership is what keeps a deactivated user listed and reactivatable.
 
 
-        Restore (user trashed): re-attaches the pivot row for the current tenant (mirroring
-        central''s is_admin / is_power_user flags) and un-soft-deletes the central
-        row. Restore is allowed when the user is already attached here OR is fully
-        orphaned (no pivot rows anywhere). Restoring a user whose only pivots are
-        to OTHER tenants is rejected (404) to prevent cross-tenant claim attacks.
+        Reactivate (user is currently deactivated): re-attaches the membership for
+        the current tenant (mirroring the account''s is_admin / is_power_user flags)
+        and reactivates the account. Allowed when the user is already a member here
+        OR belongs to no tenant at all. Reactivating a user whose only memberships
+        are to OTHER tenants is rejected (404) to prevent cross-tenant claim attacks.
+
+
+        A deactivated account cannot sign in and will not be issued a password-reset
+        link.
 
 
         Tenant scoping: Returns 404 if the user is not a member of the current tenant
-        on the delete path. Prevents any tenant admin from deactivating users system-wide
-        by guessing IDs.
+        on the deactivate path. Prevents any tenant admin from deactivating users
+        system-wide by guessing IDs.
 
 
         Authentication: Requires Bearer token.
