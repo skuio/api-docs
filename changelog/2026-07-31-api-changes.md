@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-07-31
-description: This release includes 4 additions.
+description: This release includes 5 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-07-31
 ---
 
-This release includes 4 additions.
+This release includes 5 additions.
 
 <!-- truncate -->
 
@@ -16,6 +16,9 @@ This release includes 4 additions.
 
 ### Reporting
 - `GET /api/reporting/suppliers/{supplier}/margin-ladder` — Get Supplier Margin Ladder
+
+### Shopify
+- `GET /api/shopify/dashboard` — Get Shopify Dashboard
 
 ### Suppliers
 - `GET /api/suppliers/{supplier}/price-list` — List Supplier Price List

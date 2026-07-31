@@ -139048,12 +139048,22 @@ paths:
         \ field. Either a static field (e.g. `sku`, `name`, `vendor`), a pricing tier\
         \ path (e.g. `price.Default.value`), a supplier pricing tier path (e.g. `supplier_pricing.Wholesale.value`),\
         \ or an attribute path (e.g. `attributes.Color`).\n  - `parsers` (array, required):\
-        \ zero or more parser transformations applied in order to the incoming Amazon\
-        \ value before it is written to the SKU.io field. Each parser has a `rule`\
-        \ (must be one of the supported `FieldParserFactory::SUPPORTED_PARSERS` rules)\
-        \ and a stringified `args` payload.\n\nThe response echoes back the integration\
-        \ instance id/name plus the updated `mappings` and `effective_mappings` (custom\
-        \ merged on top of defaults)."
+        \ zero or more transformations applied in order to the incoming value before\
+        \ it is written to the SKU.io field. May be empty. Each entry is an object\
+        \ with a `rule` and an `args` **object** (not a string):\n    - `fr` — find\
+        \ and replace. `args.find` (string, required) is the text to match. `args.replace`\
+        \ (string, optional) is the replacement; omit it or send an empty string to\
+        \ delete the matched text.\n    - `tl` — remove characters from the start.\
+        \ `args.count` (integer, required, greater than zero). `num_chars` is accepted\
+        \ as an alias.\n    - `tr` — remove characters from the end. `args.count`\
+        \ (integer, required, greater than zero). `num_chars` is accepted as an alias.\n\
+        \    - `append` — append the value of another field. `args.field` (string,\
+        \ required) is the field to append (`field_name` is accepted as an alias).\
+        \ `args.separator` (string, optional) is placed between the two values.\n\
+        \    Any other `rule`, or `args` missing the keys its rule requires, is rejected\
+        \ with a 422 keyed to `mappings.{index}.parsers.{index}.args`.\n\nThe response\
+        \ echoes back the integration instance id/name plus the updated `mappings`\
+        \ and `effective_mappings` (custom merged on top of defaults)."
       requestBody:
         content:
           application/json:
@@ -139078,15 +139088,20 @@ paths:
                   parsers: []
                 - listing_field: item_name
                   sku_field: name
-                  parsers: []
+                  parsers:
+                  - rule: fr
+                    args:
+                      find: ' - Default'
+                      replace: ''
                 - listing_field: brand
                   sku_field: brand
                   parsers: []
                 - listing_field: price
                   sku_field: price.Default.value
                   parsers:
-                  - rule: trim
-                    args: ''
+                  - rule: tl
+                    args:
+                      count: 1
       parameters:
       - name: integrationInstance
         in: path
@@ -139158,12 +139173,28 @@ paths:
                       parsers: []
                       source: custom
                       description: 'Custom mapping: seller_sku → sku'
+                    - listing_field: price
+                      sku_field: price.Default.value
+                      parsers:
+                      - rule: tl
+                        args:
+                          count: 1
+                      source: custom
+                      description: 'Custom mapping: price → price.Default.value'
                     effective_mappings:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
                       source: custom
                       description: 'Custom mapping: seller_sku → sku'
+                    - listing_field: price
+                      sku_field: price.Default.value
+                      parsers:
+                      - rule: tl
+                        args:
+                          count: 1
+                      source: custom
+                      description: 'Custom mapping: price → price.Default.value'
                     - listing_field: item_name
                       sku_field: item_name
                       parsers: []
@@ -139187,22 +139218,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings.0.sku_field:
-                        type: array
-                        items:
-                          type: string
-                      mappings.0.parsers:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings.0.sku_field field is required. (and 1 more
-                    error)
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings.0.sku_field:
-                    - The mappings.0.sku_field field is required.
-                    mappings.0.parsers:
-                    - The mappings.0.parsers field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -194580,6 +194606,526 @@ paths:
         '403': *id003
         '404': *id004
       operationId: post-api-amazon-ads-integrationinstance-profiles-refresh
+  /api/shopify/dashboard:
+    get:
+      tags:
+      - Shopify
+      summary: Get Shopify Dashboard
+      description: 'Aggregate dashboard metrics across every Shopify connection the
+        user can see: connection summaries, synced entity counts, a financial summary
+        for an optional period, per-entity sync health with the next scheduled run,
+        and the initial order backfill state for each connection.
+
+
+        :::info[Authorization]
+
+        Any valid API token can call this endpoint — no specific scope required. [Manage
+        tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Query parameters:**
+
+        - `integration_instance_ids` (optional, comma-separated integers) — limit
+        the aggregation to specific connections; omit for every connection the user
+        can access.
+
+        - `period` (optional, one of `today`, `7d`, `30d`, `90d`) — window for the
+        financial summary; omit for all time. Any other value returns 422.
+
+
+        **`order_backfills[]`** — one entry per connection describing the first full
+        order import:
+
+        - `status` — `never` (not started), `running`, `completed`, or `failed`.
+
+        - `window_start` (ISO 8601) — how far back the import reaches. Resolved from
+        the connection''s start date, then the tenant inventory start date, then a
+        bounded 90-day fallback; it is never open-ended.
+
+        - `window_source` / `window_source_label` — which of those produced `window_start`.
+
+        - `window_is_explicit` — true when the merchant configured the date, false
+        when it was inferred.
+
+        - `started_at` / `completed_at` / `failed_at` / `error` — timestamps and the
+        last failure message.
+
+        - `orders_imported` — orders the import itself counted (null until it completes).
+
+        - `remote_order_count` — Shopify''s own count of orders in the same window,
+        taken when the import finished.
+
+        - `local_order_count` — orders stored locally for that window, counted live
+        on this request.
+
+        - `shortfall` — `remote_order_count - local_order_count` (never negative),
+        or null when either side is unknown. A non-zero value means the import is
+        still draining or fell short and should be re-run.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      integrations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            shop_url:
+                              type: string
+                            is_automatic_sync_enabled:
+                              type: boolean
+                            has_warehouse_mappings:
+                              type: boolean
+                            integration_settings:
+                              type: object
+                              properties:
+                                shop_plan:
+                                  type: string
+                                has_customer_pii_access:
+                                  type: boolean
+                                has_returns_access:
+                                  type: boolean
+                                customer_pii_access_blocked:
+                                  type: boolean
+                                access_token_invalid:
+                                  type: boolean
+                                shop_plan_checked_at:
+                                  type: string
+                            created_at:
+                              type: string
+                            updated_at:
+                              type: string
+                      entity_counts:
+                        type: object
+                        properties:
+                          entities:
+                            type: object
+                            properties:
+                              products:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              variants:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              orders:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              customers:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              locations:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              fulfillments:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                              webhooks:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  total:
+                                    type: integer
+                                  entity_class:
+                                    type: string
+                          totals:
+                            type: object
+                            properties:
+                              total_records:
+                                type: integer
+                      financial_summary:
+                        type: object
+                        properties:
+                          gross_revenue:
+                            type: number
+                          total_refunds:
+                            type: number
+                          net_revenue:
+                            type: number
+                          units_sold:
+                            type: integer
+                          units_refunded:
+                            type: integer
+                          net_units_sold:
+                            type: integer
+                      sync_summary:
+                        type: object
+                        properties:
+                          entities:
+                            type: object
+                            properties:
+                              products:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  description:
+                                    type: string
+                                  last_sync_date:
+                                    type: string
+                                  last_sync_human:
+                                    type: string
+                                  records_synced_last_24h:
+                                    type: integer
+                                  is_stale:
+                                    type: boolean
+                                  schedule:
+                                    type: string
+                                  schedule_description:
+                                    type: string
+                              orders:
+                                type: object
+                                properties:
+                                  display_name:
+                                    type: string
+                                  description:
+                                    type: string
+                                  last_sync_date:
+                                    type: string
+                                  last_sync_human:
+                                    type: string
+                                  records_synced_last_24h:
+                                    type: integer
+                                  is_stale:
+                                    type: boolean
+                                  schedule:
+                                    type: string
+                                  schedule_description:
+                                    type: string
+                          overall_health:
+                            type: object
+                            properties:
+                              health_percentage:
+                                type: integer
+                              status:
+                                type: string
+                              total_entities:
+                                type: integer
+                              healthy_entities:
+                                type: integer
+                              stale_entities:
+                                type: integer
+                          auto_sync:
+                            type: object
+                            properties:
+                              is_enabled:
+                                type: boolean
+                              all_enabled:
+                                type: boolean
+                              enabled_count:
+                                type: integer
+                              total_count:
+                                type: integer
+                              status_text:
+                                type: string
+                              schedules:
+                                type: object
+                                properties:
+                                  products:
+                                    type: object
+                                    properties:
+                                      frequency:
+                                        type: string
+                                      next_sync:
+                                        type: string
+                                      next_sync_human:
+                                        type: string
+                                      seconds_until_next:
+                                        type: integer
+                                  orders:
+                                    type: object
+                                    properties:
+                                      frequency:
+                                        type: string
+                                      next_sync:
+                                        type: string
+                                      next_sync_human:
+                                        type: string
+                                      seconds_until_next:
+                                        type: integer
+                      order_backfills:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            integration_instance_id:
+                              type: integer
+                            name:
+                              type: string
+                            status:
+                              type: string
+                            window_start:
+                              type: string
+                            window_source:
+                              type: string
+                            window_source_label:
+                              type: string
+                            window_is_explicit:
+                              type: boolean
+                            started_at:
+                              type: string
+                            completed_at:
+                              type: string
+                            failed_at:
+                              type: string
+                              nullable: true
+                            error:
+                              type: string
+                              nullable: true
+                            orders_imported:
+                              type: integer
+                            remote_order_count:
+                              type: integer
+                            local_order_count:
+                              type: integer
+                            shortfall:
+                              type: integer
+                      generated_at:
+                        type: string
+                      period:
+                        type: string
+                example:
+                  success: true
+                  data:
+                    integrations:
+                    - id: 12
+                      name: Acme Storefront
+                      shop_url: acme-storefront.myshopify.com
+                      is_automatic_sync_enabled: true
+                      has_warehouse_mappings: true
+                      integration_settings:
+                        shop_plan: shopify_plus
+                        has_customer_pii_access: true
+                        has_returns_access: true
+                        customer_pii_access_blocked: false
+                        access_token_invalid: false
+                        shop_plan_checked_at: '2026-07-29T22:10:00+00:00'
+                      created_at: '2026-07-28T14:02:11+00:00'
+                      updated_at: '2026-07-30T06:00:00+00:00'
+                    entity_counts:
+                      entities:
+                        products:
+                          display_name: Products
+                          total: 412
+                          entity_class: products
+                        variants:
+                          display_name: Variants
+                          total: 1180
+                          entity_class: variants
+                        orders:
+                          display_name: Orders
+                          total: 2934
+                          entity_class: orders
+                        customers:
+                          display_name: Customers
+                          total: 2210
+                          entity_class: customers
+                        locations:
+                          display_name: Locations
+                          total: 3
+                          entity_class: locations
+                        fulfillments:
+                          display_name: Fulfillments
+                          total: 2810
+                          entity_class: fulfillments
+                        webhooks:
+                          display_name: Webhooks
+                          total: 14
+                          entity_class: webhooks
+                      totals:
+                        total_records: 9564
+                    financial_summary:
+                      gross_revenue: 184320.44
+                      total_refunds: 4210.1
+                      net_revenue: 180110.34
+                      units_sold: 5312
+                      units_refunded: 118
+                      net_units_sold: 5194
+                    sync_summary:
+                      entities:
+                        products:
+                          display_name: Products
+                          description: Catalog products and variants
+                          last_sync_date: '2026-07-30T05:30:00+00:00'
+                          last_sync_human: 30 minutes ago
+                          records_synced_last_24h: 18
+                          is_stale: false
+                          schedule: hourly
+                          schedule_description: Every hour
+                        orders:
+                          display_name: Orders
+                          description: Orders, fulfillments and refunds
+                          last_sync_date: '2026-07-30T06:00:00+00:00'
+                          last_sync_human: a few seconds ago
+                          records_synced_last_24h: 96
+                          is_stale: false
+                          schedule: every_fifteen_minutes
+                          schedule_description: Every 15 minutes
+                      overall_health:
+                        health_percentage: 100
+                        status: healthy
+                        total_entities: 2
+                        healthy_entities: 2
+                        stale_entities: 0
+                      auto_sync:
+                        is_enabled: true
+                        all_enabled: true
+                        enabled_count: 1
+                        total_count: 1
+                        status_text: Automatic sync enabled
+                        schedules:
+                          products:
+                            frequency: hourly
+                            next_sync: '2026-07-30T07:00:00+00:00'
+                            next_sync_human: in 30 minutes
+                            seconds_until_next: 1800
+                          orders:
+                            frequency: every_fifteen_minutes
+                            next_sync: '2026-07-30T06:15:00+00:00'
+                            next_sync_human: in 15 minutes
+                            seconds_until_next: 900
+                    order_backfills:
+                    - integration_instance_id: 12
+                      name: Acme Storefront
+                      status: completed
+                      window_start: '2026-01-01T00:00:00+00:00'
+                      window_source: integration_start_date
+                      window_source_label: Connection start date
+                      window_is_explicit: true
+                      started_at: '2026-07-28T14:02:20+00:00'
+                      completed_at: '2026-07-28T14:19:48+00:00'
+                      failed_at: null
+                      error: null
+                      orders_imported: 2934
+                      remote_order_count: 2934
+                      local_order_count: 2934
+                      shortfall: 0
+                    - integration_instance_id: 13
+                      name: Acme EU
+                      status: running
+                      window_start: '2026-04-01T00:00:00+00:00'
+                      window_source: inventory_start_date
+                      window_source_label: Inventory start date
+                      window_is_explicit: false
+                      started_at: '2026-07-30T05:58:02+00:00'
+                      completed_at: null
+                      failed_at: null
+                      error: null
+                      orders_imported: null
+                      remote_order_count: null
+                      local_order_count: 214
+                      shortfall: null
+                    generated_at: '2026-07-30T06:00:12+00:00'
+                    period: 30d
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Invalid period
+                  message: 'Period must be one of: today, 7d, 30d, 90d'
+        '500':
+          description: Internal Server Error
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Failed to load Shopify dashboard
+                  message: 'SQLSTATE[HY000]: General error: 2006 MySQL server has
+                    gone away'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-shopify-dashboard
   /api/shopify/config:
     get:
       tags:
@@ -209113,27 +209659,28 @@ paths:
       tags:
       - Shopify
       summary: Update Field Mappings
-      description: 'Replaces the custom field mappings for an integration instance.
-        Each mapping pairs a Shopify field (listing_field) with a SKU.io field (sku_field)
-        and an optional list of value parsers. Field names must come from List Available
-        Mapping Fields.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.
-
-
-        Body fields:
-
-        - mappings (array, required): objects with listing_field (string, required),
-        sku_field (string, required), and parsers (array, required - may be empty).'
+      description: "Replaces the custom field mappings for an integration instance.\
+        \ Each mapping pairs a Shopify field (listing_field) with a SKU.io field (sku_field)\
+        \ and an optional list of value transformations. Field names must come from\
+        \ List Available Mapping Fields.\n\n:::info[Authorization]\nAny valid API\
+        \ token can call this endpoint — no specific scope required. [Manage tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nBody fields:\n- mappings\
+        \ (array, required): objects with listing_field (string, required), sku_field\
+        \ (string, required), and parsers (array, required - may be empty).\n  - `parsers`\
+        \ (array, required): zero or more transformations applied in order to the\
+        \ incoming value before it is written to the SKU.io field. May be empty. Each\
+        \ entry is an object with a `rule` and an `args` **object** (not a string):\n\
+        \    - `fr` — find and replace. `args.find` (string, required) is the text\
+        \ to match. `args.replace` (string, optional) is the replacement; omit it\
+        \ or send an empty string to delete the matched text.\n    - `tl` — remove\
+        \ characters from the start. `args.count` (integer, required, greater than\
+        \ zero). `num_chars` is accepted as an alias.\n    - `tr` — remove characters\
+        \ from the end. `args.count` (integer, required, greater than zero). `num_chars`\
+        \ is accepted as an alias.\n    - `append` — append the value of another field.\
+        \ `args.field` (string, required) is the field to append (`field_name` is\
+        \ accepted as an alias). `args.separator` (string, optional) is placed between\
+        \ the two values.\n    Any other `rule`, or `args` missing the keys its rule\
+        \ requires, is rejected with a 422 keyed to `mappings.{index}.parsers.{index}.args`."
       requestBody:
         content:
           application/json:
@@ -209158,10 +209705,21 @@ paths:
                   parsers: []
                 - listing_field: shopify_product_title
                   sku_field: name
-                  parsers: []
+                  parsers:
+                  - rule: fr
+                    args:
+                      find: ' - Default Title'
+                      replace: ''
+                  - rule: append
+                    args:
+                      field: sku
+                      separator: ' - '
                 - listing_field: barcode
                   sku_field: barcode
-                  parsers: []
+                  parsers:
+                  - rule: tr
+                    args:
+                      count: 2
       parameters:
       - name: integrationInstance
         in: path
@@ -209224,20 +209782,42 @@ paths:
                       parsers: []
                     - listing_field: shopify_product_title
                       sku_field: name
-                      parsers: []
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: ' - Default Title'
+                          replace: ''
+                      - rule: append
+                        args:
+                          field: sku
+                          separator: ' - '
                     - listing_field: barcode
                       sku_field: barcode
-                      parsers: []
+                      parsers:
+                      - rule: tr
+                        args:
+                          count: 2
                     effective_mappings:
                     - listing_field: sku
                       sku_field: sku
                       parsers: []
                     - listing_field: shopify_product_title
                       sku_field: name
-                      parsers: []
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: ' - Default Title'
+                          replace: ''
+                      - rule: append
+                        args:
+                          field: sku
+                          separator: ' - '
                     - listing_field: barcode
                       sku_field: barcode
-                      parsers: []
+                      parsers:
+                      - rule: tr
+                        args:
+                          count: 2
                   message: Field mappings updated successfully
         '422':
           description: Unprocessable Entity
@@ -209256,15 +209836,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings field is required.
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings:
-                    - The mappings field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -246393,21 +246975,28 @@ paths:
       tags:
       - TikTok Shop
       summary: Update Field Mappings
-      description: 'Replace the custom field mappings for this integration instance.
-        Body: `mappings` (array, required) — each entry has `listing_field` (string,
-        required), `sku_field` (string, required), and `parsers` (array, optional;
-        each parser has `rule` one of `fr`/`tl`/`tr`/`append` and `args` shape depending
-        on rule). The submitted set fully replaces any existing custom mappings; system
-        defaults remain in effect for fields not included. Returns the refreshed effective
-        mappings.
-
-
-        :::info[Authorization]
-
-        Any valid API token can call this endpoint — no specific scope required. [Manage
-        tokens](https://app.sku.io/settings/api).
-
-        :::'
+      description: "Replace the custom field mappings for this integration instance.\
+        \ The submitted set fully replaces any existing custom mappings; system defaults\
+        \ remain in effect for fields not included. Returns the refreshed effective\
+        \ mappings.\n\n:::info[Authorization]\nAny valid API token can call this endpoint\
+        \ — no specific scope required. [Manage tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nBody fields:\n- mappings\
+        \ (array, required): objects with listing_field (string, required), sku_field\
+        \ (string, required), and parsers (array, required - may be empty).\n  - `parsers`\
+        \ (array, required): zero or more transformations applied in order to the\
+        \ incoming value before it is written to the SKU.io field. May be empty. Each\
+        \ entry is an object with a `rule` and an `args` **object** (not a string):\n\
+        \    - `fr` — find and replace. `args.find` (string, required) is the text\
+        \ to match. `args.replace` (string, optional) is the replacement; omit it\
+        \ or send an empty string to delete the matched text.\n    - `tl` — remove\
+        \ characters from the start. `args.count` (integer, required, greater than\
+        \ zero). `num_chars` is accepted as an alias.\n    - `tr` — remove characters\
+        \ from the end. `args.count` (integer, required, greater than zero). `num_chars`\
+        \ is accepted as an alias.\n    - `append` — append the value of another field.\
+        \ `args.field` (string, required) is the field to append (`field_name` is\
+        \ accepted as an alias). `args.separator` (string, optional) is placed between\
+        \ the two values.\n    Any other `rule`, or `args` missing the keys its rule\
+        \ requires, is rejected with a 422 keyed to `mappings.{index}.parsers.{index}.args`."
       requestBody:
         content:
           application/json:
@@ -246502,6 +247091,13 @@ paths:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
+                    - listing_field: sale_price
+                      sku_field: price.1.value
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: USD
+                          replace: ''
                     effective_mappings:
                     - listing_field: title
                       sku_field: item_name
@@ -246509,6 +247105,13 @@ paths:
                     - listing_field: seller_sku
                       sku_field: sku
                       parsers: []
+                    - listing_field: sale_price
+                      sku_field: price.1.value
+                      parsers:
+                      - rule: fr
+                        args:
+                          find: USD
+                          replace: ''
                   message: Field mappings updated successfully
         '422':
           description: Unprocessable Entity
@@ -246527,15 +247130,17 @@ paths:
                   errors:
                     type: object
                     properties:
-                      mappings:
+                      mappings.1.parsers.0.args:
                         type: array
                         items:
                           type: string
                 example:
-                  message: The mappings field is required.
+                  message: A Find & Replace transform needs the text to find. Leave
+                    the replacement empty to delete that text.
                   errors:
-                    mappings:
-                    - The mappings field is required.
+                    mappings.1.parsers.0.args:
+                    - A Find & Replace transform needs the text to find. Leave the
+                      replacement empty to delete that text.
         '429': *id001
         '401': *id002
         '403': *id003
