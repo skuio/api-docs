@@ -51,25 +51,56 @@ Tokens carry an explicit list of scopes, named `{resource}:{action}`:
 
 | Scope | Grants |
 |-------|--------|
+| **Sales Orders** | |
 | `orders:read` | View sales orders and order lines |
 | `orders:write` | Create, update, and cancel sales orders |
+| **Products** | |
 | `products:read` | View products, SKUs, and variants |
 | `products:write` | Create and update products |
+| **Inventory** | |
 | `inventory:read` | View stock levels, allocations, and reorder points |
 | `inventory:write` | Adjust inventory, transfer stock, and reconcile counts |
+| **Customers** | |
 | `customers:read` | View customers |
 | `customers:write` | Create and update customers |
+| **Suppliers** | |
 | `suppliers:read` | View suppliers |
 | `suppliers:write` | Create and update suppliers |
+| **Purchase Orders** | |
 | `purchase-orders:read` | View purchase orders |
 | `purchase-orders:write` | Create, update, and approve purchase orders |
+| **Warehouses** | |
 | `warehouses:read` | View warehouses and locations |
+| `warehouses:write` | Manage warehouses, locations, put-away, and location transfers |
+| **Reports** | |
 | `reports:read` | View reports and analytics |
-| `webhooks:manage` | Create and delete webhook subscriptions |
+| `reports:write` | Run report queries, exports, and scheduled reports |
+| **Webhooks** | |
+| `webhooks:read` | View webhook subscriptions, their delivery history, and the event catalog |
+| `webhooks:manage` | Create, enable, disable, and delete webhook subscriptions |
+| **Returns & RMAs** | |
+| `returns:read` | View RMAs, return receipts, and dispositions |
+| `returns:write` | Create and process RMAs and return receipts |
+| **Accounting** | |
+| `accounting:read` | View transactions, bills, vendor credits, and financial settings |
+| `accounting:write` | Create and update transactions, payments, and financial settings |
+| **Settings & Organization** | |
+| `settings:read` | View stores, tags, alerts, and organization settings |
+| `settings:write` | Update stores, tags, alerts, and organization settings |
+| **Manufacturing** | |
+| `manufacturing:read` | View BOMs, manufacturing orders, and MRP plans |
+| `manufacturing:write` | Create and update BOMs, manufacturing orders, and MRP runs |
+| **Subscriptions** | |
+| `subscriptions:read` | View subscription offerings |
+| `subscriptions:write` | Create, update, and delete subscription offerings |
+| **Integrations** | |
+| `integrations:read` | View connected integration instances and their settings |
+| `integrations:write` | Create, update, and manage integration instances |
 
 How scopes are applied:
 
 - Endpoints under a resource require `{resource}:read` for `GET`/`HEAD` requests and `{resource}:write` for `POST`/`PUT`/`PATCH`/`DELETE`.
+- A few endpoints accept either of two scopes, where the broader one subsumes the narrower: listing webhook subscriptions accepts `webhooks:read` **or** `webhooks:manage`, so a token that can create subscriptions doesn't also have to carry the read scope.
 - **PATs are deny-by-default.** Endpoints that haven't been opened to the token scope system reject PATs outright with `403` — `"This endpoint is not available to API tokens."` The API reference and these guides only describe token-accessible surface; if you hit that error on an endpoint you need, contact support.
 - Scopes do not bypass user permissions. A token acts *as you* — if your user role can't delete products, neither can your token, even with `products:write`.
 
@@ -84,25 +115,27 @@ Missing scope response (`403 Forbidden`):
 
 ## What a 401 looks like
 
-Missing, malformed, expired, or revoked tokens all produce `401 Unauthorized`:
+Missing, malformed, expired, or revoked credentials all produce `401 Unauthorized`, with a `code` naming which of those it was so you don't have to guess:
 
 ```json
 {
-  "errors": {
-    "token": [
-      {
-        "message": "Unauthorized",
-        "code": "Unauthorized",
-        "data": []
-      }
-    ]
-  },
-  "status": "failure",
-  "message": "Unauthorized"
+  "message": "This token expired on Tue, Jul 28, 2026 9:14 AM (UTC). Create a new one in Developer Settings.",
+  "code": "ERR_TOKEN_EXPIRED",
+  "expired_at": "2026-07-28T09:14:00+00:00"
 }
 ```
 
-Treat any 401 as "re-check the credential" — the API does not distinguish expired from revoked.
+| `code` | What went wrong | What to do |
+|--------|-----------------|------------|
+| `ERR_UNAUTHENTICATED` | No credential was sent. `message` stays the literal `Unauthenticated.` | Add the `Authorization` header. |
+| `ERR_TOKEN_EXPIRED` | Real credential, past its expiry. Includes `expired_at`. | Issue a new PAT, or refresh the OAuth token. |
+| `ERR_TOKEN_REVOKED` | The credential no longer exists. Revocation deletes it, so "revoked" and "never issued" are the same answer. | Issue a new one. |
+| `ERR_TOKEN_INVALID` | Right shape, wrong secret. | Check you're sending the whole secret, not a re-typed copy. |
+| `ERR_TOKEN_MALFORMED` | Not a shape SKU.io issues — usually a truncated paste, a doubled `Bearer` prefix, or an unsubstituted `{{token}}` placeholder. | Re-copy the token; it's only shown once. |
+
+Only `code` is stable — treat `message` as human-readable text that may be reworded.
+
+`ERR_TOKEN_EXPIRED` is returned only once the secret you sent matches the stored one, so guessing at token ids tells you nothing about whether they exist or when they expire.
 
 ## Token lifecycle
 
@@ -115,7 +148,9 @@ Treat any 401 as "re-check the credential" — the API does not distinguish expi
 
 ## Headless & machine-to-machine access
 
-There is **no OAuth or client-credentials flow** — a Personal Access Token is the credential for all automation, including unattended servers, cron jobs, and agents. The only step that requires a human is minting the token; nothing in the running integration needs a person in the loop.
+A Personal Access Token is the credential for your own automation — unattended servers, cron jobs, and agents. The only step that requires a human is minting the token; nothing in the running integration needs a person in the loop.
+
+SKU.io does also speak OAuth 2.0 (authorization code with PKCE), but that exists for **published apps installed by other people's tenants**, and client registration is not self-serve — talk to us if you're building one. For an integration you're running against your own tenant, OAuth buys you nothing a PAT doesn't already give you, at the cost of a consent screen and a refresh loop.
 
 To run automation unattended:
 
