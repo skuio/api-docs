@@ -357960,12 +357960,12 @@ paths:
         Filters use the operator syntax `filter[column.operator]=value` with operators:
         is, is_not, contains, does_not_contain, starts_with, ends_with, is_empty,
         is_not_empty, is_one_of. Filterable columns: product_sku, product_name, substitute_sku,
-        substitute_name, mode, active, priority (numeric operators), created_at, updated_at
-        (date operators).
+        substitute_name, substitution_type, mode, active, priority (numeric operators),
+        created_at, updated_at (date operators).
 
 
-        Allowed sorts: id, mode, priority, active, created_at, updated_at (prefix
-        with - for descending).
+        Allowed sorts: id, substitution_type, mode, priority, active, created_at,
+        updated_at (prefix with - for descending).
 
 
         Pagination: page, per_page (default 10).
@@ -358012,6 +358012,10 @@ paths:
                               type: string
                             name:
                               type: string
+                        substitution_type:
+                          type: string
+                        substitution_type_label:
+                          type: string
                         mode:
                           type: string
                         mode_label:
@@ -358059,6 +358063,8 @@ paths:
                       id: 102
                       sku: '521902'
                       name: Nuova Ricambi Gasket 58mm
+                    substitution_type: direct
+                    substitution_type_label: Direct equivalent
                     mode: always
                     mode_label: Always
                     allow_backorder_swap: false
@@ -358142,6 +358148,10 @@ paths:
                                   type: string
                                 name:
                                   type: string
+                            substitution_type:
+                              type: string
+                            substitution_type_label:
+                              type: string
                             mode:
                               type: string
                             mode_label:
@@ -358182,6 +358192,8 @@ paths:
                         id: 102
                         sku: '521902'
                         name: Nuova Ricambi Gasket 58mm
+                      substitution_type: direct
+                      substitution_type_label: Direct equivalent
                       mode: always
                       mode_label: Always
                       allow_backorder_swap: false
@@ -358215,11 +358227,19 @@ paths:
         Validation rejects self-substitution, duplicate pairs, non-stock-tracked substitutes,
         and `always` rules that would close an automatic swap loop. `create_reverse`
         also creates the independent reverse rule (substitute → original) with the
-        same mode.
+        same mode and substitution_type.
 
 
         A non-blocking warning is returned when the pair mixes a serialised and a
-        non-serialised product.'
+        non-serialised product.
+
+
+        `substitution_type` classifies what kind of substitute this is — `direct`
+        (identical to the customer, just a different SKU) or `replacement` (does the
+        same job but is visibly different, so the customer receives something other
+        than what they ordered). It is optional and defaults to `direct`. It is orthogonal
+        to `mode`: `substitution_type` says *what* the substitute is, `mode` says
+        *when* the swap may fire.'
       requestBody:
         content:
           application/json:
@@ -358228,6 +358248,8 @@ paths:
               properties:
                 substitute_product_id:
                   type: integer
+                substitution_type:
+                  type: string
                 mode:
                   type: string
                 allow_backorder_swap:
@@ -358244,6 +358266,7 @@ paths:
                   type: boolean
               example:
                 substitute_product_id: 102
+                substitution_type: direct
                 mode: when_original_unavailable
                 allow_backorder_swap: false
                 include_in_alias_availability: true
@@ -358297,6 +358320,10 @@ paths:
                               type: string
                             name:
                               type: string
+                        substitution_type:
+                          type: string
+                        substitution_type_label:
+                          type: string
                         mode:
                           type: string
                         mode_label:
@@ -358332,6 +358359,8 @@ paths:
                       id: 102
                       sku: '521902'
                       name: Nuova Ricambi Gasket 58mm
+                    substitution_type: direct
+                    substitution_type_label: Direct equivalent
                     mode: always
                     mode_label: Always
                     allow_backorder_swap: false
@@ -358380,21 +358409,27 @@ paths:
       tags:
       - Product Substitutions
       summary: Update Product Substitution
-      description: 'Update a substitution rule''s mode, flags, priority, active state,
-        or notes.
+      description: 'Update a substitution rule''s substitution_type, mode, flags,
+        priority, active state, or notes.
 
 
         Authentication: Requires Bearer token.
 
 
         Activating or switching a rule to `always` re-runs swap-loop detection and
-        is rejected when it would close a loop.'
+        is rejected when it would close a loop.
+
+
+        `substitution_type` (`direct` | `replacement`) may be changed here too — it
+        is orthogonal to `mode` and reclassifying a rule never changes when it swaps.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                substitution_type:
+                  type: string
                 mode:
                   type: string
                 allow_backorder_swap:
@@ -358408,6 +358443,7 @@ paths:
                 notes:
                   type: string
               example:
+                substitution_type: direct
                 mode: always
                 allow_backorder_swap: false
                 include_in_alias_availability: true
@@ -358458,6 +358494,10 @@ paths:
                             type: string
                           name:
                             type: string
+                      substitution_type:
+                        type: string
+                      substitution_type_label:
+                        type: string
                       mode:
                         type: string
                       mode_label:
@@ -358493,6 +358533,8 @@ paths:
                       id: 102
                       sku: '521902'
                       name: Nuova Ricambi Gasket 58mm
+                    substitution_type: direct
+                    substitution_type_label: Direct equivalent
                     mode: always
                     mode_label: Always
                     allow_backorder_swap: false
@@ -358607,8 +358649,8 @@ paths:
       description: 'Download the Excel (XLSX) import template. The workbook has three
         sheets: ''Import Here'' (headers + sample rows; green headers are required),
         ''Field Guide'' (per-column description, valid values, and an example), and
-        ''Reference Data'' (the valid mode values, accepted yes/no tokens, and your
-        existing rules).
+        ''Reference Data'' (the valid substitution_type and mode values, accepted
+        yes/no tokens, and your existing rules).
 
 
         Rows match on the (product_sku, substitute_sku) pair — an unknown pair creates
@@ -358657,7 +358699,15 @@ paths:
         Each row is marked `create` (new pair), `update` (pair exists — fields will
         be updated), or `error` (with a reason). The `mode` column accepts friendly
         synonyms case-insensitively: "manual", "manual only", "out of stock", "if
-        out of stock", "always".'
+        out of stock", "always".
+
+
+        The optional `substitution_type` column accepts "direct", "direct equivalent",
+        "equivalent", "identical", "replacement", "functional replacement", "functional",
+        "alternative" (case-insensitive); an unrecognised value fails the row. Left
+        blank it defaults a NEW rule to `direct` and leaves an existing rule''s classification
+        untouched, so re-uploading a file that predates the column never silently
+        reclassifies a replacement as a direct equivalent.'
       requestBody:
         content:
           application/json:
@@ -358672,6 +358722,8 @@ paths:
                       product_sku:
                         type: string
                       substitute_sku:
+                        type: string
+                      substitution_type:
                         type: string
                       mode:
                         type: string
@@ -358689,6 +358741,7 @@ paths:
                 rows:
                 - product_sku: RE61996
                   substitute_sku: '521902'
+                  substitution_type: direct
                   mode: always
                   allow_backorder_swap: 'no'
                   include_in_alias_availability: 'yes'
@@ -358771,7 +358824,13 @@ paths:
 
         The import is idempotent on the (product_sku, substitute_sku) pair, so re-uploading
         a corrected file is safe. Set `evaluate_open_orders` to immediately re-evaluate
-        open orders against the imported rules and release any that a swap resolves.'
+        open orders against the imported rules and release any that a swap resolves.
+
+
+        The optional `substitution_type` column (`direct` | `replacement`, plus the
+        synonyms listed on Validate) is only applied when supplied — a blank value
+        defaults a NEW rule to `direct` and leaves an existing rule''s classification
+        untouched.'
       requestBody:
         content:
           application/json:
@@ -358787,6 +358846,8 @@ paths:
                         type: string
                       substitute_sku:
                         type: string
+                      substitution_type:
+                        type: string
                       mode:
                         type: string
                 evaluate_open_orders:
@@ -358795,6 +358856,7 @@ paths:
                 rows:
                 - product_sku: RE61996
                   substitute_sku: '521902'
+                  substitution_type: direct
                   mode: always
                 evaluate_open_orders: true
       parameters: []
@@ -358862,7 +358924,7 @@ paths:
       - Product Substitutions
       summary: Export Product Substitutions
       description: 'Export substitution rules as XLSX (default) or CSV. Columns: product_sku,
-        substitute_sku, mode, allow_backorder_swap, include_in_alias_availability,
+        substitute_sku, substitution_type, mode, allow_backorder_swap, include_in_alias_availability,
         priority, notes, active — the same columns the import accepts, so an export
         can be edited and re-imported.
 
