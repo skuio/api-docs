@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-02
-description: This release includes 7 additions, 2 changes.
+description: This release includes 13 additions, 2 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-08-02
 ---
 
-This release includes 7 additions, 2 changes.
+This release includes 13 additions, 2 changes.
 
 <!-- truncate -->
 
@@ -24,6 +24,14 @@ This release includes 7 additions, 2 changes.
 ### Webhooks
 - `POST /api/webhook-subscriptions/{id}/disable` — Disable Webhook Subscription
 - `POST /api/webhook-subscriptions/{id}/enable` — Enable Webhook Subscription
+
+### Workflow Evaluations
+- `DELETE /api/automation/workflow-evaluations/{evaluation}` — Delete Workflow Evaluation
+- `GET /api/automation/workflow-evaluations/{evaluation}` — Show Workflow Evaluation
+- `PUT /api/automation/workflow-evaluations/{evaluation}` — Update Workflow Evaluation
+- `POST /api/automation/workflow-evaluations/{evaluation}/run` — Run Workflow Evaluation
+- `GET /api/automation/workflows/{workflow}/evaluations` — List Workflow Evaluations
+- `POST /api/automation/workflows/{workflow}/evaluations` — Create Workflow Evaluation
 
 ## Changed
 

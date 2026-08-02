@@ -90,6 +90,7 @@ tags:
 - name: Workflow Node Types
 - name: Workflow Templates
 - name: Workflow Credentials
+- name: Workflow Evaluations
 - name: BigCommerce
 - name: Card on File
 - name: Stores
@@ -65070,11 +65071,14 @@ paths:
 
 
         **Filters:** `filter[status]` (draft, published, disabled), `filter[category]`,
+        `filter[trigger_type]` (`event`, `schedule`, `manual`, `webhook`, `pre_dispatch`),
         `filter[search]` (matches name or description).
 
 
-        **Sorts:** `name`, `created_at`, `updated_at`. Prefix with `-` for descending.
-        Default: `-updated_at`.
+        **Sorts:** `id`, `name`, `created_at`, `updated_at`. Prefix with `-` for descending.
+        Default: `-updated_at`. Sort by `id` to list workflows in the order the dispatcher
+        evaluates them — relevant for `pre_dispatch` routing workflows, where the
+        first matching workflow routes the order and the rest are skipped.
 
 
         Pagination: `page`, `per_page` (default 10).'
@@ -68149,6 +68153,907 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: delete-api-automation-workflow-credentials-uuid
+  /api/automation/workflows/{workflow}/evaluations:
+    get:
+      tags:
+      - Workflow Evaluations
+      summary: List Workflow Evaluations
+      description: 'Returns a paginated list of evaluations for the given workflow,
+        newest first. Each evaluation includes its 20 most recent runs (`runs[]`).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Response:** Standard Laravel `LengthAwarePaginator` shape where `data[*]`
+        are evaluation objects: `id`, `workflowId`, `name`, `description`, `testData`
+        (array of test-case input objects), `assertions`, `testCaseCount`, `createdBy`,
+        `createdAt`, `updatedAt`, `runs[]`.
+
+
+        **Sorting:** `sort` accepts `created_at` or `name` (prefix with `-` for descending).
+        Default `-created_at`.
+
+
+        **Route name:** `automation.evaluations.index`'
+      parameters:
+      - name: page
+        in: query
+        schema:
+          type: integer
+        description: Page number (1-based).
+        example: '1'
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Page size. Defaults to 10.
+        example: '10'
+      - name: workflow
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow ID.
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        workflowId:
+                          type: string
+                        name:
+                          type: string
+                        description:
+                          type: string
+                        testData:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              order_id:
+                                type: integer
+                              total:
+                                type: number
+                              status:
+                                type: string
+                        assertions:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              path:
+                                type: string
+                              operator:
+                                type: string
+                              value:
+                                type: string
+                        testCaseCount:
+                          type: integer
+                        createdBy:
+                          type: string
+                        createdAt:
+                          type: string
+                        updatedAt:
+                          type: string
+                        runs:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: string
+                              evaluationId:
+                                type: string
+                              status:
+                                type: string
+                              totalCases:
+                                type: integer
+                              passedCases:
+                                type: integer
+                              failedCases:
+                                type: integer
+                              results:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    case:
+                                      type: integer
+                                    passed:
+                                      type: boolean
+                                    output:
+                                      type: object
+                                      properties:
+                                        tags:
+                                          type: array
+                                          items:
+                                            type: string
+                              startedAt:
+                                type: string
+                              finishedAt:
+                                type: string
+                              duration:
+                                type: integer
+                              createdAt:
+                                type: string
+                  current_page:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  data:
+                  - id: '12'
+                    workflowId: '5'
+                    name: Order tagging regression suite
+                    description: Verifies the tag-orders workflow output for representative
+                      orders
+                    testData:
+                    - order_id: 1001
+                      total: 149.99
+                      status: paid
+                    - order_id: 1002
+                      total: 12.5
+                      status: paid
+                    assertions:
+                    - path: output.tags
+                      operator: contains
+                      value: high-value
+                    testCaseCount: 2
+                    createdBy: '3'
+                    createdAt: '2026-06-10T14:30:00+00:00'
+                    updatedAt: '2026-06-11T08:45:00+00:00'
+                    runs:
+                    - id: '43'
+                      evaluationId: '12'
+                      status: completed
+                      totalCases: 2
+                      passedCases: 2
+                      failedCases: 0
+                      results:
+                      - case: 0
+                        passed: true
+                        output:
+                          tags:
+                          - high-value
+                      - case: 1
+                        passed: true
+                        output:
+                          tags: []
+                      startedAt: '2026-06-11T09:00:01+00:00'
+                      finishedAt: '2026-06-11T09:00:04+00:00'
+                      duration: 3120
+                      createdAt: '2026-06-11T09:00:00+00:00'
+                  current_page: 1
+                  first_page_url: https://sku2.test/api/automation/workflows/5/evaluations?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://sku2.test/api/automation/workflows/5/evaluations?page=1
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://sku2.test/api/automation/workflows/5/evaluations?page=1
+                    label: '1'
+                    active: true
+                  - url: null
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: null
+                  path: https://sku2.test/api/automation/workflows/5/evaluations
+                  per_page: 10
+                  prev_page_url: null
+                  to: 1
+                  total: 1
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: get-api-automation-workflows-workflow-evaluations
+    post:
+      tags:
+      - Workflow Evaluations
+      summary: Create Workflow Evaluation
+      description: 'Creates a new evaluation for the workflow. Returns the created
+        evaluation with HTTP 201 (unwrapped — the resource fields are at the response
+        root).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Body fields:**
+
+        - `name` (string, required, max 255)
+
+        - `description` (string, nullable)
+
+        - `test_data` (array, required, min 1 item) — each entry is an object representing
+        one test case''s trigger/input payload
+
+        - `test_data.*` (array/object, required)
+
+        - `assertions` (array, nullable) — optional assertions evaluated against each
+        test case''s output
+
+
+        **Route name:** `automation.evaluations.store`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                test_data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      order_id:
+                        type: integer
+                      total:
+                        type: number
+                      status:
+                        type: string
+                assertions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      path:
+                        type: string
+                      operator:
+                        type: string
+                      value:
+                        type: string
+              example:
+                name: Order tagging regression suite
+                description: Verifies the tag-orders workflow output for representative
+                  orders
+                test_data:
+                - order_id: 1001
+                  total: 149.99
+                  status: paid
+                - order_id: 1002
+                  total: 12.5
+                  status: paid
+                assertions:
+                - path: output.tags
+                  operator: contains
+                  value: high-value
+      parameters:
+      - name: workflow
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow ID.
+        example: '5'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  workflowId:
+                    type: string
+                  name:
+                    type: string
+                  description:
+                    type: string
+                  testData:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        order_id:
+                          type: integer
+                        total:
+                          type: number
+                        status:
+                          type: string
+                  assertions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        operator:
+                          type: string
+                        value:
+                          type: string
+                  testCaseCount:
+                    type: integer
+                  createdBy:
+                    type: string
+                  createdAt:
+                    type: string
+                  updatedAt:
+                    type: string
+                example:
+                  id: '12'
+                  workflowId: '5'
+                  name: Order tagging regression suite
+                  description: Verifies the tag-orders workflow output for representative
+                    orders
+                  testData:
+                  - order_id: 1001
+                    total: 149.99
+                    status: paid
+                  - order_id: 1002
+                    total: 12.5
+                    status: paid
+                  assertions:
+                  - path: output.tags
+                    operator: contains
+                    value: high-value
+                  testCaseCount: 2
+                  createdBy: '3'
+                  createdAt: '2026-06-10T14:30:00+00:00'
+                  updatedAt: '2026-06-11T08:45:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: post-api-automation-workflows-workflow-evaluations
+  /api/automation/workflow-evaluations/{evaluation}:
+    get:
+      tags:
+      - Workflow Evaluations
+      summary: Show Workflow Evaluation
+      description: 'Returns a single evaluation with ALL of its runs loaded (`runs[]`).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Response:** The evaluation wrapped in `data`.
+
+
+        **Route name:** `automation.evaluations.show`'
+      parameters:
+      - name: evaluation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow evaluation ID.
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      workflowId:
+                        type: string
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      testData:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            order_id:
+                              type: integer
+                            total:
+                              type: number
+                            status:
+                              type: string
+                      assertions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            path:
+                              type: string
+                            operator:
+                              type: string
+                            value:
+                              type: string
+                      testCaseCount:
+                        type: integer
+                      createdBy:
+                        type: string
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                      runs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            evaluationId:
+                              type: string
+                            status:
+                              type: string
+                            totalCases:
+                              type: integer
+                            passedCases:
+                              type: integer
+                            failedCases:
+                              type: integer
+                            results:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  case:
+                                    type: integer
+                                  passed:
+                                    type: boolean
+                                  output:
+                                    type: object
+                                    properties:
+                                      tags:
+                                        type: array
+                                        items:
+                                          type: string
+                            startedAt:
+                              type: string
+                            finishedAt:
+                              type: string
+                            duration:
+                              type: integer
+                            createdAt:
+                              type: string
+                example:
+                  data:
+                    id: '12'
+                    workflowId: '5'
+                    name: Order tagging regression suite
+                    description: Verifies the tag-orders workflow output for representative
+                      orders
+                    testData:
+                    - order_id: 1001
+                      total: 149.99
+                      status: paid
+                    - order_id: 1002
+                      total: 12.5
+                      status: paid
+                    assertions:
+                    - path: output.tags
+                      operator: contains
+                      value: high-value
+                    testCaseCount: 2
+                    createdBy: '3'
+                    createdAt: '2026-06-10T14:30:00+00:00'
+                    updatedAt: '2026-06-11T08:45:00+00:00'
+                    runs:
+                    - id: '43'
+                      evaluationId: '12'
+                      status: completed
+                      totalCases: 2
+                      passedCases: 2
+                      failedCases: 0
+                      results:
+                      - case: 0
+                        passed: true
+                        output:
+                          tags:
+                          - high-value
+                      - case: 1
+                        passed: true
+                        output:
+                          tags: []
+                      startedAt: '2026-06-11T09:00:01+00:00'
+                      finishedAt: '2026-06-11T09:00:04+00:00'
+                      duration: 3120
+                      createdAt: '2026-06-11T09:00:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: get-api-automation-workflow-evaluations-evaluation
+    put:
+      tags:
+      - Workflow Evaluations
+      summary: Update Workflow Evaluation
+      description: 'Updates an evaluation. All body fields are optional (`sometimes`)
+        — omitted `name`/`test_data` keep their current values.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Body fields:**
+
+        - `name` (string, optional, max 255)
+
+        - `description` (string, nullable)
+
+        - `test_data` (array, optional, min 1 item when present; each entry an object)
+
+        - `assertions` (array, nullable)
+
+
+        **Response:** The updated evaluation wrapped in `data`.
+
+
+        **Route name:** `automation.evaluations.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                test_data:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      order_id:
+                        type: integer
+                      total:
+                        type: number
+                      status:
+                        type: string
+                assertions:
+                  type: array
+              example:
+                name: Order tagging regression suite (v2)
+                description: Updated description
+                test_data:
+                - order_id: 1001
+                  total: 149.99
+                  status: paid
+                assertions: []
+      parameters:
+      - name: evaluation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow evaluation ID.
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      workflowId:
+                        type: string
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      testData:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            order_id:
+                              type: integer
+                            total:
+                              type: number
+                            status:
+                              type: string
+                      assertions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            path:
+                              type: string
+                            operator:
+                              type: string
+                            value:
+                              type: string
+                      testCaseCount:
+                        type: integer
+                      createdBy:
+                        type: string
+                      createdAt:
+                        type: string
+                      updatedAt:
+                        type: string
+                example:
+                  data:
+                    id: '12'
+                    workflowId: '5'
+                    name: Order tagging regression suite
+                    description: Verifies the tag-orders workflow output for representative
+                      orders
+                    testData:
+                    - order_id: 1001
+                      total: 149.99
+                      status: paid
+                    - order_id: 1002
+                      total: 12.5
+                      status: paid
+                    assertions:
+                    - path: output.tags
+                      operator: contains
+                      value: high-value
+                    testCaseCount: 2
+                    createdBy: '3'
+                    createdAt: '2026-06-10T14:30:00+00:00'
+                    updatedAt: '2026-06-11T08:45:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: put-api-automation-workflow-evaluations-evaluation
+    delete:
+      tags:
+      - Workflow Evaluations
+      summary: Delete Workflow Evaluation
+      description: 'Deletes the evaluation. Returns HTTP 204 with an empty body.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Route name:** `automation.evaluations.destroy`'
+      parameters:
+      - name: evaluation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow evaluation ID.
+        example: '12'
+      responses:
+        '204':
+          description: No Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                example: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: delete-api-automation-workflow-evaluations-evaluation
+  /api/automation/workflow-evaluations/{evaluation}/run:
+    post:
+      tags:
+      - Workflow Evaluations
+      summary: Run Workflow Evaluation
+      description: 'Starts an evaluation run: executes the workflow once per `test_data`
+        test case and records pass/fail results. Returns the created run (unwrapped)
+        with HTTP 201 and `status: "pending"`; poll **Show Workflow Evaluation** to
+        observe the run progressing through `running` → `completed` / `failed`.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Run fields:** `id`, `evaluationId`, `status` (`pending` | `running` | `completed`
+        | `failed`), `totalCases`, `passedCases`, `failedCases`, `results`, `startedAt`,
+        `finishedAt`, `duration` (ms), `createdAt`.
+
+
+        **Errors:** HTTP 403 `{ "message": "..." }` when automation is disabled for
+        the tenant (`AutomationDisabledException`).
+
+
+        **Route name:** `automation.evaluations.run`'
+      requestBody:
+        content: {}
+      parameters:
+      - name: evaluation
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Workflow evaluation ID.
+        example: '12'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  evaluationId:
+                    type: string
+                  status:
+                    type: string
+                  totalCases:
+                    type: integer
+                  passedCases:
+                    type: string
+                    nullable: true
+                  failedCases:
+                    type: string
+                    nullable: true
+                  results:
+                    type: string
+                    nullable: true
+                  startedAt:
+                    type: string
+                    nullable: true
+                  finishedAt:
+                    type: string
+                    nullable: true
+                  duration:
+                    type: string
+                    nullable: true
+                  createdAt:
+                    type: string
+                example:
+                  id: '44'
+                  evaluationId: '12'
+                  status: pending
+                  totalCases: 2
+                  passedCases: null
+                  failedCases: null
+                  results: null
+                  startedAt: null
+                  finishedAt: null
+                  duration: null
+                  createdAt: '2026-06-12T10:20:00+00:00'
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Automation is disabled for this account.
+        '429': *id001
+        '401': *id002
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: post-api-automation-workflow-evaluations-evaluation-run
   /api/big-commerce/{integrationInstance}/orders/refresh-tracked:
     post:
       tags:
@@ -291165,6 +292070,14 @@ paths:
         of the report payload it brought back.
 
 
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
         This is the detail view behind the report tasks table. It returns every field
         from the list endpoint, plus:
 
@@ -291472,6 +292385,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-report-tasks-report-task
   /api/veracore/integration-instances/{integration_instance}/report-tasks/{report_task}/raw:
     get:
@@ -291480,6 +292394,14 @@ paths:
       summary: Get Report Task Raw Payload
       description: 'The report payload exactly as Veracore returned it, plus when
         the task was processed.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Kept off the detail response on purpose — a week''s report is hundreds of
@@ -291578,6 +292500,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-report-tasks-report-task-raw
   /api/veracore/integration-instances/{integration_instance}/report-tasks/{report_task}/retry:
     post:
@@ -292838,6 +293761,14 @@ paths:
         alongside its SKU.io warehouse mapping.
 
 
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
         A 3PL fulfils from a handful of buildings, so the page count is usually one
         — the feed is paginated (`page`, `per_page`, default 15) and filtered server-side
         for consistency with every other record list, not to spare the database.
@@ -293059,6 +293990,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-warehouse-mappings
   /api/veracore/integration-instances/{integration_instance}/warehouse-mappings/sync:
     post:
@@ -293069,6 +294001,14 @@ paths:
         Veracore exposes no warehouse directory, so facilities are harvested from
         the warehouse balances on the inventory feed: every facility that reports
         a balance is recorded, and facilities already known keep their existing mapping.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Runs in the background and reports progress against the returned `tracked_job_log_id`.
@@ -293114,6 +294054,7 @@ paths:
         '403': *id003
         '404': *id004
         '422': *id005
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-warehouse-mappings-sync
   /api/veracore/integration-instances/{integration_instance}/warehouse-mappings/{warehouseMapping}:
     put:
@@ -293122,6 +294063,14 @@ paths:
       summary: Update Warehouse Mapping
       description: 'Point a discovered Veracore facility at a SKU.io warehouse, or
         clear the mapping by sending `warehouse_id: null`.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Saving also re-points every mirrored inventory row behind the facility, so
@@ -293288,6 +294237,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: put-api-veracore-integration-instances-integration-instance-warehouse-mappings-warehousemapping
     delete:
       tags:
@@ -293297,6 +294247,14 @@ paths:
         behind the facility is re-pointed straight away, so rows that lose their SKU.io
         warehouse drop out of the reconciliation report rather than reconciling against
         a warehouse that no longer applies.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         The facility reappears on the next discovery sync if Veracore still reports
@@ -293355,6 +294313,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: delete-api-veracore-integration-instances-integration-instance-warehouse-mappings-warehousemapping
   /api/veracore/integration-instances/{integration_instance}/inventory:
     get:
@@ -293363,6 +294322,14 @@ paths:
       summary: Get Inventory
       description: 'Paginated Veracore inventory for an integration instance, one
         row per offer per facility.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Every balance in this surface is the Veracore *available with reserved* figure
@@ -293609,6 +294576,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory
   /api/veracore/integration-instances/{integration_instance}/inventory/refresh:
     post:
@@ -293618,6 +294586,14 @@ paths:
       description: 'Queue a full inventory pull for this instance. The pull replaces
         the mirrored balances and records the difference against the previous snapshot
         into the inventory ledger.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Runs in the background and reports progress against the returned `tracked_job_log_id`.
@@ -293663,6 +294639,7 @@ paths:
         '403': *id003
         '404': *id004
         '422': *id005
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-inventory-refresh
   /api/veracore/integration-instances/{integration_instance}/inventory/summary:
     get:
@@ -293671,6 +294648,14 @@ paths:
       summary: Get Inventory Summary
       description: 'Totals behind the inventory headline figures and the four reconciliation
         counts.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `all` counts mirrored rows, `discrepancies` counts mapped products whose SKU.io
@@ -293764,6 +294749,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-summary
   /api/veracore/integration-instances/{integration_instance}/inventory/discrepancies:
     get:
@@ -293772,6 +294758,14 @@ paths:
       summary: Get Inventory Discrepancies
       description: 'Mapped products whose SKU.io quantity disagrees with the Veracore
         balance for the same warehouse.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `discrepancy` is `veracore_inventory` minus `sku_inventory`, so a negative
@@ -294014,6 +295008,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-discrepancies
   /api/veracore/integration-instances/{integration_instance}/inventory/discrepancy-stats:
     get:
@@ -294022,6 +295017,14 @@ paths:
       summary: Get Inventory Discrepancy Stats
       description: 'Totals over the same filtered discrepancy set the discrepancies
         endpoint pages through.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `items` is how many discrepancies match, `impact` is the summed absolute gap
@@ -294127,6 +295130,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-discrepancy-stats
   /api/veracore/integration-instances/{integration_instance}/inventory/without-veracore-inventory:
     get:
@@ -294136,6 +295140,14 @@ paths:
       description: 'Stocked SKU.io products that Veracore has never reported a balance
         for. These are usually products the 3PL has not been told about yet, or products
         fulfilled from elsewhere.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `sku_inventory` is the SKU.io available quantity for the requested warehouse,
@@ -294307,6 +295319,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-without-veracore-inventory
   /api/veracore/integration-instances/{integration_instance}/inventory/without-sku-products:
     get:
@@ -294317,6 +295330,14 @@ paths:
         the warehouse holds that this account has never mapped. `needs_review` marks
         rows where an automatic match was attempted and rejected, which is the shortlist
         worth mapping by hand first.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Every balance in this surface is the Veracore *available with reserved* figure
@@ -294527,6 +295548,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-without-sku-products
   /api/veracore/integration-instances/{integration_instance}/inventory/create-stock-take:
     post:
@@ -294535,6 +295557,14 @@ paths:
       summary: Create Stock Take From Discrepancies
       description: 'Turn the discrepancy report into a stock take that brings SKU.io
         in line with what the warehouse actually holds.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Only mapped, single-product, mapped-warehouse discrepancies are eligible;
@@ -294692,6 +295722,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-inventory-create-stock-take
   /api/veracore/integration-instances/{integration_instance}/inventory-changes:
     get:
@@ -294700,6 +295731,14 @@ paths:
       summary: Get Inventory Changes
       description: 'Paginated ledger of observed inventory changes for an integration
         instance, newest first.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Veracore publishes no movement feed, so each row is the difference between
@@ -294916,6 +295955,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-changes
   /api/veracore/integration-instances/{integration_instance}/inventory-changes/summary:
     get:
@@ -294925,6 +295965,14 @@ paths:
       description: 'Aggregate the ledger over exactly the rows the list endpoint would
         return: how many changes were observed, how many went each way, and the net
         and gross unit swing.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Veracore publishes no movement feed, so each row is the difference between
@@ -295058,6 +296106,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-changes-summary
   /api/veracore/integration-instances/{integration_instance}/inventory-changes/{change}:
     get:
@@ -295066,6 +296115,14 @@ paths:
       summary: Get Inventory Change
       description: 'A single observed inventory change with its warehouse and the
         mirrored inventory row behind it.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Veracore publishes no movement feed, so each row is the difference between
@@ -295194,6 +296251,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-changes-change
   /api/veracore/integration-instances/{integration_instance}/products:
     get:
@@ -295202,6 +296260,14 @@ paths:
       summary: Get Products
       description: 'Paginated Veracore offer catalogue for an integration instance,
         with the SKU.io product each offer maps to.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         **Search** — `filter[search]` matches item code, title and description.
@@ -295435,6 +296501,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-products
   /api/veracore/integration-instances/{integration_instance}/products/summary:
     get:
@@ -295443,6 +296510,14 @@ paths:
       summary: Get Product Summary
       description: 'Mapping counts for the whole Veracore offer catalogue on an integration
         instance, returned as a single aggregate rather than paging the catalogue.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         The three mapping states partition the catalogue exactly, so `mapped + unmapped
@@ -295519,6 +296594,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-products-summary
   /api/veracore/integration-instances/{integration_instance}/products/export:
     get:
@@ -295526,30 +296602,32 @@ paths:
       - Veracore
       summary: Export Products
       description: "Download the mirrored Veracore offer catalogue as a spreadsheet.\n\
-        \nThe response is a **file download** (`.xlsx` or `.csv`), not JSON.\n\nThis\
-        \ export is the first half of a round trip: the file is edited offline and\
-        \ uploaded back through the generic data-import endpoints with entity `veracore_product_mappings`,\
-        \ which reads the `Item` and `SKU.io SKU` columns to move mappings. Because\
-        \ of that, **`Item` and `SKU.io SKU` are always emitted even when `columns`\
-        \ does not ask for them** — a column preference can never produce a file the\
-        \ importer cannot read.\n\n**Query parameters**\n- `format` — `xlsx` (default)\
-        \ or `csv`\n- `scope` — which rows to include:\n  - `filtered` (default) —\
-        \ every row matching the `filter[...]`/`sort` params sent alongside, i.e.\
-        \ exactly what the table is showing\n  - `all` — the whole catalogue; filter/sort\
-        \ params are deliberately ignored\n  - `current_page` — only the rows on the\
-        \ requested page (honours `page`/`per_page`)\n  - `selected` — only the ids\
-        \ listed in `ids`, still subject to the filters\n- `ids` — comma-separated\
-        \ `veracore_products.id` values; only read when `scope=selected`\n- `columns`\
-        \ — comma-separated column keys to include. Omit for all 13. Unknown keys\
-        \ are ignored; `veracore_product_id` and `sku_product_id` are always prepended.\n\
-        \n`filter[...]`, `sort`, `page` and `per_page` accept the same values as `GET\
-        \ .../products` — the export runs the identical query pipeline so it can never\
-        \ disagree with the screen the user pressed Export on.\n\n**Column keys →\
-        \ headings**\n`veracore_product_id` → Item · `title` → Title · `sku_product_id`\
-        \ → SKU.io SKU · `product_name` → SKU.io Product · `mapping_state` → Mapping\
-        \ (Mapped / Mapped (manual) / Needs review / Unmapped) · `owner_id` → Owner\
-        \ · `unit_of_measure` → UOM · `product_type` → Product Type · `status` → Status\
-        \ · `is_multi_product_offer` → Multi-Product Offer (Yes/No) · `bom_product_count`\
+        \n:::warning[Not yet available to API tokens]\nThis endpoint currently requires\
+        \ session authentication; Personal Access Token scope support is in progress.\n\
+        :::\n\nThe response is a **file download** (`.xlsx` or `.csv`), not JSON.\n\
+        \nThis export is the first half of a round trip: the file is edited offline\
+        \ and uploaded back through the generic data-import endpoints with entity\
+        \ `veracore_product_mappings`, which reads the `Item` and `SKU.io SKU` columns\
+        \ to move mappings. Because of that, **`Item` and `SKU.io SKU` are always\
+        \ emitted even when `columns` does not ask for them** — a column preference\
+        \ can never produce a file the importer cannot read.\n\n**Query parameters**\n\
+        - `format` — `xlsx` (default) or `csv`\n- `scope` — which rows to include:\n\
+        \  - `filtered` (default) — every row matching the `filter[...]`/`sort` params\
+        \ sent alongside, i.e. exactly what the table is showing\n  - `all` — the\
+        \ whole catalogue; filter/sort params are deliberately ignored\n  - `current_page`\
+        \ — only the rows on the requested page (honours `page`/`per_page`)\n  - `selected`\
+        \ — only the ids listed in `ids`, still subject to the filters\n- `ids` —\
+        \ comma-separated `veracore_products.id` values; only read when `scope=selected`\n\
+        - `columns` — comma-separated column keys to include. Omit for all 13. Unknown\
+        \ keys are ignored; `veracore_product_id` and `sku_product_id` are always\
+        \ prepended.\n\n`filter[...]`, `sort`, `page` and `per_page` accept the same\
+        \ values as `GET .../products` — the export runs the identical query pipeline\
+        \ so it can never disagree with the screen the user pressed Export on.\n\n\
+        **Column keys → headings**\n`veracore_product_id` → Item · `title` → Title\
+        \ · `sku_product_id` → SKU.io SKU · `product_name` → SKU.io Product · `mapping_state`\
+        \ → Mapping (Mapped / Mapped (manual) / Needs review / Unmapped) · `owner_id`\
+        \ → Owner · `unit_of_measure` → UOM · `product_type` → Product Type · `status`\
+        \ → Status · `is_multi_product_offer` → Multi-Product Offer (Yes/No) · `bom_product_count`\
         \ → BOM Products · `lot_tracked` → Lot Tracked (Yes/No) · `last_synced_at`\
         \ → Last Synced (application timezone)\n\nThe downloaded file is named `veracore-products-YYYY-MM-DD-HH-MM-SS.<format>`.\n\
         \nAuthentication: Requires Bearer token."
@@ -295594,6 +296672,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-products-export
   /api/veracore/integration-instances/{integration_instance}/products/sync:
     post:
@@ -295603,6 +296682,14 @@ paths:
       description: 'Queue a pull of the Veracore offer catalogue for this instance.
         The pull refreshes mirrored offers and re-runs automatic matching against
         SKU.io products; manual mappings are never overwritten.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Runs in the background and reports progress against the returned `tracked_job_log_id`.
@@ -295648,6 +296735,7 @@ paths:
         '403': *id003
         '404': *id004
         '422': *id005
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-products-sync
   /api/veracore/integration-instances/{integration_instance}/products/push:
     post:
@@ -295655,6 +296743,14 @@ paths:
       - Veracore
       summary: Push Products To Veracore
       description: 'Publish SKU.io products into the Veracore catalogue.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Create-versus-update is resolved per product before writing: an offer that
@@ -295758,6 +296854,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-products-push
   /api/veracore/integration-instances/{integration_instance}/products/{product}:
     get:
@@ -295767,6 +296864,14 @@ paths:
       description: 'A single mirrored Veracore offer with its SKU.io mapping and,
         when the offer is unmapped, the ranked match candidates behind the review
         state.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Authentication: Requires Bearer token.'
@@ -295911,6 +297016,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-products-product
   /api/veracore/integration-instances/{integration_instance}/products/{product}/raw:
     get:
@@ -295920,6 +297026,14 @@ paths:
       description: 'The unmodified Veracore payload last stored for this offer, plus
         when it was captured. Use it to confirm what the warehouse actually returned
         when a mirrored field looks wrong.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Authentication: Requires Bearer token.'
@@ -296012,6 +297126,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-products-product-raw
   /api/veracore/integration-instances/{integration_instance}/products/{product}/mapping:
     put:
@@ -296021,6 +297136,14 @@ paths:
       description: 'Link a Veracore offer to a SKU.io product by hand. The mapping
         is marked as manual so later catalogue syncs leave it alone, and the review
         flag is cleared.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         A SKU.io product can back only one Veracore offer per instance; mapping one
@@ -296205,6 +297328,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: put-api-veracore-integration-instances-integration-instance-products-product-mapping
     delete:
       tags:
@@ -296214,6 +297338,14 @@ paths:
         mirrored but drops out of the reconciliation report, because an unmapped item
         has no SKU.io quantity to compare against. Automatic matching may propose
         it again on the next catalogue sync.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Authentication: Requires Bearer token.'
@@ -296350,6 +297482,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: delete-api-veracore-integration-instances-integration-instance-products-product-mapping
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals:
     get:
@@ -296358,6 +297491,14 @@ paths:
       summary: Get Expected Arrivals
       description: 'Paginated expected arrivals for an integration instance, soonest-arriving
         last.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         An expected arrival is an announcement, not a receipt: pushing one tells the
@@ -296608,6 +297749,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-expected-arrivals
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals/push:
     post:
@@ -296615,6 +297757,14 @@ paths:
       - Veracore
       summary: Push Expected Arrival To Veracore
       description: 'Announce a SKU.io purchase order to Veracore as an expected arrival.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         The announcement is assembled and validated synchronously so blocking problems
@@ -296718,6 +297868,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-expected-arrivals-push
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals/sync:
     post:
@@ -296727,6 +297878,14 @@ paths:
       description: 'Queue a refresh of the announcements already sent for this instance,
         picking up the state the warehouse has moved them to — in particular which
         ones have been received and are therefore locked.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Runs in the background and reports progress against the returned `tracked_job_log_id`.
@@ -296772,6 +297931,7 @@ paths:
         '403': *id003
         '404': *id004
         '422': *id005
+      x-session-only: true
       operationId: post-api-veracore-integration-instances-integration-instance-expected-arrivals-sync
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals/summary:
     get:
@@ -296781,6 +297941,14 @@ paths:
       description: 'Counts of expected arrivals by announcement state for this instance.
         `error` is the count worth acting on — those announcements never reached the
         warehouse.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         Authentication: Requires Bearer token.'
@@ -296832,6 +298000,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-expected-arrivals-summary
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals/{expectedArrival}:
     get:
@@ -296840,6 +298009,14 @@ paths:
       summary: Get Expected Arrival
       description: 'A single expected arrival with its purchase order and every announced
         line.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `total_quantity_expected` sums the announced quantities; it is what was declared
@@ -297037,6 +298214,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-expected-arrivals-expectedarrival
     delete:
       tags:
@@ -297044,6 +298222,14 @@ paths:
       summary: Cancel Expected Arrival
       description: 'Withdraw an announcement so the warehouse stops expecting the
         shipment.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         An arrival Veracore has already received is locked and cannot be cancelled
@@ -297258,6 +298444,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: delete-api-veracore-integration-instances-integration-instance-expected-arrivals-expectedarrival
   /api/veracore/purchase-orders/{purchaseOrder}/expected-arrival:
     get:
@@ -297266,6 +298453,14 @@ paths:
       summary: Get Expected Arrival For Purchase Order
       description: 'Whether a purchase order''s destination warehouse belongs to a
         Veracore connection, and what became of the arrival announced for it.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         `is_eligible` is `false` when no Veracore connection maps the purchase order''s
@@ -297393,6 +298588,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-veracore-purchase-orders-purchaseorder-expected-arrival
   /api/3pl/products:
     get:
@@ -457928,7 +459124,18 @@ paths:
         **Address override fields:** `shipping_overridden_at` is an ISO-8601 UTC timestamp
         (or null) set when an operator manually corrects the ship-to/billing address;
         `is_shipping_overridden` is the boolean equivalent. When set, sales-channel
-        resyncs (e.g. Amazon) will not overwrite the corrected inline address columns.'
+        resyncs (e.g. Amazon) will not overwrite the corrected inline address columns.
+
+
+        `routing_provenance` is present only when a published order-routing workflow
+        chose this order''s warehouse; it is `null` otherwise. It reports the workflow
+        (`workflow_id`, `workflow_name`), the run that made the decision (`execution_id`),
+        and the warehouse the workflow selected (`warehouse_id`). The ids are recorded
+        at routing time and are not foreign keys, so `workflow_name` comes back `null`
+        once the workflow itself is deleted while the ids remain. A `warehouse_id`
+        that differs from the order lines'' current warehouse means the workflow''s
+        choice was later overridden. This is the same object the legacy `GET /api/sales-orders/{salesOrder}`
+        show endpoint returns — the V2 order detail page reads it from here.'
       parameters:
       - name: salesOrder
         in: path
@@ -458079,6 +459286,17 @@ paths:
                                   type: string
                       purchase_orders:
                         type: array
+                      routing_provenance:
+                        type: object
+                        properties:
+                          workflow_id:
+                            type: integer
+                          execution_id:
+                            type: integer
+                          warehouse_id:
+                            type: integer
+                          workflow_name:
+                            type: string
                       created_at:
                         type: string
                       updated_at:
@@ -458188,6 +459406,11 @@ paths:
                         source: ebay
                         sales_channel_refund_id: '5000012345'
                     purchase_orders: []
+                    routing_provenance:
+                      workflow_id: 12
+                      execution_id: 4471
+                      warehouse_id: 9
+                      workflow_name: Hybrid FBA + 3PL Routing
                     created_at: '2024-01-15T08:00:00.000000Z'
                     updated_at: '2024-01-18T14:00:00.000000Z'
                     incoterm_id: 4
@@ -458473,6 +459696,15 @@ paths:
 
         - Monetary totals (`total`, `product_total`, `tax_total`, `discount_total`,
         etc.) are in the order currency.
+
+        - `routing_provenance` is present only when a published order-routing workflow
+        chose this order''s warehouse; it is `null` otherwise. It reports the workflow
+        (`workflow_id`, `workflow_name`), the run that made the decision (`execution_id`),
+        and the warehouse the workflow selected (`warehouse_id`). The ids are recorded
+        at routing time and are not foreign keys, so `workflow_name` comes back `null`
+        once the workflow itself is deleted while the ids remain. A `warehouse_id`
+        that differs from the order lines'' current warehouse means the workflow''s
+        choice was later overridden.
 
 
         Path parameters:
@@ -459329,6 +460561,17 @@ paths:
                             supplier_name:
                               type: string
                               nullable: true
+                      routing_provenance:
+                        type: object
+                        properties:
+                          workflow_id:
+                            type: integer
+                          execution_id:
+                            type: integer
+                          warehouse_id:
+                            type: integer
+                          workflow_name:
+                            type: string
                       can_fulfill:
                         type: boolean
                       exact_discount_total:
@@ -459908,6 +461151,11 @@ paths:
                       name: Main Warehouse
                       supplier_id: null
                       supplier_name: null
+                    routing_provenance:
+                      workflow_id: 12
+                      execution_id: 4471
+                      warehouse_id: 9
+                      workflow_name: Hybrid FBA + 3PL Routing
                     can_fulfill: false
                     exact_discount_total: 0.95
                     is_tax_included: false
@@ -593663,6 +594911,7 @@ x-tagGroups:
   - Reporting
   - Product Listings (V2)
   - PDF Templates
+  - Workflow Evaluations
   - Card on File
   - Channel Partners
   - Sales Channel Listing Profiles
