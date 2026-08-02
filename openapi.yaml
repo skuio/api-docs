@@ -290101,17 +290101,49 @@ paths:
 
         Use this to find the fulfillment a Veracore order shipped against, then link
         it with the link-fulfillment endpoint. Each row is a full fulfillment record
-        plus a `customer_name` convenience field.
+        plus `customer_name` and `sales_order_number` convenience fields lifted from
+        the related sales order.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `fulfillment_number`, `tracking_number`,
+        the related sales order''s `sales_order_number`, and the customer''s `name`.
+        Narrow it with the top-level `search_columns` parameter, or force exact matching
+        on specific columns with `search_strict_columns`.
 
 
         **Filters**
 
-        - `filter[search]` — matches fulfillment number, tracking number, sales order
-        number, or customer name.
+        Every filterable column accepts an operator suffix, e.g. `filter[status.is]=fulfilled`
+        or `filter[fulfillment_number.contains]=F-51`. The bare form (`filter[status]=fulfilled`)
+        is equivalent to `.is`.
 
-        - `filter[status]` — exact fulfillment status.
 
-        - `filter[requested_shipping_method_id]` — exact shipping method id.
+        - Text columns (`fulfillment_number`, `status`, `tracking_number`, `sales_order_number`,
+        `customer_name`, `requested_shipping_method_name`): `is`, `is_not`, `contains`,
+        `does_not_contain`, `is_one_of`, `is_not_one_of`, `starts_with`, `does_not_start_with`,
+        `ends_with`, `does_not_end_with`, `is_empty`, `is_not_empty`.
+
+        - Numeric columns (`id`, `requested_shipping_method_id`): `is`, `is_not`,
+        `is_one_of`, `is_not_one_of`, `greater_than`, `less_than`, `greater_than_or_equal`,
+        `less_than_or_equal`, `between`, `is_empty`, `is_not_empty`.
+
+        - Datetime columns (`fulfilled_at`, `created_at`, `updated_at`): `is`, `is_not`,
+        `before`, `after`, `on_or_before`, `on_or_after`, `between`, `is_empty`, `is_not_empty`,
+        plus the relative operators `today`, `yesterday`, `tomorrow`, `past_week`,
+        `past_month`, `past_year`, `next_week`, `next_month`, `next_year`.
+
+
+        `sales_order_number`, `customer_name` and `requested_shipping_method_name`
+        filter through their relationships; negative operators resolve via `whereDoesntHave`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        allowing nested AND/OR groups over the same columns. Unregistered columns
+        inside the tree are silently ignored.
 
 
         **Sorting**
@@ -290274,6 +290306,8 @@ paths:
                           nullable: true
                         customer_name:
                           type: string
+                        sales_order_number:
+                          type: string
                   first_page_url:
                     type: string
                   from:
@@ -290361,6 +290395,7 @@ paths:
                     provider_order_id: 8675309
                     sales_channel_fulfillment_link: null
                     customer_name: Jane Smith
+                    sales_order_number: SO-1042
                   first_page_url: https://app.example.com/api/veracore/integration-instances/1/fulfillments?page=1
                   from: 1
                   last_page: 12
@@ -291121,6 +291156,429 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: get-api-veracore-integration-instances-integration-instance-report-tasks
+  /api/veracore/integration-instances/{integration_instance}/report-tasks/{report_task}:
+    get:
+      tags:
+      - Veracore
+      summary: Get Report Task
+      description: 'Retrieve one Veracore report task together with a row-by-row reconciliation
+        of the report payload it brought back.
+
+
+        This is the detail view behind the report tasks table. It returns every field
+        from the list endpoint, plus:
+
+        - `row_count` — how many rows the stored payload actually contains right now.
+
+        - `summary` — a count per outcome state, **recomputed at request time**.
+
+        - `rows` — each report row parsed into its report columns, resolved against
+        the mirrored Veracore order, and bucketed into one outcome state.
+
+
+        **`rows_matched` vs `summary` (they are allowed to disagree)**
+
+        `rows_matched` is the historical figure the processing job wrote when it ran
+        and is never recomputed. `summary` is derived live from the current mirrored
+        orders. A row that had no tracking when the report was processed can pick
+        tracking up from a later sync, so the live breakdown drifts away from the
+        stored count over time. Both are returned deliberately; surface `rows_matched`
+        as "when it ran" and `summary` as "as of now".
+
+
+        **Row resolution**
+
+        Each row''s `Order ID` cell is matched against the instance''s mirrored orders
+        by `ReferenceNumber` first, then by Veracore `OrderID`. Orders belonging to
+        a different integration instance are never considered.
+
+
+        **Outcome states** (each row lands in exactly one, evaluated narrowest-cause-first)
+
+        - `unusable` — the row carries no Order ID at all, so it can never be matched.
+
+        - `no_order` — an Order ID that matches no mirrored order (the order was never
+        pulled in).
+
+        - `tracked` — the matched order already carries tracking (or is explicitly
+        flagged `NoTracking`). This outranks the two states below on purpose: once
+        tracking is on the order, what the report cell said stops mattering.
+
+        - `no_tracking_in_report` — matched an order, but the report cell was blank,
+        so there was nothing to apply. Informational, not a task.
+
+        - `pending` — the report carried a tracking number and the matched order still
+        has none. This is the bucket worth chasing.
+
+
+        Each row also returns `state_label` and `state_color` so a client renders
+        the chip without hard-coding the mapping.
+
+
+        **Report columns read from each row**
+
+        `Order ID`, `Individual Package Tracking Number`, `Package Freight Carrier`,
+        `Package Freight Code Description`, `Shipping Order Date & Time Created` (parsed
+        from `m/d/Y H:i:s`; an unparseable value degrades to `null` rather than erroring),
+        `Freight`.
+
+
+        A `null` or malformed `report_data` payload is not an error — it returns `row_count:
+        0` with an empty `rows` array, which is the correct answer for a task that
+        has not been processed yet.
+
+
+        The raw payload is deliberately NOT included here — fetch it from `GET .../report-tasks/{id}/raw`
+        when needed, so opening the detail view never carries the report down the
+        wire twice.
+
+
+        **Errors**
+
+        - `404` when the report task does not exist or belongs to a different integration
+        instance.
+
+        - `404` when the integration instance is not a Veracore instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Veracore integration instance id
+        example: '1'
+      - name: report_task
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Report task id (numeric)
+        example: '76'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      veracore_task_id:
+                        type: string
+                      report_name:
+                        type: string
+                      status:
+                        type: string
+                      status_label:
+                        type: string
+                      status_color:
+                        type: string
+                      filter_start_date:
+                        type: string
+                      filter_end_date:
+                        type: string
+                      poll_attempts:
+                        type: integer
+                      rows_matched:
+                        type: integer
+                      error_message:
+                        type: string
+                        nullable: true
+                      processed_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      row_count:
+                        type: integer
+                      summary:
+                        type: object
+                        properties:
+                          tracked:
+                            type: integer
+                          pending:
+                            type: integer
+                          no_tracking_in_report:
+                            type: integer
+                          no_order:
+                            type: integer
+                          unusable:
+                            type: integer
+                      rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            index:
+                              type: integer
+                            order_id:
+                              type: string
+                            tracking_number:
+                              type: string
+                            carrier:
+                              type: string
+                            service:
+                              type: string
+                            shipped_at:
+                              type: string
+                            freight:
+                              type: number
+                            state:
+                              type: string
+                            state_label:
+                              type: string
+                            state_color:
+                              type: string
+                            veracore_order:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                veracore_id:
+                                  type: integer
+                                reference_number:
+                                  type: string
+                                status:
+                                  type: string
+                                recorded_tracking_number:
+                                  type: string
+                                no_tracking:
+                                  type: boolean
+                  message:
+                    type: string
+                    nullable: true
+                  errors:
+                    type: array
+                example:
+                  data:
+                    id: 76
+                    integration_instance_id: 1
+                    veracore_task_id: '84213'
+                    report_name: GetOrdersFreight
+                    status: processed
+                    status_label: Processed
+                    status_color: success
+                    filter_start_date: '2026-06-27T00:00:00+00:00'
+                    filter_end_date: '2026-07-04T23:59:59+00:00'
+                    poll_attempts: 3
+                    rows_matched: 31
+                    error_message: null
+                    processed_at: '2026-07-05T02:14:09+00:00'
+                    created_at: '2026-07-05T02:05:11+00:00'
+                    updated_at: '2026-07-05T02:14:09+00:00'
+                    row_count: 4
+                    summary:
+                      tracked: 2
+                      pending: 1
+                      no_tracking_in_report: 0
+                      no_order: 1
+                      unusable: 0
+                    rows:
+                    - index: 0
+                      order_id: SO-10241
+                      tracking_number: 1Z999AA10123456784
+                      carrier: UPS
+                      service: UPS Ground
+                      shipped_at: '2026-07-04T13:45:00+00:00'
+                      freight: 12.34
+                      state: tracked
+                      state_label: Tracked
+                      state_color: success
+                      veracore_order:
+                        id: 5512
+                        veracore_id: 700118
+                        reference_number: SO-10241
+                        status: Processed
+                        recorded_tracking_number: 1Z999AA10123456784
+                        no_tracking: false
+                    - index: 1
+                      order_id: SO-10242
+                      tracking_number: null
+                      carrier: null
+                      service: null
+                      shipped_at: null
+                      freight: null
+                      state: tracked
+                      state_label: Tracked
+                      state_color: success
+                      veracore_order:
+                        id: 5513
+                        veracore_id: 700119
+                        reference_number: SO-10242
+                        status: Processed
+                        recorded_tracking_number: null
+                        no_tracking: true
+                    - index: 2
+                      order_id: SO-10243
+                      tracking_number: 1Z999AA10123456791
+                      carrier: UPS
+                      service: UPS 2nd Day Air
+                      shipped_at: '2026-07-04T16:02:00+00:00'
+                      freight: 24.1
+                      state: pending
+                      state_label: Tracking not applied
+                      state_color: error
+                      veracore_order:
+                        id: 5514
+                        veracore_id: 700120
+                        reference_number: SO-10243
+                        status: Processed
+                        recorded_tracking_number: null
+                        no_tracking: false
+                    - index: 3
+                      order_id: SO-99999
+                      tracking_number: 1Z999AA10123456807
+                      carrier: UPS
+                      service: UPS Ground
+                      shipped_at: '2026-07-04T17:20:00+00:00'
+                      freight: 9.75
+                      state: no_order
+                      state_label: No SKU.io order
+                      state_color: grey
+                      veracore_order: null
+                  message: null
+                  errors: []
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-veracore-integration-instances-integration-instance-report-tasks-report-task
+  /api/veracore/integration-instances/{integration_instance}/report-tasks/{report_task}/raw:
+    get:
+      tags:
+      - Veracore
+      summary: Get Report Task Raw Payload
+      description: 'The report payload exactly as Veracore returned it, plus when
+        the task was processed.
+
+
+        Kept off the detail response on purpose — a week''s report is hundreds of
+        rows and the detail endpoint already returns a parsed form of every one of
+        them. This is the escape hatch for when the parsed view and the provider appear
+        to disagree: the payload here is stored verbatim and is never rewritten by
+        later syncs.
+
+
+        `report_data` is `null` for a task that has not been retrieved yet (`created`
+        / `polling` / `failed`); `processed_at` is `null` until the rows have been
+        applied.
+
+
+        **Errors**
+
+        - `404` when the report task does not exist or belongs to a different integration
+        instance.
+
+        - `404` when the integration instance is not a Veracore instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Veracore integration instance id
+        example: '1'
+      - name: report_task
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Report task id (numeric)
+        example: '76'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      report_data:
+                        type: object
+                        properties:
+                          Data:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                Order ID:
+                                  type: string
+                                Individual Package Tracking Number:
+                                  type: string
+                                Package Freight Carrier:
+                                  type: string
+                                Package Freight Code Description:
+                                  type: string
+                                Shipping Order Date & Time Created:
+                                  type: string
+                                Freight:
+                                  type: string
+                      processed_at:
+                        type: string
+                  message:
+                    type: string
+                    nullable: true
+                  errors:
+                    type: array
+                example:
+                  data:
+                    report_data:
+                      Data:
+                      - Order ID: SO-10241
+                        Individual Package Tracking Number: 1Z999AA10123456784
+                        Package Freight Carrier: UPS
+                        Package Freight Code Description: UPS Ground
+                        Shipping Order Date & Time Created: 07/04/2026 13:45:00
+                        Freight: '12.34'
+                    processed_at: '2026-07-05T02:14:09+00:00'
+                  message: null
+                  errors: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-veracore-integration-instances-integration-instance-report-tasks-report-task-raw
   /api/veracore/integration-instances/{integration_instance}/report-tasks/{report_task}/retry:
     post:
       tags:
@@ -291270,9 +291728,8 @@ paths:
       tags:
       - Veracore
       summary: List Shipping Method Mappings
-      description: 'List every carrier + service combination observed on this instance''s
-        Veracore orders, joined with any existing mapping to a SKU.io shipping method,
-        plus the full list of SKU.io shipping methods available to map to.
+      description: 'Every carrier + service combination observed on this instance''s
+        Veracore orders, joined with its mapping to a SKU.io shipping method.
 
 
         :::warning[Not yet available to API tokens]
@@ -291283,18 +291740,38 @@ paths:
         :::
 
 
-        Each entry in `services` has a `code` in the form `Carrier|Service Description`
-        (e.g. `UPS|UPS Ground`), how many orders were seen with that combination,
-        and the current `mapping` (or `null` when unmapped). Combinations that were
-        mapped previously but no longer appear on any order are still included with
-        `order_count: 0`.
+        Each row has a `code` in the form `Carrier|Service Description` (e.g. `UPS|UPS
+        Ground`), how many orders were seen with that combination, and the current
+        `mapping` (or `null` when unmapped). Combinations that were mapped previously
+        but no longer appear on any order are still included with `order_count: 0`.
 
 
         All data is read from locally stored orders; no call is made to the Veracore
-        API.
+        API. The list is assembled from those orders and then paginated in memory
+        (`page`, `per_page`, default 15), so it carries pagination metadata like any
+        other record feed.
 
 
         Use the returned `code` values with the map and unmap endpoints.
+
+
+        **Search and filters**
+
+        Because the rows are derived from order payloads rather than a table, this
+        list supports one combined search and one mapped/unmapped filter — not the
+        per-column operator syntax used elsewhere.
+
+
+        - `filter[search]` matches across carrier, carrier description, code, and
+        the mapped SKU.io shipping method name.
+
+        - `filter[is_mapped]` takes `true` or `false`.
+
+
+        **Sorting**
+
+        `sort` accepts `code`, `carrier`, `carrier_description`, `order_count`, `shipping_method_name`
+        (prefix with `-` for descending). Anything else falls back to `-order_count`.
 
 
         **Errors**
@@ -291325,75 +291802,102 @@ paths:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
-                    type: object
-                    properties:
-                      services:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            code:
-                              type: string
-                            carrier:
-                              type: string
-                            carrier_description:
-                              type: string
-                            order_count:
-                              type: integer
-                            mapping:
-                              type: object
-                              properties:
-                                id:
-                                  type: integer
-                                shipping_method_id:
-                                  type: integer
-                                shipping_method_name:
-                                  type: string
-                                shipping_method_type:
-                                  type: string
-                      sku_shipping_methods:
-                        type: array
-                        items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                        carrier:
+                          type: string
+                        carrier_description:
+                          type: string
+                        order_count:
+                          type: integer
+                        mapping:
                           type: object
                           properties:
                             id:
                               type: integer
-                            name:
+                            shipping_method_id:
+                              type: integer
+                            shipping_method_name:
                               type: string
-                            full_name:
+                            shipping_method_type:
                               type: string
-                            type:
-                              type: string
-                  status:
+                  first_page_url:
                     type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
-                    services:
-                    - code: UPS|UPS Ground
-                      carrier: UPS
-                      carrier_description: UPS Ground
-                      order_count: 412
-                      mapping:
-                        id: 9
-                        shipping_method_id: 3
-                        shipping_method_name: UPS Ground
-                        shipping_method_type: standard
-                    - code: FedEx|FedEx 2Day
-                      carrier: FedEx
-                      carrier_description: FedEx 2Day
-                      order_count: 57
-                      mapping: null
-                    sku_shipping_methods:
-                    - id: 3
-                      name: Ground
-                      full_name: UPS Ground
-                      type: standard
-                    - id: 7
-                      name: 2Day
-                      full_name: FedEx 2Day
-                      type: expedited
-                  status: success
+                  - code: UPS|UPS Ground
+                    carrier: UPS
+                    carrier_description: UPS Ground
+                    order_count: 412
+                    mapping:
+                      id: 9
+                      shipping_method_id: 3
+                      shipping_method_name: UPS Ground
+                      shipping_method_type: standard
+                  - code: FedEx|FedEx 2Day
+                    carrier: FedEx
+                    carrier_description: FedEx 2Day
+                    order_count: 57
+                    mapping: null
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/shipping-methods?page=1
+                  from: 1
+                  last_page: 2
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/shipping-methods?page=2
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/shipping-methods?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/shipping-methods?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/shipping-methods?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/shipping-methods
+                  per_page: 15
+                  prev_page_url: null
+                  to: 15
+                  total: 18
         '429': *id001
         '401': *id002
         '403': *id003
@@ -291611,7 +292115,7 @@ paths:
       tags:
       - Veracore
       summary: List Source Code Mappings
-      description: 'List all source code mappings for a Veracore integration instance.
+      description: 'All source code mappings for a Veracore integration instance.
 
 
         :::warning[Not yet available to API tokens]
@@ -291629,7 +292133,64 @@ paths:
         sales channel.
 
 
-        The response is a plain array (not paginated).
+        The feed is paginated (`page`, `per_page`, default 15) and filtered server-side.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `source_code`, the sales channel''s
+        name and the subchannel''s name.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `source_code`, `sales_channel_integration_instance_name`,
+        `sub_sales_channel_name`.
+
+        - Numeric columns: `id`, `sales_channel_integration_instance_id`, `sub_sales_channel_id`.
+
+        - Datetime columns: `created_at`, `updated_at`.
+
+        - `filter[is_catch_all]` takes `true` or `false`. "Applies to every order
+        from this channel" is the *absence* of a subchannel rather than a value anyone
+        can type, so it is offered as a filter of its own.
+
+
+        The two relationship name columns filter through their relationships and are
+        not registered as sort columns — sort by `sales_channel_integration_instance_id`
+        / `sub_sales_channel_id` instead.
+
+
+        **Sorting**
+
+        `sort` accepts `id`, `sales_channel_integration_instance_id`, `sub_sales_channel_id`,
+        `source_code`, `created_at`, `updated_at` (prefix with `-` for descending).
+        Default sort is `source_code`.
 
 
         **Errors**
@@ -291660,6 +292221,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
                     type: array
                     items:
@@ -291683,9 +292246,41 @@ paths:
                           type: string
                         updated_at:
                           type: string
-                  status:
+                  first_page_url:
                     type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
                   - id: 3
                     integration_instance_id: 1
@@ -291705,7 +292300,26 @@ paths:
                     source_code: SHOP-DEFAULT
                     created_at: '2026-06-01T12:05:00.000000Z'
                     updated_at: '2026-06-01T12:05:00.000000Z'
-                  status: success
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings?page=1
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/source-code-mappings
+                  per_page: 15
+                  prev_page_url: null
+                  to: 6
+                  total: 6
         '429': *id001
         '401': *id002
         '403': *id003
@@ -292220,13 +292834,82 @@ paths:
       tags:
       - Veracore
       summary: Get Warehouse Mappings
-      description: 'List every Veracore facility discovered for this integration instance
-        alongside its SKU.io warehouse mapping. This is a plain list rather than a
-        paginated feed — a 3PL fulfils from a handful of buildings, not thousands.
+      description: 'Every Veracore facility discovered for this integration instance
+        alongside its SKU.io warehouse mapping.
 
 
-        `available_warehouses` is the set of SKU.io warehouses that can be picked,
-        and `summary` carries the mapped / unmapped counts behind the status banner.
+        A 3PL fulfils from a handful of buildings, so the page count is usually one
+        — the feed is paginated (`page`, `per_page`, default 15) and filtered server-side
+        for consistency with every other record list, not to spare the database.
+
+
+        `is_mapped` is `true` once a SKU.io warehouse is behind the facility. `auto_mapped`
+        marks a facility matched automatically rather than by hand. An inactive facility
+        keeps its mapping — it simply stops mirroring — which is why `inactive` is
+        its own scope rather than a third mapped/unmapped state.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `veracore_warehouse_id`, `veracore_warehouse_name`
+        and the mapped SKU.io warehouse''s name.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `veracore_warehouse_id`, `veracore_warehouse_name`, `warehouse_name`
+        (the mapped SKU.io warehouse, filtered through the relationship).
+
+        - Numeric columns: `id`, `warehouse_id`.
+
+        - Boolean columns: `is_active`, `auto_mapped` (send `1` or `0`).
+
+        - Datetime columns: `last_seen_at`, `created_at`, `updated_at`.
+
+        - `filter[is_mapped]` takes `true` or `false`; `filter[scope]` takes `mapped`,
+        `unmapped` or `inactive`.
+
+
+        `warehouse_name` filters through its relationship and is not a sort column
+        — sort by `warehouse_id` instead.
+
+
+        **Sorting**
+
+        `sort` accepts `id`, `veracore_warehouse_id`, `veracore_warehouse_name`, `warehouse_id`,
+        `is_active`, `auto_mapped`, `last_seen_at`, `created_at`, `updated_at` (prefix
+        with `-` for descending). Default sort is `veracore_warehouse_name`.
+
+
+        **Errors**
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
 
 
         Authentication: Requires Bearer token.'
@@ -292251,6 +292934,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
                     type: array
                     items:
@@ -292287,25 +292972,41 @@ paths:
                           type: string
                         updated_at:
                           type: string
-                  available_warehouses:
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
                     type: array
                     items:
                       type: object
                       properties:
-                        id:
-                          type: integer
-                        name:
+                        url:
                           type: string
-                  summary:
-                    type: object
-                    properties:
-                      total:
-                        type: integer
-                      mapped:
-                        type: integer
-                      unmapped:
-                        type: integer
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
                   - id: 12
                     integration_instance_id: 5
@@ -292334,17 +293035,26 @@ paths:
                     last_seen_at: '2026-07-29T04:15:00+00:00'
                     created_at: '2026-07-20T11:40:03+00:00'
                     updated_at: '2026-07-29T04:15:00+00:00'
-                  available_warehouses:
-                  - id: 3
-                    name: Atlanta
-                  - id: 4
-                    name: Reno
-                  - id: 7
-                    name: Main Warehouse
-                  summary:
-                    total: 2
-                    mapped: 1
-                    unmapped: 1
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings?page=1
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/warehouse-mappings
+                  per_page: 15
+                  prev_page_url: null
+                  to: 2
+                  total: 2
         '429': *id001
         '401': *id002
         '403': *id003
@@ -292753,6 +293463,8 @@ paths:
                               type: integer
                             name:
                               type: string
+                            link_route:
+                              type: string
                         on_hand:
                           type: integer
                         veracore_available:
@@ -292769,6 +293481,15 @@ paths:
                           type: integer
                         is_aggregate_fallback:
                           type: boolean
+                        veracore_product:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            veracore_product_id:
+                              type: string
+                            link_route:
+                              type: string
                         sku_product:
                           type: object
                           properties:
@@ -292825,6 +293546,7 @@ paths:
                     warehouse:
                       id: 3
                       name: Atlanta
+                      link_route: /crm/warehouses/3
                     on_hand: 412
                     veracore_available: 412
                     available: 388
@@ -292833,6 +293555,10 @@ paths:
                     is_multi_product_offer: false
                     bom_product_count: 1
                     is_aggregate_fallback: false
+                    veracore_product:
+                      id: 4471
+                      veracore_product_id: WIDGET-BLUE
+                      link_route: /integrations/veracore/5/products/4471
                     sku_product:
                       id: 8812
                       sku: WID-BLU-12
@@ -292852,6 +293578,7 @@ paths:
                     warehouse:
                       id: 3
                       name: Atlanta
+                      link_route: /crm/warehouses/3
                     on_hand: 57
                     veracore_available: 57
                     available: 57
@@ -292860,6 +293587,7 @@ paths:
                     is_multi_product_offer: true
                     bom_product_count: 2
                     is_aggregate_fallback: false
+                    veracore_product: null
                     sku_product: null
                     is_mapped: false
                     last_synced_at: '2026-07-29T04:20:14+00:00'
@@ -293052,12 +293780,81 @@ paths:
         is the absolute gap priced at unit cost.
 
 
-        Rows are returned in full rather than paginated because the report is the
-        input to stock take creation. Rows are Veracore Offers, not SKU.io products.
-        A multi-product offer (`is_multi_product_offer`) reports the minimum balance
-        across its components, so it is one row here and several products in SKU.io
-        — those rows are excluded from the discrepancy report and from stock take
-        creation because the two sides are not comparable.
+        Rows are Veracore Offers, not SKU.io products. A multi-product offer reports
+        the minimum balance across its components, so it is one row here and several
+        products in SKU.io — those rows are excluded from the report and from stock
+        take creation because the two sides are not comparable.
+
+
+        The feed is paginated (`page`, `per_page`, default 15) and filtered server-side.
+        `veracore_product_row_id` is the Veracore catalogue record behind the offer
+        so the row can be followed through to the item; it is `null` when no catalogue
+        record was ever stored for it.
+
+
+        Totals over the same filtered set — item count, cost impact, shortfall and
+        surplus counts — come from the companion discrepancy-stats endpoint, which
+        is what to call for headline figures rather than summing a page.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `sku`, `product_name`, `veracore_product_id`
+        and `veracore_title`.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `sku`, `product_name`, `type`, `veracore_product_id`, `veracore_title`,
+        `sku_warehouse_name`, `veracore_warehouse_id`, `veracore_warehouse_name`.
+
+        - Numeric columns: `unit_cost`, `sku_inventory`, `veracore_inventory`, `discrepancy`,
+        `discrepancy_value`, `component_count`.
+
+        - Datetime columns: `last_synced_at`.
+
+        - `filter[direction]` takes `shortfall` or `surplus`.
+
+        - `filter[sku_warehouse_id]` takes one id or a comma-separated list.
+
+
+        **Sorting**
+
+        `sort` accepts `sku`, `product_name`, `type`, `unit_cost`, `veracore_product_id`,
+        `veracore_title`, `sku_warehouse_name`, `veracore_warehouse_name`, `last_synced_at`,
+        `sku_inventory`, `veracore_inventory`, `discrepancy`, `discrepancy_value`,
+        `component_count` (prefix with `-` for descending). Default sort is `sku`.
+
+
+        **Errors**
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
 
 
         Authentication: Requires Bearer token.'
@@ -293082,6 +293879,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
                     type: array
                     items:
@@ -293093,6 +293892,8 @@ paths:
                           type: string
                         product_name:
                           type: string
+                        veracore_product_row_id:
+                          type: integer
                         veracore_product_id:
                           type: string
                         veracore_title:
@@ -293119,11 +293920,46 @@ paths:
                           type: integer
                         last_synced_at:
                           type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
                   - product_id: 8812
                     sku: WID-BLU-12
                     product_name: Blue Widget 12 oz
+                    veracore_product_row_id: 4471
                     veracore_product_id: WIDGET-BLUE
                     veracore_title: Blue Widget, 12 oz
                     sku_warehouse_id: 3
@@ -293137,23 +293973,115 @@ paths:
                     discrepancy_value: 76.5
                     component_count: 0
                     last_synced_at: '2026-07-29T04:20:14+00:00'
+                  - product_id: 8813
+                    sku: WID-RED-12
+                    product_name: Red Widget 12 oz
+                    veracore_product_row_id: null
+                    veracore_product_id: WIDGET-RED
+                    veracore_title: Red Widget, 12 oz
+                    sku_warehouse_id: 3
+                    sku_warehouse_name: Atlanta
+                    veracore_warehouse_id: ATL
+                    veracore_warehouse_name: Atlanta Distribution Center
+                    sku_inventory: 96
+                    veracore_inventory: 110
+                    discrepancy: 14
+                    unit_cost: 4.25
+                    discrepancy_value: 59.5
+                    component_count: 0
+                    last_synced_at: '2026-07-29T04:20:14+00:00'
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies?page=1
+                  from: 1
+                  last_page: 2
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies?page=2
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/inventory/discrepancies
+                  per_page: 15
+                  prev_page_url: null
+                  to: 15
+                  total: 27
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
       operationId: get-api-veracore-integration-instances-integration-instance-inventory-discrepancies
-  /api/veracore/integration-instances/{integration_instance}/inventory/without-veracore-inventory:
+  /api/veracore/integration-instances/{integration_instance}/inventory/discrepancy-stats:
     get:
       tags:
       - Veracore
-      summary: Get Products Without Veracore Inventory
-      description: 'Stocked SKU.io products that Veracore has never reported a balance
-        for. These are usually products the 3PL has not been told about yet, or products
-        fulfilled from elsewhere.
+      summary: Get Inventory Discrepancy Stats
+      description: 'Totals over the same filtered discrepancy set the discrepancies
+        endpoint pages through.
 
 
-        `sku_inventory` is the SKU.io available quantity for the requested warehouse,
-        or the all-warehouse total when no warehouse is supplied.
+        `items` is how many discrepancies match, `impact` is the summed absolute gap
+        priced at unit cost, and `shortfalls` / `surpluses` split those items by direction
+        (`shortfall` = SKU.io believes it holds more than the warehouse does).
+
+
+        Call this instead of adding up a page. The aggregation runs in SQL over the
+        whole filtered set, so passing the same `warehouse_id` and filters as the
+        list gives headline figures that agree with what the list is showing rather
+        than with its first 15 rows.
+
+
+        Every filter the discrepancies endpoint accepts is accepted here; `page`,
+        `per_page` and `sort` are not — there are no rows to order.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `sku`, `product_name`, `type`, `veracore_product_id`, `veracore_title`,
+        `sku_warehouse_name`, `veracore_warehouse_id`, `veracore_warehouse_name`.
+
+        - Numeric columns: `unit_cost`, `sku_inventory`, `veracore_inventory`, `discrepancy`,
+        `discrepancy_value`, `component_count`.
+
+        - Datetime columns: `last_synced_at`.
+
+        - `filter[direction]` takes `shortfall` or `surplus`; `filter[sku_warehouse_id]`
+        takes one id or a comma-separated list.
+
+
+        **Errors**
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
 
 
         Authentication: Requires Bearer token.'
@@ -293179,6 +294107,118 @@ paths:
                 type: object
                 properties:
                   data:
+                    type: object
+                    properties:
+                      items:
+                        type: integer
+                      impact:
+                        type: number
+                      shortfalls:
+                        type: integer
+                      surpluses:
+                        type: integer
+                example:
+                  data:
+                    items: 27
+                    impact: 3184.75
+                    shortfalls: 18
+                    surpluses: 9
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-veracore-integration-instances-integration-instance-inventory-discrepancy-stats
+  /api/veracore/integration-instances/{integration_instance}/inventory/without-veracore-inventory:
+    get:
+      tags:
+      - Veracore
+      summary: Get Products Without Veracore Inventory
+      description: 'Stocked SKU.io products that Veracore has never reported a balance
+        for. These are usually products the 3PL has not been told about yet, or products
+        fulfilled from elsewhere.
+
+
+        `sku_inventory` is the SKU.io available quantity for the requested warehouse,
+        or the all-warehouse total when no warehouse is supplied.
+
+
+        The feed is paginated (`page`, `per_page`, default 15) and filtered server-side.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `sku` and `name`.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `sku`, `name`, `type`.
+
+        - Numeric columns: `id`, `unit_cost`, `sku_inventory`.
+
+
+        **Sorting**
+
+        `sort` accepts `id`, `sku`, `name`, `type`, `unit_cost`, `sku_inventory` (prefix
+        with `-` for descending). Default sort is `sku`.
+
+
+        **Errors**
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Veracore integration instance id
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
                     type: array
                     items:
                       type: object
@@ -293195,7 +294235,41 @@ paths:
                           type: number
                         sku_inventory:
                           type: integer
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
                   - id: 9004
                     sku: GLS-500
@@ -293209,6 +294283,26 @@ paths:
                     type: simple
                     unit_cost: 0.35
                     sku_inventory: 0
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only?page=1
+                  from: 1
+                  last_page: 8
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only?page=8
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/inventory/skuio-only
+                  per_page: 15
+                  prev_page_url: null
+                  to: 15
+                  total: 118
         '429': *id001
         '401': *id002
         '403': *id003
@@ -293232,6 +294326,70 @@ paths:
         same value.
 
 
+        The feed is paginated (`page`, `per_page`, default 15) and filtered server-side.
+        `veracore_product_row_id` is the Veracore catalogue record behind the item
+        when one exists, and `null` when the item was never catalogued — which is
+        itself one of the two ways a row lands in this list.
+
+
+        **Search**
+
+        `filter[search]` runs a fuzzy LIKE across `veracore_product_id`, `title` and
+        `veracore_warehouse_name`.
+
+
+        **Filters**
+
+        Every filterable column takes an operator suffix, e.g. `filter[sku.contains]=WID`.
+        The bare form (`filter[sku]=WID-BLU-12`) is equivalent to `.is`.
+
+
+        - Text operators: `is`, `is_not`, `contains`, `does_not_contain`, `is_one_of`,
+        `is_not_one_of`, `starts_with`, `does_not_start_with`, `ends_with`, `does_not_end_with`,
+        `is_empty`, `is_not_empty`.
+
+        - Numeric operators: `is`, `is_not`, `is_one_of`, `is_not_one_of`, `greater_than`,
+        `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `between`, `is_empty`,
+        `is_not_empty`.
+
+        - Datetime operators: `is`, `is_not`, `before`, `after`, `on_or_before`, `on_or_after`,
+        `between`, `is_empty`, `is_not_empty`, plus the relative operators `today`,
+        `yesterday`, `tomorrow`, `past_week`, `past_month`, `past_year`, `next_week`,
+        `next_month`, `next_year`.
+
+
+        **Advanced filter groups**
+
+        Instead of flat keys, clients may send a base64-encoded `filter_groups` tree,
+        nesting AND/OR groups over the same columns. Unregistered columns inside the
+        tree are silently ignored.
+
+
+        - Text columns: `veracore_product_id`, `title`, `veracore_warehouse_id`, `veracore_warehouse_name`.
+
+        - Numeric columns: `id`, `on_hand`, `available`, `committed`, `incoming`.
+
+        - Boolean columns: `is_multi_product_offer`, `needs_review` (send `1` or `0`).
+
+        - `filter[status]` takes `needs_review` or `unmapped`. `unmapped` deliberately
+        matches rows with no catalogue record as well as catalogued rows that were
+        never reviewed, so the two statuses sum back to the full list.
+
+
+        **Sorting**
+
+        `sort` accepts `id`, `veracore_product_id`, `title`, `veracore_warehouse_id`,
+        `veracore_warehouse_name`, `on_hand`, `available`, `committed`, `incoming`,
+        `is_multi_product_offer`, `needs_review` (prefix with `-` for descending).
+        Default sort is `veracore_product_id`.
+
+
+        **Errors**
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: integration_instance
@@ -293254,6 +294412,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  current_page:
+                    type: integer
                   data:
                     type: array
                     items:
@@ -293281,7 +294441,43 @@ paths:
                           type: integer
                         needs_review:
                           type: integer
+                        veracore_product_row_id:
+                          type: integer
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
                 example:
+                  current_page: 1
                   data:
                   - id: 90211
                     veracore_product_id: SHAKER-SET
@@ -293294,6 +294490,7 @@ paths:
                     incoming: 0
                     is_multi_product_offer: 1
                     needs_review: 0
+                    veracore_product_row_id: 4802
                   - id: 90244
                     veracore_product_id: PROMO-CARD
                     title: Promo Insert Card
@@ -293305,6 +294502,27 @@ paths:
                     incoming: 0
                     is_multi_product_offer: 0
                     needs_review: 1
+                    veracore_product_row_id: null
+                  first_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only?page=1
+                  from: 1
+                  last_page: 5
+                  last_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only?page=5
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only?page=1
+                    label: '1'
+                    active: true
+                  - url: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only?page=2
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only?page=2
+                  path: https://app.example.com/api/veracore/integration-instances/1/inventory/veracore-only
+                  per_page: 15
+                  prev_page_url: null
+                  to: 15
+                  total: 63
         '429': *id001
         '401': *id002
         '403': *id003
@@ -293330,19 +294548,42 @@ paths:
 
         - `product_ids` (array of integers, optional) — SKU.io product ids to include.
         These are product ids, not inventory row ids, because the discrepancy report
-        is keyed on the mapped product. Omit or send an empty array to include every
-        eligible discrepancy.
+        is keyed on the mapped product. Omit or send an empty array to mean "every
+        eligible discrepancy".
 
         - `warehouse_id` (integer, optional) — restrict the stock take to one SKU.io
         warehouse.
 
         - `status` (string, optional) — one of `draft`, `open`, `closed`. Defaults
-        to `draft`.
+        to `draft`. `open` starts the count immediately; `closed` starts and finalises
+        it in one call.
 
         - `date` (date, optional) — stock take date. Defaults to today.
 
         - `notes` (string, optional, max 1000) — free text carried onto the stock
         take.
+
+
+        **Selecting "everything" safely**
+
+        When `product_ids` is empty the server resolves the selection itself by re-running
+        the discrepancy query. Any filter the discrepancy list accepts may be appended
+        to this request''s query string, and the selection is narrowed the same way
+        — so "apply to all" means everything currently matching those filters, not
+        the whole warehouse. Send no filters to select the entire eligible set.
+
+
+        **Errors**
+
+        - `422` when nothing is eligible, or when the selection spans more than one
+        warehouse and no `warehouse_id` was supplied — a stock take counts one warehouse
+        at a time.
+
+        - `422` when the Veracore facility behind the selection has no SKU.io warehouse
+        mapped to it.
+
+        - `404` when the integration instance does not exist or is not a Veracore
+        instance.
 
 
         Authentication: Requires Bearer token.'
@@ -293467,12 +294708,22 @@ paths:
         them against a movement ledger.
 
 
+        **Default scope: changes only.** An `initial` row is the opening balance Veracore
+        reported the first time it ever saw an offer — nothing moved, so there is
+        nothing to act on, and on a freshly synced instance they are every row in
+        the ledger. They are therefore excluded unless asked for. `filter[source_scope]`
+        controls this: omit it (or send `movement`) for changes only, `all` to include
+        opening balances, or `snapshot` / `absent` / `initial` to see exactly one
+        kind. There is no raw `filter[source]` — it could only ever narrow, so it
+        could not widen the default scope back out to include `initial`.
+
+
         **Search** — `filter[search]` matches the Veracore item code.
 
 
         **Filterable columns**
 
-        - Text: `veracore_product_id`, `source`
+        - Text: `veracore_product_id`
 
         - Numeric: `id`, `previous_on_hand`, `new_on_hand`, `previous_available`,
         `new_available`, `delta`
@@ -293480,7 +294731,8 @@ paths:
         - Date/time: `changed_at`, `created_at`, `updated_at`
 
         - Bespoke: `filter[sku_warehouse_id]` (id or array of ids), `filter[direction]`
-        (`increase` or `decrease`)
+        (`increase` or `decrease`), `filter[source_scope]` (`movement` (default),
+        `all`, `snapshot`, `absent`, `initial`)
 
 
         **Sortable columns** — `id`, `veracore_product_id`, `previous_on_hand`, `new_on_hand`,
@@ -293621,9 +294873,9 @@ paths:
                     delta: -18
                     direction: decrease
                     direction_color: error
-                    source: sync
-                    source_label: Sync
-                    source_color: info
+                    source: snapshot
+                    source_label: Snapshot Change
+                    source_color: primary
                     changed_at: '2026-07-29T04:20:14+00:00'
                     created_at: '2026-07-29T04:20:16+00:00'
                   - id: 550022
@@ -293643,9 +294895,9 @@ paths:
                     delta: 17
                     direction: increase
                     direction_color: success
-                    source: sync
-                    source_label: Sync
-                    source_color: info
+                    source: snapshot
+                    source_label: Snapshot Change
+                    source_color: primary
                     changed_at: '2026-07-29T04:20:14+00:00'
                     created_at: '2026-07-29T04:20:16+00:00'
                   current_page: 1
@@ -293670,14 +294922,58 @@ paths:
       tags:
       - Veracore
       summary: Get Inventory Change Summary
-      description: 'Aggregate movement of the ledger over a window: how many changes
-        were observed, how many went each way, and the net and gross unit swing.
+      description: 'Aggregate the ledger over exactly the rows the list endpoint would
+        return: how many changes were observed, how many went each way, and the net
+        and gross unit swing.
 
 
         Veracore publishes no movement feed, so each row is the difference between
         two consecutive snapshots — an observation, never a warehouse transaction.
         Treat these as observed changes, not as inventory movements, and do not reconcile
         them against a movement ledger.
+
+
+        **Same filters as the list endpoint** — this endpoint accepts the identical
+        `filter[...]` query parameters as `Get Inventory Changes` and aggregates over
+        the identical filtered set, so a summary and a page of rows fetched with the
+        same query string always describe the same data. `sort`, `page` and `per_page`
+        are ignored. Narrow the window with a `changed_at` filter rather than a separate
+        window parameter.
+
+
+        **First observations are out of scope by default.** A row whose `source` is
+        `initial` is an opening balance — Veracore reported a quantity for an offer
+        that had never been seen before, so there was no earlier snapshot to diff
+        against. Counting it as a receipt would report an entire catalogue as having
+        been received the instant it was first synced. `changes`, `increases`, `decreases`,
+        `net_delta`, `units_in` and `units_out` therefore cover only `snapshot` and
+        `absent` rows, and those rows are the only ones in scope at all unless `filter[source_scope]`
+        says otherwise — so on the default view `baseline` is zero and `observations`
+        equals `changes`. Send `filter[source_scope]=all` (or `=initial`) to bring
+        the opening balances into scope, where they are reported separately under
+        `baseline` and still kept out of every movement figure.
+
+
+        **Response fields**
+
+        - `changes` — observations that represent real movement (excludes `initial`)
+
+        - `increases` / `decreases` — movement observations by direction
+
+        - `net_delta` — signed sum of the moved units
+
+        - `units_in` / `units_out` — gross units gained and lost, both positive
+
+        - `observations` — every row in scope, including first observations when `filter[source_scope]`
+        brings them in; matches the list endpoint''s `total`
+
+        - `baseline.observations` / `baseline.units` — the first observations and
+        the units they opened with
+
+        - `by_source` — row count keyed by source
+
+        - `range.from` / `range.to` — the observed span of the rows in scope, or null
+        when nothing matches
 
 
         Authentication: Requires Bearer token.'
@@ -293717,6 +295013,29 @@ paths:
                         type: integer
                       units_out:
                         type: integer
+                      observations:
+                        type: integer
+                      baseline:
+                        type: object
+                        properties:
+                          observations:
+                            type: integer
+                          units:
+                            type: integer
+                      by_source:
+                        type: object
+                        properties:
+                          snapshot:
+                            type: integer
+                          absent:
+                            type: integer
+                      range:
+                        type: object
+                        properties:
+                          from:
+                            type: string
+                          to:
+                            type: string
                 example:
                   data:
                     changes: 1204
@@ -293725,6 +295044,16 @@ paths:
                     net_delta: -3182
                     units_in: 41277
                     units_out: 44459
+                    observations: 1204
+                    baseline:
+                      observations: 0
+                      units: 0
+                    by_source:
+                      snapshot: 1198
+                      absent: 6
+                    range:
+                      from: '2026-07-01 04:20:14'
+                      to: '2026-07-29 04:20:14'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -293841,9 +295170,9 @@ paths:
                     delta: -18
                     direction: decrease
                     direction_color: error
-                    source: sync
-                    source_label: Sync
-                    source_color: info
+                    source: snapshot
+                    source_label: Snapshot Change
+                    source_color: primary
                     changed_at: '2026-07-29T04:20:14+00:00'
                     created_at: '2026-07-29T04:20:16+00:00'
         '404':
@@ -294107,6 +295436,165 @@ paths:
         '403': *id003
         '404': *id004
       operationId: get-api-veracore-integration-instances-integration-instance-products
+  /api/veracore/integration-instances/{integration_instance}/products/summary:
+    get:
+      tags:
+      - Veracore
+      summary: Get Product Summary
+      description: 'Mapping counts for the whole Veracore offer catalogue on an integration
+        instance, returned as a single aggregate rather than paging the catalogue.
+
+
+        The three mapping states partition the catalogue exactly, so `mapped + unmapped
+        + needs_review` always equals `all`. An offer awaiting review is unmapped
+        in the database but is counted only under `needs_review`, never under `unmapped`.
+
+
+        **Response fields**
+
+        - `all` — every mirrored offer on this instance
+
+        - `total` — alias of `all`
+
+        - `mapped` — offers linked to a SKU.io product
+
+        - `unmapped` — offers with no link and no pending match to review
+
+        - `needs_review` — offers where an automatic match was found but not trusted
+
+        - `last_synced_at` — when the catalogue was last pulled from Veracore, or
+        null if it never has been
+
+
+        Counts reflect only the offers belonging to the integration instance in the
+        path.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Veracore integration instance id
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      all:
+                        type: integer
+                      total:
+                        type: integer
+                      mapped:
+                        type: integer
+                      unmapped:
+                        type: integer
+                      needs_review:
+                        type: integer
+                      last_synced_at:
+                        type: string
+                example:
+                  data:
+                    all: 128
+                    total: 128
+                    mapped: 94
+                    unmapped: 22
+                    needs_review: 12
+                    last_synced_at: '2026-07-29T03:40:02+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-veracore-integration-instances-integration-instance-products-summary
+  /api/veracore/integration-instances/{integration_instance}/products/export:
+    get:
+      tags:
+      - Veracore
+      summary: Export Products
+      description: "Download the mirrored Veracore offer catalogue as a spreadsheet.\n\
+        \nThe response is a **file download** (`.xlsx` or `.csv`), not JSON.\n\nThis\
+        \ export is the first half of a round trip: the file is edited offline and\
+        \ uploaded back through the generic data-import endpoints with entity `veracore_product_mappings`,\
+        \ which reads the `Item` and `SKU.io SKU` columns to move mappings. Because\
+        \ of that, **`Item` and `SKU.io SKU` are always emitted even when `columns`\
+        \ does not ask for them** — a column preference can never produce a file the\
+        \ importer cannot read.\n\n**Query parameters**\n- `format` — `xlsx` (default)\
+        \ or `csv`\n- `scope` — which rows to include:\n  - `filtered` (default) —\
+        \ every row matching the `filter[...]`/`sort` params sent alongside, i.e.\
+        \ exactly what the table is showing\n  - `all` — the whole catalogue; filter/sort\
+        \ params are deliberately ignored\n  - `current_page` — only the rows on the\
+        \ requested page (honours `page`/`per_page`)\n  - `selected` — only the ids\
+        \ listed in `ids`, still subject to the filters\n- `ids` — comma-separated\
+        \ `veracore_products.id` values; only read when `scope=selected`\n- `columns`\
+        \ — comma-separated column keys to include. Omit for all 13. Unknown keys\
+        \ are ignored; `veracore_product_id` and `sku_product_id` are always prepended.\n\
+        \n`filter[...]`, `sort`, `page` and `per_page` accept the same values as `GET\
+        \ .../products` — the export runs the identical query pipeline so it can never\
+        \ disagree with the screen the user pressed Export on.\n\n**Column keys →\
+        \ headings**\n`veracore_product_id` → Item · `title` → Title · `sku_product_id`\
+        \ → SKU.io SKU · `product_name` → SKU.io Product · `mapping_state` → Mapping\
+        \ (Mapped / Mapped (manual) / Needs review / Unmapped) · `owner_id` → Owner\
+        \ · `unit_of_measure` → UOM · `product_type` → Product Type · `status` → Status\
+        \ · `is_multi_product_offer` → Multi-Product Offer (Yes/No) · `bom_product_count`\
+        \ → BOM Products · `lot_tracked` → Lot Tracked (Yes/No) · `last_synced_at`\
+        \ → Last Synced (application timezone)\n\nThe downloaded file is named `veracore-products-YYYY-MM-DD-HH-MM-SS.<format>`.\n\
+        \nAuthentication: Requires Bearer token."
+      parameters:
+      - name: format
+        in: query
+        schema:
+          type: string
+        description: xlsx (default) or csv
+        example: xlsx
+      - name: scope
+        in: query
+        schema:
+          type: string
+        description: filtered (default), all, current_page or selected
+        example: filtered
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Veracore integration instance id
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=veracore-products-2026-07-31-13-05-42.xlsx
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: <binary spreadsheet payload>
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-veracore-integration-instances-integration-instance-products-export
   /api/veracore/integration-instances/{integration_instance}/products/sync:
     post:
       tags:
@@ -294863,90 +296351,6 @@ paths:
         '401': *id002
         '403': *id003
       operationId: delete-api-veracore-integration-instances-integration-instance-products-product-mapping
-  /api/veracore/integration-instances/{integration_instance}/products/summary:
-    get:
-      tags:
-      - Veracore
-      summary: Get Product Summary
-      description: 'Mapping counts for the whole Veracore offer catalogue on an integration
-        instance, returned as a single aggregate rather than paging the catalogue.
-
-
-        The three mapping states partition the catalogue exactly, so `mapped + unmapped
-        + needs_review` always equals `all`. An offer awaiting review is unmapped
-        in the database but is counted only under `needs_review`, never under `unmapped`.
-
-
-        **Response fields**
-
-        - `all` — every mirrored offer on this instance
-
-        - `total` — alias of `all`
-
-        - `mapped` — offers linked to a SKU.io product
-
-        - `unmapped` — offers with no link and no pending match to review
-
-        - `needs_review` — offers where an automatic match was found but not trusted
-
-        - `last_synced_at` — when the catalogue was last pulled from Veracore, or
-        null if it never has been
-
-
-        Counts reflect only the offers belonging to the integration instance in the
-        path.
-
-
-        Authentication: Requires Bearer token.'
-      parameters:
-      - name: integration_instance
-        in: path
-        schema:
-          type: integer
-        required: true
-        description: Veracore integration instance id
-        example: '5'
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      all:
-                        type: integer
-                      total:
-                        type: integer
-                      mapped:
-                        type: integer
-                      unmapped:
-                        type: integer
-                      needs_review:
-                        type: integer
-                      last_synced_at:
-                        type: string
-                example:
-                  data:
-                    all: 128
-                    total: 128
-                    mapped: 94
-                    unmapped: 22
-                    needs_review: 12
-                    last_synced_at: '2026-07-29T03:40:02+00:00'
-        '429': *id001
-        '401': *id002
-        '403': *id003
-        '404': *id004
-      operationId: get-api-veracore-integration-instances-integration-instance-products-summary
   /api/veracore/integration-instances/{integration_instance}/expected-arrivals:
     get:
       tags:
@@ -294960,6 +296364,11 @@ paths:
         warehouse what is coming, it never adds stock. Every quantity here is *expected*.
         Once Veracore marks an arrival received it can no longer be edited or cancelled
         through the API, which is what `is_locked` reflects.
+
+
+        Each row carries two aggregates: `lines_count` (how many lines were announced)
+        and `total_quantity_expected` (their summed expected quantity). Both describe
+        the announcement — neither is a received quantity.
 
 
         **Search** — `filter[search]` matches the arrival reference and both purchase
@@ -295087,6 +296496,8 @@ paths:
                           nullable: true
                         lines_count:
                           type: integer
+                        total_quantity_expected:
+                          type: integer
                         last_synced_at:
                           type: string
                         created_at:
@@ -295147,6 +296558,7 @@ paths:
                     is_locked: false
                     last_error: null
                     lines_count: 2
+                    total_quantity_expected: 480
                     last_synced_at: '2026-07-29T05:02:44+00:00'
                     created_at: '2026-07-25T14:31:09+00:00'
                     updated_at: '2026-07-29T05:02:44+00:00'
@@ -295176,6 +296588,7 @@ paths:
                     is_locked: true
                     last_error: null
                     lines_count: 1
+                    total_quantity_expected: 96
                     last_synced_at: '2026-07-29T05:02:44+00:00'
                     created_at: '2026-07-25T14:31:09+00:00'
                     updated_at: '2026-07-29T05:02:44+00:00'
@@ -295846,6 +297259,141 @@ paths:
         '401': *id002
         '403': *id003
       operationId: delete-api-veracore-integration-instances-integration-instance-expected-arrivals-expectedarrival
+  /api/veracore/purchase-orders/{purchaseOrder}/expected-arrival:
+    get:
+      tags:
+      - Veracore
+      summary: Get Expected Arrival For Purchase Order
+      description: 'Whether a purchase order''s destination warehouse belongs to a
+        Veracore connection, and what became of the arrival announced for it.
+
+
+        `is_eligible` is `false` when no Veracore connection maps the purchase order''s
+        destination warehouse. That is a normal answer for most purchase orders, and
+        it is the only field returned in that case.
+
+
+        When `is_eligible` is `true` the response names the connection (`integration_instance_id`,
+        `integration_instance_name`) and the Veracore facility its destination warehouse
+        maps to (`veracore_warehouse_id`, `veracore_warehouse_name`), reports whether
+        that connection announces approved purchase orders without being asked (`auto_push_enabled`),
+        and returns the current announcement in `expected_arrival` — `null` when the
+        purchase order has never been announced.
+
+
+        Announce it by passing the returned `integration_instance_id` to `POST /api/veracore/integration-instances/{integration_instance}/expected-arrivals/push`
+        with `purchase_order_id`. Re-announcing updates the existing arrival rather
+        than creating a second one — Veracore matches on `foreign_system_key`.
+
+
+        An `expected_arrival` with `is_locked: true` has already been received by
+        the warehouse and can no longer be changed or cancelled.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: purchaseOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order id
+        example: '1041'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK — eligible, already announced
+                  value:
+                    data:
+                      is_eligible: true
+                      integration_instance_id: 5
+                      integration_instance_name: Veracore — East Coast
+                      veracore_warehouse_id: WH-EAST
+                      veracore_warehouse_name: Kentucky DC
+                      auto_push_enabled: true
+                      expected_arrival:
+                        id: 812
+                        integration_instance_id: 5
+                        foreign_system_key: SKU-PO-1041
+                        purchase_order_id: 1041
+                        purchase_order:
+                          id: 1041
+                          purchase_order_number: PO-1041
+                          order_status: approved
+                          receipt_status: not_received
+                          link_route: /orders/purchase-orders/1041
+                        veracore_warehouse_id: WH-EAST
+                        owner_id: ACME
+                        trading_partner_id: NORTHWIND
+                        our_purchase_order: PO-1041
+                        client_purchase_order: CPO-88213
+                        anticipated_arrival_at: '2026-08-14T00:00:00+00:00'
+                        shipping_method: ltl
+                        shipping_method_label: LTL
+                        load_type: palletized
+                        load_type_label: Palletized
+                        status: sent
+                        status_label: Sent
+                        status_color: info
+                        is_locked: false
+                        last_error: null
+                        total_quantity_expected: 480
+                        lines:
+                        - id: 2301
+                          foreign_system_line_key: SKU-POL-5507
+                          veracore_product_id: WIDGET-BLUE
+                          product_size_code: L
+                          product_color_code: BLU
+                          product_version: null
+                          quantity_expected: 300
+                          purchase_order_line_id: 5507
+                        - id: 2302
+                          foreign_system_line_key: SKU-POL-5508
+                          veracore_product_id: WIDGET-RED
+                          product_size_code: M
+                          product_color_code: RED
+                          product_version: null
+                          quantity_expected: 180
+                          purchase_order_line_id: 5508
+                        last_synced_at: '2026-07-30T09:12:44+00:00'
+                        created_at: '2026-07-28T14:02:10+00:00'
+                        updated_at: '2026-07-30T09:12:44+00:00'
+                example-1:
+                  summary: 200 OK — not serviced by Veracore
+                  value:
+                    data:
+                      is_eligible: false
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: No query results for model [PurchaseOrder] 999999
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-veracore-purchase-orders-purchaseorder-expected-arrival
   /api/3pl/products:
     get:
       tags:
@@ -378430,6 +379978,14 @@ paths:
         so channel content can be governed by content sync like any other field.
 
 
+        :::info[Required scope: `integrations:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
         Different channels speak different attribute vocabularies: some emit flat
         attribute codes (manufacturer, country_of_manufacture), others emit metafields
         keyed namespace.key (custom.care_instructions). Both arrive here as a code
@@ -378616,6 +380172,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-required-scope: integrations:read
       operationId: get-api-integration-instances-integrationinstance-channel-attribute-mappings
     put:
       tags:
@@ -378624,6 +380181,14 @@ paths:
       description: 'Replace the instance''s channel attribute mappings. The payload
         is authoritative: any code not present in mappings is unmapped, so send the
         full set you want kept, not just the changes.
+
+
+        :::info[Required scope: `integrations:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
 
 
         mappings: required array (send an empty array to clear every mapping on the
@@ -378819,6 +380384,7 @@ paths:
         '401': *id002
         '403': *id003
         '404': *id004
+      x-required-scope: integrations:write
       operationId: put-api-integration-instances-integrationinstance-channel-attribute-mappings
   /api/product-listings/{productListing}/content-changes:
     get:
