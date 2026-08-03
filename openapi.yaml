@@ -225,11 +225,14 @@ tags:
 - name: Returns
 - name: Notifications
 - name: Report Templates
+- name: Instances
+- name: Refunds
+- name: Payouts
+- name: Webhooks
 - name: Movement Composer
 - name: Product Import
 - name: Vendor Credits
 - name: Vendor Deposits
-- name: Webhooks
 paths:
   /api/integrations/17track/test:
     post:
@@ -263990,12 +263993,13 @@ paths:
   /api/square/instances:
     get:
       tags:
-      - Square
-      summary: List instances
-      description: 'List every Square integration instance for the current tenant.
+      - Instances
+      summary: List Square Integration Instances
+      description: 'List all Square integration instances configured on this tenant,
+        ordered by name.
 
 
-        **Authentication:** Bearer token required.'
+        Route name: square.instances.index'
       parameters: []
       responses:
         '200':
@@ -264019,6 +264023,8 @@ paths:
                           type: integer
                         name:
                           type: string
+                        store_id:
+                          type: integer
                         environment:
                           type: string
                         is_authorized:
@@ -264055,6 +264061,7 @@ paths:
                   data:
                   - id: 3
                     name: Main Street Coffee Co.
+                    store_id: 3
                     environment: sandbox
                     is_authorized: true
                     auth_method: oauth
@@ -264213,16 +264220,20 @@ paths:
   /api/square/instances/{squareIntegrationInstance}:
     get:
       tags:
-      - Square
-      summary: Get instance
-      description: Fetch a single Square integration instance by ID.
+      - Instances
+      summary: Get Square Integration Instance
+      description: 'Get a single Square integration instance by ID.
+
+
+        Route name: square.instances.show'
       parameters:
       - name: squareIntegrationInstance
         in: path
         schema:
-          type: string
+          type: integer
         required: true
-        description: The square integration instance ID.
+        description: Square integration instance ID
+        example: '1'
       responses:
         '200':
           description: OK
@@ -264243,6 +264254,8 @@ paths:
                         type: integer
                       name:
                         type: string
+                      store_id:
+                        type: integer
                       environment:
                         type: string
                       is_authorized:
@@ -264279,6 +264292,7 @@ paths:
                   data:
                     id: 3
                     name: Main Street Coffee Co.
+                    store_id: 3
                     environment: sandbox
                     is_authorized: true
                     auth_method: oauth
@@ -264308,14 +264322,19 @@ paths:
       operationId: get-api-square-instances-squareintegrationinstance
     put:
       tags:
-      - Square
-      summary: Update instance
-      description: 'Update an existing instance. All fields are optional — only fields
-        present in the body are changed.
+      - Instances
+      summary: Update Square Integration Instance
+      description: 'Update a Square integration instance. The manager splits the payload
+        across direct columns (name), connection settings (environment, access_token,
+        merchant_id), and integration settings (order_import_start_date, default_return_warehouse_id).
 
 
-        `payments_enabled` (boolean, optional) — toggles register card processing
-        for this account. Auto-set to true when an OAuth grant includes PAYMENTS_WRITE.'
+        Route name: square.instances.update
+
+
+        `payments_enabled` (boolean, optional) — toggles whether the register offers
+        this Square account as a card tender. Automatically set to true when an OAuth
+        grant includes PAYMENTS_WRITE.'
       requestBody:
         content:
           application/json:
@@ -264324,21 +264343,31 @@ paths:
               properties:
                 name:
                   type: string
-                order_import_start_date:
+                store_id:
+                  type: integer
+                environment:
+                  type: string
+                merchant_id:
+                  type: string
+                webhook_signature_key:
                   type: string
                 payments_enabled:
                   type: boolean
               example:
                 name: Renamed Square Instance
-                order_import_start_date: '2026-07-01'
+                store_id: 3
+                environment: production
+                merchant_id: MLXX_ABC123
+                webhook_signature_key: wbhk_sig_EXAMPLE
                 payments_enabled: true
       parameters:
       - name: squareIntegrationInstance
         in: path
         schema:
-          type: string
+          type: integer
         required: true
-        description: The square integration instance ID.
+        description: Square integration instance ID
+        example: '1'
       responses:
         '200':
           description: OK
@@ -264359,6 +264388,8 @@ paths:
                         type: integer
                       name:
                         type: string
+                      store_id:
+                        type: integer
                       environment:
                         type: string
                       is_authorized:
@@ -264395,6 +264426,7 @@ paths:
                   data:
                     id: 3
                     name: Main Street Coffee Co.
+                    store_id: 3
                     environment: sandbox
                     is_authorized: true
                     auth_method: oauth
@@ -264582,8 +264614,8 @@ paths:
   /api/square/instances/{squareIntegrationInstance}/oauth/authorize-url:
     get:
       tags:
-      - Square
-      summary: Get OAuth authorize URL
+      - Instances
+      summary: Get OAuth Authorize URL
       description: 'Builds the Square OAuth authorization URL for this instance. Redirect
         the merchant''s browser to the returned `authorization_url`; after they approve,
         Square redirects back and the connection is stored automatically with the
@@ -264602,15 +264634,18 @@ paths:
 
 
         When payment scopes are granted, `payments_enabled` is set on the instance
-        automatically.'
+        automatically.
+
+
+        Route name: square.instances.oauth.authorize-url'
       parameters:
       - name: squareIntegrationInstance
         in: path
         schema:
           type: integer
         required: true
+        description: Square integration instance id
         example: '1'
-        description: The square integration instance ID.
       responses:
         '200':
           description: OK
@@ -264643,6 +264678,22 @@ paths:
                     - PAYMENTS_READ
                     - CUSTOMERS_READ
                     - INVENTORY_READ
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: 'Unknown capability [terminal]. Allowed: payments.'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -265083,11 +265134,12 @@ paths:
   /api/square/catalog/latest-sync-info:
     get:
       tags:
-      - Square
-      summary: Get latest catalog sync info
+      - Catalog
+      summary: Get Latest Catalog Sync Info
       description: 'Latest-sync summary for an instance''s catalog: the most recently
-        updated item plus total / mapped / unmapped product counts. Useful before
-        queuing a refresh to decide whether a `since_latest` sync is sufficient.
+        updated catalog item plus total, mapped, and unmapped product counts. Useful
+        before queuing a catalog refresh to decide whether a `since_latest` sync is
+        sufficient.
 
 
         Route name: square.catalog.latest-sync-info'
@@ -265131,6 +265183,32 @@ paths:
                     total_products: 312
                     mapped_products: 268
                     unmapped_products: 44
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The integration instance id field is required.
+                  errors:
+                    integration_instance_id:
+                    - The integration instance id field is required.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -265253,6 +265331,150 @@ paths:
         '404': *id004
         '422': *id005
       operationId: put-api-square-catalog-squarecatalogitem
+    get:
+      tags:
+      - Catalog
+      summary: Get Square Catalog Item
+      description: 'Get a single Square catalog item (product or variation), including
+        its mapped SKU product and the raw Square catalog payload.
+
+
+        Route name: square.catalog.show'
+      parameters:
+      - name: squareCatalogItem
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square catalog item ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      square_catalog_object_id:
+                        type: string
+                      square_variation_id:
+                        type: string
+                      square_parent_id:
+                        type: string
+                        nullable: true
+                      type:
+                        type: string
+                      sku:
+                        type: string
+                      name:
+                        type: string
+                      description:
+                        type: string
+                      image_url:
+                        type: string
+                      category:
+                        type: string
+                      price:
+                        type: integer
+                      currency_code:
+                        type: string
+                      is_deleted:
+                        type: boolean
+                      square_updated_at:
+                        type: string
+                      product_id:
+                        type: integer
+                      product:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sku:
+                            type: string
+                          name:
+                            type: string
+                          reference:
+                            type: string
+                          link_route:
+                            type: string
+                      raw_data:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                          id:
+                            type: string
+                          item_variation_data:
+                            type: object
+                            properties:
+                              sku:
+                                type: string
+                              name:
+                                type: string
+                              price_money:
+                                type: object
+                                properties:
+                                  amount:
+                                    type: integer
+                                  currency:
+                                    type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  data:
+                    id: 1
+                    integration_instance_id: 1
+                    square_catalog_object_id: 6XG7EXAMPLEOBJECTID
+                    square_variation_id: VAR7EXAMPLEID
+                    square_parent_id: null
+                    type: ITEM_VARIATION
+                    sku: MUG-BLUE-LG
+                    name: Blue Ceramic Mug - Large
+                    description: 16oz glazed ceramic mug
+                    image_url: https://items-images-production.s3.amazonaws.com/files/example/original.jpeg
+                    category: Drinkware
+                    price: 1899
+                    currency_code: USD
+                    is_deleted: false
+                    square_updated_at: '2026-07-06T18:24:11+00:00'
+                    product_id: 842
+                    product:
+                      id: 842
+                      sku: MUG-BLUE-LG
+                      name: Blue Ceramic Mug - Large
+                      reference: MUG-BLUE-LG
+                      link_route: /products/842
+                    raw_data:
+                      type: ITEM_VARIATION
+                      id: VAR7EXAMPLEID
+                      item_variation_data:
+                        sku: MUG-BLUE-LG
+                        name: Large
+                        price_money:
+                          amount: 1899
+                          currency: USD
+                    created_at: '2026-07-01T09:12:44.000000Z'
+                    updated_at: '2026-07-06T18:24:11.000000Z'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: get-api-square-catalog-squarecatalogitem
   /api/square/catalog/sync:
     post:
       tags:
@@ -265532,8 +265754,8 @@ paths:
   /api/square/orders/latest-sync-info:
     get:
       tags:
-      - Square
-      summary: Get latest order sync info
+      - Orders
+      summary: Get Latest Order Sync Info
       description: 'Latest-sync summary for an instance''s orders: the most recently
         updated synced order and the total number of orders stored. Useful before
         queuing a refresh to decide whether a `since_latest` sync is sufficient.
@@ -265574,6 +265796,32 @@ paths:
                     latest_order_id: CAISENgvlJ6jLWAzERDzjyHVybY
                     latest_order_date: '2026-07-06T18:24:11+00:00'
                     total_orders: 1284
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The integration instance id field is required.
+                  errors:
+                    integration_instance_id:
+                    - The integration instance id field is required.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -265581,10 +265829,12 @@ paths:
   /api/square/orders/{squareOrder}:
     get:
       tags:
-      - Square
-      summary: Get order
-      description: 'Fetch one Square order with its line items and linked SKU sales
-        order.
+      - Orders
+      summary: Get Square Order
+      description: 'Get a single Square order by ID, including line items.
+
+
+        Route name: square.orders.show
 
 
         When the order has been promoted, `sales_order` includes the SKU sales order''s
@@ -265596,9 +265846,10 @@ paths:
       - name: squareOrder
         in: path
         schema:
-          type: string
+          type: integer
         required: true
-        description: The square order ID.
+        description: Square order row ID
+        example: '1'
       responses:
         '200':
           description: OK
@@ -265856,16 +266107,28 @@ paths:
   /api/square/orders/sync:
     post:
       tags:
-      - Square
-      summary: Sync orders
-      description: 'Queues a background sync of Square orders for the instance, then
-        promotes new orders to SKU sales orders. Returns a tracked job log id that
-        can be used to follow progress.
+      - Orders
+      summary: Sync Square Orders
+      description: 'Queue a background refresh of orders from the Square API. The
+        job fetches orders modified since the last sync watermark (default), then
+        promotes newly fetched orders into SKU sales orders. Progress can be tracked
+        via the returned tracked_job_log_id.
 
 
-        `mode` is optional: `since_latest` (default) resumes from the persisted sync
-        watermark; `all` re-syncs from the instance''s order import start date. `date_from`
-        (optional, date) overrides the window start.'
+        Body fields:
+
+        - integration_instance_id (integer, required) — the Square integration instance
+        to sync.
+
+        - mode (string, optional) — one of `since_latest` (default behavior; resume
+        from the last sync watermark) or `all` (full re-sync from the instance''s
+        order-import start date).
+
+        - date_from (date, optional) — explicit start date for the fetch window (overrides
+        mode).
+
+
+        Route name: square.orders.sync'
       requestBody:
         content:
           application/json:
@@ -265881,7 +266144,7 @@ paths:
               example:
                 integration_instance_id: 1
                 mode: since_latest
-                date_from: '2026-07-01'
+                date_from: '2026-06-01'
       parameters: []
       responses:
         '200':
@@ -265905,7 +266168,7 @@ paths:
                     type: string
                 example:
                   data:
-                    tracked_job_log_id: 3151
+                    tracked_job_log_id: 9421
                   message: Square orders sync started.
         '422':
           description: Unprocessable Content
@@ -265940,28 +266203,23 @@ paths:
   /api/square/orders/submit-fulfillments:
     post:
       tags:
-      - Square
-      summary: Submit fulfillments
-      description: 'Push pending fulfillment tracking back to Square for online orders
-        shipped in SKU. Each eligible fulfillment updates the Square order''s shipment
-        fulfillment to COMPLETED with carrier, tracking number, tracking URL, and
-        shipped-at time.
+      - Orders
+      summary: Submit Square Order Fulfillments
+      description: 'Push pending SKU fulfillments back to Square for the given instance.
+        Omit `fulfillment_ids` to submit every pending fulfillment on the instance;
+        provide them to submit a specific subset. Returns per-run counts (submitted,
+        skipped, failed) plus any per-fulfillment errors.
 
 
-        `integration_instance_id` (integer, required) — the Square connection to submit
-        for.
+        Body fields:
 
-        `fulfillment_ids` (array of integers, optional) — submit only these fulfillments;
-        omit to sweep every eligible pending fulfillment on the connection.
+        - integration_instance_id (integer, required) — the Square instance.
 
-
-        Only fulfillments that are fulfilled, carry a tracking number, are not pickups,
-        and have not already been submitted are pushed. Point-of-sale orders are never
-        pushed — they are handed over at the register.
+        - fulfillment_ids (array of integers, optional) — specific SKU fulfillment
+        IDs; omit to submit all pending.
 
 
-        Pending fulfillments are also submitted automatically every 10 minutes. Requires
-        the ORDERS_WRITE OAuth scope.'
+        Route name: square.orders.submit-fulfillments'
       requestBody:
         content:
           application/json:
@@ -265977,8 +266235,8 @@ paths:
               example:
                 integration_instance_id: 1
                 fulfillment_ids:
-                - 12
-                - 13
+                - 1201
+                - 1202
       parameters: []
       responses:
         '200':
@@ -265992,27 +266250,54 @@ paths:
             application/json:
               schema:
                 type: object
+              examples:
+                example-0:
+                  summary: Submitted
+                  value:
+                    message: 2 fulfillment(s) submitted to Square.
+                    submitted: 2
+                    skipped: 0
+                    failed: 0
+                    errors: []
+                example-1:
+                  summary: Partial failure
+                  value:
+                    message: 1 fulfillment(s) submitted to Square.
+                    submitted: 1
+                    skipped: 0
+                    failed: 1
+                    errors:
+                    - fulfillment_id: 1202
+                      error: Square order not found for fulfillment.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
                 properties:
                   message:
                     type: string
-                  submitted:
-                    type: integer
-                  skipped:
-                    type: integer
-                  failed:
-                    type: integer
                   errors:
-                    type: array
+                    type: object
+                    properties:
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
                 example:
-                  message: 2 fulfillment(s) submitted to Square.
-                  submitted: 2
-                  skipped: 0
-                  failed: 0
-                  errors: []
+                  message: The integration instance id field is required.
+                  errors:
+                    integration_instance_id:
+                    - The integration instance id field is required.
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       operationId: post-api-square-orders-submit-fulfillments
   /api/webhooks/square:
     post:
@@ -266103,18 +266388,25 @@ paths:
   /api/square/payouts:
     get:
       tags:
-      - Square
-      summary: List payouts
-      description: 'List Square payouts (deposit/settlement batches) — the money Square
-        transferred to the seller''s bank account. Each payout aggregates the charges,
-        refunds, and fees settled in that deposit; use it to reconcile channel revenue
-        against bank deposits.
+      - Payouts
+      summary: List Square Payouts
+      description: 'Paginated list of Square payouts (deposit / settlement batches)
+        across integration instances. Each row carries the deposit amount, status,
+        arrival date and mapped location so channel revenue can be reconciled against
+        actual bank deposits.
 
 
-        Amounts are integer minor units (cents).
+        Filters: integration_instance_id, status, square_location_id, search (Payout
+        ID / End-to-End ID), date_from, date_to (compared against the Square created
+        date).
+
+        Allowed sorts: id, square_payout_id, status, amount, arrival_date, square_created_at.
+        Default: -square_created_at.
+
+        Pagination: page, per_page (default 25).
 
 
-        Requires the PAYOUTS_READ OAuth scope on the connected Square account.'
+        Route name: square.payouts.index'
       parameters: []
       responses:
         '200':
@@ -266141,6 +266433,8 @@ paths:
                         square_payout_id:
                           type: string
                         square_location_id:
+                          type: string
+                        location_name:
                           type: string
                         status:
                           type: string
@@ -266175,63 +266469,60 @@ paths:
                               type: string
                   current_page:
                     type: integer
-                  first_page_url:
-                    type: string
-                  from:
-                    type: integer
                   last_page:
                     type: integer
-                  last_page_url:
-                    type: string
-                  links:
-                    type: array
-                  next_page_url:
-                    type: string
-                    nullable: true
-                  path:
-                    type: string
                   per_page:
-                    type: integer
-                  prev_page_url:
-                    type: string
-                    nullable: true
-                  to:
                     type: integer
                   total:
                     type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  path:
+                    type: string
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
                 example:
                   data:
-                  - id: 14
-                    integration_instance_id: 3
-                    square_payout_id: po_a1b2c3d4-5678-90ab-cdef-111213141516
-                    square_location_id: L3PKY0ZZZ8Q1D
+                  - id: 17
+                    integration_instance_id: 1
+                    square_payout_id: po_EXAMPLEPAYOUTID
+                    square_location_id: L7EXAMPLELOCID
+                    location_name: Downtown Store
                     status: PAID
                     type: BATCH
-                    amount: 45000
+                    amount: 48213
                     currency_code: USD
                     arrival_date: '2026-07-09'
-                    end_to_end_id: T2X9AB34CD
-                    square_created_at: '2026-07-08T04:10:00+00:00'
-                    square_updated_at: '2026-07-08T09:30:00+00:00'
-                    entries_synced_at: '2026-07-08T10:00:12+00:00'
-                    entries_count: 38
-                    created_at: '2026-07-08T10:00:11+00:00'
-                    updated_at: '2026-07-08T10:00:12+00:00'
+                    end_to_end_id: E2E-EXAMPLE-8842
+                    square_created_at: '2026-07-08T23:59:02+00:00'
+                    square_updated_at: '2026-07-09T02:14:55+00:00'
+                    entries_synced_at: '2026-07-09T03:00:12.000000Z'
+                    entries_count: 26
+                    created_at: '2026-07-08T23:59:10.000000Z'
+                    updated_at: '2026-07-09T03:00:12.000000Z'
                     integration_instance:
-                      id: 3
-                      name: Main Street Coffee Co.
+                      id: 1
+                      name: Square — Downtown
                   current_page: 1
-                  first_page_url: https://sku1.test/api/square/payouts?page=1
-                  from: 1
-                  last_page: 1
-                  last_page_url: https://sku1.test/api/square/payouts?page=1
-                  links: []
-                  next_page_url: null
-                  path: https://sku1.test/api/square/payouts
+                  last_page: 3
                   per_page: 25
+                  total: 62
+                  from: 1
+                  to: 25
+                  path: '{{base_url}}/api/square/payouts'
+                  first_page_url: '{{base_url}}/api/square/payouts?page=1'
+                  last_page_url: '{{base_url}}/api/square/payouts?page=3'
+                  next_page_url: '{{base_url}}/api/square/payouts?page=2'
                   prev_page_url: null
-                  to: 1
-                  total: 1
         '429': *id001
         '401': *id002
         '403': *id003
@@ -266239,20 +266530,21 @@ paths:
   /api/square/payouts/{squarePayout}:
     get:
       tags:
-      - Square
-      summary: Get payout
-      description: 'Get a single Square payout, including its entry count and the
-        connected Square account.
+      - Payouts
+      summary: Get Square Payout
+      description: 'Get a single Square payout with its integration instance, mapped
+        location and entries count.
 
 
-        Amounts are integer minor units (cents).'
+        Route name: square.payouts.show'
       parameters:
       - name: squarePayout
         in: path
         schema:
-          type: string
+          type: integer
         required: true
-        description: The square payout ID.
+        description: Square payout ID
+        example: '17'
       responses:
         '200':
           description: OK
@@ -266276,6 +266568,8 @@ paths:
                       square_payout_id:
                         type: string
                       square_location_id:
+                        type: string
+                      location_name:
                         type: string
                       status:
                         type: string
@@ -266310,25 +266604,26 @@ paths:
                             type: string
                 example:
                   data:
-                    id: 14
-                    integration_instance_id: 3
-                    square_payout_id: po_a1b2c3d4-5678-90ab-cdef-111213141516
-                    square_location_id: L3PKY0ZZZ8Q1D
+                    id: 17
+                    integration_instance_id: 1
+                    square_payout_id: po_EXAMPLEPAYOUTID
+                    square_location_id: L7EXAMPLELOCID
+                    location_name: Downtown Store
                     status: PAID
                     type: BATCH
-                    amount: 45000
+                    amount: 48213
                     currency_code: USD
                     arrival_date: '2026-07-09'
-                    end_to_end_id: T2X9AB34CD
-                    square_created_at: '2026-07-08T04:10:00+00:00'
-                    square_updated_at: '2026-07-08T09:30:00+00:00'
-                    entries_synced_at: '2026-07-08T10:00:12+00:00'
-                    entries_count: 38
-                    created_at: '2026-07-08T10:00:11+00:00'
-                    updated_at: '2026-07-08T10:00:12+00:00'
+                    end_to_end_id: E2E-EXAMPLE-8842
+                    square_created_at: '2026-07-08T23:59:02+00:00'
+                    square_updated_at: '2026-07-09T02:14:55+00:00'
+                    entries_synced_at: '2026-07-09T03:00:12.000000Z'
+                    entries_count: 26
+                    created_at: '2026-07-08T23:59:10.000000Z'
+                    updated_at: '2026-07-09T03:00:12.000000Z'
                     integration_instance:
-                      id: 3
-                      name: Main Street Coffee Co.
+                      id: 1
+                      name: Square — Downtown
         '429': *id001
         '401': *id002
         '403': *id003
@@ -266337,21 +266632,26 @@ paths:
   /api/square/payouts/{squarePayout}/entries:
     get:
       tags:
-      - Square
-      summary: List payout entries
-      description: 'List the individual entries of one payout — each charge, refund,
-        fee, or adjustment that was settled in the deposit, with gross/fee/net amounts
-        and the Square payment it relates to.
+      - Payouts
+      summary: List Square Payout Entries
+      description: 'Paginated list of the line-item entries that make up a Square
+        payout (individual charges, refunds and fees). Each entry links back to the
+        underlying Square payment or refund.
 
 
-        Amounts are integer minor units (cents).'
+        Filters: type. Allowed sorts: id, type, effective_at, gross_amount, fee_amount,
+        net_amount. Default: -effective_at. Pagination: page, per_page (default 25).
+
+
+        Route name: square.payouts.entries'
       parameters:
       - name: squarePayout
         in: path
         schema:
-          type: string
+          type: integer
         required: true
-        description: The square payout ID.
+        description: Square payout ID
+        example: '17'
       responses:
         '200':
           description: OK
@@ -266395,55 +266695,51 @@ paths:
                           nullable: true
                   current_page:
                     type: integer
-                  first_page_url:
-                    type: string
-                  from:
-                    type: integer
                   last_page:
                     type: integer
-                  last_page_url:
-                    type: string
-                  links:
-                    type: array
-                  next_page_url:
-                    type: string
-                    nullable: true
-                  path:
-                    type: string
                   per_page:
-                    type: integer
-                  prev_page_url:
-                    type: string
-                    nullable: true
-                  to:
                     type: integer
                   total:
                     type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  path:
+                    type: string
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
                 example:
                   data:
-                  - id: 301
-                    square_payout_id: 14
-                    square_payout_entry_id: poe_9f8e7d6c-5432-10fe-dcba-212223242526
+                  - id: 501
+                    square_payout_id: 17
+                    square_payout_entry_id: poe_EXAMPLEENTRYID
                     type: CHARGE
-                    effective_at: '2026-07-08T03:22:41+00:00'
-                    gross_amount: 2500
-                    fee_amount: 73
-                    net_amount: 2427
+                    effective_at: '2026-07-08T18:31:00+00:00'
+                    gross_amount: 1899
+                    fee_amount: 85
+                    net_amount: 1814
                     currency_code: USD
-                    square_payment_id: pmt_1A2B3C4D5E6F
+                    square_payment_id: pay_EXAMPLEPAYMENTID
                     square_refund_id: null
                   current_page: 1
-                  first_page_url: https://sku1.test/api/square/payouts?page=1
-                  from: 1
-                  last_page: 1
-                  last_page_url: https://sku1.test/api/square/payouts?page=1
-                  links: []
-                  next_page_url: null
-                  path: https://sku1.test/api/square/payouts
+                  last_page: 2
                   per_page: 25
+                  total: 26
+                  from: 1
+                  to: 25
+                  path: '{{base_url}}/api/square/payouts/17/entries'
+                  first_page_url: '{{base_url}}/api/square/payouts/17/entries?page=1'
+                  last_page_url: '{{base_url}}/api/square/payouts/17/entries?page=2'
+                  next_page_url: '{{base_url}}/api/square/payouts/17/entries?page=2'
                   prev_page_url: null
-                  to: 1
-                  total: 1
         '429': *id001
         '401': *id002
         '403': *id003
@@ -546795,7 +547091,10 @@ paths:
         \ Cr Liability — never revenue, never taxed) and the card is activated for\
         \ the paid amount on checkout. `amount` is required; `code` auto-generates\
         \ when omitted. Requires the Gift Card Liability nominal to be configured\
-        \ (422 otherwise). `lines` is OPTIONAL when the sale is purely gift-card sales."
+        \ (422 otherwise). `lines` is OPTIONAL when the sale is purely gift-card sales.\n\
+        \n`verification_token` (string, optional, max 1024) — buyer-verification token\
+        \ from the card SDK's Strong Customer Authentication step; pass it with card\
+        \ payments so EU/UK and risk-flagged charges succeed."
       requestBody:
         content:
           application/json:
@@ -546859,6 +547158,8 @@ paths:
                         type: integer
                       unit_price:
                         type: integer
+                verification_token:
+                  type: string
               example:
                 pos_register_session_id: 42
                 tender_type: cash
@@ -546883,6 +547184,7 @@ paths:
                 - product_id: 1201
                   quantity: 1
                   unit_price: 25
+                verification_token: verf:CA4SED...
       parameters: []
       responses:
         '201':
@@ -547569,7 +547871,12 @@ paths:
 
         The admin toggles (`enabled`, `require_customer`, `auto_print_receipt`) are
         managed via `PUT /api/v2/settings/pos`; this endpoint focuses on the operational
-        card-processor config.'
+        card-processor config.
+
+
+        The settings payload''s `available_processors` only offers `square` when a
+        connected Square account has payments authorized (or when it is already the
+        persisted selection).'
       requestBody:
         content:
           application/json:
@@ -547676,7 +547983,14 @@ paths:
 
         For Stripe: `processor`, `publishable_key`, `stripe_account` (Stripe.js Elements
         uses both, since card payments are direct charges on the tenant''s connected
-        account).'
+        account).
+
+
+        The response includes `available` — whether the selected processor can currently
+        take card payments (for Square this requires a connected account with payments
+        authorized) — and `currency_code`, the tenant default currency used by the
+        in-browser card SDK''s buyer-verification (SCA) step. When `available` is
+        false the register should not offer the card tender.'
       parameters: []
       responses:
         '200':
@@ -547692,20 +548006,24 @@ paths:
                 type: object
               examples:
                 example-0:
-                  summary: 200 Square
+                  summary: Square — available
                   value:
                     data:
                       processor: square
-                      application_id: sandbox-sq0idb-Ab12Cd34Ef56Gh78Ij90Kl
-                      location_id: L7X8Y9Z0ABCDE
+                      available: true
+                      application_id: sandbox-sq0idb-XXXXXXXXXXXX
+                      location_id: L5429536639165
                       environment: sandbox
+                      currency_code: USD
                 example-1:
-                  summary: 200 Stripe
+                  summary: Square — payments not enabled
                   value:
                     data:
-                      processor: stripe
-                      publishable_key: pk_test_51AbCdEfGhIjKlMnOpQrStUv
-                      stripe_account: acct_1AbCdEfGhIjKlMno
+                      processor: square
+                      available: false
+                      application_id: null
+                      location_id: null
+                      environment: null
         '429': *id001
         '401': *id002
         '403': *id003
@@ -562039,6 +562357,440 @@ paths:
         '422': *id005
       x-session-only: true
       operationId: post-api-integrations-17track-instances-instance-id-push-pending
+  /api/square/orders/{squareOrder}/refresh:
+    post:
+      tags:
+      - Orders
+      summary: Refresh Single Square Order
+      description: 'Refetch a single Square order from the Square API and re-promote
+        it if a linked SKU sales order exists.
+
+
+        Route name: square.orders.refresh'
+      requestBody:
+        content: {}
+      parameters:
+      - name: squareOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square order row ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-square-orders-squareorder-refresh
+  /api/square/orders/create-sku-orders:
+    post:
+      tags:
+      - Orders
+      summary: Create SKU Orders (bulk)
+      description: 'Bulk-promote selected Square orders into SKU sales orders. Only
+        rows in the `pending` state with no existing sales_order_id are considered.
+
+
+        Route name: square.orders.create-sku-orders'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                integration_instance_id: 1
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-square-orders-create-sku-orders
+  /api/square/orders/update-sku-orders:
+    post:
+      tags:
+      - Orders
+      summary: Update SKU Orders (bulk)
+      description: 'Bulk-refresh linked SKU sales orders — unlinks the existing SO
+        and re-promotes each Square order so the SO is regenerated with latest data.
+
+
+        Route name: square.orders.update-sku-orders'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                integration_instance_id: 1
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-square-orders-update-sku-orders
+  /api/square/orders/{squareOrder}/sku-order:
+    delete:
+      tags:
+      - Orders
+      summary: Delete Single SKU Order (unlink)
+      description: 'Detach the linked SKU sales order from a single Square order (deletes
+        the SKU order; the Square row is kept and reset back to `pending`).
+
+
+        Route name: square.orders.delete-sku-order'
+      parameters:
+      - name: squareOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square order row ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: delete-api-square-orders-squareorder-sku-order
+  /api/square/orders/bulk-delete-sku-orders:
+    post:
+      tags:
+      - Orders
+      summary: Bulk Delete SKU Orders
+      description: 'Bulk-detach linked SKU sales orders. Square orders are kept and
+        reset back to `pending`.
+
+
+        Route name: square.orders.bulk-delete-sku-orders'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                integration_instance_id: 1
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-square-orders-bulk-delete-sku-orders
+  /api/square/orders/bulk-delete:
+    post:
+      tags:
+      - Orders
+      summary: Bulk Delete Square Orders
+      description: 'Hard-delete Square orders (removes the channel-side rows). Linked
+        SKU sales orders are NOT removed automatically — call `bulk-delete-sku-orders`
+        first if you want both gone.
+
+
+        Route name: square.orders.bulk-delete'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                integration_instance_id: 1
+                ids:
+                - 1
+                - 2
+                - 3
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      operationId: post-api-square-orders-bulk-delete
+  /api/square/refunds:
+    get:
+      tags:
+      - Refunds
+      summary: List Square Refunds
+      description: 'Paginated list of Square refunds across integration instances.
+
+
+        Route name: square.refunds.index'
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-square-refunds
+  /api/square/instances/{squareIntegrationInstance}/refunds/sync:
+    post:
+      tags:
+      - Refunds
+      summary: Sync Square Refunds
+      description: 'Fetch and upsert Square refunds for a specific instance. Queued.
+
+
+        Route name: square.refunds.sync'
+      requestBody:
+        content: {}
+      parameters:
+      - name: squareIntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-square-instances-squareintegrationinstance-refunds-sync
+  /api/square/customers:
+    get:
+      tags:
+      - Customers
+      summary: List Square Customers
+      description: 'Paginated list of Square customers across integration instances.
+
+
+        Route name: square.customers.index'
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-square-customers
+  /api/square/instances/{squareIntegrationInstance}/customers/sync:
+    post:
+      tags:
+      - Customers
+      summary: Sync Square Customers
+      description: 'Fetch and upsert Square customers for a specific instance. Queued.
+
+
+        Route name: square.customers.sync'
+      requestBody:
+        content: {}
+      parameters:
+      - name: squareIntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-square-instances-squareintegrationinstance-customers-sync
+  /api/square/inventory:
+    get:
+      tags:
+      - Inventory
+      summary: List Square Inventory Counts
+      description: 'Paginated list of Square inventory counts across integration instances.
+
+
+        Route name: square.inventory.index'
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-square-inventory
+  /api/square/instances/{squareIntegrationInstance}/inventory/sync:
+    post:
+      tags:
+      - Inventory
+      summary: Sync Square Inventory
+      description: 'Fetch and upsert Square inventory counts for a specific instance.
+        Queued.
+
+
+        Route name: square.inventory.sync'
+      requestBody:
+        content: {}
+      parameters:
+      - name: squareIntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-square-instances-squareintegrationinstance-inventory-sync
+  /api/square/webhooks/subscriptions:
+    get:
+      tags:
+      - Webhooks
+      summary: List Webhook Subscriptions
+      description: 'Paginated list of Square webhook subscriptions across integration
+        instances.
+
+
+        Route name: square.webhooks.subscriptions.index'
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-square-webhooks-subscriptions
+  /api/square/webhooks/events:
+    get:
+      tags:
+      - Webhooks
+      summary: List Webhook Events
+      description: 'Paginated list of Square webhook events received.
+
+
+        Route name: square.webhooks.events.index'
+      parameters: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-square-webhooks-events
+  /api/square/instances/{squareIntegrationInstance}/webhooks/sync:
+    post:
+      tags:
+      - Webhooks
+      summary: Sync Square Webhook Subscriptions
+      description: 'Reconcile local Square webhook subscriptions against Square''s
+        API. Queued.
+
+
+        Route name: square.webhooks.sync'
+      requestBody:
+        content: {}
+      parameters:
+      - name: squareIntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Square integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      operationId: post-api-square-instances-squareintegrationinstance-webhooks-sync
   /api/v2/inventory/movements/preview-release-impact:
     post:
       tags:
@@ -595114,6 +595866,9 @@ x-tagGroups:
   - Billing & Invoices
   - Returns
   - Notifications
+  - Instances
+  - Refunds
+  - Payouts
   - Movement Composer
   - Product Import
   - Vendor Credits
