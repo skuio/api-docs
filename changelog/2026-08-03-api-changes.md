@@ -1,18 +1,21 @@
 ---
 title: API changes — 2026-08-03
-description: This release includes 16 additions, 3 changes.
+description: This release includes 17 additions, 3 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-08-03
 ---
 
-This release includes 16 additions, 3 changes.
+This release includes 17 additions, 3 changes.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Buyers
+- `POST /api/admin/portal/users/{user}/resend-invite` — Resend Buyer Invite
 
 ### Catalog
 - `GET /api/square/catalog/{squareCatalogItem}` — Get Square Catalog Item
