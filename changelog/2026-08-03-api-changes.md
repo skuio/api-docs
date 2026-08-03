@@ -1,16 +1,28 @@
 ---
 title: API changes — 2026-08-03
-description: This release includes 17 additions, 3 changes.
+description: This release includes 17 additions, 4 changes. 1 breaking change — action required.
 authors: [product-team]
-tags: [added, changed]
+tags: [added, changed, breaking]
 date: 2026-08-03
 ---
 
-This release includes 17 additions, 3 changes.
+This release includes 17 additions, 4 changes. 1 breaking change — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Incompatible changes
+
+#### Misc
+- **Changed** `GET /api/users` — List Users
+  - removed parameter(s): `limit`, `page`
 
 ## Added
 
