@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-03
-description: This release includes 17 additions, 4 changes. 1 breaking change — action required.
+description: This release includes 18 additions, 4 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-08-03
 ---
 
-This release includes 17 additions, 4 changes. 1 breaking change — action required.
+This release includes 18 additions, 4 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -31,6 +31,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Catalog
 - `GET /api/square/catalog/{squareCatalogItem}` — Get Square Catalog Item
+
+### Companies
+- `POST /api/admin/portal/companies/{company}/resend-invites` — Resend Company Invites
 
 ### Customers
 - `GET /api/square/customers` — List Square Customers
