@@ -336625,6 +336625,11 @@ paths:
         :::
 
 
+        The stored mapping is returned verbatim, so `po_number.destination` is absent
+        on mappings saved before that option existed — treat a missing `destination`
+        as `custom_field`.
+
+
         Requires a Bearer token.'
       parameters: []
       responses:
@@ -336662,6 +336667,9 @@ paths:
                                 type: boolean
                               definition_id:
                                 type: string
+                                nullable: true
+                              destination:
+                                type: string
                       qbo_custom_fields:
                         type: array
                         items:
@@ -336682,7 +336690,8 @@ paths:
                         definition_id: '1'
                       po_number:
                         enabled: true
-                        definition_id: '3'
+                        definition_id: null
+                        destination: customer_memo
                     qbo_custom_fields:
                     - definition_id: '1'
                       name: Sales Rep
@@ -336704,9 +336713,7 @@ paths:
       summary: Update Custom Field Mappings
       description: 'Updates the QBO invoice custom field mapping config. `sales_rep`
         (required) maps the Sales Order''s sales rep, and `po_number` (optional) maps
-        the Sales Order''s customer PO number — each to a QBO legacy custom field
-        on invoices. For each mapping, `definition_id` must be "1", "2", or "3" (QBO
-        supports three legacy custom fields) and may be null when `enabled` is false.
+        the Sales Order''s `customer_po_number`.
 
 
         :::warning[Not yet available to API tokens]
@@ -336715,6 +336722,29 @@ paths:
         scope support is in progress.
 
         :::
+
+
+        `definition_id` must be "1", "2", or "3" (QBO supports three legacy custom
+        fields) and may be null when `enabled` is false.
+
+
+        `custom_field_mappings.po_number.destination` (optional) chooses where the
+        PO number is written on the invoice:
+
+
+        - `custom_field` — write it to the QBO legacy custom field named by `definition_id`.
+        This is the default when `destination` is omitted, so mappings saved before
+        the field existed keep their current behaviour.
+
+        - `customer_memo` — write `PO# <customer_po_number>` to the invoice''s customer-facing
+        memo (QBO `CustomerMemo`, shown as "Note to customer"). `definition_id` is
+        ignored and may be null, so this works even when all three QBO legacy custom
+        fields are disabled in the company''s sales-form preferences.
+
+
+        The memo is only written when the Sales Order actually has a `customer_po_number`
+        — orders without one leave any existing memo untouched. Credit memos are unaffected;
+        these mappings apply to invoices only.
 
 
         Requires a Bearer token.'
@@ -336741,6 +336771,8 @@ paths:
                           type: boolean
                         definition_id:
                           type: string
+                        destination:
+                          type: string
               example:
                 custom_field_mappings:
                   sales_rep:
@@ -336749,6 +336781,7 @@ paths:
                   po_number:
                     enabled: true
                     definition_id: '3'
+                    destination: custom_field
       parameters: []
       responses:
         '200':
@@ -336762,42 +336795,57 @@ paths:
             application/json:
               schema:
                 type: object
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    success: true
+                    message: Custom field mappings updated successfully.
+                    data:
+                      custom_field_mappings:
+                        sales_rep:
+                          enabled: true
+                          definition_id: '1'
+                        po_number:
+                          enabled: true
+                          definition_id: '3'
+                          destination: custom_field
+                example-1:
+                  summary: 200 Success (PO number to customer memo)
+                  value:
+                    success: true
+                    message: Custom field mappings updated successfully.
+                    data:
+                      custom_field_mappings:
+                        sales_rep:
+                          enabled: false
+                          definition_id: null
+                        po_number:
+                          enabled: true
+                          definition_id: null
+                          destination: customer_memo
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
                 properties:
                   success:
                     type: boolean
+                  error:
+                    type: string
                   message:
                     type: string
-                  data:
-                    type: object
-                    properties:
-                      custom_field_mappings:
-                        type: object
-                        properties:
-                          sales_rep:
-                            type: object
-                            properties:
-                              enabled:
-                                type: boolean
-                              definition_id:
-                                type: string
-                          po_number:
-                            type: object
-                            properties:
-                              enabled:
-                                type: boolean
-                              definition_id:
-                                type: string
                 example:
-                  success: true
-                  message: Custom field mappings updated successfully.
-                  data:
-                    custom_field_mappings:
-                      sales_rep:
-                        enabled: true
-                        definition_id: '1'
-                      po_number:
-                        enabled: true
-                        definition_id: '3'
+                  success: false
+                  error: No QBO integration found
+                  message: Please set up your QuickBooks Online integration first.
         '422':
           description: Unprocessable Entity
           headers:
@@ -336809,23 +336857,25 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The custom field mappings.po number.definition id field
+                      must be 1, 2, or 3.
+                    errors:
                       custom_field_mappings.po_number.definition_id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The custom field mappings.po number.definition id field
-                    must be 1, 2, or 3.
-                  errors:
-                    custom_field_mappings.po_number.definition_id:
-                    - The custom field mappings.po number.definition id field must
-                      be 1, 2, or 3.
+                      - The custom field mappings.po number.definition id field must
+                        be 1, 2, or 3.
+                example-1:
+                  summary: 422 Invalid PO Number Destination
+                  value:
+                    message: The selected custom field mappings.po number.destination
+                      is invalid.
+                    errors:
+                      custom_field_mappings.po_number.destination:
+                      - The selected custom field mappings.po number.destination is
+                        invalid.
         '429': *id001
         '401': *id002
         '403': *id003

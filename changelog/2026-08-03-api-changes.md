@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-03
-description: This release includes 18 additions, 4 changes. 1 breaking change — action required.
+description: This release includes 18 additions, 5 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-08-03
 ---
 
-This release includes 18 additions, 4 changes. 1 breaking change — action required.
+This release includes 18 additions, 5 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -73,5 +73,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Orders
 - `GET /api/square/orders/latest-sync-info` — Get Latest Order Sync Info
   - new response code(s): `422`
+
+### QuickBooks Online
+- `PUT /api/qbo/custom-field-mappings` — Update Custom Field Mappings
+  - new response code(s): `404`
 
 _Spec version 1.0.0 → 1.0.0._
