@@ -129750,7 +129750,7 @@ paths:
         submit_to_supplier: if true, submits the PO to the supplier after creation.
 
 
-        fore cast_config is optional but recommended for tracking — stores a snapshot
+        forecast_config is optional but recommended for tracking — stores a snapshot
         of the config used.
 
 
@@ -129764,7 +129764,29 @@ paths:
         or forecast_config.enforce_minimum_order_quantity is true and the order totals
         fall below the supplier''s minimum_purchase_order or minimum_purchase_order_quantity,
         the request is rejected with 422 unless minimums_acknowledged is true on that
-        order.'
+        order.
+
+
+        forecast_type accepts: target_stock_level, with_sales_history, fill_backorders.
+
+
+        Nullable forecast_config snapshot keys: the snapshot is sent verbatim from
+        the saved forecast configuration, which persists null for any setting the
+        selected forecast type does not use (e.g. target_stock_days is null on a target_stock_level
+        run that targets a minimum stock level, and on a fill_backorders run). Every
+        snapshot key therefore accepts null as well as its documented type: supplier_ids
+        (array|null), forecast_type (string|null), target_stock_days (integer|null),
+        override_product_target_days (boolean|null), use_leadtime (boolean|null),
+        use_measured_lead_time (boolean|null), use_moq (boolean|null), enforce_minimum_order_value
+        (boolean|null), enforce_minimum_order_quantity (boolean|null), rounding_method
+        (string|null), target_quantity (integer|null), sales_history_days (integer|null),
+        sales_start_date (string|null), sales_end_date (string|null), destination_warehouse_id
+        (integer|null), pricing_tier_id (integer|null), product_filters (array|null),
+        sales_filters (array|null), demand_modifiers (array|null), created_by_user_id
+        (integer|null), created_by_user_name (string|null), manual_forecast_run_id
+        (integer|null), post_forecast_adjustments (array|null), ignore_min_stock_level
+        (boolean|null). A null is stored as-is in the snapshot; type validation still
+        applies to non-null values.'
       requestBody:
         content:
           application/json:
@@ -129808,7 +129830,8 @@ paths:
                           forecast_type:
                             type: string
                           target_stock_days:
-                            type: integer
+                            type: string
+                            nullable: true
                           use_leadtime:
                             type: boolean
                           use_measured_lead_time:
@@ -129817,8 +129840,6 @@ paths:
                             type: boolean
                           rounding_method:
                             type: string
-                          sales_history_days:
-                            type: integer
                           product_filters:
                             type: object
                             properties: {}
@@ -129831,6 +129852,10 @@ paths:
                             type: boolean
                           enforce_minimum_order_quantity:
                             type: boolean
+                          override_product_target_days:
+                            type: boolean
+                          target_quantity:
+                            type: integer
                       minimums_acknowledged:
                         type: boolean
               example:
@@ -129850,18 +129875,19 @@ paths:
                   forecast_config:
                     supplier_ids:
                     - 1
-                    forecast_type: sales_history
-                    target_stock_days: 30
+                    forecast_type: target_stock_level
+                    target_stock_days: null
                     use_leadtime: true
                     use_measured_lead_time: false
                     use_moq: true
                     rounding_method: round_half_up
-                    sales_history_days: 90
                     product_filters: {}
                     sales_filters: {}
                     demand_modifiers: []
                     enforce_minimum_order_value: false
                     enforce_minimum_order_quantity: false
+                    override_product_target_days: false
+                    target_quantity: 100
                   minimums_acknowledged: false
       parameters: []
       responses:
@@ -129916,46 +129942,29 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  error:
-                    type: string
-                  message:
-                    type: string
-                  violations:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        supplier_id:
-                          type: integer
-                        supplier_name:
-                          type: string
-                        total_value:
-                          type: number
-                        total_quantity:
-                          type: integer
-                        minimum_value:
-                          type: number
-                        minimum_quantity:
-                          type: string
-                          nullable: true
-                        below_value:
-                          type: boolean
-                        below_quantity:
-                          type: boolean
-                example:
-                  error: Supplier minimum not met
-                  message: One or more orders fall below the supplier minimum and
-                    have not been acknowledged.
-                  violations:
-                  - supplier_id: 1
-                    supplier_name: Acme Supplier Co.
-                    total_value: 50.0
-                    total_quantity: 10
-                    minimum_value: 1000.0
-                    minimum_quantity: null
-                    below_value: true
-                    below_quantity: false
+              examples:
+                example-0:
+                  summary: 422 Supplier Minimum Not Met
+                  value:
+                    error: Supplier minimum not met
+                    message: One or more orders fall below the supplier minimum and
+                      have not been acknowledged.
+                    violations:
+                    - supplier_id: 1
+                      supplier_name: Acme Supplier Co.
+                      total_value: 50.0
+                      total_quantity: 10
+                      minimum_value: 1000.0
+                      minimum_quantity: null
+                      below_value: true
+                      below_quantity: false
+                example-1:
+                  summary: 422 Invalid Forecast Config Value
+                  value:
+                    message: The target stock days must be an integer.
+                    errors:
+                      orders.0.forecast_config.target_stock_days:
+                      - The target stock days must be an integer.
         '429': *id001
         '401': *id002
         '403': *id003
