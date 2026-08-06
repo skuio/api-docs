@@ -154741,12 +154741,25 @@ paths:
         \ max 255) — must be an MSKU that is part of this inbound plan (422 otherwise)\n\
         \  - `mskus.*.quantity` (integer, **required**, min 1) — number of labels\
         \ for this MSKU\n\n**Response:** `url` (time-limited label document download\
-        \ URL), `expiration` (URL expiration timestamp, may be null), and `label_print_id`\
-        \ (the audit-trail record).\n\n**422 conditions:**\n- an `mskus.*.msku` value\
-        \ is not part of this inbound plan\n- the integration instance has no participating\
-        \ Amazon marketplace (re-sync marketplace participations)\n- Amazon rejects\
-        \ the request (SP-API error messages are parsed and surfaced per field)\n\
-        - Amazon does not return a label document"
+        \ URL), `expiration` (URL expiration timestamp, may be null), `label_print_id`\
+        \ (the audit-trail record), and `invalid_mskus` (array of strings, normally\
+        \ empty — see below).\n\n**Partial success — `invalid_mskus`:** Amazon rejects\
+        \ an entire label batch when it does not recognise even one of the MSKUs in\
+        \ it. Rather than failing the whole request, any MSKU Amazon names as unrecognised\
+        \ is dropped and the remaining MSKUs are labelled. The dropped MSKUs are returned\
+        \ in `invalid_mskus` and are **not** present in the label document, nor counted\
+        \ in the recorded print quantity. An unrecognised MSKU usually means the listing\
+        \ is inactive, was changed very recently (e.g. switched to FNSKU labelling),\
+        \ or does not exist on the seller account for the destination marketplace.\n\
+        \n**Marketplace:** labels are requested against the marketplace matching the\
+        \ destination warehouse's country, falling back to the first participating\
+        \ marketplace when that country is not one the seller participates in.\n\n\
+        **422 conditions:**\n- an `mskus.*.msku` value is not part of this inbound\
+        \ plan\n- the integration instance has no participating Amazon marketplace\
+        \ (re-sync marketplace participations)\n- Amazon recognises **none** of the\
+        \ submitted MSKUs, so there is nothing left to label\n- Amazon rejects the\
+        \ request for another reason (SP-API error messages are parsed and surfaced\
+        \ per field)\n- Amazon does not return a label document"
       requestBody:
         content:
           application/json:
@@ -154801,21 +154814,24 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      url:
-                        type: string
-                      expiration:
-                        type: string
-                      label_print_id:
-                        type: integer
-                example:
-                  data:
-                    url: https://sellercentral.amazon.com/labels/download/amzn1.tortuga.4.na.aGVsbG8td29ybGQ.pdf?X-Amz-Expires=300
-                    expiration: '2026-06-12T18:45:00Z'
-                    label_print_id: 41
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      url: https://sellercentral.amazon.com/labels/download/amzn1.tortuga.4.na.aGVsbG8td29ybGQ.pdf?X-Amz-Expires=300
+                      expiration: '2026-06-12T18:45:00Z'
+                      label_print_id: 41
+                      invalid_mskus: []
+                example-1:
+                  summary: 200 OK (Partial — Unrecognised MSKUs Skipped)
+                  value:
+                    data:
+                      url: https://sellercentral.amazon.com/labels/download/amzn1.tortuga.4.na.aGVsbG8td29ybGQ.pdf?X-Amz-Expires=300
+                      expiration: '2026-06-12T18:45:00Z'
+                      label_print_id: 42
+                      invalid_mskus:
+                      - WIDGET-RED-M
         '422':
           description: Unprocessable Entity
           headers:
@@ -154842,6 +154858,17 @@ paths:
                     errors:
                       general:
                       - Amazon did not return a label document — try again.
+                example-2:
+                  summary: 422 No Recognised MSKUs
+                  value:
+                    message: 'Amazon does not recognise the following SKUs: WIDGET-BLUE-L,
+                      WIDGET-RED-M. Check the listings in Seller Central, then try
+                      again.'
+                    errors:
+                      mskus:
+                      - 'Amazon does not recognise the following SKUs: WIDGET-BLUE-L,
+                        WIDGET-RED-M. Check the listings in Seller Central, then try
+                        again.'
         '429': *id001
         '401': *id002
         '403': *id003
