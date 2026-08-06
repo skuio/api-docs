@@ -158833,8 +158833,8 @@ paths:
       description: 'Detect 3PL/supplier fulfillment availability for the plan and
         return the built packet (or null when not yet built). `available` reflects
         whether the plan is eligible; `source_type` is `3pl` or `supplier`; `packet`
-        is the FbaInboundFulfillmentPacket resource including `recipient_email`, `recipient_name`,
-        and the editable `email_template`.
+        carries the resolved recipient, the two editable email templates, and the
+        attachment availability flags below.
 
 
         :::warning[Not yet available to API tokens]
@@ -158845,10 +158845,24 @@ paths:
         :::
 
 
-        **`email_will_attach_fnsku_labels`** (boolean): whether the 3PL email can
-        carry the FNSKU label PDF (a durable label file is already attached, or labels
-        are generatable at send for seller-labelled items) — drives the compose dialog''s
-        attachment checkbox.'
+        **Email templates.** `email_template` is the initial portal invitation (asks
+        the 3PL/supplier for box contents). `email_shipping_details_template` is the
+        stage-2 follow-up that carries the shipping paperwork. Both leave the `{{reference}}`
+        / `{{portal_link}}` / `{{instructions}}` tokens un-substituted, and both are
+        tenant-overridable in Settings → Email Templates.
+
+
+        **`can_send_shipping_details`** (boolean): whether there is anything to send
+        in the stage-2 follow-up yet — true once the order has been sent AND at least
+        one later-stage document (box labels, pallet labels, packing list or bill
+        of lading) has left the pending state.
+
+
+        **`email_will_attach_*`** (booleans): which documents the email can actually
+        carry right now — `fnsku_labels` (already generated or generatable at send),
+        `prep_sheet` (whenever the plan has items), `packing_list` (once box contents
+        are known), and `box_labels` / `pallet_labels` / `bol` (once generated; pallet
+        labels and a bill of lading exist on freight shipments only).'
       parameters:
       - name: integrationInstance
         in: path
@@ -158899,6 +158913,13 @@ paths:
                       is_portal_accessible: true
                       recipient_email: warehouse@3pl.example.com
                       recipient_name: Acme 3PL Fulfillment
+                      email_from:
+                        address: orders@merchant.example.com
+                        name: Acme Merchant
+                      email_reply_to:
+                        address: ops@merchant.example.com
+                        name: Acme Ops
+                      email_from_default_mode: merchant
                       email_template:
                         subject: FBA inbound ready — {{reference}}
                         body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
@@ -158909,6 +158930,22 @@ paths:
                           labels and the bill of lading are prepared separately and
                           will follow — the BOL is issued close to the pickup date.</p><p>Thank
                           you.</p>
+                      email_shipping_details_template:
+                        subject: Shipping details — {{reference}}
+                        body: <p>Hi,</p><p>Here are the shipping instructions and
+                          paperwork for FBA inbound shipment (<strong>{{reference}}</strong>).</p><p>The
+                          box labels, pallet labels and bill of lading for this shipment
+                          are attached where applicable. They are also available in
+                          the portal:</p><p>{{portal_link}}</p><p><strong>Shipping
+                          instructions</strong></p><p>{{instructions}}</p><p>Thank
+                          you.</p>
+                      can_send_shipping_details: true
+                      email_will_attach_fnsku_labels: true
+                      email_will_attach_prep_sheet: true
+                      email_will_attach_packing_list: true
+                      email_will_attach_box_labels: true
+                      email_will_attach_pallet_labels: false
+                      email_will_attach_bol: false
                       instructions: Pack each MSKU into its own box. Apply the provided
                         FNSKU labels to every unit, then the box labels to the outside
                         of each carton.
@@ -159743,10 +159780,10 @@ paths:
       - Amazon
       summary: Send 3PL Email
       description: 'Send the operator-composed "Email the 3PL" portal invitation:
-        resolves the 3PL/supplier recipient, substitutes the `{{reference}}`/`{{portal_link}}`/`{{instructions}}`
-        tokens, marks the packet Sent, and dispatches FbaInboundPortalInviteNotification
-        (CC honoured). Returns the updated FbaInboundFulfillmentPacket resource. Same
-        body as the preview endpoint.
+        resolves the 3PL/supplier recipient, substitutes the `{{reference}}` / `{{portal_link}}`
+        / `{{instructions}}` tokens, attaches the selected documents, marks the initial-stage
+        documents and the packet Sent, and delivers the mail (CC honoured). Returns
+        the updated fulfillment packet.
 
 
         :::warning[Not yet available to API tokens]
@@ -159757,11 +159794,40 @@ paths:
         :::
 
 
-        **`attach_fnsku_labels`** (boolean, optional, default `true`): attach the
-        FNSKU item-label PDF to the email. When no durable label file exists yet,
-        labels are generated at send time for every seller-labelled item at its plan
-        quantity (best-effort — a generation failure never blocks the email). Send
-        `false` to omit the attachment.'
+        Body: `subject` (required, max 255), `body` (required HTML string), `cc` (optional
+        array of email addresses).
+
+
+        **Attachment flags** (all boolean, optional, default `true`). Each is honoured
+        only when the document actually exists — the matching `email_will_attach_*`
+        flag on the packet tells you which are available, so the compose dialog never
+        offers an attachment that cannot be produced:
+
+        - `attach_fnsku_labels` — FNSKU item-label PDF. When no durable label file
+        exists yet, labels are generated at send time for every seller-labelled item
+        at its plan quantity (best-effort — a generation failure never blocks the
+        email).
+
+        - `attach_prep_sheet` — prep & pack sheet (XLSX): unit mix, prep requirements
+        and kitting instructions.
+
+        - `attach_packing_list` — packing list (XLSX): every box with its unit mix,
+        dimensions and weight. Available once box contents are known.
+
+        - `attach_box_labels` — Amazon box labels (PDF), one per box. Available once
+        generated.
+
+        - `attach_pallet_labels` — Amazon pallet labels (PDF), four per pallet. Freight
+        shipments only.
+
+        - `attach_bol` — bill of lading (PDF). Freight shipments only, issued close
+        to the pickup date.
+
+
+        **`from_mode`** (string, optional, one of `merchant` or `system`): which sender
+        identity to send as for this one email. `merchant` uses the store''s own address
+        (requires SPF/DKIM on that domain); `system` uses the always-deliverable system
+        identity. Defaults to the packet''s `email_from_default_mode`.'
       requestBody:
         content:
           application/json:
@@ -159778,6 +159844,18 @@ paths:
                     type: string
                 attach_fnsku_labels:
                   type: boolean
+                attach_prep_sheet:
+                  type: boolean
+                attach_packing_list:
+                  type: boolean
+                attach_box_labels:
+                  type: boolean
+                attach_pallet_labels:
+                  type: boolean
+                attach_bol:
+                  type: boolean
+                from_mode:
+                  type: string
               example:
                 subject: FBA inbound ready — WF-2026-000123
                 body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
@@ -159785,6 +159863,12 @@ paths:
                 cc:
                 - ops@example.com
                 attach_fnsku_labels: true
+                attach_prep_sheet: true
+                attach_packing_list: false
+                attach_box_labels: false
+                attach_pallet_labels: false
+                attach_bol: false
+                from_mode: merchant
       parameters:
       - name: integrationInstance
         in: path
@@ -159848,6 +159932,22 @@ paths:
                         type: string
                       recipient_name:
                         type: string
+                      email_from:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                          name:
+                            type: string
+                      email_reply_to:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                          name:
+                            type: string
+                      email_from_default_mode:
+                        type: string
                       email_template:
                         type: object
                         properties:
@@ -159855,6 +159955,27 @@ paths:
                             type: string
                           body:
                             type: string
+                      email_shipping_details_template:
+                        type: object
+                        properties:
+                          subject:
+                            type: string
+                          body:
+                            type: string
+                      can_send_shipping_details:
+                        type: boolean
+                      email_will_attach_fnsku_labels:
+                        type: boolean
+                      email_will_attach_prep_sheet:
+                        type: boolean
+                      email_will_attach_packing_list:
+                        type: boolean
+                      email_will_attach_box_labels:
+                        type: boolean
+                      email_will_attach_pallet_labels:
+                        type: boolean
+                      email_will_attach_bol:
+                        type: boolean
                       instructions:
                         type: string
                       instruction_override:
@@ -159927,6 +160048,13 @@ paths:
                     is_portal_accessible: true
                     recipient_email: warehouse@3pl.example.com
                     recipient_name: Acme 3PL Fulfillment
+                    email_from:
+                      address: orders@merchant.example.com
+                      name: Acme Merchant
+                    email_reply_to:
+                      address: ops@merchant.example.com
+                      name: Acme Ops
+                    email_from_default_mode: merchant
                     email_template:
                       subject: FBA inbound ready — {{reference}}
                       body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
@@ -159937,6 +160065,21 @@ paths:
                         labels and the bill of lading are prepared separately and
                         will follow — the BOL is issued close to the pickup date.</p><p>Thank
                         you.</p>
+                    email_shipping_details_template:
+                      subject: Shipping details — {{reference}}
+                      body: <p>Hi,</p><p>Here are the shipping instructions and paperwork
+                        for FBA inbound shipment (<strong>{{reference}}</strong>).</p><p>The
+                        box labels, pallet labels and bill of lading for this shipment
+                        are attached where applicable. They are also available in
+                        the portal:</p><p>{{portal_link}}</p><p><strong>Shipping instructions</strong></p><p>{{instructions}}</p><p>Thank
+                        you.</p>
+                    can_send_shipping_details: false
+                    email_will_attach_fnsku_labels: true
+                    email_will_attach_prep_sheet: true
+                    email_will_attach_packing_list: true
+                    email_will_attach_box_labels: true
+                    email_will_attach_pallet_labels: false
+                    email_will_attach_bol: false
                     instructions: Pack each MSKU into its own box. Apply the provided
                       FNSKU labels to every unit, then the box labels to the outside
                       of each carton.
@@ -160006,6 +160149,395 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: post-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-fulfillment-email
+  /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/fulfillment/shipping-details-email:
+    post:
+      tags:
+      - Amazon
+      summary: Send Shipping Details Email
+      description: 'Stage 2 of the fulfillment send: email the shipping instructions
+        and carrier paperwork that only exist once the box contents are in and transport
+        is confirmed — the box labels, pallet labels, packing list and bill of lading.
+        The initial invitation promises this follow-up; this endpoint is what delivers
+        it.
+
+
+        Resolves the same 3PL/supplier recipient as the initial email, substitutes
+        the `{{reference}}` / `{{portal_link}}` / `{{instructions}}` tokens, attaches
+        the selected documents, marks the later-stage documents Sent, and delivers
+        the mail (CC honoured). Returns the updated fulfillment packet.
+
+
+        Check `can_send_shipping_details` on the packet before offering this action:
+        it is true only once the order has been sent AND at least one later-stage
+        document has left the pending state. Calling it earlier returns `422 shipping_details_unavailable`.
+
+
+        The subject/body default to the tenant-overridable shipping-details template
+        returned as `email_shipping_details_template`; the initial invitation uses
+        a separate template.
+
+
+        Body: `subject` (required, max 255), `body` (required HTML string), `cc` (optional
+        array of email addresses).
+
+
+        **Attachment flags** (all boolean, optional, default `true`). Each is honoured
+        only when the document actually exists — the matching `email_will_attach_*`
+        flag on the packet tells you which are available, so the compose dialog never
+        offers an attachment that cannot be produced:
+
+        - `attach_fnsku_labels` — FNSKU item-label PDF. When no durable label file
+        exists yet, labels are generated at send time for every seller-labelled item
+        at its plan quantity (best-effort — a generation failure never blocks the
+        email).
+
+        - `attach_prep_sheet` — prep & pack sheet (XLSX): unit mix, prep requirements
+        and kitting instructions.
+
+        - `attach_packing_list` — packing list (XLSX): every box with its unit mix,
+        dimensions and weight. Available once box contents are known.
+
+        - `attach_box_labels` — Amazon box labels (PDF), one per box. Available once
+        generated.
+
+        - `attach_pallet_labels` — Amazon pallet labels (PDF), four per pallet. Freight
+        shipments only.
+
+        - `attach_bol` — bill of lading (PDF). Freight shipments only, issued close
+        to the pickup date.
+
+
+        **`from_mode`** (string, optional, one of `merchant` or `system`): which sender
+        identity to send as for this one email. `merchant` uses the store''s own address
+        (requires SPF/DKIM on that domain); `system` uses the always-deliverable system
+        identity. Defaults to the packet''s `email_from_default_mode`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: string
+                body:
+                  type: string
+                cc:
+                  type: array
+                  items:
+                    type: string
+                attach_fnsku_labels:
+                  type: boolean
+                attach_prep_sheet:
+                  type: boolean
+                attach_packing_list:
+                  type: boolean
+                attach_box_labels:
+                  type: boolean
+                attach_pallet_labels:
+                  type: boolean
+                attach_bol:
+                  type: boolean
+                from_mode:
+                  type: string
+              example:
+                subject: Shipping details — WF-2026-000123
+                body: <p>Hi,</p><p>Here are the shipping instructions and paperwork
+                  for <strong>{{reference}}</strong>.</p><p>{{portal_link}}</p><p>{{instructions}}</p>
+                cc:
+                - ops@example.com
+                attach_fnsku_labels: false
+                attach_prep_sheet: false
+                attach_packing_list: true
+                attach_box_labels: true
+                attach_pallet_labels: true
+                attach_bol: true
+                from_mode: merchant
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The integration instance ID.
+      - name: draft_inbound_plan
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '1'
+        description: The draft inbound plan ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      draft_amazon_fba_inbound_plan_id:
+                        type: integer
+                      source_type:
+                        type: string
+                      source_type_label:
+                        type: string
+                      channels:
+                        type: array
+                        items:
+                          type: string
+                      integration_instance_id:
+                        type: integer
+                      external_order_id:
+                        type: string
+                        nullable: true
+                      portal_url:
+                        type: string
+                      portal_token_expires_at:
+                        type: string
+                      portal_revoked_at:
+                        type: string
+                        nullable: true
+                      is_portal_accessible:
+                        type: boolean
+                      recipient_email:
+                        type: string
+                      recipient_name:
+                        type: string
+                      email_from:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                          name:
+                            type: string
+                      email_reply_to:
+                        type: object
+                        properties:
+                          address:
+                            type: string
+                          name:
+                            type: string
+                      email_from_default_mode:
+                        type: string
+                      email_template:
+                        type: object
+                        properties:
+                          subject:
+                            type: string
+                          body:
+                            type: string
+                      email_shipping_details_template:
+                        type: object
+                        properties:
+                          subject:
+                            type: string
+                          body:
+                            type: string
+                      can_send_shipping_details:
+                        type: boolean
+                      email_will_attach_fnsku_labels:
+                        type: boolean
+                      email_will_attach_prep_sheet:
+                        type: boolean
+                      email_will_attach_packing_list:
+                        type: boolean
+                      email_will_attach_box_labels:
+                        type: boolean
+                      email_will_attach_pallet_labels:
+                        type: boolean
+                      email_will_attach_bol:
+                        type: boolean
+                      instructions:
+                        type: string
+                      instruction_override:
+                        type: string
+                        nullable: true
+                      has_custom_instructions:
+                        type: boolean
+                      build_required:
+                        type: boolean
+                      manufacturing_order_id:
+                        type: string
+                        nullable: true
+                      status:
+                        type: string
+                      status_label:
+                        type: string
+                      sent_at:
+                        type: string
+                      acknowledged_at:
+                        type: string
+                        nullable: true
+                      portal_submission:
+                        type: string
+                        nullable: true
+                      documents:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            type:
+                              type: string
+                            type_label:
+                              type: string
+                            stage:
+                              type: string
+                            stage_label:
+                              type: string
+                            status:
+                              type: string
+                            status_label:
+                              type: string
+                            is_downloadable:
+                              type: boolean
+                            ready_at:
+                              type: string
+                            sent_at:
+                              type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  message: Shipping details sent.
+                  data:
+                    id: 42
+                    draft_amazon_fba_inbound_plan_id: 1
+                    source_type: 3pl
+                    source_type_label: 3PL
+                    channels:
+                    - portal
+                    - email
+                    integration_instance_id: 1
+                    external_order_id: null
+                    portal_url: '{{protocol}}://{{domain}}/v2/integrations/amazon/fba/draft-inbound-plans/verification-portal/uCJ8x2n1QwErTy?integration=1'
+                    portal_token_expires_at: '2026-08-05T00:00:00+00:00'
+                    portal_revoked_at: null
+                    is_portal_accessible: true
+                    recipient_email: warehouse@3pl.example.com
+                    recipient_name: Acme 3PL Fulfillment
+                    email_from:
+                      address: orders@merchant.example.com
+                      name: Acme Merchant
+                    email_reply_to:
+                      address: ops@merchant.example.com
+                      name: Acme Ops
+                    email_from_default_mode: merchant
+                    email_template:
+                      subject: FBA inbound ready — {{reference}}
+                      body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
+                        is ready for you to prepare and ship.</p><p>Please use the
+                        secure portal below to review the order and prep instructions,
+                        submit your box contents, and confirm when the shipment is
+                        ready:</p><p>{{portal_link}}</p><p><strong>Prep instructions</strong></p><p>{{instructions}}</p><p>Box/pallet
+                        labels and the bill of lading are prepared separately and
+                        will follow — the BOL is issued close to the pickup date.</p><p>Thank
+                        you.</p>
+                    email_shipping_details_template:
+                      subject: Shipping details — {{reference}}
+                      body: <p>Hi,</p><p>Here are the shipping instructions and paperwork
+                        for FBA inbound shipment (<strong>{{reference}}</strong>).</p><p>The
+                        box labels, pallet labels and bill of lading for this shipment
+                        are attached where applicable. They are also available in
+                        the portal:</p><p>{{portal_link}}</p><p><strong>Shipping instructions</strong></p><p>{{instructions}}</p><p>Thank
+                        you.</p>
+                    can_send_shipping_details: true
+                    email_will_attach_fnsku_labels: true
+                    email_will_attach_prep_sheet: true
+                    email_will_attach_packing_list: true
+                    email_will_attach_box_labels: true
+                    email_will_attach_pallet_labels: false
+                    email_will_attach_bol: false
+                    instructions: Pack each MSKU into its own box. Apply the provided
+                      FNSKU labels to every unit, then the box labels to the outside
+                      of each carton.
+                    instruction_override: null
+                    has_custom_instructions: false
+                    build_required: false
+                    manufacturing_order_id: null
+                    status: sent
+                    status_label: Sent
+                    sent_at: '2026-07-08T09:15:00+00:00'
+                    acknowledged_at: null
+                    portal_submission: null
+                    documents:
+                    - id: 503
+                      type: packing_list
+                      type_label: Packing List
+                      stage: mid
+                      stage_label: After box contents
+                      status: sent
+                      status_label: Sent
+                      is_downloadable: true
+                      ready_at: '2026-07-08T09:00:00+00:00'
+                      sent_at: '2026-07-08T09:15:00+00:00'
+                    - id: 504
+                      type: box_labels
+                      type_label: Box Labels
+                      stage: mid
+                      stage_label: After box contents
+                      status: sent
+                      status_label: Sent
+                      is_downloadable: true
+                      ready_at: '2026-07-08T09:00:00+00:00'
+                      sent_at: '2026-07-08T09:15:00+00:00'
+                    created_at: '2026-07-06T12:00:00+00:00'
+                    updated_at: '2026-07-06T12:00:00+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Packet Not Built
+                  value:
+                    message: Build the fulfillment packet before sending the email.
+                    errors:
+                      packet_not_built:
+                      - Build the fulfillment packet before sending the email.
+                example-1:
+                  summary: 422 Shipping Details Unavailable
+                  value:
+                    message: There is no shipping paperwork to send yet. Send the
+                      order, then generate the box labels, pallet labels or bill of
+                      lading.
+                    errors:
+                      shipping_details_unavailable:
+                      - There is no shipping paperwork to send yet. Send the order,
+                        then generate the box labels, pallet labels or bill of lading.
+                example-2:
+                  summary: 422 Validation Error
+                  value:
+                    message: The subject field is required.
+                    errors:
+                      subject:
+                      - The subject field is required.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      operationId: post-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-fulfillment-shipping-details-email
   /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/fulfillment/documents/sync-labels:
     post:
       tags:
