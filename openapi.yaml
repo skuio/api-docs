@@ -24412,6 +24412,14 @@ paths:
         (Settings → Document Numbering).
 
 
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
         **Authentication:** Requires Bearer token.
 
 
@@ -24513,6 +24521,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: get-api-ledger-settings-document-numbering
     put:
       tags:
@@ -24520,6 +24529,14 @@ paths:
       summary: Update Document Numbering Settings
       description: 'Save how NEW sales invoices are numbered on the active accounting
         connection.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
 
 
         **Authentication:** Requires Bearer token + `accounting.manage_settings` permission
@@ -24653,6 +24670,7 @@ paths:
         '429': *id001
         '401': *id002
         '403': *id003
+      x-session-only: true
       operationId: put-api-ledger-settings-document-numbering
   /api/ledger/connections:
     get:
@@ -51349,6 +51367,28 @@ paths:
         `0` disables the floor; values outside 0-90 are rejected with 422.
 
 
+
+        **Slug `packing-slip-rules`** accepts (every field optional; an empty list
+        turns the rule off):
+
+        - `suppressed_line_descriptions` (array of strings, each max 255) — line descriptions
+        to leave off the packing slip entirely, such as shipping protection or insurance
+        lines a warehouse cannot pick. Matched case-insensitively against the full
+        line description.
+
+        - `highlighted_shipping_methods` (object of keyword => colour name, each value
+        max 32 chars) — when the order''s shipping method contains the keyword, the
+        shipping method prints highlighted. The value must be one of `blue`, `green`,
+        `purple`, `orange`, `red`; anything else is rejected with 422. It is a colour
+        name, never CSS.
+
+        - `highlighted_address_keywords` (array of strings, each max 255) — when the
+        shipping address contains one of these, the name and address block print highlighted.
+
+        - `brand_sizing_notes` (object of brand name => note, each value max 255)
+        — note printed under that brand''s lines. Brand names are matched case-insensitively.
+
+
         Authentication: Requires Bearer token.
 
 
@@ -63008,9 +63048,10 @@ paths:
   /api/pdf-templates:
     get:
       tags:
-      - UI Utilities
+      - PDF Templates
       summary: List PDF Templates
-      description: 'Returns all global (non-store-specific) PDF templates.
+      description: 'Returns every PDF template — the global templates plus every store-specific
+        override.
 
 
         :::info[Required scope: `settings:read`]
@@ -63021,10 +63062,16 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.
+        Authentication: Bearer Personal Access Token with the `settings` scope (read
+        access).
 
 
-        Template types: purchase_order, sales_order, packing'
+        Each row carries only what a list needs: `name`, `type`, `description`, and
+        the owning store (`store_id` and `store_name`, both null on a global template).
+        The template markup and its variable schema are deliberately not included
+        — fetch a single template to get those. Template types: purchase_order, sales_order,
+        packing, quote, pick_list, vendor_credit, sales_credit. There is no server-side
+        type filter — request the full list and filter by `type` on the client.'
       parameters: []
       responses:
         '200':
@@ -63048,57 +63095,48 @@ paths:
                           type: integer
                         name:
                           type: string
-                        content:
-                          type: string
                         type:
                           type: string
                         description:
                           type: string
-                        variables:
-                          type: array
-                          items:
-                            type: string
                         store_id:
                           type: string
                           nullable: true
                         store_name:
                           type: string
                           nullable: true
+                        updated_at:
+                          type: string
                 example:
                   data:
                   - id: 1
-                    name: Purchase Order Template
-                    content: <html>...</html>
+                    name: Purchase Order
                     type: purchase_order
-                    description: Default purchase order PDF template
-                    variables:
-                    - order_number
-                    - vendor_name
-                    - line_items
+                    description: Default purchase order layout.
                     store_id: null
                     store_name: null
+                    updated_at: '2026-07-19T11:05:00+00:00'
                   - id: 2
-                    name: Sales Order Template
-                    content: <html>...</html>
+                    name: Sales Order
                     type: sales_order
-                    description: Default sales order PDF template
-                    variables:
-                    - order_number
-                    - customer_name
-                    - line_items
+                    description: Default sales order layout.
                     store_id: null
                     store_name: null
+                    updated_at: '2026-07-19T11:05:00+00:00'
                   - id: 3
-                    name: Packing Slip Template
-                    content: <html>...</html>
+                    name: Packing Slip
                     type: packing
-                    description: Default packing slip PDF template
-                    variables:
-                    - order_number
-                    - warehouse
-                    - items
+                    description: Default packing slip layout.
                     store_id: null
                     store_name: null
+                    updated_at: '2026-07-20T14:32:10+00:00'
+                  - id: 42
+                    name: Packing Slip
+                    type: packing
+                    description: Default packing slip layout.
+                    store_id: 7
+                    store_name: Acme US
+                    updated_at: '2026-07-21T09:14:55+00:00'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -63110,7 +63148,7 @@ paths:
       - PDF Templates
       summary: Get PDF Template
       description: 'Returns a single PDF template by ID, including its raw `content`,
-        resolved `variables`, and `variables_tree`/`schema`.
+        resolved `variables`, `variables_tree`/`schema`, and `preview_destinations`.
 
 
         :::info[Required scope: `settings:read`]
@@ -63122,7 +63160,12 @@ paths:
 
 
         Authentication: Bearer Personal Access Token with the `settings` scope (read
-        access).'
+        access).
+
+
+        `preview_destinations` lists the destination countries a preview can be rendered
+        against, each as a `code` and a `label`. Pass one of those codes as `destination_country`
+        when previewing to see how country-conditional sections render.'
       parameters:
       - name: id
         in: path
@@ -63213,8 +63256,19 @@ paths:
                       store_name:
                         type: string
                         nullable: true
+                      reset_target:
+                        type: string
                       updated_at:
                         type: string
+                      preview_destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            label:
+                              type: string
                 example:
                   data:
                     id: 1
@@ -63247,7 +63301,21 @@ paths:
                             mock: PO-2044
                     store_id: null
                     store_name: null
+                    reset_target: default
                     updated_at: '2026-07-20T14:32:10+00:00'
+                    preview_destinations:
+                    - code: US
+                      label: United States
+                    - code: CA
+                      label: Canada
+                    - code: GB
+                      label: United Kingdom
+                    - code: AU
+                      label: Australia
+                    - code: NZ
+                      label: New Zealand
+                    - code: DE
+                      label: Germany
         '404':
           description: Not Found
           headers:
@@ -63294,8 +63362,14 @@ paths:
         - content (required): the template markup string.
 
         - updated_at (optional): the template''s last-known `updated_at` timestamp.
-        When supplied it enables optimistic-lock checking so a concurrent edit is
-        rejected instead of silently overwritten.'
+        When supplied it enables optimistic-lock checking, so an edit made by someone
+        else since that timestamp is rejected with a 409 instead of being silently
+        overwritten. Re-send without `updated_at` to overwrite deliberately.
+
+
+        `preview_destinations` lists the destination countries a preview can be rendered
+        against, each as a `code` and a `label`. Pass one of those codes as `destination_country`
+        when previewing to see how country-conditional sections render.'
       requestBody:
         content:
           application/json:
@@ -63400,8 +63474,19 @@ paths:
                       store_name:
                         type: string
                         nullable: true
+                      reset_target:
+                        type: string
                       updated_at:
                         type: string
+                      preview_destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            label:
+                              type: string
                 example:
                   data:
                     id: 1
@@ -63435,7 +63520,38 @@ paths:
                             mock: PO-2044
                     store_id: null
                     store_name: null
+                    reset_target: default
                     updated_at: '2026-07-21T09:15:00+00:00'
+                    preview_destinations:
+                    - code: US
+                      label: United States
+                    - code: CA
+                      label: Canada
+                    - code: GB
+                      label: United Kingdom
+                    - code: AU
+                      label: Australia
+                    - code: NZ
+                      label: New Zealand
+                    - code: DE
+                      label: Germany
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This template was modified by someone else since you loaded
+                    it. Reload to see their changes, or save again to overwrite.
         '422':
           description: Unprocessable Entity
           headers:
@@ -63473,8 +63589,8 @@ paths:
       tags:
       - PDF Templates
       summary: Reset PDF Template to Default
-      description: 'Resets a PDF template back to its built-in default content and
-        records the reset as a new version so the prior content can still be restored.
+      description: 'Resets a PDF template back to its default content and records
+        the reset as a new version so the prior content can still be restored.
 
 
         :::info[Required scope: `settings:write`]
@@ -63483,6 +63599,13 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        What "default" means depends on the template: a store''s own copy resets to
+        the account''s default template for that type, so a global customisation is
+        not thrown away for one store; the default template itself resets to the built-in
+        content. The reset_target field on the template says which one applies before
+        the reset is run — `global` or `default`.
 
 
         Authentication: Bearer Personal Access Token with the `settings` scope (write
@@ -63579,6 +63702,8 @@ paths:
                       store_name:
                         type: string
                         nullable: true
+                      reset_target:
+                        type: string
                       updated_at:
                         type: string
                 example:
@@ -63613,6 +63738,7 @@ paths:
                             mock: PO-2044
                     store_id: null
                     store_name: null
+                    reset_target: default
                     updated_at: '2026-07-20T14:32:10+00:00'
         '429': *id001
         '401': *id002
@@ -63626,8 +63752,7 @@ paths:
       tags:
       - PDF Templates
       summary: Preview PDF Template
-      description: 'Renders a preview of draft template content without saving it,
-        using sample data.
+      description: 'Renders a preview of draft template content without saving it.
 
 
         :::info[Required scope: `settings:write`]
@@ -63649,13 +63774,33 @@ paths:
         - format (optional): `pdf` (default) returns a base64-encoded PDF in `data.pdf`;
         `html` returns rendered markup in `data.html`.
 
-        - sales_order_id (optional): render against a real sales order''s data instead
-        of sample data. Only applied for packing-slip templates; ignored for other
-        types.
+        - sample_record_id (optional): render against one of your own records instead
+        of sample data. The template''s type decides what kind of record that is —
+        a sales order, a quote, a purchase order, a pick list or a credit. Use the
+        sample-records endpoint to list the eligible records for a template.
+
+        - destination_country (optional): render the sample data against a destination
+        country so country-conditional sections can be seen. Accepts one of the codes
+        in the template''s `preview_destinations` (US, CA, GB, AU, NZ, DE). Ignored
+        when `sample_record_id` is supplied — a real record carries its own address.
 
 
         Invalid template markup returns a 422 with the offending line rather than
-        a server error.'
+        a server error.
+
+
+        Response:
+
+        - data.pdf: the base64-encoded document (pdf format only).
+
+        - data.html: the rendered markup (html format only).
+
+        - data.rendered_with: which engine produced this preview, so the preview can
+        be trusted to match the printed document.
+
+        - data.warnings: page-setup problems found while rendering — a dropped footer
+        banner, artwork too tall for the page. Empty when nothing was wrong, and always
+        present. The html format does not run page setup, so it returns no warnings.'
       requestBody:
         content:
           application/json:
@@ -63666,12 +63811,15 @@ paths:
                   type: string
                 format:
                   type: string
-                sales_order_id:
+                sample_record_id:
                   type: integer
+                destination_country:
+                  type: string
               example:
                 content: <html><body><h1>Packing Slip {{order_number}}</h1></body></html>
                 format: pdf
-                sales_order_id: 4821
+                sample_record_id: 4821
+                destination_country: NZ
       parameters:
       - name: id
         in: path
@@ -63699,7 +63847,24 @@ paths:
                       pdf: JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDEgMCBSL1Jlc291cmNlcyAyIDAgUj4+CmVuZG9iagolJUVPRg==
                       type: application/pdf
                       rendered_with: wkhtmltopdf
+                      warnings: []
                 example-1:
+                  summary: 200 OK (PDF with Page Setup Warnings)
+                  value:
+                    data:
+                      pdf: JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDEgMCBSL1Jlc291cmNlcyAyIDAgUj4+CmVuZG9iagolJUVPRg==
+                      type: application/pdf
+                      rendered_with: wkhtmltopdf
+                      warnings:
+                      - This template produced 3 footer banners. Only the first is
+                        pinned to the bottom of the page; the rest have been dropped.
+                        To vary the banner by order, wrap each one in its own conditional
+                        section so only one survives.
+                      - The footer banner artwork is 1.40:1. A footer banner is stretched
+                        to the full width of the page, so anything squarer than 3:1
+                        takes a large bite out of every page. A wide strip (around
+                        7:1) is what the built-in templates use.
+                example-2:
                   summary: 200 OK (HTML)
                   value:
                     data:
@@ -63739,123 +63904,39 @@ paths:
         '404': *id004
       x-required-scope: settings:write
       operationId: post-api-pdf-templates-id-preview
-  /api/pdf-templates/preview-sales-order:
-    post:
-      tags:
-      - PDF Templates
-      summary: Preview Packing Slip for a Sales Order
-      description: 'Renders the saved packing-slip template against a real sales order
-        and returns a base64-encoded PDF in `data.pdf`.
-
-
-        :::info[Required scope: `settings:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Bearer Personal Access Token with the `settings` scope (read
-        access).
-
-
-        Fields:
-
-        - sales_order_id (required): the sales order to render.'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                sales_order_id:
-                  type: integer
-              example:
-                sales_order_id: 4821
-      parameters: []
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      pdf:
-                        type: string
-                      type:
-                        type: string
-                example:
-                  data:
-                    pdf: JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDEgMCBSL1Jlc291cmNlcyAyIDAgUj4+CmVuZG9iagolJUVPRg==
-                    type: application/pdf
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
-                      sales_order_id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The given data was invalid.
-                  errors:
-                    sales_order_id:
-                    - The selected sales order id is invalid.
-        '429': *id001
-        '401': *id002
-        '403': *id003
-      x-required-scope: settings:write
-      operationId: post-api-pdf-templates-preview-sales-order
-  /api/pdf-templates/search-sales-orders:
+  /api/pdf-templates/{id}/sample-records:
     get:
       tags:
       - PDF Templates
-      summary: List Sales Orders for Preview
-      description: 'Returns up to 20 recent sales orders (newest first) for use when
-        picking a sample order to preview a packing slip against.
-
-
-        :::info[Required scope: `settings:read`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
+      summary: List Sample Records for Preview
+      description: 'Lists the records a template can be previewed against, so a preview
+        can be rendered from real data instead of sample data.
 
 
         Authentication: Bearer Personal Access Token with the `settings` scope (read
         access).
 
 
-        Query params:
+        The template''s type decides which kind of record is searched — a sales order
+        for sales-order and packing templates, a quote, a purchase order, a pick list,
+        a sales credit or a vendor credit. A record returned here can never be one
+        the template cannot render.
 
-        - search (optional): match against the sales order number.
 
-        - store_id (optional): restrict results to a single store.'
-      parameters: []
+        Path params:
+
+        - id: the ID of the template the records will be previewed against.
+
+
+        Returns up to 20 records, newest first. Pass the chosen `id` as `sample_record_id`
+        when previewing.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The record ID.
       responses:
         '200':
           description: OK
@@ -63876,31 +63957,21 @@ paths:
                       properties:
                         id:
                           type: integer
-                        sales_order_number:
-                          type: string
-                        store_id:
-                          type: integer
-                        store_name:
-                          type: string
-                        order_date:
+                        reference:
                           type: string
                 example:
                   data:
                   - id: 4821
-                    sales_order_number: SO-1001
-                    store_id: 3
-                    store_name: Acme Store
-                    order_date: '2026-07-18T00:00:00+00:00'
-                  - id: 4805
-                    sales_order_number: SO-0998
-                    store_id: 3
-                    store_name: Acme Store
-                    order_date: '2026-07-17T00:00:00+00:00'
+                    reference: SO-1042
+                  - id: 4816
+                    reference: SO-1039
+                  - id: 4802
+                    reference: SO-1031
         '429': *id001
         '401': *id002
         '403': *id003
-      x-required-scope: settings:read
-      operationId: get-api-pdf-templates-search-sales-orders
+        '404': *id004
+      operationId: get-api-pdf-templates-id-sample-records
   /api/pdf-templates/{id}/validate:
     post:
       tags:
@@ -64219,10 +64290,37 @@ paths:
                     created_by: 7
                     created_by_name: Jane Smith
                     created_at: '2026-07-20T14:32:10+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        detail:
+                          type: string
+                        code:
+                          type: string
+                        source:
+                          type: string
+                example:
+                  errors:
+                  - detail: Version not found.
+                    code: NOT_FOUND
+                    source: id
         '429': *id001
         '401': *id002
         '403': *id003
-        '404': *id004
       x-required-scope: settings:read
       operationId: get-api-pdf-templates-id-versions-versionid
   /api/pdf-templates/{id}/versions/{versionId}/restore:
@@ -64343,6 +64441,8 @@ paths:
                       store_name:
                         type: string
                         nullable: true
+                      reset_target:
+                        type: string
                       updated_at:
                         type: string
                 example:
@@ -64377,11 +64477,39 @@ paths:
                             mock: PO-2044
                     store_id: null
                     store_name: null
+                    reset_target: default
                     updated_at: '2026-07-21T09:20:00+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        detail:
+                          type: string
+                        code:
+                          type: string
+                        source:
+                          type: string
+                example:
+                  errors:
+                  - detail: Version not found.
+                    code: NOT_FOUND
+                    source: id
         '429': *id001
         '401': *id002
         '403': *id003
-        '404': *id004
         '422': *id005
       x-required-scope: settings:write
       operationId: post-api-pdf-templates-id-versions-versionid-restore
@@ -64410,7 +64538,11 @@ paths:
         Path params:
 
         - type: template type — one of purchase_order, sales_order, packing, quote,
-        pick_list, vendor_credit, sales_credit.'
+        pick_list, vendor_credit, sales_credit.
+
+
+        Rows carry the same slim shape as the template list — the markup and variable
+        schema are not included; fetch a single template to get those.'
       parameters:
       - name: type
         in: path
@@ -64440,115 +64572,10 @@ paths:
                           type: integer
                         name:
                           type: string
-                        content:
-                          type: string
                         type:
                           type: string
                         description:
                           type: string
-                        variables:
-                          type: array
-                          items:
-                            type: object
-                            properties:
-                              name:
-                                type: string
-                              variable:
-                                type: string
-                              mockValue:
-                                type: string
-                        variables_tree:
-                          type: object
-                          properties:
-                            order:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    number:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
-                            items:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                type:
-                                  type: string
-                                mock:
-                                  type: string
-                            asset:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    company_logo:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
-                        schema:
-                          type: object
-                          properties:
-                            order:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    number:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
-                            items:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                type:
-                                  type: string
-                                mock:
-                                  type: string
-                            asset:
-                              type: object
-                              properties:
-                                label:
-                                  type: string
-                                children:
-                                  type: object
-                                  properties:
-                                    company_logo:
-                                      type: object
-                                      properties:
-                                        label:
-                                          type: string
-                                        type:
-                                          type: string
-                                        mock:
-                                          type: string
                         store_id:
                           type: integer
                         store_name:
@@ -64559,61 +64586,18 @@ paths:
                   data:
                   - id: 42
                     name: Packing Slip
-                    content: <html><body><h1>Packing Slip {{order_number}}</h1>{{#items}}<p>{{sku}}
-                      x {{quantity}}</p>{{/items}}</body></html>
                     type: packing
                     description: Default packing slip layout.
-                    variables:
-                    - name: Order Number
-                      variable: order_number
-                      mockValue: SO-1001
-                    - name: Warehouse
-                      variable: warehouse
-                      mockValue: Main Warehouse
-                    - name: Items
-                      variable: items
-                      mockValue: ''
-                    variables_tree:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
-                      items:
-                        label: Items
-                        type: section
-                        mock: ''
-                      asset:
-                        label: Custom Assets
-                        children:
-                          company_logo:
-                            label: Company Logo
-                            type: html
-                            mock: ''
-                    schema:
-                      order:
-                        label: Order
-                        children:
-                          number:
-                            label: Order Number
-                            type: string
-                            mock: SO-1001
-                      items:
-                        label: Items
-                        type: section
-                        mock: ''
-                      asset:
-                        label: Custom Assets
-                        children:
-                          company_logo:
-                            label: Company Logo
-                            type: html
-                            mock: ''
-                    store_id: 3
-                    store_name: Acme Store
-                    updated_at: '2026-07-20T14:32:10+00:00'
+                    store_id: 7
+                    store_name: Acme US
+                    updated_at: '2026-07-21T09:14:55+00:00'
+                  - id: 57
+                    name: Packing Slip
+                    type: packing
+                    description: Default packing slip layout.
+                    store_id: 9
+                    store_name: Acme EU
+                    updated_at: '2026-07-22T08:01:44+00:00'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -64644,7 +64628,12 @@ paths:
 
         Fields:
 
-        - store_id (required): the store the override is created for.'
+        - store_id (required): the store the override is created for.
+
+
+        A store can hold only one template per type, and a store copy is always made
+        from the default template — not from another store''s copy. Both are refused
+        with a 422 rather than created.'
       requestBody:
         content:
           application/json:
@@ -64795,6 +64784,8 @@ paths:
                         type: integer
                       store_name:
                         type: string
+                      reset_target:
+                        type: string
                       updated_at:
                         type: string
                 example:
@@ -64855,6 +64846,7 @@ paths:
                             mock: ''
                     store_id: 3
                     store_name: Acme Store
+                    reset_target: global
                     updated_at: '2026-07-20T14:32:10+00:00'
         '422':
           description: Unprocessable Entity
@@ -64864,7 +64856,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -64882,6 +64874,27 @@ paths:
                   errors:
                     store_id:
                     - The selected store id is invalid.
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Store Already Has Its Own Template
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      store_id:
+                      - Northside Outlet already has its own packing slip template
+                        ("Packing Slip"). Edit that one — a store can only have one.
+                example-1:
+                  summary: 422 Source Is Not the Default Template
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      id:
+                      - A store template has to be made from the default packing slip
+                        template, not from another store's copy. Open the default
+                        packing slip and create it from there.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -64910,7 +64923,13 @@ paths:
 
         Path params:
 
-        - id: the ID of the store override template to delete.'
+        - id: the ID of the store override template to delete.
+
+
+        Only a store''s own copy can be deleted. Pointing this at the default template
+        is refused with a 422 — every store prints from it. Deleting a store copy
+        also removes that copy''s version history, so there is nothing left to restore
+        it from.'
       parameters:
       - name: id
         in: path
@@ -64939,6 +64958,34 @@ paths:
                 example:
                   data:
                     message: Store override deleted successfully.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The given data was invalid.
+                  errors:
+                    id:
+                    - This is the default packing slip template — every store prints
+                      from it, so it cannot be deleted. Only a store's own copy can
+                      be removed.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -65152,13 +65199,115 @@ paths:
         '403': *id003
       x-required-scope: settings:write
       operationId: post-api-pdf-template-assets
+  /api/pdf-template-assets/{id}/usage:
+    get:
+      tags:
+      - PDF Templates
+      summary: Get Template Asset Usage
+      description: 'Reports which templates still reference an image asset''s `{{{asset.<slug>}}}`
+        token.
+
+
+        Authentication: Bearer Personal Access Token with the `settings` scope (read
+        access).
+
+
+        Deleting an asset does not remove its token from the templates that use it
+        — those templates keep rendering, with nothing where the image was — and re-uploading
+        the same file does not restore it, because a colliding slug is suffixed and
+        the token therefore changes. Call this before a delete to name what would
+        break.
+
+
+        Path params:
+
+        - id: the ID of the asset to check.
+
+
+        Returns `in_use` plus the templates holding the token. `store` is null on
+        a global template.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The record ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK (In Use)
+                  value:
+                    data:
+                      in_use: true
+                      templates:
+                      - id: 3
+                        name: Packing Slip
+                        type: packing
+                        store: null
+                      - id: 42
+                        name: Packing Slip
+                        type: packing
+                        store: Acme US
+                example-1:
+                  summary: 200 OK (Not Referenced)
+                  value:
+                    data:
+                      in_use: false
+                      templates: []
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  errors:
+                    id:
+                    - message: Asset not found.
+                      code: NotFound
+                      data: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      operationId: get-api-pdf-template-assets-id-usage
   /api/pdf-template-assets/{id}:
     delete:
       tags:
       - PDF Templates
       summary: Delete Template Asset
-      description: 'Deletes an uploaded image asset. Templates that reference the
-        asset''s token will no longer render its image.
+      description: 'Deletes an uploaded image asset and its file.
 
 
         :::info[Required scope: `settings:write`]
@@ -65173,9 +65322,21 @@ paths:
         access).
 
 
+        The delete is refused with a 409 while any template still holds the asset''s
+        `{{{asset.<slug>}}}` token, and the response names those templates — deleting
+        anyway leaves a blank space in every future print of them, and re-uploading
+        the same file does not undo it because the slug (and therefore the token)
+        changes on collision. Repeat the request with `force=1` to delete regardless.
+
+
         Path params:
 
-        - id: the ID of the asset to delete.'
+        - id: the ID of the asset to delete.
+
+
+        Query params:
+
+        - force (optional): `1` deletes an asset that templates still reference.'
       parameters:
       - name: id
         in: path
@@ -65204,10 +65365,100 @@ paths:
                 example:
                   data:
                     message: Asset deleted.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  errors:
+                    id:
+                    - message: Asset not found.
+                      code: NotFound
+                      data: []
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      asset:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                templates:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      id:
+                                        type: integer
+                                      name:
+                                        type: string
+                                      type:
+                                        type: string
+                                      store:
+                                        type: string
+                                        nullable: true
+                example:
+                  errors:
+                    asset:
+                    - message: '"Company Logo" is used by 2 templates. Remove the
+                        {{{asset.company_logo}}} token from those templates first,
+                        or delete it anyway to leave a blank space where the image
+                        was.'
+                      code: PdfTemplateAssetIsLinked
+                      data:
+                        templates:
+                        - id: 3
+                          name: Packing Slip
+                          type: packing
+                          store: null
+                        - id: 42
+                          name: Packing Slip
+                          type: packing
+                          store: Acme US
         '429': *id001
         '401': *id002
         '403': *id003
-        '404': *id004
       x-required-scope: settings:write
       operationId: delete-api-pdf-template-assets-id
   /api/data-tables:
