@@ -5091,7 +5091,9 @@ paths:
         \ Extended, Line Tax Rate.\n\n## Response\nBinary file download:\n- XLSX:\
         \ `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`\n\
         - CSV: `Content-Type: text/csv`\n- Filename: `landed-cost-bills-{timestamp}.{ext}`\
-        \ (summary) or `landed-cost-bills-detail-{timestamp}.{ext}` (line_items)"
+        \ (summary) or `landed-cost-bills-detail-{timestamp}.{ext}` (line_items)\n\
+        \n**Documents.** `documents_count` is available as a `columns` key and exports\
+        \ as a `Documents` column holding the number of attached supporting documents."
       parameters:
       - name: format
         in: query
@@ -56973,7 +56975,14 @@ paths:
 
         - outstanding_amount: total minus (refund_payments_total + applied_to_other_total
         + fees_retained_total), clamped to zero (i.e., the unrefunded, unapplied balance
-        still owed back to the customer)'
+        still owed back to the customer)
+
+
+        **Documents.** Each row carries `attachments_count` (how many documents are
+        attached to the credit) and `attachment_filenames` (their file names). Both
+        `filter[attachments_count]` and `filter[attachment_filename]` are available,
+        so you can isolate credits that are missing a supporting document or find
+        the credit a given file belongs to. `attachments_count` is also sortable.'
       parameters:
       - name: page
         in: query
@@ -56992,7 +57001,8 @@ paths:
         schema:
           type: string
         description: 'Sort field and direction (prefix with - for descending). Common
-          fields: id, credit_date, sales_credit_number, created_at, updated_at, archived_at'
+          fields: id, credit_date, sales_credit_number, created_at, updated_at, archived_at,
+          attachments_count'
       - name: search
         in: query
         schema:
@@ -480044,6 +480054,371 @@ paths:
         '404': *id004
       x-required-scope: orders:write
       operationId: delete-api-sales-credits-salescredit-notes-noteid
+  /api/sales-credits/{salesCredit}/attachments:
+    get:
+      tags:
+      - Sales Credits
+      summary: List Sales Credit Documents
+      description: 'Lists every supporting document attached to the sales credit,
+        oldest first.
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Each document reports its original file name, byte size, MIME type, who uploaded
+        it, and a ready-to-use `download_url`.'
+      parameters:
+      - name: salesCredit
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales credit ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        file_name:
+                          type: string
+                        file_size:
+                          type: integer
+                        mime_type:
+                          type: string
+                        created_at:
+                          type: string
+                        uploaded_by:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        download_url:
+                          type: string
+                example:
+                  data:
+                  - id: 812
+                    file_name: credit-note-SC-1042.pdf
+                    file_size: 184320
+                    mime_type: application/pdf
+                    created_at: '2026-07-22T14:05:31.000000Z'
+                    uploaded_by:
+                      id: 7
+                      name: Dana Whitfield
+                    download_url: https://acme.sku.io/api/sales-credits/1042/attachments/812/download
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: orders:read
+      operationId: get-api-sales-credits-salescredit-attachments
+    post:
+      tags:
+      - Sales Credits
+      summary: Upload Sales Credit Document
+      description: 'Uploads a supporting document to the sales credit.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Send the file as `multipart/form-data` under the `file` key. Accepted types:
+        PDF, PNG, JPG, JPEG, WEBP. Maximum size: 20 MB. Empty files are rejected.
+
+
+        Returns 422 when the credit is archived — archived credits are read-only history.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: The document to attach (PDF, PNG, JPG, JPEG or WEBP;
+                    max 20 MB).
+                  format: binary
+      parameters:
+      - name: salesCredit
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales credit ID.
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      file_name:
+                        type: string
+                      file_size:
+                        type: integer
+                      mime_type:
+                        type: string
+                      created_at:
+                        type: string
+                      uploaded_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      download_url:
+                        type: string
+                example:
+                  data:
+                    id: 812
+                    file_name: credit-note-SC-1042.pdf
+                    file_size: 184320
+                    mime_type: application/pdf
+                    created_at: '2026-07-22T14:05:31.000000Z'
+                    uploaded_by:
+                      id: 7
+                      name: Dana Whitfield
+                    download_url: https://acme.sku.io/api/sales-credits/1042/attachments/812/download
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Archived Credit
+                  value:
+                    message: Cannot add attachments to an archived sales credit.
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: Only PDF, PNG, JPG, and WEBP files are allowed.
+                    errors:
+                      file:
+                      - Only PDF, PNG, JPG, and WEBP files are allowed.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: orders:write
+      operationId: post-api-sales-credits-salescredit-attachments
+  /api/sales-credits/{salesCredit}/attachments/{attachment}:
+    delete:
+      tags:
+      - Sales Credits
+      summary: Delete Sales Credit Document
+      description: 'Permanently deletes a document from the sales credit, removing
+        both the record and the stored file.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Returns 404 if the document does not belong to the given credit, and 422 if
+        the credit is archived.'
+      parameters:
+      - name: salesCredit
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales credit ID.
+      - name: attachment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The attachment ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Attachment deleted.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Cannot delete attachments from an archived sales credit.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: orders:write
+      operationId: delete-api-sales-credits-salescredit-attachments-attachment
+  /api/sales-credits/{salesCredit}/attachments/{attachment}/download:
+    get:
+      tags:
+      - Sales Credits
+      summary: Download Sales Credit Document
+      description: 'Streams the document back as a file download (Content-Disposition:
+        attachment).
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response is the raw file, not JSON. Returns 404 if the document does not
+        belong to the given credit.'
+      parameters:
+      - name: salesCredit
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales credit ID.
+      - name: attachment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The attachment ID.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: orders:read
+      operationId: get-api-sales-credits-salescredit-attachments-attachment-download
+  /api/sales-credits/{salesCredit}/attachments/{attachment}/view:
+    get:
+      tags:
+      - Sales Credits
+      summary: View Sales Credit Document Inline
+      description: 'Streams the document for inline display (Content-Disposition:
+        inline) — used to preview a PDF or image without downloading it.
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response is the raw file, not JSON. Returns 404 if the document does not
+        belong to the given credit.'
+      parameters:
+      - name: salesCredit
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales credit ID.
+      - name: attachment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The attachment ID.
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: orders:read
+      operationId: get-api-sales-credits-salescredit-attachments-attachment-view
   /api/sales-credits/{salesCredit}/generate-accounting-transaction:
     post:
       tags:
@@ -480183,7 +480558,11 @@ paths:
 
         - scope: ''filtered'' (default) or ''selected''
 
-        - ids: comma-separated IDs (only when scope=selected)'
+        - ids: comma-separated IDs (only when scope=selected)
+
+
+        **Documents.** The export carries a `Documents` column holding the number
+        of supporting documents attached to each credit.'
       parameters: []
       responses:
         '200':
@@ -515271,7 +515650,11 @@ paths:
 
 
         In line_items mode, additional columns are added for each line: item_sku,
-        item_name, item_quantity_invoiced, item_amount, item_line_total.'
+        item_name, item_quantity_invoiced, item_amount, item_line_total.
+
+
+        **Documents.** `attachments_count` is available as a `columns` key and exports
+        as a `Documents` column holding the number of attached supporting documents.'
       parameters:
       - name: format
         in: query
@@ -566519,7 +566902,14 @@ paths:
 
         **Search** (`filter[search]`) matches across: ID, Credit Number (vendor_credit_number),
         Additional Reference (supplier_reference), Supplier PO # (supplier_po_number),
-        Supplier Name, Supplier Email, line item SKU, and Purchase Order #.'
+        Supplier Name, Supplier Email, line item SKU, and Purchase Order #.
+
+
+        **Documents.** Each row carries `attachments_count` (how many documents are
+        attached to the credit) and `attachment_filenames` (their file names). Both
+        `filter[attachments_count]` and `filter[attachment_filename]` are available,
+        so you can isolate credits that are missing a supporting document or find
+        the credit a given file belongs to. `attachments_count` is also sortable.'
       parameters:
       - name: page
         in: query
@@ -566535,9 +566925,318 @@ paths:
         example: '15'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        vendor_credit_number:
+                          type: string
+                        supplier_reference:
+                          type: string
+                        supplier_po_number:
+                          type: string
+                        credit_date:
+                          type: string
+                        vendor_credit_note:
+                          type: string
+                        metadata:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                        archived_at:
+                          type: string
+                          nullable: true
+                        fully_allocated_at:
+                          type: string
+                          nullable: true
+                        fully_refunded_at:
+                          type: string
+                          nullable: true
+                        is_settled:
+                          type: boolean
+                        settlement_breakdown:
+                          type: object
+                          properties:
+                            allocated:
+                              type: integer
+                            refunded:
+                              type: integer
+                            remaining:
+                              type: number
+                            total:
+                              type: number
+                        credit_status:
+                          type: string
+                        credit_status_label:
+                          type: string
+                        payment_status:
+                          type: string
+                        payment_status_label:
+                          type: string
+                        is_for_overpayment:
+                          type: boolean
+                        supplier_id:
+                          type: integer
+                        supplier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            email:
+                              type: string
+                        purchase_order_id:
+                          type: integer
+                        purchase_order:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            purchase_order_number:
+                              type: string
+                        warehouse_id:
+                          type: integer
+                        warehouse:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        store_id:
+                          type: string
+                          nullable: true
+                        store:
+                          type: string
+                          nullable: true
+                        currency_id:
+                          type: integer
+                        currency_code:
+                          type: string
+                        currency_rate:
+                          type: integer
+                        is_tax_included:
+                          type: boolean
+                        tax_rate_id:
+                          type: string
+                          nullable: true
+                        tax_lines:
+                          type: string
+                          nullable: true
+                        tax_total:
+                          type: number
+                        tax_credit:
+                          type: number
+                        product_total:
+                          type: integer
+                        total_credit:
+                          type: number
+                        total:
+                          type: number
+                        allocated_amount:
+                          type: integer
+                        planned_allocation_amount:
+                          type: integer
+                        available_to_allocate:
+                          type: number
+                        refunded_amount:
+                          type: integer
+                        remaining_amount:
+                          type: number
+                        line_item_count:
+                          type: integer
+                        total_quantity:
+                          type: integer
+                        first_line_sku:
+                          type: string
+                        has_products:
+                          type: boolean
+                        tags:
+                          type: array
+                          items:
+                            type: string
+                        attachments_count:
+                          type: integer
+                        attachment_filenames:
+                          type: array
+                          items:
+                            type: string
+                        link_reference:
+                          type: string
+                        link_type_label:
+                          type: string
+                        link_route:
+                          type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  unfiltered_total:
+                    type: integer
+                example:
+                  data:
+                  - id: 1042
+                    vendor_credit_number: VC-0001042
+                    supplier_reference: Credit Order 0010764
+                    supplier_po_number: PO-88213
+                    credit_date: '2026-07-14T00:00:00.000000Z'
+                    vendor_credit_note: Damaged pallet returned to supplier.
+                    metadata: null
+                    created_at: '2026-07-14T09:21:04.000000Z'
+                    updated_at: '2026-07-18T16:02:47.000000Z'
+                    archived_at: null
+                    fully_allocated_at: null
+                    fully_refunded_at: null
+                    is_settled: false
+                    settlement_breakdown:
+                      allocated: 120
+                      refunded: 0
+                      remaining: 305.5
+                      total: 425.5
+                    credit_status: open
+                    credit_status_label: Open
+                    payment_status: partially_applied
+                    payment_status_label: Partially Applied
+                    is_for_overpayment: false
+                    supplier_id: 17
+                    supplier:
+                      id: 17
+                      name: Northwind Components
+                      email: ap@northwind.example
+                    purchase_order_id: 3391
+                    purchase_order:
+                      id: 3391
+                      purchase_order_number: PO-88213
+                    warehouse_id: 2
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                    store_id: null
+                    store: null
+                    currency_id: 1
+                    currency_code: USD
+                    currency_rate: 1
+                    is_tax_included: false
+                    tax_rate_id: null
+                    tax_lines: null
+                    tax_total: 25.5
+                    tax_credit: 25.5
+                    product_total: 400
+                    total_credit: 425.5
+                    total: 425.5
+                    allocated_amount: 120
+                    planned_allocation_amount: 0
+                    available_to_allocate: 305.5
+                    refunded_amount: 0
+                    remaining_amount: 305.5
+                    line_item_count: 2
+                    total_quantity: 6
+                    first_line_sku: NW-BOLT-M8
+                    has_products: true
+                    tags:
+                    - damaged
+                    attachments_count: 2
+                    attachment_filenames:
+                    - credit-memo-0001042.pdf
+                    - rtv-photo.jpg
+                    link_reference: PO-88213
+                    link_type_label: Purchase Order
+                    link_route: /orders/purchase-orders/3391
+                  - id: 1041
+                    vendor_credit_number: VC-0001041
+                    supplier_reference: null
+                    supplier_po_number: null
+                    credit_date: '2026-07-09T00:00:00.000000Z'
+                    vendor_credit_note: null
+                    metadata: null
+                    created_at: '2026-07-09T11:40:12.000000Z'
+                    updated_at: '2026-07-09T11:40:12.000000Z'
+                    archived_at: null
+                    fully_allocated_at: null
+                    fully_refunded_at: null
+                    is_settled: false
+                    settlement_breakdown:
+                      allocated: 0
+                      refunded: 0
+                      remaining: 89
+                      total: 89
+                    credit_status: draft
+                    credit_status_label: Draft
+                    payment_status: unapplied
+                    payment_status_label: Unapplied
+                    is_for_overpayment: false
+                    supplier_id: 9
+                    supplier:
+                      id: 9
+                      name: Cascade Packaging
+                      email: billing@cascade.example
+                    purchase_order_id: null
+                    purchase_order: null
+                    warehouse_id: 2
+                    warehouse:
+                      id: 2
+                      name: Main Warehouse
+                    store_id: null
+                    store: null
+                    currency_id: 1
+                    currency_code: USD
+                    currency_rate: 1
+                    is_tax_included: false
+                    tax_rate_id: null
+                    tax_lines: null
+                    tax_total: 0
+                    tax_credit: 0
+                    product_total: 89
+                    total_credit: 89
+                    total: 89
+                    allocated_amount: 0
+                    planned_allocation_amount: 0
+                    available_to_allocate: 89
+                    refunded_amount: 0
+                    remaining_amount: 89
+                    line_item_count: 1
+                    total_quantity: 1
+                    first_line_sku: CP-BOX-12
+                    has_products: true
+                    tags: []
+                    attachments_count: 0
+                    attachment_filenames: []
+                    link_reference: null
+                    link_type_label: ''
+                    link_route: null
+                  current_page: 1
+                  last_page: 9
+                  per_page: 15
+                  total: 128
+                  from: 1
+                  to: 15
+                  unfiltered_total: 128
         '429': *id001
         '401': *id002
         '403': *id003
@@ -576588,7 +577287,11 @@ paths:
         - scope: ''filtered'' (default — respects the same filters as the list endpoint)
         or ''selected''
 
-        - ids: comma-separated IDs (only when scope=selected)'
+        - ids: comma-separated IDs (only when scope=selected)
+
+
+        **Documents.** The export carries a `Documents` column holding the number
+        of supporting documents attached to each credit.'
       parameters: []
       responses:
         '200':
