@@ -3467,7 +3467,13 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token'
+        Authentication: Requires Bearer token
+
+
+        Every transaction type is returned, whether or not it has been saved before.
+        A type that has never been saved inherits the control of the type it was split
+        out of — `inventory_revaluation` (automatic cost true-ups) inherits `inventory_adjustment`
+        until you save it a setting of its own.'
       parameters: []
       responses:
         '200':
@@ -3521,6 +3527,24 @@ paths:
                                 nullable: true
                               label:
                                 type: string
+                          inventory_adjustment:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              sync_start_date:
+                                type: string
+                              label:
+                                type: string
+                          inventory_revaluation:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              sync_start_date:
+                                type: string
+                              label:
+                                type: string
                 example:
                   data:
                     integration_instance_id: 5
@@ -3538,6 +3562,14 @@ paths:
                         enabled: false
                         sync_start_date: null
                         label: Credit Note
+                      inventory_adjustment:
+                        enabled: true
+                        sync_start_date: '2025-01-01'
+                        label: Inventory Adjustment
+                      inventory_revaluation:
+                        enabled: true
+                        sync_start_date: '2025-01-01'
+                        label: Inventory Revaluation
         '429': *id001
         '401': *id002
         '403': *id003
@@ -3562,9 +3594,22 @@ paths:
         Authentication: Requires Bearer token
 
 
-        sync_controls_by_type keys must be valid AccountingTransactionTypeEnum values.
+        Each key of `sync_controls_by_type` must be a valid transaction type value
+        — call `GET /api/accounting/sync-settings/types` for the current list. An
+        unknown key returns 422.
 
-        Each type: enabled (required boolean) + sync_start_date (nullable date)'
+
+        Fields per type:
+
+        - `enabled` (boolean, required) — whether documents of this type sync to the
+        accounting provider
+
+        - `sync_start_date` (date, nullable) — documents dated before this are never
+        synced
+
+
+        Saving a type gives it a control of its own, which ends any inheritance from
+        the type it was split out of (`inventory_revaluation` from `inventory_adjustment`).'
       requestBody:
         content:
           application/json:
@@ -3589,6 +3634,13 @@ paths:
                         sync_start_date:
                           type: string
                           nullable: true
+                    inventory_revaluation:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                        sync_start_date:
+                          type: string
               example:
                 sync_controls_by_type:
                   sales_order_invoice:
@@ -3597,6 +3649,9 @@ paths:
                   credit_note:
                     enabled: false
                     sync_start_date: null
+                  inventory_revaluation:
+                    enabled: true
+                    sync_start_date: '2025-01-01'
       parameters: []
       responses:
         '200':
@@ -3630,6 +3685,25 @@ paths:
                                 type: string
                               label:
                                 type: string
+                          credit_note:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              sync_start_date:
+                                type: string
+                                nullable: true
+                              label:
+                                type: string
+                          inventory_revaluation:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              sync_start_date:
+                                type: string
+                              label:
+                                type: string
                   message:
                     type: string
                 example:
@@ -3641,11 +3715,34 @@ paths:
                         enabled: true
                         sync_start_date: '2024-01-01'
                         label: Sales Order Invoice
+                      credit_note:
+                        enabled: false
+                        sync_start_date: null
+                        label: Credit Note
+                      inventory_revaluation:
+                        enabled: true
+                        sync_start_date: '2025-01-01'
+                        label: Inventory Revaluation
                   message: Sync settings updated successfully.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: 'Invalid transaction type: not_a_type'
         '429': *id001
         '401': *id002
         '403': *id003
-        '422': *id005
       x-required-scope: accounting:write
       operationId: put-api-accounting-sync-settings
   /api/accounting/sync-settings/types:
@@ -3654,7 +3751,8 @@ paths:
       - Accounting
       summary: Get Transaction Types
       description: 'Returns all available accounting transaction types with their
-        human-readable labels.
+        human-readable labels. Use these values as the keys of `sync_controls_by_type`
+        when updating sync settings.
 
 
         :::info[Required scope: `accounting:read`]
@@ -3699,6 +3797,10 @@ paths:
                     label: Credit Note
                   - value: payment
                     label: Payment
+                  - value: inventory_adjustment
+                    label: Inventory Adjustment
+                  - value: inventory_revaluation
+                    label: Inventory Revaluation
         '429': *id001
         '401': *id002
         '403': *id003
@@ -31198,12 +31300,24 @@ paths:
 
         **Point fields:** `as_of_date`, `sku_value`, `sku_quantity`, `provider_balance`
         (null on days not yet captured), `divergence` (null when either side missing),
-        `status` (`divergent` | `matched` | `provider_missing` | `sku_missing`).
+        `status` (`divergent` | `matched` | `provider_missing` | `sku_missing`), `displaced_value`,
+        `sku_value_inventory`.
 
 
         Each account also returns opening_reconciled (boolean): true when the account
         has a booked reconciliation adjustment, so its opening was reconciled by an
-        adjusting journal rather than being naturally aligned.'
+        adjusting journal rather than being naturally aligned.
+
+
+        **Accounting calendar (lock dates).** `sku_value` is stated on the accounting
+        calendar so it is directly comparable with a GL balance. When an accounting
+        lock date pushes a posting past the day the stock actually moved, that value
+        is held back on the SKU side for exactly as long as the GL holds it back —
+        so a lock date can never manufacture a divergence. `sku_value_inventory` is
+        the untouched inventory valuation for the same day (the figure the inventory
+        valuation report shows) and `displaced_value` is the difference between them,
+        so `sku_value_inventory` = `sku_value` + `displaced_value`. On books with
+        no displacement `displaced_value` is `0` and the two values are identical.'
       parameters:
       - name: connection_id
         in: query
@@ -31272,6 +31386,10 @@ paths:
                                 nullable: true
                               status:
                                 type: string
+                              displaced_value:
+                                type: integer
+                              sku_value_inventory:
+                                type: integer
                         opening_reconciled:
                           type: boolean
                   success:
@@ -31297,18 +31415,24 @@ paths:
                       provider_balance: null
                       divergence: null
                       status: provider_missing
+                      displaced_value: 0
+                      sku_value_inventory: 0
                     - as_of_date: '2026-06-26'
                       sku_value: 568120.05
                       sku_quantity: 26390
                       provider_balance: null
                       divergence: null
                       status: provider_missing
+                      displaced_value: 1338.75
+                      sku_value_inventory: 569458.8
                     - as_of_date: '2026-06-27'
                       sku_value: 569792.24
                       sku_quantity: 26463
                       provider_balance: 1042053.4
                       divergence: 472261.16
                       status: divergent
+                      displaced_value: 1338.75
+                      sku_value_inventory: 571130.99
                     opening_reconciled: false
                   success: true
         '429': *id001
@@ -31356,7 +31480,14 @@ paths:
         minus unmatched_sku_total — an unmatched provider line was booked in the accounting
         GL with no SKU-side movement, and an unmatched SKU movement changed SKU inventory
         but has not reached the GL. matched_count and matched_amount summarise what
-        reconciles.'
+        reconciles.
+
+
+        `displaced_value` is how much of the day''s inventory value the general ledger
+        has not recognised yet because an accounting lock date pushed its posting
+        to a later day. `sku_value` already excludes it so both sides of the day sit
+        on the same calendar; the amount is reported here so the day can explain why
+        its stock is worth more than its ledger says. It is `0` on books with no displacement.'
       parameters:
       - name: connection_id
         in: query
@@ -31479,6 +31610,8 @@ paths:
                         type: number
                       unmatched_sku_total:
                         type: number
+                      displaced_value:
+                        type: number
                   success:
                     type: boolean
                 example:
@@ -31546,6 +31679,7 @@ paths:
                     matched_amount: 3117.02
                     unmatched_provider_total: 1882.98
                     unmatched_sku_total: -63.28
+                    displaced_value: 1338.75
                   success: true
         '429': *id001
         '401': *id002
@@ -31731,7 +31865,17 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        The inventory side is stated on the accounting calendar, so a lock date that
+        pushed a posting past the day its stock moved cannot break check_a — the value
+        is held back on both sides until the GL recognises it. `displaced_close` is
+        how much is being held back at as_of_date, `displaced_open` is how much was
+        held back at the baseline, and `displaced_moved` is the difference (`displaced_close`
+        − `displaced_open`) — how much the held-back amount grew since the baseline.
+        `inventory_moved` + `displaced_moved` is the raw inventory movement before
+        that restatement. All three are `0` on books with no displacement.'
       parameters:
       - name: connection_id
         in: query
@@ -31830,6 +31974,12 @@ paths:
                               type: boolean
                             sync_status:
                               type: string
+                      displaced_open:
+                        type: integer
+                      displaced_close:
+                        type: number
+                      displaced_moved:
+                        type: number
                   success:
                     type: boolean
                 example:
@@ -31889,6 +32039,9 @@ paths:
                       entry_count: 90
                       is_batched: true
                       sync_status: partial
+                    displaced_open: 0
+                    displaced_close: 1338.75
+                    displaced_moved: 1338.75
                   success: true
         '429': *id001
         '401': *id002
@@ -31929,7 +32082,17 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Every SKU figure in the header is stated on the accounting calendar: where
+        a lock date pushed a posting out of the month its stock moved in, the value
+        is reported in the month the GL recognises it, so the two sides never disagree
+        over timing that the lock itself created. `displaced_open` and `displaced_close`
+        are how much value the lock is holding out of the GL at each end of the month,
+        `displaced_moved` is the difference between them, and `sku_moved` + `displaced_moved`
+        is the raw inventory movement for the month before that restatement. All three
+        are `0` on books with no displacement.'
       parameters:
       - name: connection_id
         in: query
@@ -32032,6 +32195,12 @@ paths:
                         type: number
                       gl_excluded_total:
                         type: integer
+                      displaced_open:
+                        type: integer
+                      displaced_close:
+                        type: number
+                      displaced_moved:
+                        type: number
                   success:
                     type: boolean
                 example:
@@ -32092,6 +32261,9 @@ paths:
                     gl_synced_total: 0
                     gl_awaiting_total: -10203.09
                     gl_excluded_total: 0
+                    displaced_open: 0
+                    displaced_close: 431.2
+                    displaced_moved: 431.2
                   success: true
         '429': *id001
         '401': *id002
@@ -112457,7 +112629,21 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token'
+        Authentication: Requires Bearer token
+
+
+        **Accounting alignment (lock dates).** The response also carries an `accounting_alignment`
+        object stating how much of this valuation the general ledger has not recognised
+        yet. An accounting lock date cannot stop stock from moving — it only pushes
+        the posting to the first open day — so until the GL catches up this report
+        is right to be worth more than the inventory control account says, and the
+        difference is not a discrepancy to chase. Fields: `as_of_date` (the valuation
+        date the figures are stated at), `displaced_value` (value whose stock has
+        already moved but whose posting a lock date pushed to a later day), `total_valuation`
+        (this report''s total), `ledger_recognized_valuation` (`total_valuation` −
+        `displaced_value` — the figure that ties to the general ledger today) and
+        `has_displacement` (`false` when nothing is held back, in which case `displaced_value`
+        is `0` and the two totals are identical).'
       parameters: []
       responses:
         '200':
@@ -112475,14 +112661,10 @@ paths:
                   data:
                     type: object
                     properties:
-                      total_valuation:
-                        type: number
-                      available_valuation:
-                        type: number
-                      reserved_valuation:
-                        type: number
-                      in_transit_valuation:
-                        type: number
+                      group_by:
+                        type: array
+                        items:
+                          type: string
                       groups:
                         type: array
                         items:
@@ -112491,7 +112673,9 @@ paths:
                             key:
                               type: object
                               properties:
-                                warehouse:
+                                id:
+                                  type: integer
+                                name:
                                   type: string
                             totals:
                               type: object
@@ -112506,24 +112690,82 @@ paths:
                                   type: integer
                                 available_valuation:
                                   type: number
+                                reserved_valuation:
+                                  type: number
+                                in_transit_valuation:
+                                  type: number
                                 total_valuation:
                                   type: number
+                            children:
+                              type: array
+                      grand_totals:
+                        type: object
+                        properties:
+                          available:
+                            type: integer
+                          reserved:
+                            type: integer
+                          in_transit:
+                            type: integer
+                          total_qty:
+                            type: integer
+                          available_valuation:
+                            type: number
+                          reserved_valuation:
+                            type: number
+                          in_transit_valuation:
+                            type: number
+                          total_valuation:
+                            type: number
+                      accounting_alignment:
+                        type: object
+                        properties:
+                          as_of_date:
+                            type: string
+                          displaced_value:
+                            type: number
+                          total_valuation:
+                            type: number
+                          ledger_recognized_valuation:
+                            type: number
+                          has_displacement:
+                            type: boolean
+                  success:
+                    type: boolean
                 example:
                   data:
-                    total_valuation: 125400.0
-                    available_valuation: 98500.0
-                    reserved_valuation: 12800.0
-                    in_transit_valuation: 14100.0
+                    group_by:
+                    - warehouse
                     groups:
                     - key:
-                        warehouse: Main Warehouse
+                        id: 1
+                        name: Main Warehouse
                       totals:
                         available: 1200
                         reserved: 150
                         in_transit: 200
                         total_qty: 1550
                         available_valuation: 98500.0
+                        reserved_valuation: 12800.0
+                        in_transit_valuation: 14100.0
                         total_valuation: 125400.0
+                      children: []
+                    grand_totals:
+                      available: 1200
+                      reserved: 150
+                      in_transit: 200
+                      total_qty: 1550
+                      available_valuation: 98500.0
+                      reserved_valuation: 12800.0
+                      in_transit_valuation: 14100.0
+                      total_valuation: 125400.0
+                    accounting_alignment:
+                      as_of_date: '2026-07-31'
+                      displaced_value: 1338.75
+                      total_valuation: 125400.0
+                      ledger_recognized_valuation: 124061.25
+                      has_displacement: true
+                  success: true
         '429': *id001
         '401': *id002
         '403': *id003
