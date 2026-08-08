@@ -155790,9 +155790,8 @@ paths:
       summary: Create Pallet Labels
       description: 'Generate pallet labels for a confirmed LTL/FTL shipment via the
         Amazon Fulfillment Inbound v0 `getLabels` operation with `LabelType=PALLET`.
-        The page type is fixed to `PackageLabel_Letter_4` (Amazon''s standard letter-format
-        pallet label sheet). **Requires a shipment confirmation ID** — confirm transportation
-        first (422 otherwise). Records the print in the audit trail.
+        **Requires a shipment confirmation ID** — confirm transportation first (422
+        otherwise). Records the print in the audit trail.
 
 
         :::warning[Not yet available to API tokens]
@@ -155805,19 +155804,24 @@ paths:
 
         **Fields:**
 
-        - `count` (integer, **required**, min 1) — number of pallet labels (v0 NumberOfPallets).
-        Amazon recommends 4 labels per pallet (one per side)
+        - `count` (integer, **required**, min 1) — the number of **pallets** on the
+        shipment (v0 `NumberOfPallets`). Amazon returns four identical labels for
+        every pallet, one per side, so a shipment on 2 pallets yields 8 labels. Do
+        not pre-multiply by four.
+
+        - `page_type` (string, optional, defaults to `PackageLabel_Plain_Paper`) —
+        the label sheet format. One of `PackageLabel_Plain_Paper`, `PackageLabel_Letter_6`,
+        `PackageLabel_Thermal`. Values outside Amazon''s own `pageType` enum are rejected
+        with 422 before the request reaches Amazon.
 
 
         **422 conditions:**
 
         - the shipment has no `shipment_confirmation_id` yet (transportation not confirmed)
 
-        - Amazon rejects the request or returns no label document (SP-API errors parsed
-        per field)
+        - `page_type` is not one of the accepted values
 
-
-        Returns 404 when the shipment does not belong to the draft inbound plan.'
+        - Amazon rejects the request or returns no label document'
       requestBody:
         content:
           application/json:
@@ -155826,8 +155830,11 @@ paths:
               properties:
                 count:
                   type: integer
+                page_type:
+                  type: string
               example:
-                count: 8
+                count: 2
+                page_type: PackageLabel_Plain_Paper
       parameters:
       - name: integrationInstance
         in: path
@@ -155872,7 +155879,7 @@ paths:
                         type: integer
                 example:
                   data:
-                    url: https://fba-inbound-labels.s3.amazonaws.com/FBA15K7Q8XYZ/PackageLabel_Letter_4.pdf?X-Amz-Expires=300
+                    url: https://fba-inbound-labels.s3.amazonaws.com/FBA15K7Q8XYZ/PackageLabel_Plain_Paper.pdf?X-Amz-Expires=300
                     label_print_id: 43
         '422':
           description: Unprocessable Entity
@@ -155913,11 +155920,8 @@ paths:
       tags:
       - Amazon
       summary: Get Bill of Lading
-      description: 'Fetch the bill of lading (BOL) document for a confirmed LTL/FTL
+      description: 'Fetch the bill of lading (BOL) document for a confirmed freight
         shipment via the Amazon Fulfillment Inbound v0 `getBillOfLading` operation.
-        Amazon only generates the BOL after the carrier is assigned — until then this
-        endpoint returns **200 with `available: false`** (not an error), including
-        when the shipment has no confirmation ID yet or Amazon responds 404/empty.
 
 
         :::warning[Not yet available to API tokens]
@@ -155928,9 +155932,20 @@ paths:
         :::
 
 
-        When the BOL is available, the response contains the download `url`, `available:
-        true`, and a `label_print_id` (the fetch is recorded in the label-print audit
-        trail as kind `BOL`).
+        **Amazon only issues a BOL for shipments booked with an Amazon-partnered carrier.**
+        When the shipment''s confirmed transportation option uses the seller''s own
+        carrier (`USE_YOUR_OWN_CARRIER`), Amazon returns an empty payload indefinitely,
+        so this endpoint short-circuits without calling Amazon and returns **200 with
+        `available: false`** and a `message` naming the carrier that does supply the
+        BOL. Booking a carrier *named* "Amazon Freight" directly is still a non-partnered
+        booking — the program decides, not the carrier name.
+
+
+        For a partnered shipment whose document Amazon has not produced yet (or a
+        404/empty response), the endpoint returns **200 with `available: false`**
+        and a "not yet available" message rather than an error. When the BOL is available
+        the response carries the download `url`, `available: true`, and a `label_print_id`
+        (recorded in the label-print audit trail as kind `BOL`).
 
 
         Returns 404 when the shipment does not belong to the draft inbound plan.'
@@ -155983,7 +155998,17 @@ paths:
                       url: null
                       available: false
                       message: Bill of lading not yet available — Amazon generates
-                        it after the carrier is assigned.
+                        it once the partnered carrier booking is complete.
+                example-2:
+                  summary: 200 OK (Own Carrier — No Amazon BOL)
+                  value:
+                    data:
+                      url: null
+                      available: false
+                      message: Amazon only issues a bill of lading for Amazon-partnered
+                        LTL/FTL shipments. This shipment is booked with your own carrier
+                        (Amazon Freight · Freight LTL), so your carrier provides the
+                        BOL — quote Amazon shipment ID FBA19KXPHXRY on it.
         '429': *id001
         '401': *id002
         '403': *id003
@@ -199537,7 +199562,14 @@ paths:
         an unpacked shipment returns zero boxes, zero SKUs and an empty `lines` array.
 
 
-        Authentication: requires a Bearer token.'
+        Authentication: requires a Bearer token.
+
+
+        `boxes` closes the list with one entry per box, in the same order as `box_numbers`:
+        `amazon_box_id`, `box_name`, `weight`/`weight_unit` and `length`/`width`/`height`/`dimension_unit`.
+        This mirrors the trailing block Amazon prints beneath its own SKU matrix,
+        so the two exports reconcile line for line. Omitted when the shipment has
+        no boxes.'
       parameters:
       - name: integrationInstance
         in: path
@@ -199622,6 +199654,29 @@ paths:
                                   type: integer
                                 '3':
                                   type: integer
+                      boxes:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            box_number:
+                              type: integer
+                            amazon_box_id:
+                              type: string
+                            box_name:
+                              type: string
+                            weight:
+                              type: string
+                            weight_unit:
+                              type: string
+                            length:
+                              type: string
+                            width:
+                              type: string
+                            height:
+                              type: string
+                            dimension_unit:
+                              type: string
                 example:
                   data:
                     workflow_name: wf4876e932-25fa-4dce-abc7-0a0fdc84f464
@@ -199668,6 +199723,52 @@ paths:
                       total_units: 8
                       units_by_box_number:
                         '5': 8
+                    boxes:
+                    - box_number: 1
+                      amazon_box_id: FBA19KQK6TSZU000001
+                      box_name: P1 - B1
+                      weight: '12.50'
+                      weight_unit: LB
+                      length: '18.00'
+                      width: '14.00'
+                      height: '10.00'
+                      dimension_unit: IN
+                    - box_number: 2
+                      amazon_box_id: FBA19KQK6TSZU000002
+                      box_name: P1 - B2
+                      weight: '12.50'
+                      weight_unit: LB
+                      length: '18.00'
+                      width: '14.00'
+                      height: '10.00'
+                      dimension_unit: IN
+                    - box_number: 3
+                      amazon_box_id: FBA19KQK6TSZU000003
+                      box_name: P1 - B3
+                      weight: '12.50'
+                      weight_unit: LB
+                      length: '18.00'
+                      width: '14.00'
+                      height: '10.00'
+                      dimension_unit: IN
+                    - box_number: 4
+                      amazon_box_id: FBA19KQK6TSZU000004
+                      box_name: P1 - B4
+                      weight: '12.50'
+                      weight_unit: LB
+                      length: '18.00'
+                      width: '14.00'
+                      height: '10.00'
+                      dimension_unit: IN
+                    - box_number: 5
+                      amazon_box_id: FBA19KQK6TSZU000005
+                      box_name: P1 - B5
+                      weight: '12.50'
+                      weight_unit: LB
+                      length: '18.00'
+                      width: '14.00'
+                      height: '10.00'
+                      dimension_unit: IN
         '404':
           description: Not Found
           headers:
@@ -199715,7 +199816,13 @@ paths:
         not JSON.
 
 
-        Authentication: requires a Bearer token.'
+        Authentication: requires a Bearer token.
+
+
+        The file closes with Amazon''s own trailing box block — six empty cells, the
+        label in the "Total units" column, then one value per box column: `Box ID`,
+        `Box name`, `Box weight (lb):`, `Box length (inch):`, `Box width (inch):`,
+        `Box height (inch):`. Skipped entirely when the shipment has no boxes.'
       parameters:
       - name: integrationInstance
         in: path
@@ -199781,6 +199888,20 @@ paths:
 
                   "3310884-FBA","TecMate OptiMate DC-DC Charger Cable Set","B09KL2R8QT","X003BB7WQ1","New","No
                   prep needed","8","","","","","8"
+
+
+                  "","","","","","","Box ID","FBA19KQK6TSZU000001","FBA19KQK6TSZU000002","FBA19KQK6TSZU000003","FBA19KQK6TSZU000004","FBA19KQK6TSZU000005"
+
+                  "","","","","","","Box name","P1 - B1","P1 - B2","P1 - B3","P1 -
+                  B4","P1 - B5"
+
+                  "","","","","","","Box weight (lb):","12.50","7.25","9.00","4.10","15.75"
+
+                  "","","","","","","Box length (inch):","18.00","10.00","12.00","8.00","20.00"
+
+                  "","","","","","","Box width (inch):","14.00","8.00","12.00","8.00","16.00"
+
+                  "","","","","","","Box height (inch):","10.00","6.00","12.00","4.00","14.00"
 
                   '
         '429': *id001
