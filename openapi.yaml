@@ -578022,7 +578022,13 @@ paths:
         `attachment_filenames` (their file names). Sortable by `attachments_count`.
         Filter with `filter[attachments_count]` (e.g. `filter[attachments_count.is]=0`
         for deposits with no documents) or `filter[attachment_filename]` to match
-        an attached document''s file name.'
+        an attached document''s file name.
+
+
+        Third-party references: `filter[related_purchase_order_id]` returns deposits
+        that reference the given purchase order as a third-party association; the
+        advanced filter column `related_purchase_order_number` and free-text search
+        also match the referenced PO number.'
       parameters:
       - name: page
         in: query
@@ -578080,7 +578086,16 @@ paths:
         record the supplier''s invoice for this deposit or stage payment — the deposit
         is that invoice''s record (a down-payment invoice). Do not create a goods
         invoice for a deposit. `vendor_invoice_date` must have a year between 1990
-        and 2100 (422 otherwise). Both fields remain editable after approval.'
+        and 2100 (422 otherwise). Both fields remain editable after approval.
+
+
+        Optional `related_purchase_order_id` (integer) records a third-party purchase
+        order reference: a PO owned by a DIFFERENT supplier that this deposit economically
+        belongs to (e.g. DDP freight prepaid to a forwarder against the goods supplier''s
+        PO). It is mutually exclusive with `purchase_order_id`, must not belong to
+        the deposit''s own supplier, and never affects the referenced PO''s expected-deposit
+        milestones or deposit capacity. `purchase_order_id` must belong to the deposit''s
+        own supplier.'
       requestBody:
         content:
           application/json:
@@ -578226,7 +578241,13 @@ paths:
         record the supplier''s invoice for this deposit or stage payment — the deposit
         is that invoice''s record (a down-payment invoice). Do not create a goods
         invoice for a deposit. `vendor_invoice_date` must have a year between 1990
-        and 2100 (422 otherwise). Both fields remain editable after approval.'
+        and 2100 (422 otherwise). Both fields remain editable after approval.
+
+
+        Accepts `related_purchase_order_id` (integer, nullable) — third-party PO reference,
+        mutually exclusive with `purchase_order_id`; must belong to a different supplier
+        than the deposit. Validation runs against the effective post-update state
+        (absent fields fall back to the deposit''s current values).'
       requestBody:
         content:
           application/json:
@@ -578803,6 +578824,12 @@ paths:
                         type: string
                   purchase_order_id:
                     type: integer
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  related_purchase_order:
+                    type: string
+                    nullable: true
                   payment_term_schedule_line_index:
                     type: integer
                   inbound_shipment_id:
@@ -578989,6 +579016,8 @@ paths:
                     wire_instructions: Routing 026009593, account 4426123456
                     link_route: /v2/crm/suppliers/7
                   purchase_order_id: 310
+                  related_purchase_order_id: null
+                  related_purchase_order: null
                   payment_term_schedule_line_index: 1
                   inbound_shipment_id: null
                   payment_term_schedule_snapshot:
@@ -579159,6 +579188,12 @@ paths:
                         type: string
                   purchase_order_id:
                     type: integer
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  related_purchase_order:
+                    type: string
+                    nullable: true
                   payment_term_schedule_line_index:
                     type: integer
                   inbound_shipment_id:
@@ -579343,6 +579378,8 @@ paths:
                     wire_instructions: Routing 026009593, account 4426123456
                     link_route: /v2/crm/suppliers/7
                   purchase_order_id: 310
+                  related_purchase_order_id: null
+                  related_purchase_order: null
                   payment_term_schedule_line_index: 1
                   inbound_shipment_id: null
                   payment_term_schedule_snapshot:
@@ -579445,7 +579482,9 @@ paths:
       - Vendor Deposits
       summary: Link Vendor Deposit to Purchase Order
       description: 'Link a vendor deposit to a purchase order, or unlink it by passing
-        null. The purchase order must belong to the same supplier as the deposit.
+        null. The purchase order must belong to the same supplier as the deposit,
+        and the deposit must not already have a third-party purchase order reference
+        (unlink it first).
 
 
         :::info[Required scope: `accounting:write`]
@@ -579512,6 +579551,12 @@ paths:
                         type: string
                   purchase_order_id:
                     type: integer
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  related_purchase_order:
+                    type: string
+                    nullable: true
                   payment_term_schedule_line_index:
                     type: integer
                   inbound_shipment_id:
@@ -579696,6 +579741,8 @@ paths:
                     wire_instructions: Routing 026009593, account 4426123456
                     link_route: /v2/crm/suppliers/7
                   purchase_order_id: 310
+                  related_purchase_order_id: null
+                  related_purchase_order: null
                   payment_term_schedule_line_index: 1
                   inbound_shipment_id: null
                   payment_term_schedule_snapshot:
@@ -579804,6 +579851,392 @@ paths:
         '404': *id004
       x-required-scope: accounting:write
       operationId: put-api-vendor-deposits-vendordepositid-purchase-order
+  /api/vendor-deposits/{vendorDepositId}/related-purchase-order:
+    put:
+      tags:
+      - Vendor Deposits
+      summary: Link Vendor Deposit to Third-Party Purchase Order
+      description: 'Link a vendor deposit to a purchase order owned by a DIFFERENT
+        supplier as a third-party reference, or unlink it by passing null. Use this
+        for freight, duty, or inspection prepayments (e.g. DDP freight paid to a forwarder
+        against the goods supplier''s PO).
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        The reference is advisory: it surfaces the deposit on the referenced PO''s
+        cash picture and suggests matching bills for settlement, but never affects
+        that PO''s expected-deposit milestones or deposit capacity, and settlement
+        remains restricted to the deposit''s own supplier.
+
+
+        Validation: the purchase order must NOT belong to the deposit''s own supplier
+        (link it as the primary purchase order instead), the deposit must not already
+        have a primary purchase order link, and terminal deposits (cancelled, void,
+        refunded, written off) cannot be changed. Unlike the primary link, the reference
+        may be changed after the deposit has been applied to a bill.
+
+
+        Returns the updated deposit.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                related_purchase_order_id:
+                  type: integer
+              example:
+                related_purchase_order_id: 664
+      parameters:
+      - name: vendorDepositId
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The vendor deposit ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  deposit_number:
+                    type: string
+                  status:
+                    type: string
+                  status_label:
+                    type: string
+                  supplier_id:
+                    type: integer
+                  supplier:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      email:
+                        type: string
+                      wire_instructions:
+                        type: string
+                      link_route:
+                        type: string
+                  purchase_order_id:
+                    type: string
+                    nullable: true
+                  payment_term_schedule_line_index:
+                    type: string
+                    nullable: true
+                  inbound_shipment_id:
+                    type: string
+                    nullable: true
+                  payment_term_schedule_snapshot:
+                    type: string
+                    nullable: true
+                  is_ownership_transfer:
+                    type: boolean
+                  ownership_transferred_at:
+                    type: string
+                    nullable: true
+                  purchase_order:
+                    type: string
+                    nullable: true
+                  related_purchase_order_id:
+                    type: integer
+                  related_purchase_order:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      purchase_order_number:
+                        type: string
+                      link_route:
+                        type: string
+                      link_type:
+                        type: string
+                      link_type_label:
+                        type: string
+                      link_id:
+                        type: integer
+                      link_reference:
+                        type: string
+                      supplier_id:
+                        type: integer
+                      supplier_name:
+                        type: string
+                  currency_id:
+                    type: integer
+                  currency:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      code:
+                        type: string
+                      symbol:
+                        type: string
+                  currency_rate:
+                    type: integer
+                  currency_id_tenant_snapshot:
+                    type: integer
+                  tenant_currency:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      code:
+                        type: string
+                      symbol:
+                        type: string
+                  amount:
+                    type: integer
+                  amount_in_tenant_currency:
+                    type: integer
+                  amount_paid:
+                    type: integer
+                  amount_paid_in_tenant_currency:
+                    type: integer
+                  amount_applied:
+                    type: integer
+                  amount_applied_in_tenant_currency:
+                    type: integer
+                  amount_refunded:
+                    type: integer
+                  amount_refunded_in_tenant_currency:
+                    type: integer
+                  amount_written_off:
+                    type: integer
+                  amount_written_off_in_tenant_currency:
+                    type: integer
+                  available_balance:
+                    type: integer
+                  available_balance_in_tenant_currency:
+                    type: integer
+                  tax_amount:
+                    type: integer
+                  tax_amount_in_tenant_currency:
+                    type: integer
+                  tax_lines:
+                    type: string
+                    nullable: true
+                  deposit_date:
+                    type: string
+                  due_date:
+                    type: string
+                  paid_at:
+                    type: string
+                    nullable: true
+                  external_reference:
+                    type: string
+                  payee_bank_details:
+                    type: string
+                    nullable: true
+                  bank_details_verified_at:
+                    type: string
+                    nullable: true
+                  bank_details_verified_by:
+                    type: string
+                    nullable: true
+                  bank_details_verified_by_user:
+                    type: string
+                    nullable: true
+                  payment_requested_at:
+                    type: string
+                    nullable: true
+                  payment_requested_by:
+                    type: string
+                    nullable: true
+                  payment_requested_by_user:
+                    type: string
+                    nullable: true
+                  remittance_sent_at:
+                    type: string
+                    nullable: true
+                  notes:
+                    type: string
+                  proportional_apply_enabled:
+                    type: boolean
+                  auto_apply_enabled:
+                    type: string
+                    nullable: true
+                  auto_apply_effective:
+                    type: boolean
+                  approved_by:
+                    type: string
+                    nullable: true
+                  approver:
+                    type: string
+                    nullable: true
+                  approved_at:
+                    type: string
+                    nullable: true
+                  approval_notes:
+                    type: string
+                    nullable: true
+                  submit_action:
+                    type: string
+                  submit_action_label:
+                    type: string
+                  created_by:
+                    type: integer
+                  creator:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                  applications:
+                    type: array
+                  payments:
+                    type: array
+                  refunds:
+                    type: array
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                  archived_at:
+                    type: string
+                    nullable: true
+                example:
+                  id: 42
+                  deposit_number: DEP-000042
+                  status: draft
+                  status_label: Draft
+                  supplier_id: 7
+                  supplier:
+                    id: 7
+                    name: Acme Components Ltd
+                    email: accounts@acme-components.com
+                    wire_instructions: Routing 026009593, account 4426123456
+                    link_route: /v2/crm/suppliers/7
+                  purchase_order_id: null
+                  payment_term_schedule_line_index: null
+                  inbound_shipment_id: null
+                  payment_term_schedule_snapshot: null
+                  is_ownership_transfer: false
+                  ownership_transferred_at: null
+                  purchase_order: null
+                  related_purchase_order_id: 664
+                  related_purchase_order:
+                    id: 664
+                    purchase_order_number: PO-000664
+                    link_route: /v2/orders/purchase-orders/664
+                    link_type: App\Models\PurchaseOrder
+                    link_type_label: Purchase Order
+                    link_id: 664
+                    link_reference: PO-000664
+                    supplier_id: 12
+                    supplier_name: Whale Lounge Manufacturing
+                  currency_id: 1
+                  currency:
+                    id: 1
+                    code: USD
+                    symbol: $
+                  currency_rate: 1
+                  currency_id_tenant_snapshot: 1
+                  tenant_currency:
+                    id: 1
+                    code: USD
+                    symbol: $
+                  amount: 1500
+                  amount_in_tenant_currency: 1500
+                  amount_paid: 0
+                  amount_paid_in_tenant_currency: 0
+                  amount_applied: 0
+                  amount_applied_in_tenant_currency: 0
+                  amount_refunded: 0
+                  amount_refunded_in_tenant_currency: 0
+                  amount_written_off: 0
+                  amount_written_off_in_tenant_currency: 0
+                  available_balance: 0
+                  available_balance_in_tenant_currency: 0
+                  tax_amount: 0
+                  tax_amount_in_tenant_currency: 0
+                  tax_lines: null
+                  deposit_date: '2026-06-15'
+                  due_date: '2026-07-20'
+                  paid_at: null
+                  external_reference: WIRE-20260615-042
+                  payee_bank_details: null
+                  bank_details_verified_at: null
+                  bank_details_verified_by: null
+                  bank_details_verified_by_user: null
+                  payment_requested_at: null
+                  payment_requested_by: null
+                  payment_requested_by_user: null
+                  remittance_sent_at: null
+                  notes: 30% deposit for PO-000310
+                  proportional_apply_enabled: false
+                  auto_apply_enabled: null
+                  auto_apply_effective: true
+                  approved_by: null
+                  approver: null
+                  approved_at: null
+                  approval_notes: null
+                  submit_action: approve
+                  submit_action_label: Approve Deposit
+                  created_by: 3
+                  creator:
+                    id: 3
+                    name: Jane Operator
+                  applications: []
+                  payments: []
+                  refunds: []
+                  created_at: '2026-06-15T14:02:11+00:00'
+                  updated_at: '2026-07-01T09:30:00+00:00'
+                  archived_at: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      purchase_order_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected purchase order must belong to the same supplier
+                    as the vendor deposit.
+                  errors:
+                    purchase_order_id:
+                    - The selected purchase order must belong to the same supplier
+                      as the vendor deposit.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: accounting:write
+      operationId: put-api-vendor-deposits-vendordepositid-related-purchase-order
   /api/vendor-deposits/{vendorDepositId}/approval-steps:
     get:
       tags:
@@ -580438,6 +580871,12 @@ paths:
                     type: integer
                   purchase_order_id:
                     type: integer
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  related_purchase_order:
+                    type: string
+                    nullable: true
                   amount:
                     type: number
                   amount_paid:
@@ -580465,6 +580904,8 @@ paths:
                   status_label: Paid
                   supplier_id: 1
                   purchase_order_id: 7
+                  related_purchase_order_id: null
+                  related_purchase_order: null
                   amount: 28147.71
                   amount_paid: 28147.71
                   external_reference: PI-2026-0630-199
@@ -580851,7 +581292,13 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Each bill includes a `suggested` boolean: true when the deposit carries a
+        third-party purchase order reference and the bill belongs to that referenced
+        PO — those bills sort first. The suggestion is advisory; any listed bill can
+        be applied.'
       parameters:
       - name: vendorDepositId
         in: path
@@ -580905,6 +581352,8 @@ paths:
                           type: string
                         status:
                           type: string
+                        suggested:
+                          type: boolean
                 example:
                   data:
                   - id: 88
@@ -580921,6 +581370,7 @@ paths:
                     invoice_date: '2026-06-28'
                     due_date: '2026-07-28'
                     status: approved
+                    suggested: true
         '429': *id001
         '401': *id002
         '403': *id003
@@ -583507,6 +583957,12 @@ paths:
                               type: string
                         purchase_order_id:
                           type: integer
+                        related_purchase_order_id:
+                          type: string
+                          nullable: true
+                        related_purchase_order:
+                          type: string
+                          nullable: true
                         payment_term_schedule_line_index:
                           type: integer
                         inbound_shipment_id:
@@ -583694,6 +584150,8 @@ paths:
                       wire_instructions: Routing 026009593, account 4426123456
                       link_route: /v2/crm/suppliers/7
                     purchase_order_id: 310
+                    related_purchase_order_id: null
+                    related_purchase_order: null
                     payment_term_schedule_line_index: 1
                     inbound_shipment_id: null
                     payment_term_schedule_snapshot:
