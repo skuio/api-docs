@@ -160124,6 +160124,7 @@ paths:
                           instructions</strong></p><p>{{instructions}}</p><p>Thank
                           you.</p>
                       can_send_shipping_details: true
+                      email_shipping_details_shipment_count: 1
                       email_will_attach_fnsku_labels: true
                       email_will_attach_prep_sheet: true
                       email_will_attach_packing_list: true
@@ -160851,11 +160852,14 @@ paths:
       tags:
       - Amazon
       summary: Preview 3PL Email
-      description: 'Preview the "Email the 3PL" compose dialog: substitutes the `{{reference}}`,
-        `{{portal_link}}`, and `{{instructions}}` tokens in the supplied subject/body
-        server-side and returns the rendered result (no email is sent). Body: `subject`
-        (required, max 255), `body` (required HTML string), `cc` (optional array of
-        email addresses).
+      description: 'Preview the "Email the 3PL" compose dialog: substitutes the email
+        tokens in the supplied subject/body server-side and returns the rendered result
+        (no email is sent). Available tokens: `{{reference}}`, `{{portal_link}}`,
+        `{{instructions}}`, plus the per-shipment `{{shipment_id}}`, `{{ship_to}}`,
+        `{{ship_from}}`, `{{carrier}}`, `{{method}}`, `{{notes}}` and `{{attachments_list}}`
+        — resolved against the first confirmed shipment for the preview; the shipping-details
+        send re-resolves them per shipment. Body: `subject` (required, max 255), `body`
+        (required HTML string), `cc` (optional array of email addresses).
 
 
         :::warning[Not yet available to API tokens]
@@ -160964,8 +160968,10 @@ paths:
       - Amazon
       summary: Send 3PL Email
       description: 'Send the operator-composed "Email the 3PL" portal invitation:
-        resolves the 3PL/supplier recipient, substitutes the `{{reference}}` / `{{portal_link}}`
-        / `{{instructions}}` tokens, attaches the selected documents, marks the initial-stage
+        resolves the 3PL/supplier recipient, substitutes the email tokens — `{{reference}}`,
+        `{{portal_link}}`, `{{instructions}}`, and the per-shipment `{{shipment_id}}`,
+        `{{ship_to}}`, `{{ship_from}}`, `{{carrier}}`, `{{method}}`, `{{notes}}` and
+        `{{attachments_list}}`, attaches the selected documents, marks the initial-stage
         documents and the packet Sent, and delivers the mail (CC honoured). Returns
         the updated fulfillment packet.
 
@@ -161148,6 +161154,8 @@ paths:
                             type: string
                       can_send_shipping_details:
                         type: boolean
+                      email_shipping_details_shipment_count:
+                        type: integer
                       email_will_attach_fnsku_labels:
                         type: boolean
                       email_will_attach_prep_sheet:
@@ -161258,6 +161266,7 @@ paths:
                         the portal:</p><p>{{portal_link}}</p><p><strong>Shipping instructions</strong></p><p>{{instructions}}</p><p>Thank
                         you.</p>
                     can_send_shipping_details: false
+                    email_shipping_details_shipment_count: 1
                     email_will_attach_fnsku_labels: true
                     email_will_attach_prep_sheet: true
                     email_will_attach_packing_list: true
@@ -161354,9 +161363,11 @@ paths:
 
 
         Resolves the same 3PL/supplier recipient as the initial email, substitutes
-        the `{{reference}}` / `{{portal_link}}` / `{{instructions}}` tokens, attaches
-        the selected documents, marks the later-stage documents Sent, and delivers
-        the mail (CC honoured). Returns the updated fulfillment packet.
+        the email tokens — `{{reference}}`, `{{portal_link}}`, `{{instructions}}`,
+        and the per-shipment `{{shipment_id}}`, `{{ship_to}}`, `{{ship_from}}`, `{{carrier}}`,
+        `{{method}}`, `{{notes}}` and `{{attachments_list}}`, attaches the selected
+        documents, marks the later-stage documents Sent, and delivers the mail (CC
+        honoured). Returns the updated fulfillment packet.
 
 
         Check `can_send_shipping_details` on the packet before offering this action:
@@ -161402,7 +161413,26 @@ paths:
         **`from_mode`** (string, optional, one of `merchant` or `system`): which sender
         identity to send as for this one email. `merchant` uses the store''s own address
         (requires SPF/DKIM on that domain); `system` uses the always-deliverable system
-        identity. Defaults to the packet''s `email_from_default_mode`.'
+        identity. Defaults to the packet''s `email_from_default_mode`.
+
+
+        When the plan has more than one confirmed shipment, one email is sent PER
+        shipment: each subject carries that shipment''s confirmation ID, the instructions
+        describe that shipment''s carrier, method and destination, and the attachments
+        (box labels, pallet labels, bill of lading, packing list) are that shipment''s
+        own. Freight-only paperwork is never attached to a small-parcel shipment''s
+        email. The per-shipment tokens — `{{shipment_id}}`, `{{ship_to}}`, `{{ship_from}}`,
+        `{{carrier}}`, `{{method}}`, `{{notes}}` (labelling requirements + SPD/freight
+        specifics) and `{{attachments_list}}` (the names of the files attached to
+        that email) — resolve against each shipment individually, so a token-based
+        template produces a fully shipment-specific email. When the subject does not
+        already contain the shipment confirmation ID, it is suffixed automatically.
+
+
+        **Warnings:** when a selected attachment cannot be produced (for example the
+        stored label file is no longer retrievable), the email still sends and the
+        response carries a `warnings` object listing exactly what was left off — regenerate
+        the label and resend.'
       requestBody:
         content:
           application/json:
@@ -161471,224 +161501,111 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: integer
-                      draft_amazon_fba_inbound_plan_id:
-                        type: integer
-                      source_type:
-                        type: string
-                      source_type_label:
-                        type: string
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    message: Shipping details sent.
+                    data:
+                      id: 42
+                      draft_amazon_fba_inbound_plan_id: 1
+                      source_type: 3pl
+                      source_type_label: 3PL
                       channels:
-                        type: array
-                        items:
-                          type: string
-                      integration_instance_id:
-                        type: integer
-                      external_order_id:
-                        type: string
-                        nullable: true
-                      portal_url:
-                        type: string
-                      portal_token_expires_at:
-                        type: string
-                      portal_revoked_at:
-                        type: string
-                        nullable: true
-                      is_portal_accessible:
-                        type: boolean
-                      recipient_email:
-                        type: string
-                      recipient_name:
-                        type: string
+                      - portal
+                      - email
+                      integration_instance_id: 1
+                      external_order_id: null
+                      portal_url: '{{protocol}}://{{domain}}/v2/integrations/amazon/fba/draft-inbound-plans/verification-portal/uCJ8x2n1QwErTy?integration=1'
+                      portal_token_expires_at: '2026-08-05T00:00:00+00:00'
+                      portal_revoked_at: null
+                      is_portal_accessible: true
+                      recipient_email: warehouse@3pl.example.com
+                      recipient_name: Acme 3PL Fulfillment
                       email_from:
-                        type: object
-                        properties:
-                          address:
-                            type: string
-                          name:
-                            type: string
+                        address: orders@merchant.example.com
+                        name: Acme Merchant
                       email_reply_to:
-                        type: object
-                        properties:
-                          address:
-                            type: string
-                          name:
-                            type: string
-                      email_from_default_mode:
-                        type: string
+                        address: ops@merchant.example.com
+                        name: Acme Ops
+                      email_from_default_mode: merchant
                       email_template:
-                        type: object
-                        properties:
-                          subject:
-                            type: string
-                          body:
-                            type: string
+                        subject: FBA inbound ready — {{reference}}
+                        body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
+                          is ready for you to prepare and ship.</p><p>Please use the
+                          secure portal below to review the order and prep instructions,
+                          submit your box contents, and confirm when the shipment
+                          is ready:</p><p>{{portal_link}}</p><p><strong>Prep instructions</strong></p><p>{{instructions}}</p><p>Box/pallet
+                          labels and the bill of lading are prepared separately and
+                          will follow — the BOL is issued close to the pickup date.</p><p>Thank
+                          you.</p>
                       email_shipping_details_template:
-                        type: object
-                        properties:
-                          subject:
-                            type: string
-                          body:
-                            type: string
-                      can_send_shipping_details:
-                        type: boolean
-                      email_will_attach_fnsku_labels:
-                        type: boolean
-                      email_will_attach_prep_sheet:
-                        type: boolean
-                      email_will_attach_packing_list:
-                        type: boolean
-                      email_will_attach_box_labels:
-                        type: boolean
-                      email_will_attach_pallet_labels:
-                        type: boolean
-                      email_will_attach_bol:
-                        type: boolean
-                      instructions:
-                        type: string
-                      instruction_override:
-                        type: string
-                        nullable: true
-                      has_custom_instructions:
-                        type: boolean
-                      build_required:
-                        type: boolean
-                      manufacturing_order_id:
-                        type: string
-                        nullable: true
-                      status:
-                        type: string
-                      status_label:
-                        type: string
-                      sent_at:
-                        type: string
-                      acknowledged_at:
-                        type: string
-                        nullable: true
-                      portal_submission:
-                        type: string
-                        nullable: true
+                        subject: Shipping details — {{reference}}
+                        body: <p>Hi,</p><p>Here are the shipping instructions and
+                          paperwork for FBA inbound shipment (<strong>{{reference}}</strong>).</p><p>The
+                          box labels, pallet labels and bill of lading for this shipment
+                          are attached where applicable. They are also available in
+                          the portal:</p><p>{{portal_link}}</p><p><strong>Shipping
+                          instructions</strong></p><p>{{instructions}}</p><p>Thank
+                          you.</p>
+                      can_send_shipping_details: true
+                      email_shipping_details_shipment_count: 1
+                      email_will_attach_fnsku_labels: true
+                      email_will_attach_prep_sheet: true
+                      email_will_attach_packing_list: true
+                      email_will_attach_box_labels: true
+                      email_will_attach_pallet_labels: false
+                      email_will_attach_bol: false
+                      instructions: Pack each MSKU into its own box. Apply the provided
+                        FNSKU labels to every unit, then the box labels to the outside
+                        of each carton.
+                      instruction_override: null
+                      has_custom_instructions: false
+                      build_required: false
+                      manufacturing_order_id: null
+                      status: sent
+                      status_label: Sent
+                      sent_at: '2026-07-08T09:15:00+00:00'
+                      acknowledged_at: null
+                      portal_submission: null
                       documents:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            type:
-                              type: string
-                            type_label:
-                              type: string
-                            stage:
-                              type: string
-                            stage_label:
-                              type: string
-                            status:
-                              type: string
-                            status_label:
-                              type: string
-                            is_downloadable:
-                              type: boolean
-                            ready_at:
-                              type: string
-                            sent_at:
-                              type: string
-                      created_at:
-                        type: string
-                      updated_at:
-                        type: string
-                example:
-                  message: Shipping details sent.
-                  data:
-                    id: 42
-                    draft_amazon_fba_inbound_plan_id: 1
-                    source_type: 3pl
-                    source_type_label: 3PL
-                    channels:
-                    - portal
-                    - email
-                    integration_instance_id: 1
-                    external_order_id: null
-                    portal_url: '{{protocol}}://{{domain}}/v2/integrations/amazon/fba/draft-inbound-plans/verification-portal/uCJ8x2n1QwErTy?integration=1'
-                    portal_token_expires_at: '2026-08-05T00:00:00+00:00'
-                    portal_revoked_at: null
-                    is_portal_accessible: true
-                    recipient_email: warehouse@3pl.example.com
-                    recipient_name: Acme 3PL Fulfillment
-                    email_from:
-                      address: orders@merchant.example.com
-                      name: Acme Merchant
-                    email_reply_to:
-                      address: ops@merchant.example.com
-                      name: Acme Ops
-                    email_from_default_mode: merchant
-                    email_template:
-                      subject: FBA inbound ready — {{reference}}
-                      body: <p>Hi,</p><p>An Amazon FBA inbound shipment (<strong>{{reference}}</strong>)
-                        is ready for you to prepare and ship.</p><p>Please use the
-                        secure portal below to review the order and prep instructions,
-                        submit your box contents, and confirm when the shipment is
-                        ready:</p><p>{{portal_link}}</p><p><strong>Prep instructions</strong></p><p>{{instructions}}</p><p>Box/pallet
-                        labels and the bill of lading are prepared separately and
-                        will follow — the BOL is issued close to the pickup date.</p><p>Thank
-                        you.</p>
-                    email_shipping_details_template:
-                      subject: Shipping details — {{reference}}
-                      body: <p>Hi,</p><p>Here are the shipping instructions and paperwork
-                        for FBA inbound shipment (<strong>{{reference}}</strong>).</p><p>The
-                        box labels, pallet labels and bill of lading for this shipment
-                        are attached where applicable. They are also available in
-                        the portal:</p><p>{{portal_link}}</p><p><strong>Shipping instructions</strong></p><p>{{instructions}}</p><p>Thank
-                        you.</p>
-                    can_send_shipping_details: true
-                    email_will_attach_fnsku_labels: true
-                    email_will_attach_prep_sheet: true
-                    email_will_attach_packing_list: true
-                    email_will_attach_box_labels: true
-                    email_will_attach_pallet_labels: false
-                    email_will_attach_bol: false
-                    instructions: Pack each MSKU into its own box. Apply the provided
-                      FNSKU labels to every unit, then the box labels to the outside
-                      of each carton.
-                    instruction_override: null
-                    has_custom_instructions: false
-                    build_required: false
-                    manufacturing_order_id: null
-                    status: sent
-                    status_label: Sent
-                    sent_at: '2026-07-08T09:15:00+00:00'
-                    acknowledged_at: null
-                    portal_submission: null
-                    documents:
-                    - id: 503
-                      type: packing_list
-                      type_label: Packing List
-                      stage: mid
-                      stage_label: After box contents
+                      - id: 503
+                        type: packing_list
+                        type_label: Packing List
+                        stage: mid
+                        stage_label: After box contents
+                        status: sent
+                        status_label: Sent
+                        is_downloadable: true
+                        ready_at: '2026-07-08T09:00:00+00:00'
+                        sent_at: '2026-07-08T09:15:00+00:00'
+                      - id: 504
+                        type: box_labels
+                        type_label: Box Labels
+                        stage: mid
+                        stage_label: After box contents
+                        status: sent
+                        status_label: Sent
+                        is_downloadable: true
+                        ready_at: '2026-07-08T09:00:00+00:00'
+                        sent_at: '2026-07-08T09:15:00+00:00'
+                      created_at: '2026-07-06T12:00:00+00:00'
+                      updated_at: '2026-07-06T12:00:00+00:00'
+                example-1:
+                  summary: 200 OK With Warnings
+                  value:
+                    message: Shipping details sent.
+                    status: warning
+                    warnings:
+                      attachments:
+                      - message: Pallet labels for FBA15DJCQ1ZF could not be attached
+                          — regenerate it from Labels & Ship, then resend the shipping
+                          details.
+                        code: attachment_unresolved
+                        data: []
+                    data:
+                      id: 42
                       status: sent
-                      status_label: Sent
-                      is_downloadable: true
-                      ready_at: '2026-07-08T09:00:00+00:00'
-                      sent_at: '2026-07-08T09:15:00+00:00'
-                    - id: 504
-                      type: box_labels
-                      type_label: Box Labels
-                      stage: mid
-                      stage_label: After box contents
-                      status: sent
-                      status_label: Sent
-                      is_downloadable: true
-                      ready_at: '2026-07-08T09:00:00+00:00'
-                      sent_at: '2026-07-08T09:15:00+00:00'
-                    created_at: '2026-07-06T12:00:00+00:00'
-                    updated_at: '2026-07-06T12:00:00+00:00'
         '422':
           description: Unprocessable Entity
           headers:
@@ -500253,6 +500170,554 @@ paths:
         '404': *id004
       x-required-scope: suppliers:read
       operationId: get-api-suppliers-supplier-price-list-export
+  /api/suppliers/{supplier}/price-list/documents:
+    get:
+      tags:
+      - Suppliers
+      summary: List Price List Documents
+      description: 'Lists the supplier''s price list source documents, newest first,
+        including who uploaded each one. Only documents uploaded through the price
+        list endpoints are returned — other files attached to the supplier are not
+        included.
+
+
+        :::info[Required scope: `suppliers:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires scope:** `suppliers:read`'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        file_name:
+                          type: string
+                        mime_type:
+                          type: string
+                        is_image:
+                          type: boolean
+                        file_size:
+                          type: integer
+                        source:
+                          type: string
+                        description:
+                          type: string
+                        file_url:
+                          type: string
+                        uploaded_by:
+                          type: string
+                        linked_records:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              type:
+                                type: string
+                              id:
+                                type: integer
+                        created_at:
+                          type: string
+                example:
+                  data:
+                  - id: 512
+                    file_name: PriceList_Aug2026.pdf
+                    mime_type: application/pdf
+                    is_image: false
+                    file_size: 482113
+                    source: price_list
+                    description: August 2026 wholesale list, USD
+                    file_url: '{{protocol}}{{domain}}/api/documents/512/file'
+                    uploaded_by: Jane Castillo
+                    linked_records:
+                    - type: App\Models\Supplier
+                      id: 12
+                    created_at: '2026-08-11T16:02:11.000000Z'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: suppliers:read
+      operationId: get-api-suppliers-supplier-price-list-documents
+    post:
+      tags:
+      - Suppliers
+      summary: Upload Price List Document
+      description: 'Attaches a price list file to the supplier. Send as `multipart/form-data`.
+        The document is tagged as a price list source document, so it appears in the
+        price list documents listing.
+
+
+        :::info[Required scope: `suppliers:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Accepted file types: pdf, jpg, jpeg, png, gif, webp, heic, doc, docx, xls,
+        xlsx, csv, txt, html, htm, eml, msg, zip. Maximum size: 20 MB.
+
+
+        The file type is decided by the **filename extension**, not by sniffing the
+        file''s contents. Files whose contents are an executable or script are rejected
+        whatever they are named.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires scope:** `suppliers:write`
+
+
+        **Requires permission:** `suppliers.update`'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: 'Required. The price list file to attach. Accepted
+                    file types: pdf, jpg, jpeg, png, gif, webp, heic, doc, docx, xls,
+                    xlsx, csv, txt, html, htm, eml, msg, zip. Maximum size: 20 MB.
+                    The extension decides the type, not the file''s contents; executable
+                    or script content is rejected under any name.'
+                  format: binary
+                description:
+                  type: string
+                  description: Optional. Free-text note describing the file. Maximum
+                    2000 characters.
+                  example: August 2026 wholesale list, USD
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      file_name:
+                        type: string
+                      mime_type:
+                        type: string
+                      is_image:
+                        type: boolean
+                      file_size:
+                        type: integer
+                      source:
+                        type: string
+                      description:
+                        type: string
+                      file_url:
+                        type: string
+                      uploaded_by:
+                        type: string
+                      linked_records:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            id:
+                              type: integer
+                      created_at:
+                        type: string
+                example:
+                  data:
+                    id: 512
+                    file_name: PriceList_Aug2026.pdf
+                    mime_type: application/pdf
+                    is_image: false
+                    file_size: 482113
+                    source: price_list
+                    description: August 2026 wholesale list, USD
+                    file_url: '{{protocol}}{{domain}}/api/documents/512/file'
+                    uploaded_by: Jane Castillo
+                    linked_records:
+                    - type: App\Models\Supplier
+                      id: 12
+                    created_at: '2026-08-11T16:02:11.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      file:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Attachments are limited to 20 MB.
+                  errors:
+                    file:
+                    - Attachments are limited to 20 MB.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: suppliers:write
+      operationId: post-api-suppliers-supplier-price-list-documents
+  /api/suppliers/{supplier}/price-list/documents/{document}:
+    patch:
+      tags:
+      - Suppliers
+      summary: Update Price List Document Description
+      description: 'Updates a document''s description — the only editable field. The
+        stored file itself is immutable; upload a new document to replace it. Send
+        `description` as null to clear it. Maximum 2000 characters.
+
+
+        :::info[Required scope: `suppliers:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Returns 404 when the document is not a price list document of this supplier.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires scope:** `suppliers:write`
+
+
+        **Requires permission:** `suppliers.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                description:
+                  type: string
+              example:
+                description: September 2026 wholesale list, USD
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      - name: document
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Document ID
+        example: '512'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      file_name:
+                        type: string
+                      mime_type:
+                        type: string
+                      is_image:
+                        type: boolean
+                      file_size:
+                        type: integer
+                      source:
+                        type: string
+                      description:
+                        type: string
+                      file_url:
+                        type: string
+                      uploaded_by:
+                        type: string
+                      linked_records:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            id:
+                              type: integer
+                      created_at:
+                        type: string
+                example:
+                  data:
+                    id: 512
+                    file_name: PriceList_Aug2026.pdf
+                    mime_type: application/pdf
+                    is_image: false
+                    file_size: 482113
+                    source: price_list
+                    description: September 2026 wholesale list, USD
+                    file_url: '{{protocol}}{{domain}}/api/documents/512/file'
+                    uploaded_by: Jane Castillo
+                    linked_records:
+                    - type: App\Models\Supplier
+                      id: 12
+                    created_at: '2026-08-11T16:02:11.000000Z'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not found.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '422': *id005
+      x-required-scope: suppliers:write
+      operationId: patch-api-suppliers-supplier-price-list-documents-document
+    delete:
+      tags:
+      - Suppliers
+      summary: Delete Price List Document
+      description: 'Deletes the document, its link to the supplier, and the stored
+        file. This is permanent.
+
+
+        :::info[Required scope: `suppliers:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Returns 404 when the document is not a price list document of this supplier.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires scope:** `suppliers:write`
+
+
+        **Requires permission:** `suppliers.update`'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      - name: document
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Document ID
+        example: '512'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Document deleted.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not found.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: suppliers:write
+      operationId: delete-api-suppliers-supplier-price-list-documents-document
+  /api/suppliers/{supplier}/price-list/documents/{document}/file:
+    get:
+      tags:
+      - Suppliers
+      summary: Stream Price List Document File
+      description: 'Streams the stored file inline with its own content type (e.g.
+        `application/pdf`), suitable for in-browser preview or download. The response
+        is the file itself, not JSON.
+
+
+        :::info[Required scope: `suppliers:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Returns 404 when the stored file is missing or the document is not a price
+        list document of this supplier.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires scope:** `suppliers:read`'
+      parameters:
+      - name: supplier
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Supplier ID
+        example: '12'
+      - name: document
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Document ID
+        example: '512'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/pdf
+            Content-Disposition:
+              schema:
+                type: string
+                example: inline; filename="PriceList_Aug2026.pdf"
+            X-Content-Type-Options:
+              schema:
+                type: string
+                example: nosniff
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: (binary file contents)
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not found.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: suppliers:read
+      operationId: get-api-suppliers-supplier-price-list-documents-document-file
   /api/purchase-orders:
     get:
       tags:
@@ -507761,7 +508226,11 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Each invoice includes `created_by` / `created_by_name` — the user who entered
+        the bill (null for system-generated bills).'
       parameters:
       - name: purchaseOrder
         in: path
@@ -507792,6 +508261,10 @@ paths:
                           type: integer
                         supplier_invoice_number:
                           type: string
+                        created_by:
+                          type: integer
+                        created_by_name:
+                          type: string
                         purchase_invoice_date:
                           type: string
                         total:
@@ -507802,6 +508275,8 @@ paths:
                   data:
                   - id: 800
                     supplier_invoice_number: INV-2024-001
+                    created_by: 42
+                    created_by_name: Jane Doe
                     purchase_invoice_date: '2024-01-20T00:00:00Z'
                     total: 1500.0
                   current_page: 1
@@ -512802,6 +513277,10 @@ paths:
                           type: string
                         status:
                           type: string
+                        created_by:
+                          type: integer
+                        created_by_name:
+                          type: string
                         purchase_invoice_lines:
                           type: string
                           nullable: true
@@ -512901,6 +513380,8 @@ paths:
                     supplier_id: 7
                     supplier_name: Acme Supplies Ltd
                     status: open
+                    created_by: 42
+                    created_by_name: Jane Doe
                     purchase_invoice_lines: null
                     financial_lines: null
                     purchase_invoice_date: '2024-01-20'
@@ -513066,6 +513547,8 @@ paths:
                         type: string
                       status:
                         type: string
+                      created_by:
+                        type: integer
                       purchase_invoice_date:
                         type: string
                       due_date:
@@ -513095,6 +513578,7 @@ paths:
                     supplier_id: 7
                     supplier_name: Acme Supplies Ltd
                     status: open
+                    created_by: 42
                     purchase_invoice_date: '2024-01-20'
                     due_date: '2024-02-20'
                     calculated_total: 250
@@ -513249,6 +513733,10 @@ paths:
                         type: string
                       status:
                         type: string
+                      created_by:
+                        type: integer
+                      created_by_name:
+                        type: string
                       purchase_invoice_lines:
                         type: array
                         items:
@@ -513337,6 +513825,8 @@ paths:
                     supplier_id: 7
                     supplier_name: Acme Supplies Ltd
                     status: open
+                    created_by: 42
+                    created_by_name: Jane Doe
                     purchase_invoice_lines:
                     - id: 201
                       purchase_order_line_id: 101
