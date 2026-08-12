@@ -50177,6 +50177,59 @@ paths:
         '403': *id003
       x-session-only: true
       operationId: get-api-v2-data-imports-template
+  /api/v2/data-imports/{dataImport}:
+    delete:
+      tags:
+      - Data Imports
+      summary: Delete Data Import
+      description: 'Discard a staged import, removing it. Restricted to the user who
+        created the import (or an admin). An import that is actively validating or
+        importing cannot be deleted and returns 422.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: dataImport
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Data Import ID
+        example: '5'
+      responses:
+        '204':
+          description: No Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: {}
+                example: {}
+        '422':
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Cannot delete an import while it is running.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: delete-api-v2-data-imports-dataimport
   /api/v2/customers:
     get:
       tags:
@@ -363759,7 +363812,14 @@ paths:
 
         Body fields:
 
-        - file (required): CSV or TXT file with columns old_sku and destination_sku'
+        - file (required): CSV or TXT file with columns old_sku and destination_sku
+
+
+        Rows that cannot be merged — a source or destination SKU that no longer exists,
+        a self-merge, or a duplicate row — are skipped rather than rejecting the whole
+        file. The response `skipped` object summarises them (total count, a breakdown
+        by reason, and a sample of skipped rows). The upload fails with 422 only when
+        no row is mergeable.'
       requestBody:
         content:
           multipart/form-data:
@@ -363789,9 +363849,48 @@ paths:
                     type: string
                   pairs_count:
                     type: integer
+                  skipped:
+                    type: object
+                    properties:
+                      count:
+                        type: integer
+                      by_reason:
+                        type: object
+                        properties:
+                          source_not_found:
+                            type: integer
+                          duplicate_pair:
+                            type: integer
+                      sample:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            line:
+                              type: integer
+                            old_sku:
+                              type: string
+                            destination_sku:
+                              type: string
+                            reason:
+                              type: string
                 example:
                   session_id: 550e8400-e29b-41d4-a716-446655440000
                   pairs_count: 5
+                  skipped:
+                    count: 2
+                    by_reason:
+                      source_not_found: 1
+                      duplicate_pair: 1
+                    sample:
+                    - line: 4
+                      old_sku: SKU-OLD-004
+                      destination_sku: SKU-NEW-004
+                      reason: source_not_found
+                    - line: 7
+                      old_sku: SKU-OLD-007
+                      destination_sku: SKU-NEW-007
+                      reason: duplicate_pair
         '422':
           description: Unprocessable Entity
           headers:
@@ -363938,7 +364037,13 @@ paths:
 
 
         Sessions expire after 2 hours. Returns 404 if the session is not found or
-        expired.'
+        expired.
+
+
+        The preview is capped at the first 100 pairs to keep the response fast on
+        large lists. `total_count` is the full number of pairs, `previewed_count`
+        is how many are included, and `truncated` is true when the list was capped.
+        Every pair is still merged when the merge is executed.'
       parameters:
       - name: session_id
         in: path
@@ -363976,6 +364081,12 @@ paths:
                               type: integer
                             purchase_order_lines:
                               type: integer
+                  previewed_count:
+                    type: integer
+                  total_count:
+                    type: integer
+                  truncated:
+                    type: boolean
                 example:
                   previews:
                   - old_sku: SKU-OLD-001
@@ -363983,6 +364094,9 @@ paths:
                     changes:
                       sales_order_lines: 3
                       purchase_order_lines: 1
+                  previewed_count: 1
+                  total_count: 1
+                  truncated: false
         '404':
           description: Not Found
           headers:
