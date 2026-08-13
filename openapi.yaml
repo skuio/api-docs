@@ -3473,7 +3473,13 @@ paths:
         Every transaction type is returned, whether or not it has been saved before.
         A type that has never been saved inherits the control of the type it was split
         out of — `inventory_revaluation` (automatic cost true-ups) inherits `inventory_adjustment`
-        until you save it a setting of its own.'
+        until you save it a setting of its own.
+
+
+        **mirror_sync_controls** (Xero connections only; empty object otherwise):
+        per-entity toggles for the nightly mirror downloads FROM Xero (`bank_transactions`,
+        `payments`). Disabled by default — the scheduled download runs only for enabled
+        entities. Manual downloads via the download endpoints work regardless.'
       parameters: []
       responses:
         '200':
@@ -3545,6 +3551,23 @@ paths:
                                 type: string
                               label:
                                 type: string
+                      mirror_sync_controls:
+                        type: object
+                        properties:
+                          bank_transactions:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              label:
+                                type: string
+                          payments:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              label:
+                                type: string
                 example:
                   data:
                     integration_instance_id: 5
@@ -3570,6 +3593,13 @@ paths:
                         enabled: true
                         sync_start_date: '2025-01-01'
                         label: Inventory Revaluation
+                    mirror_sync_controls:
+                      bank_transactions:
+                        enabled: false
+                        label: Bank Transactions (download from Xero)
+                      payments:
+                        enabled: true
+                        label: Payments (download from Xero)
         '429': *id001
         '401': *id002
         '403': *id003
@@ -3609,7 +3639,18 @@ paths:
 
 
         Saving a type gives it a control of its own, which ends any inheritance from
-        the type it was split out of (`inventory_revaluation` from `inventory_adjustment`).'
+        the type it was split out of (`inventory_revaluation` from `inventory_adjustment`).
+
+
+        Both top-level keys are optional — send either or both:
+
+        - `sync_controls_by_type` — per-transaction-type auto-sync toggles (as before)
+
+        - `mirror_sync_controls` (Xero only) — `{"bank_transactions": {"enabled":
+        bool}, "payments": {"enabled": bool}}`; enables the nightly mirror download
+        for that entity. Unsubmitted keys keep their stored state.
+
+        A request with neither key returns 422.'
       requestBody:
         content:
           application/json:
@@ -3641,6 +3682,14 @@ paths:
                           type: boolean
                         sync_start_date:
                           type: string
+                mirror_sync_controls:
+                  type: object
+                  properties:
+                    payments:
+                      type: object
+                      properties:
+                        enabled:
+                          type: boolean
               example:
                 sync_controls_by_type:
                   sales_order_invoice:
@@ -3652,6 +3701,9 @@ paths:
                   inventory_revaluation:
                     enabled: true
                     sync_start_date: '2025-01-01'
+                mirror_sync_controls:
+                  payments:
+                    enabled: true
       parameters: []
       responses:
         '200':
@@ -3704,6 +3756,23 @@ paths:
                                 type: string
                               label:
                                 type: string
+                      mirror_sync_controls:
+                        type: object
+                        properties:
+                          bank_transactions:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              label:
+                                type: string
+                          payments:
+                            type: object
+                            properties:
+                              enabled:
+                                type: boolean
+                              label:
+                                type: string
                   message:
                     type: string
                 example:
@@ -3723,6 +3792,13 @@ paths:
                         enabled: true
                         sync_start_date: '2025-01-01'
                         label: Inventory Revaluation
+                    mirror_sync_controls:
+                      bank_transactions:
+                        enabled: false
+                        label: Bank Transactions (download from Xero)
+                      payments:
+                        enabled: true
+                        label: Payments (download from Xero)
                   message: Sync settings updated successfully.
         '422':
           description: Unprocessable Entity
@@ -21898,10 +21974,10 @@ paths:
       description: 'Every live (non-discarded, non-reversal, non-reversed) v2 ledger
         journal entry for a source document, as a lightweight list. Where /by-source
         returns only the latest single entry, a source can post more than one current
-        entry — an Amazon settlement posts both an invoice AND a bill — so a source-doc
-        accounting list (e.g. the Amazon bank-transaction detail page) needs the full
-        set. Each item links to /v2/ledger/entries/{id}. source_type is the source
-        model FQN.
+        entry — an Amazon settlement posts both an invoice AND a bill; a vendor credit
+        posts the credit entry plus one applied entry per allocation — so a source
+        document''s accounting list needs the full set. Each item links to /v2/ledger/entries/{id}.
+        source_type is the source model FQN.
 
 
         :::warning[Not yet available to API tokens]
@@ -21912,14 +21988,19 @@ paths:
         :::
 
 
-        Returns data: an array of { id, type, reference, total }. Empty array when
-        the source has no live entries.
+        Returns data: an array of { id, type, type_label, status, reference, effective_at,
+        total, display_status }. Empty array when the source has no live entries.
 
 
         **`total`** is the NET document total (the provider-booked face value — net
         control-account movement), not the gross debit total. For an Amazon settlement
         bill with internal reserve contra legs the two differ (e.g. 842.67 net vs
-        1,305.86 gross).'
+        1,305.86 gross).
+
+
+        **`status`** is the entry''s lifecycle status (draft / posted / reversed).
+        **`display_status`** is the composite sync status ({ key, label, color });
+        its fields are null when the entry does not participate in provider sync.'
       parameters:
       - name: source_type
         in: query
@@ -21952,18 +22033,52 @@ paths:
                     data:
                     - id: 29
                       type: sales_order_invoice
-                      document_number: INV-29
-                      reference: aS1O-So4T6lFwowEq3JBCtjdts5TNjL553ZUrzAGZFk
-                      total: '115229.9300'
+                      type_label: Sales Order Invoice
+                      status: posted
+                      reference: '13029880822'
+                      effective_at: '2026-06-14T00:00:00+00:00'
+                      total: '115229.93'
+                      display_status:
+                        key: synced
+                        label: Synced
+                        color: success
                     - id: 30
                       type: bill
-                      document_number: BILL-30
-                      reference: aS1O-So4T6lFwowEq3JBCtjdts5TNjL553ZUrzAGZFk
-                      total: '38755.6700'
+                      type_label: Bill
+                      status: posted
+                      reference: '13029880822'
+                      effective_at: '2026-06-14T00:00:00+00:00'
+                      total: '38755.67'
+                      display_status:
+                        key: pending_sync
+                        label: Pending Sync
+                        color: info
                 example-1:
                   summary: 200 OK (no entries)
                   value:
-                    data: []
+                    data:
+                    - id: 29
+                      type: sales_order_invoice
+                      type_label: Sales Order Invoice
+                      status: posted
+                      reference: '13029880822'
+                      effective_at: '2026-06-14T00:00:00+00:00'
+                      total: '115229.93'
+                      display_status:
+                        key: synced
+                        label: Synced
+                        color: success
+                    - id: 30
+                      type: bill
+                      type_label: Bill
+                      status: posted
+                      reference: '13029880822'
+                      effective_at: '2026-06-14T00:00:00+00:00'
+                      total: '38755.67'
+                      display_status:
+                        key: pending_sync
+                        label: Pending Sync
+                        color: info
         '429': *id001
         '401': *id002
         '403': *id003
@@ -344506,6 +344621,223 @@ paths:
         '422': *id005
       x-session-only: true
       operationId: post-api-xero-bank-transactions-download
+  /api/xero/payments/download:
+    post:
+      tags:
+      - Xero
+      summary: Sync Payments from Xero
+      description: 'Dispatch a tracked background sync that pulls payments from Xero''s
+        Payments API into the local mirror (paged 100/request, upserted by PaymentID).
+        Payments recorded directly in Xero appear locally; payments previously pushed
+        from SKU refresh in place. Payments deleted in Xero are kept with status DELETED.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Body (all optional, nullable dates Y-m-d):**
+
+        - `date_from` — only payments dated on/after (builds the Xero OData `Date
+        >= DateTime(...)` filter)
+
+        - `date_to` — only payments dated on/before
+
+        - `modified_after` — incremental: only records changed since (If-Modified-Since)
+
+
+        All null = full pull. A nightly incremental sync also runs automatically for
+        entities enabled in the accounting sync settings (`mirror_sync_controls`,
+        off by default); this endpoint is the on-demand trigger and never disturbs
+        the scheduled sync''s incremental cursor. Returns the tracked-job id for following
+        progress via the tracked job log endpoints.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date_from:
+                  type: string
+                date_to:
+                  type: string
+                modified_after:
+                  type: string
+                  nullable: true
+              example:
+                date_from: '2026-01-01'
+                date_to: '2026-06-30'
+                modified_after: null
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                example:
+                  data:
+                    tracked_job_log_id: 12345
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      date_to:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The date to field must be a date after or equal to date
+                    from.
+                  errors:
+                    date_to:
+                    - The date to field must be a date after or equal to date from.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: post-api-xero-payments-download
+  /api/xero/v2/sync-status:
+    get:
+      tags:
+      - Xero
+      summary: Get Mirror Sync Status
+      description: 'Per-entity telemetry for the Xero mirror sync — when bank transactions
+        and payments were last pulled from Xero, the incremental cursor position,
+        and the most recent failure (if any).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token.
+
+
+        **Fields per entity (`bank_transactions`, `payments`):**
+
+        - `cursor_at` — incremental watermark: everything changed in Xero at/before
+        this timestamp has been mirrored
+
+        - `last_sync_started_at` / `last_sync_completed_at` — most recent scheduled
+        run
+
+        - `enabled` — whether the nightly scheduled sync is turned on for this entity
+        (opt-in per connection, via the accounting sync settings)
+
+        - `last_sync_failed_at` / `last_sync_error` — populated when the most recent
+        attempt failed; cleared by the next successful run
+
+
+        All fields are null for an account that has never synced.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      bank_transactions:
+                        type: object
+                        properties:
+                          cursor_at:
+                            type: string
+                          last_sync_started_at:
+                            type: string
+                          last_sync_completed_at:
+                            type: string
+                          last_sync_failed_at:
+                            type: string
+                            nullable: true
+                          last_sync_error:
+                            type: string
+                            nullable: true
+                          enabled:
+                            type: boolean
+                      payments:
+                        type: object
+                        properties:
+                          cursor_at:
+                            type: string
+                          last_sync_started_at:
+                            type: string
+                          last_sync_completed_at:
+                            type: string
+                          last_sync_failed_at:
+                            type: string
+                            nullable: true
+                          last_sync_error:
+                            type: string
+                            nullable: true
+                          enabled:
+                            type: boolean
+                example:
+                  data:
+                    bank_transactions:
+                      cursor_at: '2026-08-11T14:05:00+00:00'
+                      last_sync_started_at: '2026-08-12T01:11:03+00:00'
+                      last_sync_completed_at: '2026-08-12T01:12:41+00:00'
+                      last_sync_failed_at: null
+                      last_sync_error: null
+                      enabled: true
+                    payments:
+                      cursor_at: '2026-08-11T13:58:12+00:00'
+                      last_sync_started_at: '2026-08-12T01:26:02+00:00'
+                      last_sync_completed_at: '2026-08-12T01:27:19+00:00'
+                      last_sync_failed_at: null
+                      last_sync_error: null
+                      enabled: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: get-api-xero-v2-sync-status
   /api/xero/authorize:
     get:
       tags:
