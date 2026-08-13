@@ -23902,6 +23902,312 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: put-api-ledger-accounts-nominalcode-type
+  /api/ledger/accounts/{nominalCode}/integration-account:
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Link Provider Account
+      description: 'Point a GL account at a specific provider account in your connected
+        accounting system (QuickBooks Online or Xero). Future syncs post this account''s
+        journal lines to the linked provider account; entries already synced are not
+        moved.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token. Gated by the `accounting.manage_settings`
+        permission.
+
+
+        **Body:**
+
+        - `provider` (required) — `qbo` or `xero`.
+
+        - `provider_account_id` (required) — id of the imported provider account row
+        (from the provider''s accounts list).
+
+        - `acknowledge_type_mismatch` (optional, boolean) — required `true` when the
+        provider account''s classification (Asset/Liability/Equity/Revenue/Expense)
+        conflicts with the GL account''s type; the request is rejected with 422 on
+        `acknowledge_type_mismatch` until confirmed.
+
+
+        **Guardrails (422):** the provider account must exist; Xero inventory-type
+        accounts are never linkable; the account mapped as Inventory Control only
+        accepts an asset-class provider account.
+
+
+        Returns the same shape as Get Account Overview. The change is recorded in
+        the account''s activity log.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                provider_account_id:
+                  type: integer
+                acknowledge_type_mismatch:
+                  type: boolean
+              example:
+                provider: qbo
+                provider_account_id: 123
+                acknowledge_type_mismatch: false
+      parameters:
+      - name: nominalCode
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Nominal code id
+        example: '6'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      account:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                          type:
+                            type: string
+                          posted_lines_count:
+                            type: integer
+                          is_system_reserved:
+                            type: boolean
+                          archived_at:
+                            type: string
+                            nullable: true
+                          integration_account:
+                            type: object
+                            properties:
+                              provider:
+                                type: string
+                              provider_label:
+                                type: string
+                              id:
+                                type: integer
+                              external_id:
+                                type: string
+                              code:
+                                type: string
+                              name:
+                                type: string
+                              type:
+                                type: string
+                              class:
+                                type: string
+                              status:
+                                type: string
+                              link_basis:
+                                type: string
+                      totals:
+                        type: object
+                        properties:
+                          total_debit:
+                            type: string
+                          total_credit:
+                            type: string
+                          net:
+                            type: string
+                          lines_count:
+                            type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    account:
+                      id: 6
+                      code: '5000'
+                      name: Cost of Goods Sold
+                      type: Directcosts
+                      posted_lines_count: 12
+                      is_system_reserved: true
+                      archived_at: null
+                      integration_account:
+                        provider: qbo
+                        provider_label: QuickBooks Online
+                        id: 123
+                        external_id: '82'
+                        code: '5000'
+                        name: Cost of Goods Sold
+                        type: Cost of Goods Sold
+                        class: Expense
+                        status: ACTIVE
+                        link_basis: mapping
+                    totals:
+                      total_debit: '1250.00'
+                      total_credit: '0.00'
+                      net: '1250.00'
+                      lines_count: 12
+                  message: Provider account linked — future syncs post there.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      acknowledge_type_mismatch:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: That is a Liability-class account in the provider, but
+                    '5000 Cost of Goods Sold' is Expense-class in SKU. Linking them
+                    sends every posting on this account there. Confirm the mismatch
+                    to proceed.
+                  errors:
+                    acknowledge_type_mismatch:
+                    - That is a Liability-class account in the provider, but '5000
+                      Cost of Goods Sold' is Expense-class in SKU. Linking them sends
+                      every posting on this account there. Confirm the mismatch to
+                      proceed.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: put-api-ledger-accounts-nominalcode-integration-account
+    delete:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Unlink Provider Account
+      description: 'Remove a GL account''s explicit provider-account link. Syncing
+        falls back to the provider''s implicit matching (QuickBooks Online: exact
+        account-name match; Xero: account-code match). If nothing matches, entries
+        posting to this account fail to sync until the account is linked again.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token. Gated by the `accounting.manage_settings`
+        permission.
+
+
+        Returns the same shape as Get Account Overview.'
+      parameters:
+      - name: nominalCode
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Nominal code id
+        example: '6'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      account:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                          type:
+                            type: string
+                          posted_lines_count:
+                            type: integer
+                          is_system_reserved:
+                            type: boolean
+                          archived_at:
+                            type: string
+                            nullable: true
+                          integration_account:
+                            type: string
+                            nullable: true
+                      totals:
+                        type: object
+                        properties:
+                          total_debit:
+                            type: string
+                          total_credit:
+                            type: string
+                          net:
+                            type: string
+                          lines_count:
+                            type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    account:
+                      id: 6
+                      code: '5000'
+                      name: Cost of Goods Sold
+                      type: Directcosts
+                      posted_lines_count: 12
+                      is_system_reserved: true
+                      archived_at: null
+                      integration_account: null
+                    totals:
+                      total_debit: '1250.00'
+                      total_credit: '0.00'
+                      net: '1250.00'
+                      lines_count: 12
+                  message: Provider account link removed.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: delete-api-ledger-accounts-nominalcode-integration-account
   /api/ledger/accounts/{nominalCode}/activity-log:
     get:
       tags:
@@ -325821,7 +326127,14 @@ paths:
 
 
         Searchable columns (filter[search]): id, qbo_id, name, acct_num, fully_qualified_name,
-        account_sub_type.'
+        account_sub_type.
+
+
+        Mapping health (filter[mapping_status]): linked = a nominal code is explicitly
+        mapped to the account; name_match = no explicit mapping, but a nominal code
+        with the exact same name exists (matched by name at push time); unmapped =
+        neither. Each row includes nominal_code (the explicitly mapped nominal code,
+        null when not mapped) and mapping_status.'
       parameters:
       - name: page
         in: query
@@ -325871,6 +326184,19 @@ paths:
                           type: boolean
                         sync_status:
                           type: string
+                        nominal_code:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            type:
+                              type: string
+                        mapping_status:
+                          type: string
                   current_page:
                     type: integer
                   last_page:
@@ -325890,10 +326216,27 @@ paths:
                     classification: Asset
                     active: true
                     sync_status: synced
+                    nominal_code:
+                      id: 42
+                      code: '1000'
+                      name: Checking
+                      type: asset
+                    mapping_status: linked
+                  - id: 2
+                    qbo_id: '2'
+                    name: Office Supplies
+                    account_type: Expense
+                    account_sub_type: OfficeGeneralAdministrativeExpenses
+                    acct_num: '6100'
+                    classification: Expense
+                    active: true
+                    sync_status: synced
+                    nominal_code: null
+                    mapping_status: name_match
                   current_page: 1
                   last_page: 1
                   per_page: 15
-                  total: 1
+                  total: 2
         '429': *id001
         '401': *id002
         '403': *id003
