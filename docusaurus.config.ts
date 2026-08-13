@@ -28,7 +28,7 @@ const releaseNotesRedirects: { from: string; to: string }[] = JSON.parse(
 );
 
 const config: Config = {
-  title: "SKU.io Docs",
+  title: "SKU.io Developer",
   tagline: "API reference and changelog for the SKU.io platform",
   favicon: "img/favicon.ico",
 
@@ -274,7 +274,7 @@ const config: Config = {
       },
     },
     navbar: {
-      title: "SKU.io Docs",
+      title: "SKU.io Developer",
       logo: {
         alt: "SKU.io Logo",
         src: "img/logo.svg",
@@ -310,6 +310,7 @@ const config: Config = {
           href: "https://book.sku.io/demo",
           label: "Book a call",
           position: "right",
+          className: "navbar-cta",
         },
         {
           href: "https://sku.io",

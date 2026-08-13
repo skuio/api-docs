@@ -48,14 +48,14 @@ function HomepageHeader() {
             Download Collection
           </Link>
         </div>
-        <p style={{ marginTop: "1.5rem", marginBottom: 0, opacity: 0.9 }}>
+        <p className={styles.evaluatorNote}>
           Not a customer yet? SKU.io is inventory and order management for
           multichannel e-commerce.{" "}
-          <Link href="https://sku.io" style={{ color: "inherit", textDecoration: "underline" }}>
+          <Link href="https://sku.io" className={styles.evaluatorLink}>
             See the product
           </Link>{" "}
           or{" "}
-          <Link href="https://book.sku.io/demo" style={{ color: "inherit", textDecoration: "underline" }}>
+          <Link href="https://book.sku.io/demo" className={styles.evaluatorLink}>
             book a call
           </Link>
           .
