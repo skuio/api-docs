@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-13
-description: This release includes 6 additions.
+description: This release includes 7 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-08-13
 ---
 
-This release includes 6 additions.
+This release includes 7 additions.
 
 <!-- truncate -->
 
@@ -21,6 +21,9 @@ This release includes 6 additions.
 ### Ledger (Accounting v2)
 - `DELETE /api/ledger/accounts/{nominalCode}/integration-account` — Unlink Provider Account
 - `PUT /api/ledger/accounts/{nominalCode}/integration-account` — Link Provider Account
+
+### Reporting
+- `GET /api/reporting/accounting-cogs/drilldown/export` — Export Accounting COGS Drilldown
 
 ### Xero
 - `POST /api/xero/payments/download` — Sync Payments from Xero
