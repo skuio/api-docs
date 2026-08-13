@@ -48,6 +48,18 @@ function HomepageHeader() {
             Download Collection
           </Link>
         </div>
+        <p style={{ marginTop: "1.5rem", marginBottom: 0, opacity: 0.9 }}>
+          Not a customer yet? SKU.io is inventory and order management for
+          multichannel e-commerce.{" "}
+          <Link href="https://sku.io" style={{ color: "inherit", textDecoration: "underline" }}>
+            See the product
+          </Link>{" "}
+          or{" "}
+          <Link href="https://book.sku.io/demo" style={{ color: "inherit", textDecoration: "underline" }}>
+            book a call
+          </Link>
+          .
+        </p>
       </div>
     </header>
   );
@@ -71,6 +83,12 @@ const features = [
     description:
       "All endpoints are relative to your SKU.io subdomain: https://{tenant}.sku.io. Replace {tenant} with your account subdomain (e.g. app).",
   },
+  {
+    title: "Built for AI Agents",
+    description:
+      "Open-source skills let terminal agents like Claude Code drive SKU.io through this API — build a catalog, create orders, adjust inventory.",
+    link: { label: "Browse the agentic skills →", to: "/agentic-skills" },
+  },
 ];
 
 export default function Home(): ReactNode {
@@ -85,8 +103,8 @@ export default function Home(): ReactNode {
         <section style={{ padding: "3rem 0" }}>
           <div className="container">
             <div className="row">
-              {features.map(({ title, description, code }) => (
-                <div key={title} className="col col--4">
+              {features.map(({ title, description, code, link }) => (
+                <div key={title} className="col col--3">
                   <div
                     style={{
                       padding: "1.5rem",
@@ -111,6 +129,7 @@ export default function Home(): ReactNode {
                         <code>{code}</code>
                       </pre>
                     )}
+                    {link && <Link to={link.to}>{link.label}</Link>}
                   </div>
                 </div>
               ))}

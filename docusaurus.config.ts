@@ -307,6 +307,11 @@ const config: Config = {
           position: "left",
         },
         {
+          href: "https://book.sku.io/demo",
+          label: "Book a call",
+          position: "right",
+        },
+        {
           href: "https://sku.io",
           label: "SKU.io",
           position: "right",
@@ -331,6 +336,10 @@ const config: Config = {
               label: "API Changelog",
               to: "/changelog",
             },
+            {
+              label: "Agentic Skills",
+              to: "/agentic-skills",
+            },
           ],
         },
         {
@@ -339,6 +348,10 @@ const config: Config = {
             {
               label: "SKU.io",
               href: "https://sku.io",
+            },
+            {
+              label: "Book a call",
+              href: "https://book.sku.io/demo",
             },
             {
               label: "Support",
