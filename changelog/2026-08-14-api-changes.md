@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-14
-description: This release includes 6 additions, 1 change. 1 breaking change — action required.
+description: This release includes 9 additions, 1 change. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-08-14
 ---
 
-This release includes 6 additions, 1 change. 1 breaking change — action required.
+This release includes 9 additions, 1 change. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -25,6 +25,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `search`
 
 ## Added
+
+### Faire
+- `GET /api/faire/instances/{integrationInstance}/products/csv-mappings` — Download Product Mappings CSV
+- `POST /api/faire/instances/{integrationInstance}/products/csv-mappings` — Upload Product Mappings CSV
+- `POST /api/faire/instances/{integrationInstance}/products/csv-mappings/validate` — Validate Product Mappings CSV
 
 ### Ledger (Accounting v2)
 - `GET /api/ledger/connections/{connectionId}/tax-rate-mappings` — List Tax Rate Mappings

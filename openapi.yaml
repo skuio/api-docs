@@ -24731,7 +24731,12 @@ paths:
         outbox drain run
 
         - `schedule.next_reconcile_run_at` — UTC datetime of the next daily reconciliation
-        sweep'
+        sweep
+
+
+        The response also reports the live committed-spend bills (`committed_spend_bill_count`,
+        `committed_spend_bill_total`, `tenant_currency_code`) so a client can state
+        exactly what switching away from that policy would remove.'
       parameters: []
       responses:
         '200':
@@ -24776,6 +24781,12 @@ paths:
                                 type: string
                           purchase_order_accounting_policy:
                             type: string
+                          committed_spend_bill_count:
+                            type: integer
+                          committed_spend_bill_total:
+                            type: number
+                          tenant_currency_code:
+                            type: string
                   status:
                     type: string
                 example:
@@ -24792,6 +24803,9 @@ paths:
                         next_generation_run_at: '2026-06-12 20:21:00'
                         next_reconcile_run_at: '2026-06-13 00:00:00'
                       purchase_order_accounting_policy: commitment_entry
+                      committed_spend_bill_count: 1
+                      committed_spend_bill_total: 772.5
+                      tenant_currency_code: USD
                   status: success
         '429': *id001
         '401': *id002
@@ -24841,7 +24855,10 @@ paths:
         order is submitted, which reduces as real supplier invoices arrive). Omit
         to leave unchanged. Replaces the former boolean `generate_purchase_order_transactions`.
 
-        '
+
+        The response also reports the live committed-spend bills (`committed_spend_bill_count`,
+        `committed_spend_bill_total`, `tenant_currency_code`) so a client can state
+        exactly what switching away from that policy would remove.'
       requestBody:
         content:
           application/json:
@@ -24899,6 +24916,12 @@ paths:
                                 type: string
                           purchase_order_accounting_policy:
                             type: string
+                          committed_spend_bill_count:
+                            type: integer
+                          committed_spend_bill_total:
+                            type: number
+                          tenant_currency_code:
+                            type: string
                   status:
                     type: string
                 example:
@@ -24915,6 +24938,9 @@ paths:
                         next_generation_run_at: '2026-06-12 20:21:00'
                         next_reconcile_run_at: '2026-06-13 00:00:00'
                       purchase_order_accounting_policy: commitment_entry
+                      committed_spend_bill_count: 1
+                      committed_spend_bill_total: 772.5
+                      tenant_currency_code: USD
                   status: success
         '422':
           description: Unprocessable Content
@@ -98290,7 +98316,8 @@ paths:
         - `fulfillment_mode` - Fulfillment mode: `fbm` (fulfilled by merchant) or
         `fbf` (fulfilled by Faire)
 
-        - `order_import_start_date` - Date from which orders are imported
+        - `order_import_start_date` - Date from which orders are imported (`YYYY-MM-DD`),
+        as configured on the instance
 
         - `warehouse_id` - Linked internal warehouse ID
 
@@ -98443,8 +98470,9 @@ paths:
 
         **Optional Fields:**
 
-        - `order_import_start_date` - Only import orders created on or after this
-        date
+        - `order_import_start_date` - Only import orders placed on or after this date
+        (`YYYY-MM-DD`). Interpreted in the account timezone: the boundary is local
+        midnight on that day, so an order placed the evening before is not imported.
 
 
         **Fulfilled by Faire (FBF) instances:**
@@ -98784,8 +98812,10 @@ paths:
         - `integrationInstance` - The ID of the integration instance\n\n**Partial\
         \ Updates:**\nAll fields are optional (use `sometimes` validation). Only the\
         \ fields you provide will be updated:\n- `name` - New display name (max 255\
-        \ chars)\n- `order_import_start_date` - New import start date (or null to\
-        \ remove)\n- `is_automatic_sync_enabled` - Toggle automatic background sync\
+        \ chars)\n- `order_import_start_date` - New import start date (`YYYY-MM-DD`,\
+        \ or null to remove). Interpreted in the account timezone: the boundary is\
+        \ local midnight on that day, so an order placed the evening before is not\
+        \ imported.\n- `is_automatic_sync_enabled` - Toggle automatic background sync\
         \ (boolean)\n- `auto_create_products` - Auto-create local products from Faire\
         \ feed (boolean)\n- `default_shipping_method_id` - ID of the shipping method\
         \ applied to every sales order imported from Faire. Faire never provides a\
@@ -102455,8 +102485,9 @@ paths:
         \ - Why the order cannot be imported (null when eligible)\n  - `items` - Line\
         \ items with `faire_line_item_id`, `sku`, `name`, `quantity`, `unit_price`\
         \ (major units)\n- `order_import_start_date` - The instance's configured start\
-        \ date\n- `meta.total_queried` / `meta.eligible_count` / `meta.already_imported_count`\
-        \ - Query summary counts"
+        \ date, as a calendar day in the account timezone\n- `meta.total_queried`\
+        \ / `meta.eligible_count` / `meta.already_imported_count` - Query summary\
+        \ counts"
       parameters:
       - name: integrationInstance
         in: path
@@ -105605,6 +105636,446 @@ paths:
         '404': *id004
       x-session-only: true
       operationId: put-api-faire-instances-integrationinstance-mappings
+  /api/faire/instances/{integrationInstance}/products/csv-mappings:
+    get:
+      tags:
+      - Faire
+      summary: Download Product Mappings CSV
+      description: 'Exports Faire variant → SKU.io product mappings as a CSV file.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        The export is the first half of a round trip: edit the `mapped_sku` column
+        in a spreadsheet and post the file back to `POST .../products/csv-mappings`
+        to apply it. The `mapped_sku` column already carries the CURRENT mapping,
+        so re-uploading an unedited export changes nothing.
+
+
+        `scope=unmapped` is the most useful starting point — it returns exactly the
+        variants that still have no SKU.io product linked, with an empty `mapped_sku`
+        column to fill in.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - Faire integration instance ID.
+
+
+        **Columns:**
+
+        - `faire_variant_id` - Faire-issued variant ID. The key the upload matches
+        on.
+
+        - `faire_product_name` - Parent product name (context only, ignored on upload).
+
+        - `faire_variant_name` - Variant name (context only, ignored on upload).
+
+        - `wholesale_price` - Faire wholesale price (context only, ignored on upload).
+
+        - `faire_sku` - The SKU code Faire holds for the variant (context only, ignored
+        on upload).
+
+        - `mapped_sku` - The linked SKU.io product code. This is the editable column.
+
+
+        **Response:** `text/csv` attachment named `faire-product-mappings-{scope}-{YYYY-MM-DD}.csv`.
+
+
+        **Errors:**
+
+        - `422` - No variants matched the requested scope (e.g. every variant is already
+        mapped).
+
+        '
+      parameters:
+      - name: scope
+        in: query
+        schema:
+          type: string
+        description: 'Required. Which variants to export: `unmapped` (only variants
+          with no SKU.io product linked), `all` (every variant, with its current mapping),
+          or `selected` (the ids given below).'
+        example: unmapped
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Faire integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=faire-product-mappings-unmapped-2026-08-14.csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "faire_variant_id,faire_product_name,faire_variant_name,wholesale_price,faire_sku,mapped_sku\r\
+                  \no_9jd82hsk21,Lavender Hand Cream,50ml,12.50,LHC-50,SKU-LHC-50\r\
+                  \no_2ka91mzp44,Lavender Hand Cream,200ml,28.00,LHC-200,\r\n"
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Every Faire variant in this connection is already mapped.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: get-api-faire-instances-integrationinstance-products-csv-mappings
+    post:
+      tags:
+      - Faire
+      summary: Upload Product Mappings CSV
+      description: 'Applies Faire variant → SKU.io product mappings from a CSV file.
+        Send as `multipart/form-data`.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Row semantics:**
+
+        - `mapped_sku` set → links the variant to the SKU.io product with that code,
+        replacing any existing link.
+
+        - `mapped_sku` blank AND the variant is currently mapped → removes the mapping.
+
+        - `mapped_sku` blank AND the variant is already unmapped → counted in `skipped_count`,
+        nothing happens.
+
+
+        Only `faire_variant_id` and `mapped_sku` are read; the other exported columns
+        are context for the person editing the sheet and are ignored. Variants are
+        matched within the given integration instance only, so a file exported from
+        one connection cannot write mappings into another.
+
+
+        Rows are applied independently: rows that cannot be resolved are reported
+        in `invalid_rows` with their line numbers while every valid row is still applied,
+        so a large sheet can be corrected incrementally rather than all-or-nothing.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - Faire integration instance ID.
+
+
+        **Body (multipart/form-data):**
+
+        - `file` (required, file, mimes:csv,txt, max 10MB) - The mappings CSV.
+
+
+        **Response:**
+
+        - `mapped_count` - Variants linked to a SKU.io product.
+
+        - `unmapped_count` - Variants whose mapping was removed.
+
+        - `skipped_count` - Blank rows for variants that were already unmapped.
+
+        - `failed_count` - Rows that resolved but could not be written.
+
+        - `invalid_rows` - Rows rejected during parsing, each with `row_number` and
+        `error`.
+
+
+        **Errors:**
+
+        - `422` - The file is missing the required columns, or fails file validation
+        (type/size).
+
+        '
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: Required. CSV (or TXT) file, max 10MB, containing at
+                    least the `faire_variant_id` and `mapped_sku` columns.
+                  format: binary
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Faire integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      mapped_count:
+                        type: integer
+                      unmapped_count:
+                        type: integer
+                      skipped_count:
+                        type: integer
+                      failed_count:
+                        type: integer
+                      invalid_rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            row_number:
+                              type: integer
+                            faire_variant_id:
+                              type: string
+                            mapped_sku:
+                              type: string
+                            error:
+                              type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    mapped_count: 24
+                    unmapped_count: 2
+                    skipped_count: 11
+                    failed_count: 0
+                    invalid_rows:
+                    - row_number: 3
+                      faire_variant_id: o_unknown99
+                      mapped_sku: SKU-LHC-50
+                      error: Faire variant not found in this connection
+                    - row_number: 7
+                      faire_variant_id: o_2ka91mzp44
+                      mapped_sku: NO-SUCH-SKU
+                      error: 'No SKU.io product found with code: NO-SUCH-SKU'
+                  message: Mapped 24 variant(s), unmapped 2, 2 row(s) rejected.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: 'Invalid CSV format. Required columns: faire_variant_id,
+                    mapped_sku'
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: post-api-faire-instances-integrationinstance-products-csv-mappings
+  /api/faire/instances/{integrationInstance}/products/csv-mappings/validate:
+    post:
+      tags:
+      - Faire
+      summary: Validate Product Mappings CSV
+      description: 'Resolves every row of a mappings CSV and reports what WOULD change,
+        without writing anything. Use it to preview an import before committing it
+        with `POST .../products/csv-mappings`.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Row semantics:**
+
+        - `mapped_sku` set → links the variant to the SKU.io product with that code,
+        replacing any existing link.
+
+        - `mapped_sku` blank AND the variant is currently mapped → removes the mapping.
+
+        - `mapped_sku` blank AND the variant is already unmapped → counted in `skipped_count`,
+        nothing happens.
+
+
+        Only `faire_variant_id` and `mapped_sku` are read; the other exported columns
+        are context for the person editing the sheet and are ignored. Variants are
+        matched within the given integration instance only, so a file exported from
+        one connection cannot write mappings into another.
+
+
+        **Path Parameters:**
+
+        - `integrationInstance` - Faire integration instance ID.
+
+
+        **Body (multipart/form-data):**
+
+        - `file` (required, file, mimes:csv,txt, max 10MB) - The mappings CSV.
+
+
+        **Response:**
+
+        - `map_count` / `unmap_count` - How many variants would be linked / unlinked.
+
+        - `skipped_count` - Blank rows for variants that are already unmapped.
+
+        - `invalid_rows` - Rows that could not be resolved, each with `row_number`
+        and `error`.
+
+        - `mappings` - The resolved `faire_product_option_id` → `sku_product_id` pairs
+        (`sku_product_id` is null for an unmap).
+
+
+        **Errors:**
+
+        - `422` - The file is missing the required columns, or fails file validation
+        (type/size).
+
+        '
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: Required. CSV (or TXT) file, max 10MB, containing at
+                    least the `faire_variant_id` and `mapped_sku` columns.
+                  format: binary
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Faire integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      map_count:
+                        type: integer
+                      unmap_count:
+                        type: integer
+                      skipped_count:
+                        type: integer
+                      invalid_rows:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            row_number:
+                              type: integer
+                            faire_variant_id:
+                              type: string
+                            mapped_sku:
+                              type: string
+                            error:
+                              type: string
+                      mappings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            faire_product_option_id:
+                              type: integer
+                            faire_variant_id:
+                              type: string
+                            sku_product_id:
+                              type: integer
+                example:
+                  data:
+                    map_count: 2
+                    unmap_count: 1
+                    skipped_count: 11
+                    invalid_rows:
+                    - row_number: 3
+                      faire_variant_id: o_unknown99
+                      mapped_sku: SKU-LHC-50
+                      error: Faire variant not found in this connection
+                    - row_number: 7
+                      faire_variant_id: o_2ka91mzp44
+                      mapped_sku: NO-SUCH-SKU
+                      error: 'No SKU.io product found with code: NO-SUCH-SKU'
+                    mappings:
+                    - faire_product_option_id: 139
+                      faire_variant_id: o_9jd82hsk21
+                      sku_product_id: 4821
+                    - faire_product_option_id: 140
+                      faire_variant_id: o_7bq44xna19
+                      sku_product_id: 4822
+                    - faire_product_option_id: 141
+                      faire_variant_id: o_1cd66yzz03
+                      sku_product_id: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: post-api-faire-instances-integrationinstance-products-csv-mappings-validate
   /api/faire/inventory:
     get:
       tags:
