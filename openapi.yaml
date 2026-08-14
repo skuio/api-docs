@@ -32266,7 +32266,12 @@ paths:
         persisted decision), `is_suggested` (heuristic), `suggestion_reasons[]` (strongest
         first: warehouse-mapped, SKU type Inventory, provider type Inventory, name
         looks like inventory), `current_sku_value` (null when no warehouse — and therefore
-        no SKU inventory — maps to it).'
+        no SKU inventory — maps to it). `current_sku_value` sums THREE valuation subsystems,
+        because inventory does not all live in one place: standard warehouse stock
+        (`fifo_layers`), Amazon FBA stock, and Amazon AWD stock (both in `amazon_fifo_layers`).
+        An AWD or FBA control account therefore shows its real value here rather than
+        $0 — before AWD was folded in, the one account that most needed earmarking
+        looked like an empty one.'
       parameters: []
       responses:
         '200':
@@ -32548,7 +32553,8 @@ paths:
 
         **Series fields:** `nominal_code_id`, `code`, `name`, `provider_account_name`,
         `days_total`, `days_divergent`, `days_matched`, `days_provider_missing`, `latest_sku_value`,
-        `latest_provider_balance`, `latest_divergence`, `latest_as_of_date`, `points[]`.
+        `latest_provider_balance`, `latest_divergence`, `latest_as_of_date`, `points[]`,
+        `has_valuation_source`.
 
 
         **Point fields:** `as_of_date`, `sku_value`, `sku_quantity`, `provider_balance`
@@ -32560,6 +32566,15 @@ paths:
         Each account also returns opening_reconciled (boolean): true when the account
         has a booked reconciliation adjustment, so its opening was reconciled by an
         adjusting journal rather than being naturally aligned.
+
+
+        Each account also returns has_valuation_source (boolean): false when NO SKU-side
+        reader can claim the account — no warehouse maps to it and it is not the configured
+        Inventory In Transit account — so its `sku_value` is a structural $0 rather
+        than a measured zero. Such an account is never divergent (both sides read
+        0), which is exactly why it must NOT be rendered as "Matched": clients should
+        show a distinct "No valuation source" state and suppress the SKU figure. Accounts
+        backed by a warehouse (standard, Amazon FBA, or Amazon AWD) return true.
 
 
         **Accounting calendar (lock dates).** `sku_value` is stated on the accounting
@@ -32645,6 +32660,8 @@ paths:
                                 type: integer
                         opening_reconciled:
                           type: boolean
+                        has_valuation_source:
+                          type: boolean
                   success:
                     type: boolean
                 example:
@@ -32687,6 +32704,7 @@ paths:
                       displaced_value: 1338.75
                       sku_value_inventory: 571130.99
                     opening_reconciled: false
+                    has_valuation_source: true
                   success: true
         '429': *id001
         '401': *id002
@@ -33363,7 +33381,9 @@ paths:
         in: query
         schema:
           type: string
-        description: The month to reconcile, as YYYY-MM. Required.
+        description: The period to reconcile. Accepts a month as YYYY-MM (e.g. 2025-03)
+          or a whole year as YYYY (e.g. 2025). A year returns that year's own movement,
+          equal to the sum of its twelve months. Required.
         example: 2025-01
       responses:
         '200':
@@ -33566,7 +33586,9 @@ paths:
         in: query
         schema:
           type: string
-        description: The month to drill into, as YYYY-MM. Required.
+        description: The period to drill into. Accepts a month as YYYY-MM (e.g. 2025-03)
+          or a whole year as YYYY (e.g. 2025); the entry window matches whichever
+          period the summary charged. Required.
         example: 2025-01
       - name: concept
         in: query
