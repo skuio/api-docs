@@ -24758,8 +24758,6 @@ paths:
                             type: boolean
                           environment_override:
                             type: boolean
-                          generate_purchase_order_transactions:
-                            type: boolean
                           outbox:
                             type: object
                             properties:
@@ -24776,6 +24774,8 @@ paths:
                                 type: string
                               next_reconcile_run_at:
                                 type: string
+                          purchase_order_accounting_policy:
+                            type: string
                   status:
                     type: string
                 example:
@@ -24784,7 +24784,6 @@ paths:
                       enabled: true
                       tenant_enabled: true
                       environment_override: false
-                      generate_purchase_order_transactions: true
                       outbox:
                         pending: 3
                         failed: 0
@@ -24792,6 +24791,7 @@ paths:
                       schedule:
                         next_generation_run_at: '2026-06-12 20:21:00'
                         next_reconcile_run_at: '2026-06-13 00:00:00'
+                      purchase_order_accounting_policy: commitment_entry
                   status: success
         '429': *id001
         '401': *id002
@@ -24823,13 +24823,6 @@ paths:
         - `enabled` (boolean, required) — whether this tenant generates accounting
         entries
 
-        - `generate_purchase_order_transactions` (boolean, optional) — per-tenant
-        opt-in for the non-posting PURCHASE_ORDER commitment entry (`AccountingSettings::$generate_purchase_order_transactions`,
-        default false). Off by default. Omit to leave it unchanged; set true to opt
-        in so a PURCHASE_ORDER commitment entry is generated per PO. When false (the
-        default) the PURCHASE_ORDER posting rule returns null and no PO entries are
-        generated (existing ones are left untouched).
-
 
         **Note:** the `LEDGER_GENERATION_ENABLED` environment override is not writable
         from the API — disabling the tenant switch while the override is on leaves
@@ -24839,7 +24832,16 @@ paths:
         outbox drain run
 
         - `schedule.next_reconcile_run_at` — UTC datetime of the next daily reconciliation
-        sweep'
+        sweep
+
+        - `purchase_order_accounting_policy` (string, optional) — what a purchase
+        order puts into the books. One of `on_invoice` (nothing posts until the supplier
+        invoice is recorded — the default), `commitment_entry` (a non-posting commitment
+        entry per order), or `committed_spend_bill` (a committed-spend bill when the
+        order is submitted, which reduces as real supplier invoices arrive). Omit
+        to leave unchanged. Replaces the former boolean `generate_purchase_order_transactions`.
+
+        '
       requestBody:
         content:
           application/json:
@@ -24848,11 +24850,11 @@ paths:
               properties:
                 enabled:
                   type: boolean
-                generate_purchase_order_transactions:
-                  type: boolean
+                purchase_order_accounting_policy:
+                  type: string
               example:
                 enabled: true
-                generate_purchase_order_transactions: true
+                purchase_order_accounting_policy: commitment_entry
       parameters: []
       responses:
         '200':
@@ -24879,8 +24881,6 @@ paths:
                             type: boolean
                           environment_override:
                             type: boolean
-                          generate_purchase_order_transactions:
-                            type: boolean
                           outbox:
                             type: object
                             properties:
@@ -24897,6 +24897,8 @@ paths:
                                 type: string
                               next_reconcile_run_at:
                                 type: string
+                          purchase_order_accounting_policy:
+                            type: string
                   status:
                     type: string
                 example:
@@ -24905,7 +24907,6 @@ paths:
                       enabled: true
                       tenant_enabled: true
                       environment_override: false
-                      generate_purchase_order_transactions: true
                       outbox:
                         pending: 3
                         failed: 0
@@ -24913,6 +24914,7 @@ paths:
                       schedule:
                         next_generation_run_at: '2026-06-12 20:21:00'
                         next_reconcile_run_at: '2026-06-13 00:00:00'
+                      purchase_order_accounting_policy: commitment_entry
                   status: success
         '422':
           description: Unprocessable Content
@@ -503974,7 +503976,15 @@ paths:
         (ISO timestamps) and `finalized_without_submission` (bool — true when the
         PO reached `finalized` submission status without ever being sent to the supplier;
         happens automatically when an unsubmitted PO is fully invoiced or received).
-        That implicit transition is also written to the PO activity log with an explanation.'
+        That implicit transition is also written to the PO activity log with an explanation.
+
+
+        **Invoices**
+
+        `invoices[]` lists every invoice raised against the order. Each entry carries
+        `is_provisional` - `true` marks a committed-spend bill (created automatically
+        when the order was submitted, and reduced as real supplier invoices are recorded)
+        rather than a real supplier invoice.'
       parameters:
       - name: purchase_order
         in: path
@@ -505189,8 +505199,8 @@ paths:
       tags:
       - Purchase Orders
       summary: Submit PO to Supplier
-      description: 'Submit (send) a draft purchase order to the supplier. Triggers
-        PO sent notification.
+      description: 'Submit (send) a purchase order to the supplier. Sends the purchase
+        order email and records the order as submitted.
 
 
         :::info[Required scope: `purchase-orders:write`]
@@ -505204,9 +505214,23 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        **Requires permission:** `purchase_orders.approve` Optionally include supplier_message
-        to set the vendor-facing note (saved before the PO is emailed); omit it to
-        keep the saved message, or send an empty string to clear it.'
+        **Requires permission:** `purchase_orders.approve`
+
+
+        **Body fields**
+
+        - `supplier_message` (string, optional, max 5000) - vendor-facing note saved
+        to the order before it is sent. Omit to keep the saved message; send an empty
+        string to clear it.
+
+        - `reason` (string, optional, max 255) - recorded against the submission snapshot.
+
+        - `notify_supplier` (boolean, optional, default `true`) - send `false` to
+        record the order as submitted without emailing the supplier. This is the only
+        way to submit an order whose supplier has no purchase order email on file;
+        with `true` (the default) such an order is rejected with 422.
+
+        '
       requestBody:
         content:
           application/json:
@@ -505215,8 +505239,11 @@ paths:
               properties:
                 supplier_message:
                   type: string
+                notify_supplier:
+                  type: boolean
               example:
                 supplier_message: Please ship in original cartons.
+                notify_supplier: true
       parameters:
       - name: purchase_order
         in: path
@@ -515255,7 +515282,13 @@ paths:
 
         The response also includes `unfiltered_total`, the count of rows in the base
         scope before any user filters are applied — used by the frontend to show export
-        totals.'
+        totals.
+
+
+        Each invoice includes `is_provisional` — `true` for committed-spend bills
+        auto-created at PO submission (they mirror the PO''s unbilled remainder and
+        are removed once fully billed). Filter them with `filter[is_provisional]`
+        (`only` / `hide` / `all`).'
       parameters:
       - name: page
         in: query
@@ -515484,6 +515517,8 @@ paths:
                           type: array
                           items:
                             type: string
+                        is_provisional:
+                          type: boolean
                   current_page:
                     type: integer
                   last_page:
@@ -515546,6 +515581,7 @@ paths:
                     attachment_filenames:
                     - packing-slip.pdf
                     - invoice-scan.pdf
+                    is_provisional: false
                   current_page: 1
                   last_page: 5
                   per_page: 10
@@ -515821,7 +515857,11 @@ paths:
         The `purchase_order` object includes `total_invoiced` — the discount-netted
         amount billed across every invoice on the purchase order (not just this one).
         Subtract it from `purchase_order.total` for the amount still to be invoiced
-        on the order.'
+        on the order.
+
+
+        `is_provisional` is `true` for committed-spend bills auto-created at PO submission;
+        these are managed automatically and cannot be edited, paid, archived, or deleted.'
       parameters:
       - name: purchase_invoice
         in: path
@@ -515944,6 +515984,8 @@ paths:
                       archived_at:
                         type: string
                         nullable: true
+                      is_provisional:
+                        type: boolean
                 example:
                   data:
                     id: 42
@@ -515992,6 +516034,7 @@ paths:
                     created_at: '2024-01-20T10:30:00.000000Z'
                     updated_at: '2024-01-20T10:30:00.000000Z'
                     archived_at: null
+                    is_provisional: false
         '404':
           description: Not Found
           content:
@@ -516032,7 +516075,11 @@ paths:
 
 
         When financial_lines are provided, each entry requires: id (an existing financial_lines.id),
-        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.'
+        quantity (numeric), and amount (numeric). A 422 is returned if any are missing.
+
+
+        Returns `422` when the invoice is a committed-spend (provisional) bill — those
+        are managed automatically by their purchase order.'
       requestBody:
         content:
           application/json:
@@ -516144,7 +516191,11 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns `422` when the invoice is a committed-spend (provisional) bill — those
+        are managed automatically by their purchase order.'
       parameters:
       - name: purchase_invoice
         in: path
@@ -516826,7 +516877,10 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns `422` when the invoice is a committed-spend (provisional) bill.'
       requestBody:
         content: {}
       parameters:
@@ -519009,7 +519063,11 @@ paths:
         Required: payment_type_id, amount. Payment date defaults to today if omitted.
 
         Amount must not exceed the remaining balance. Negative amounts are allowed
-        for refunds (cannot exceed total paid).'
+        for refunds (cannot exceed total paid).
+
+
+        Returns `422` when the invoice is a committed-spend (provisional) bill — payments
+        are recorded against real supplier invoices only.'
       requestBody:
         content:
           application/json:
@@ -520095,7 +520153,10 @@ paths:
 
         This endpoint has no request body — the outstanding balance is used automatically.
         Returns the updated bill including its payment approval status and generated
-        approval steps.'
+        approval steps.
+
+
+        Returns `422` when the invoice is a committed-spend (provisional) bill.'
       requestBody:
         content:
           application/json:
