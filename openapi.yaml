@@ -33549,18 +33549,8 @@ paths:
       - Ledger (Accounting v2)
       summary: Get Inventory Reconciliation Period Entries
       description: 'The individual ledger entries behind ONE transaction-type concept
-        of a month''s ongoing reconciliation — the expandable drill-down. Each entry
-        carries its amount, sync status and a route to inspect it: a batch aggregate
-        (is_batch=true) links to its batch (batch_route) to see the members; everything
-        else links to the journal entry (entry_route). can_sync is whether that entry
-        can be pushed to the provider right now — the same eligibility the bulk sync_now
-        action enforces — so an already-synced entry is false, and an entry whose
-        sync_status is awaiting can still be false when it is a member of a batch
-        that has not closed yet (it syncs with the batch, not on its own). An entry
-        with net_amount 0 is still a real posting (its debit and credit legs cancel
-        on this one account) and can be pushed like any other. Sorted by absolute
-        amount, largest first. Authenticate with a Personal Access Token. Reads cached
-        data only (no live provider call).
+        of a period''s ongoing reconciliation, with both sides of the comparison on
+        every row.
 
 
         :::warning[Not yet available to API tokens]
@@ -33568,7 +33558,45 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Each entry carries what SKU booked on this account (net_amount) alongside
+        what the accounting provider actually recorded for that same entry (provider_amount,
+        matched through the sync link) and the difference between them (check_b).
+        That is what makes a residual traceable to specific postings instead of stopping
+        at the transaction type.
+
+
+        provider_amount is null when no provider document is linked to the entry —
+        meaning nothing reached the provider, so the whole net_amount is outstanding.
+        This is NOT the same as the provider recording 0.00, which comes back as 0.
+        check_b follows the same rule and is null exactly when provider_amount is.
+        Treat the two cases differently when rendering.
+
+
+        provider_journal_date is when the provider posted it, which for a batched
+        type routinely trails the entry''s own date by a month — batches close in
+        one period and sync in the next. That lag is expected and is not a gap.
+
+
+        can_sync is whether the entry can be pushed to the provider right now — the
+        same eligibility the bulk sync action enforces — so an already-synced entry
+        is false, and an entry whose sync_status is awaiting can still be false when
+        it belongs to a batch that has not closed yet (it syncs with the batch, not
+        on its own). An entry with net_amount 0 is still a real posting (its debit
+        and credit legs cancel on this one account) and can be pushed like any other.
+
+
+        Paginated, and sorted, filtered and searched across the WHOLE set before the
+        page is cut. The meta block re-states the concept''s own summary figures (so
+        this can never contradict the period summary) and reports set-wide counts
+        a single page cannot express — including syncable_count, which respects the
+        active status filter.
+
+
+        Authenticate with a Personal Access Token. Reads cached data only (no live
+        provider call).'
       parameters:
       - name: connection_id
         in: query
@@ -33595,8 +33623,8 @@ paths:
         schema:
           type: string
         description: The transaction-type concept whose entries to list (e.g. fulfillment,
-          receipt, adjustment, stock_take, transfer, customer_return, vendor_return,
-          manufacturing). Required.
+          receipt, adjustment, revaluation, stock_take, transfer, customer_return,
+          vendor_return, manufacturing, fba). Required.
         example: fulfillment
       responses:
         '200':
@@ -33622,19 +33650,60 @@ paths:
                           type: string
                         reference:
                           type: string
+                        document_number:
+                          type: string
+                        description:
+                          type: string
+                        counterparty_name:
+                          type: string
                         date:
                           type: string
                         posted_at:
                           type: string
                         net_amount:
                           type: number
+                        provider_amount:
+                          type: string
+                          nullable: true
+                        check_b:
+                          type: string
+                          nullable: true
+                        provider_journal_number:
+                          type: string
+                          nullable: true
+                        provider_journal_date:
+                          type: string
+                          nullable: true
+                        provider_journal_count:
+                          type: integer
+                        provider_link:
+                          type: string
+                          nullable: true
                         sync_status:
                           type: string
+                        sync_status_reason:
+                          type: string
+                          nullable: true
+                        last_sync_error:
+                          type: string
+                          nullable: true
                         source_type_label:
                           type: string
                         is_batch:
                           type: boolean
                         batch_id:
+                          type: integer
+                        batch_members_count:
+                          type: integer
+                        batch_period_label:
+                          type: string
+                        account_debit:
+                          type: number
+                        account_credit:
+                          type: integer
+                        account_line_count:
+                          type: integer
+                        total_line_count:
                           type: integer
                         can_sync:
                           type: boolean
@@ -33642,55 +33711,538 @@ paths:
                           type: string
                         batch_route:
                           type: string
-                  success:
-                    type: boolean
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  links:
+                    type: array
+                  meta:
+                    type: object
+                    properties:
+                      concept_key:
+                        type: string
+                      label:
+                        type: string
+                      period_label:
+                        type: string
+                      provider_name:
+                        type: string
+                      sku_moved:
+                        type: number
+                      gl_posted:
+                        type: number
+                      provider_moved:
+                        type: number
+                      check_a:
+                        type: number
+                      check_b:
+                        type: number
+                      entry_count:
+                        type: integer
+                      filtered_count:
+                        type: integer
+                      syncable_count:
+                        type: integer
+                      provider_linked_total:
+                        type: number
+                      filtered_total:
+                        type: number
+                      is_batched:
+                        type: boolean
                 example:
                   data:
-                  - journal_entry_id: 49563
-                    number: SOF-49563
-                    reference: 'Batch: Sales fulfillment · Jan 2025'
-                    date: '2025-01-01'
-                    posted_at: '2025-01-31'
-                    net_amount: -4673.98
+                  - journal_entry_id: 88231
+                    number: JE-88231
+                    reference: FBA-USD-CH16/R2
+                    document_number: BATCH-546
+                    description: Sales Order Fulfillments — Amazon FBA US for Aug
+                      2025
+                    counterparty_name: Amazon FBA US
+                    date: '2025-08-01'
+                    posted_at: '2025-08-31'
+                    net_amount: 110228.84
+                    provider_amount: null
+                    check_b: null
+                    provider_journal_number: null
+                    provider_journal_date: null
+                    provider_journal_count: 0
+                    provider_link: null
                     sync_status: awaiting
+                    sync_status_reason: null
+                    last_sync_error: null
                     source_type_label: Ledger Batch
                     is_batch: true
-                    batch_id: 360
+                    batch_id: 546
+                    batch_members_count: 34
+                    batch_period_label: Aug 2025 · monthly · USD
+                    account_debit: 110228.84
+                    account_credit: 0
+                    account_line_count: 2
+                    total_line_count: 6
                     can_sync: true
-                    entry_route: /ledger/entries/49563
-                    batch_route: /ledger/batches/360
-                  - journal_entry_id: 50122
-                    number: SOF-50122
-                    reference: SO-10233
-                    date: '2025-01-14'
-                    posted_at: null
-                    net_amount: -50
+                    entry_route: /ledger/entries/88231
+                    batch_route: /ledger/batches/546
+                  - journal_entry_id: 88104
+                    number: JE-88104
+                    reference: FBA-USD-CH16/R1
+                    document_number: BATCH-571
+                    description: Sales Order Fulfillments — Amazon FBA US for Mar
+                      2025
+                    counterparty_name: Amazon FBA US
+                    date: '2025-03-01'
+                    posted_at: '2025-03-31'
+                    net_amount: -116148.05
+                    provider_amount: -116148.05
+                    check_b: 0
+                    provider_journal_number: MJ-4471
+                    provider_journal_date: '2025-04-02'
+                    provider_journal_count: 1
+                    provider_link:
+                      provider: Xero
+                      remote_type: xero_manual_journal
+                      remote_id: 5f2c9d1e-1a4b-4c0e-9c11-8a7f2b6d4e33
+                      link_type_label: Manual Journal
+                      label: MJ-4471
+                      link_route: /xero/manual-journals/812
+                      remote_url: https://go.xero.com/Journal/View.aspx?journalID=5f2c9d1e-1a4b-4c0e-9c11-8a7f2b6d4e33
                     sync_status: synced
-                    source_type_label: Sales Order Fulfillment
-                    is_batch: false
-                    batch_id: null
+                    sync_status_reason: null
+                    last_sync_error: null
+                    source_type_label: Ledger Batch
+                    is_batch: true
+                    batch_id: 571
+                    batch_members_count: 41
+                    batch_period_label: Mar 2025 · monthly · USD
+                    account_debit: 0
+                    account_credit: 116148.05
+                    account_line_count: 2
+                    total_line_count: 6
                     can_sync: false
-                    entry_route: /ledger/entries/50122
-                    batch_route: null
-                  - journal_entry_id: 50331
-                    number: SOF-50331
-                    reference: SO-10318
-                    date: '2025-01-27'
-                    posted_at: null
-                    net_amount: -18.44
-                    sync_status: awaiting
-                    source_type_label: Sales Order Fulfillment
-                    is_batch: false
-                    batch_id: 412
-                    can_sync: false
-                    entry_route: /ledger/entries/50331
-                    batch_route: /ledger/batches/412
-                  success: true
+                    entry_route: /ledger/entries/88104
+                    batch_route: /ledger/batches/571
+                  current_page: 1
+                  last_page: 17
+                  per_page: 25
+                  total: 420
+                  from: 1
+                  to: 25
+                  first_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-entries?page=1'
+                  last_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-entries?page=17'
+                  next_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-entries?page=2'
+                  prev_page_url: null
+                  path: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-entries'
+                  links: []
+                  meta:
+                    concept_key: fulfillment
+                    label: Sales fulfillments
+                    period_label: '2025'
+                    provider_name: Xero
+                    sku_moved: -52848.99
+                    gl_posted: -43854.93
+                    provider_moved: -44416.12
+                    check_a: 8994.06
+                    check_b: -561.19
+                    entry_count: 420
+                    filtered_count: 420
+                    syncable_count: 11
+                    provider_linked_total: -43293.74
+                    filtered_total: -43854.93
+                    is_batched: true
         '429': *id001
         '401': *id002
         '403': *id003
       x-session-only: true
       operationId: get-api-ledger-reconciliation-inventory-period-entries
+  /api/ledger/reconciliation/inventory/period-inventory:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Inventory Reconciliation Period Inventory
+      description: 'The inventory side of one transaction-type concept for a period,
+        amount-paired against that concept''s ledger postings — the evidence behind
+        Check A (SKU ledger minus SKU inventory).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Check A is deliberately NOT reported per journal entry. Inventory movements
+        are keyed by product, warehouse and date and attributed to a concept, not
+        to an entry: a monthly batch consolidates thousands of movements into a single
+        posting, and a cost revaluation recognises against a movement dated in an
+        earlier period. So instead of a fabricated per-entry figure, both sides are
+        listed and paired by signed amount. Matched pairs net to zero, which makes
+        the unmatched remainder the whole of Check A.
+
+
+        match_group correlates a movement with the ledger posting of the same amount;
+        null means unmatched. Unmatched rows are returned first — the matched pairs
+        are definitionally not the finding.
+
+
+        Not every stream has rows to list. Amazon FBA stock is valued in its own subledger
+        and stock in transit has no warehouse, so both move sku_moved without recording
+        an inventory movement. itemised_total is what the listed rows sum to and unitemised_total
+        is that remainder, so an empty list under a large sku_moved explains itself.
+
+
+        displaced_value is value whose stock had moved by the period end but whose
+        posting an accounting lock date pushed later. The inventory side is already
+        stated on the accounting calendar so both sides sit on the same dates — it
+        is reported so a legitimately shifted posting is not read as a break.
+
+
+        Authenticate with a Personal Access Token. Reads cached data only.'
+      parameters:
+      - name: connection_id
+        in: query
+        schema:
+          type: integer
+        description: Accounting connection id. Required.
+        example: '5'
+      - name: nominal_code_id
+        in: query
+        schema:
+          type: integer
+        description: The earmarked inventory control account id. Required.
+        example: '87'
+      - name: month
+        in: query
+        schema:
+          type: string
+        description: The period to drill into. Accepts a month as YYYY-MM or a whole
+          year as YYYY. Required.
+        example: 2025-01
+      - name: concept
+        in: query
+        schema:
+          type: string
+        description: The transaction-type concept whose inventory movements to list.
+          Required.
+        example: fulfillment
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        movement_date:
+                          type: string
+                        type:
+                          type: string
+                        warehouse_name:
+                          type: string
+                        product_sku:
+                          type: string
+                        product_name:
+                          type: string
+                        quantity:
+                          type: integer
+                        unit_cost:
+                          type: number
+                        value_delta:
+                          type: number
+                        reference:
+                          type: string
+                        link_type:
+                          type: string
+                        link_id:
+                          type: integer
+                        revaluation_id:
+                          type: string
+                          nullable: true
+                        original_movement_date:
+                          type: string
+                          nullable: true
+                        match_group:
+                          type: string
+                          nullable: true
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  links:
+                    type: array
+                  meta:
+                    type: object
+                    properties:
+                      concept_key:
+                        type: string
+                      label:
+                        type: string
+                      period_label:
+                        type: string
+                      provider_name:
+                        type: string
+                      sku_moved:
+                        type: number
+                      gl_posted:
+                        type: number
+                      check_a:
+                        type: number
+                      itemised_total:
+                        type: number
+                      unitemised_total:
+                        type: integer
+                      matched_count:
+                        type: integer
+                      matched_amount:
+                        type: number
+                      unmatched_inventory_total:
+                        type: number
+                      unmatched_ledger_total:
+                        type: integer
+                      displaced_value:
+                        type: integer
+                      has_inventory_side:
+                        type: boolean
+                example:
+                  data:
+                  - id: 990211
+                    movement_date: '2025-01-14T18:22:41.000000Z'
+                    type: sale
+                    warehouse_name: Main Warehouse
+                    product_sku: HL-3528-WW-16
+                    product_name: 3528 Warm White LED Strip, 16ft
+                    quantity: -12
+                    unit_cost: 8.45
+                    value_delta: -101.4
+                    reference: SO-10442
+                    link_type: App\Models\SalesOrderFulfillmentLine
+                    link_id: 55347
+                    revaluation_id: null
+                    original_movement_date: null
+                    match_group: null
+                  - id: 990208
+                    movement_date: '2025-01-12T15:03:02.000000Z'
+                    type: sale
+                    warehouse_name: Main Warehouse
+                    product_sku: HL-5050-RGB-32
+                    product_name: 5050 RGB LED Strip, 32ft
+                    quantity: -6
+                    unit_cost: 21.5
+                    value_delta: -129
+                    reference: SO-10436
+                    link_type: App\Models\SalesOrderFulfillmentLine
+                    link_id: 55302
+                    revaluation_id: null
+                    original_movement_date: null
+                    match_group: 3
+                  current_page: 1
+                  last_page: 21
+                  per_page: 25
+                  total: 512
+                  from: 1
+                  to: 25
+                  first_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-inventory?page=1'
+                  last_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-inventory?page=21'
+                  next_page_url: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-inventory?page=2'
+                  prev_page_url: null
+                  path: '{{protocol}}{{domain}}/api/ledger/reconciliation/inventory/period-inventory'
+                  links: []
+                  meta:
+                    concept_key: fulfillment
+                    label: Sales fulfillments
+                    period_label: '2025'
+                    provider_name: Xero
+                    sku_moved: -52848.99
+                    gl_posted: -43854.93
+                    check_a: 8994.06
+                    itemised_total: -52848.99
+                    unitemised_total: 0
+                    matched_count: 476
+                    matched_amount: -43854.93
+                    unmatched_inventory_total: -8994.06
+                    unmatched_ledger_total: 0
+                    displaced_value: 0
+                    has_inventory_side: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: get-api-ledger-reconciliation-inventory-period-inventory
+  /api/ledger/reconciliation/inventory/period-entries/sync:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Sync Inventory Reconciliation Period Entries
+      description: 'Push the pushable postings of one transaction type and period
+        to the accounting provider.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        The entry ids are resolved SERVER-SIDE from the same population the drill-down
+        lists, using the same eligibility rule that stamps can_sync on each row —
+        so a client never has to fetch hundreds of entries just to filter them, and
+        can never request a push the server would decline.
+
+
+        Send entry_ids to push an explicit selection; the selection is still intersected
+        with what is genuinely pushable. Omit entry_ids to push the whole concept,
+        narrowed by status when a filter is active — the count shown to a user and
+        the set acted on must describe the same postings.
+
+
+        The push runs in the background: the response returns a tracked job id to
+        follow, plus an honest eligible/excluded split. When nothing is eligible,
+        eligible_count is 0 and tracked_job_log_id is null — no job is dispatched.
+
+
+        Requires the accounting.sync permission. Authenticate with a Personal Access
+        Token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                connection_id:
+                  type: integer
+                nominal_code_id:
+                  type: integer
+                month:
+                  type: string
+                concept:
+                  type: string
+                status:
+                  type: string
+                entry_ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                connection_id: 5
+                nominal_code_id: 87
+                month: 2025-01
+                concept: fulfillment
+                status: awaiting
+                entry_ids:
+                - 88231
+                - 88240
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      tracked_job_log_id: 90412
+                      eligible_count: 11
+                      excluded_count: 409
+                example-1:
+                  summary: 200 OK — nothing to push
+                  value:
+                    data:
+                      tracked_job_log_id: null
+                      eligible_count: 0
+                      excluded_count: 3
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      month:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The period must be a year (2025) or a month (2025-01).
+                  errors:
+                    month:
+                    - The period must be a year (2025) or a month (2025-01).
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: post-api-ledger-reconciliation-inventory-period-entries-sync
   /api/ledger/reconciliation/inventory/unsynced:
     get:
       tags:

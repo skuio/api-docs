@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-14
-description: This release includes 9 additions, 1 change. 1 breaking change — action required.
+description: This release includes 11 additions, 1 change. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-08-14
 ---
 
-This release includes 9 additions, 1 change. 1 breaking change — action required.
+This release includes 11 additions, 1 change. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -37,6 +37,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/ledger/connections/{connectionId}/tax-rate-mappings/{taxRateId}` — Update Tax Rate Mapping
 - `GET /api/ledger/connections/{connectionId}/tax-treatment` — Get Tax Treatment
 - `PUT /api/ledger/connections/{connectionId}/tax-treatment` — Update Tax Treatment
+- `POST /api/ledger/reconciliation/inventory/period-entries/sync` — Sync Inventory Reconciliation Period Entries
+- `GET /api/ledger/reconciliation/inventory/period-inventory` — Get Inventory Reconciliation Period Inventory
 
 ### Organization
 - `POST /api/product-brands/reorder` — Reorder Product Brands
