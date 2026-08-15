@@ -33363,7 +33363,19 @@ paths:
         are how much value the lock is holding out of the GL at each end of the month,
         `displaced_moved` is the difference between them, and `sku_moved` + `displaced_moved`
         is the raw inventory movement for the month before that restatement. All three
-        are `0` on books with no displacement.'
+        are `0` on books with no displacement.
+
+
+        Each row also carries `type_breakdown` — the ledger types it collapses, when
+        it collapses more than one (Amazon FBA groups shipments, receipts, returns,
+        adjustments and transfers). Those rows carry what is measurable per type:
+        what was posted, what reached the accounting provider, and Check B between
+        them. Rows also carry `sku_moved` and `check_a` where inventory movement is
+        attributable per type — Amazon FBA is, because each stock layer records the
+        event that created it and each consumption the event that consumed it. Both
+        are `null` where it is not, which is not the same as zero: null means the
+        inventory side cannot be asked at this grain, while zero means the two sides
+        agree.'
       parameters:
       - name: connection_id
         in: query
@@ -33448,6 +33460,8 @@ paths:
                               type: number
                             gl_synced:
                               type: integer
+                            gl_stale:
+                              type: integer
                             gl_awaiting:
                               type: number
                             gl_excluded:
@@ -33460,9 +33474,46 @@ paths:
                               type: boolean
                             sync_status:
                               type: string
+                            type_breakdown:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                  label:
+                                    type: string
+                                  sku_moved:
+                                    type: number
+                                  check_a:
+                                    type: integer
+                                  gl_posted:
+                                    type: number
+                                  gl_synced:
+                                    type: integer
+                                  gl_stale:
+                                    type: number
+                                  gl_awaiting:
+                                    type: integer
+                                  gl_excluded:
+                                    type: integer
+                                  provider_moved:
+                                    type: number
+                                  check_b:
+                                    type: number
+                                  entry_count:
+                                    type: integer
+                                  syncable_count:
+                                    type: integer
+                                  is_batched:
+                                    type: boolean
+                                  sync_status:
+                                    type: string
                       sku_moved_total:
                         type: number
                       gl_synced_total:
+                        type: integer
+                      gl_stale_total:
                         type: integer
                       gl_awaiting_total:
                         type: number
@@ -33500,38 +33551,75 @@ paths:
                       provider_moved: -10139.28
                       gl_posted: -9920.55
                       gl_synced: 0
+                      gl_stale: 0
                       gl_awaiting: -9920.55
                       gl_excluded: 0
                       entry_count: 6
                       syncable_count: 6
                       is_batched: true
                       sync_status: awaiting
+                      type_breakdown:
+                      - type: fba_shipments
+                        label: FBA Shipments
+                        sku_moved: -217.64
+                        check_a: 0
+                        gl_posted: -217.64
+                        gl_synced: 0
+                        gl_stale: -217.64
+                        gl_awaiting: 0
+                        gl_excluded: 0
+                        provider_moved: -195.1
+                        check_b: 22.54
+                        entry_count: 1
+                        syncable_count: 1
+                        is_batched: true
+                        sync_status: stale
+                      - type: fba_vendor_returns
+                        label: FBA Vendor Returns
+                        sku_moved: -125.48
+                        check_a: 0
+                        gl_posted: -125.48
+                        gl_synced: 0
+                        gl_stale: 0
+                        gl_awaiting: -125.48
+                        gl_excluded: 0
+                        provider_moved: 0
+                        check_b: 125.48
+                        entry_count: 1
+                        syncable_count: 1
+                        is_batched: true
+                        sync_status: awaiting
                     - concept_key: adjustment
                       label: Inventory adjustments
                       sku_moved: 7530.53
                       provider_moved: 0
                       gl_posted: -282.54
                       gl_synced: 0
+                      gl_stale: 0
                       gl_awaiting: -282.54
                       gl_excluded: 0
                       entry_count: 4
                       syncable_count: 1
                       is_batched: true
                       sync_status: awaiting
+                      type_breakdown: []
                     - concept_key: manufacturing
                       label: Manufacturing
                       sku_moved: -2627.04
                       provider_moved: 0
                       gl_posted: 0
                       gl_synced: 0
+                      gl_stale: 0
                       gl_awaiting: 0
                       gl_excluded: 0
                       entry_count: 0
                       syncable_count: 0
                       is_batched: false
                       sync_status: none
+                      type_breakdown: []
                     sku_moved_total: -5072.55
                     gl_synced_total: 0
+                    gl_stale_total: 0
                     gl_awaiting_total: -10203.09
                     gl_excluded_total: 0
                     displaced_open: 0
@@ -33596,7 +33684,19 @@ paths:
 
 
         Authenticate with a Personal Access Token. Reads cached data only (no live
-        provider call).'
+        provider call).
+
+
+        Each posting also carries the inventory side of the accounting period it covers:
+        sku_moved is what SKU''s stock did over that period and check_a is net_amount
+        minus it. Both are null — never 0 — when the period holds more than one posting
+        of the scope requested, because nothing in an inventory movement says which
+        of them it belongs to; narrowing with `type` is usually what makes them answerable.
+        meta.check_a_per_posting says whether any posting in the set carries them,
+        and meta.sku_unattributed_to_period is how much of the period-scoped inventory
+        movement lands in no period at all (stock in transit is valued as a running
+        balance, and an accounting lock can shift a posting out of the period its
+        stock moved in).'
       parameters:
       - name: connection_id
         in: query
@@ -33711,6 +33811,14 @@ paths:
                           type: string
                         batch_route:
                           type: string
+                        sku_moved:
+                          type: string
+                          nullable: true
+                        check_a:
+                          type: string
+                          nullable: true
+                        period_label:
+                          type: string
                   current_page:
                     type: integer
                   last_page:
@@ -33769,6 +33877,10 @@ paths:
                         type: number
                       is_batched:
                         type: boolean
+                      check_a_per_posting:
+                        type: boolean
+                      sku_unattributed_to_period:
+                        type: integer
                 example:
                   data:
                   - journal_entry_id: 88231
@@ -33802,6 +33914,9 @@ paths:
                     can_sync: true
                     entry_route: /ledger/entries/88231
                     batch_route: /ledger/batches/546
+                    sku_moved: null
+                    check_a: null
+                    period_label: Aug 2025
                   - journal_entry_id: 88104
                     number: JE-88104
                     reference: FBA-USD-CH16/R1
@@ -33840,6 +33955,9 @@ paths:
                     can_sync: false
                     entry_route: /ledger/entries/88104
                     batch_route: /ledger/batches/571
+                    sku_moved: -116148.05
+                    check_a: 0
+                    period_label: Mar 2025
                   current_page: 1
                   last_page: 17
                   per_page: 25
@@ -33868,6 +33986,8 @@ paths:
                     provider_linked_total: -43293.74
                     filtered_total: -43854.93
                     is_batched: true
+                    check_a_per_posting: true
+                    sku_unattributed_to_period: 0
         '429': *id001
         '401': *id002
         '403': *id003
@@ -33915,6 +34035,21 @@ paths:
         posting an accounting lock date pushed later. The inventory side is already
         stated on the accounting calendar so both sides sit on the same dates — it
         is reported so a legitimately shifted posting is not read as a break.
+
+
+        meta.periods splits the SAME check_a across the accounting periods the window
+        covers — one row per month, each with the inventory value that moved in it,
+        what the ledger posted for it, and the difference. The rows are a partition
+        of the window and sum back to meta.check_a exactly. This is the only evidence
+        available for a stream valued in its own subledger: Amazon FBA records no
+        inventory movement, so its data array is empty however large check_a is, and
+        the period split is what localises the gap to a month. It is empty when the
+        window is a single period (there is nothing further to split) or when the
+        inventory side cannot be bucketed per period.
+
+
+        sku_moved and check_a are null — never 0 — when the scope''s inventory side
+        cannot be asked at all. A zero would claim the two sides agree.
 
 
         Authenticate with a Personal Access Token. Reads cached data only.'
@@ -34054,6 +34189,23 @@ paths:
                         type: integer
                       has_inventory_side:
                         type: boolean
+                      periods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            period_key:
+                              type: string
+                            label:
+                              type: string
+                            sku_moved:
+                              type: number
+                            gl_posted:
+                              type: number
+                            check_a:
+                              type: integer
+                            entry_count:
+                              type: integer
                 example:
                   data:
                   - id: 990211
@@ -34114,6 +34266,25 @@ paths:
                     unmatched_ledger_total: 0
                     displaced_value: 0
                     has_inventory_side: true
+                    periods:
+                    - period_key: 2025-01
+                      label: Jan 2025
+                      sku_moved: -9976.04
+                      gl_posted: -9976.04
+                      check_a: 0
+                      entry_count: 6
+                    - period_key: 2025-02
+                      label: Feb 2025
+                      sku_moved: -12451.24
+                      gl_posted: -3457.18
+                      check_a: 8994.06
+                      entry_count: 6
+                    - period_key: 2025-03
+                      label: Mar 2025
+                      sku_moved: -30421.71
+                      gl_posted: -30421.71
+                      check_a: 0
+                      entry_count: 7
         '429': *id001
         '401': *id002
         '403': *id003
@@ -34154,7 +34325,20 @@ paths:
 
 
         Requires the accounting.sync permission. Authenticate with a Personal Access
-        Token.'
+        Token.
+
+
+        **`type`** (optional, string, max 64) — narrows the push to ONE ledger type
+        inside `concept`, matching the per-type rows the reconciliation table renders
+        when a concept''s split is complete (e.g. `concept=fba` + `type=fba_shipments`).
+        Omit it to push every posting in the concept for the period. Without it a
+        row displayed as FBA Shipments would push every FBA posting in the period.
+
+
+        `status` accepts synced, stale, awaiting, excluded or untied. Use `stale`
+        to re-push the postings the provider already holds that have changed in SKU
+        since — this updates the existing provider journals in place rather than creating
+        new ones.'
       requestBody:
         content:
           application/json:
@@ -34169,6 +34353,8 @@ paths:
                   type: string
                 concept:
                   type: string
+                type:
+                  type: string
                 status:
                   type: string
                 entry_ids:
@@ -34180,7 +34366,8 @@ paths:
                 nominal_code_id: 87
                 month: 2025-01
                 concept: fulfillment
-                status: awaiting
+                type: fba_shipments
+                status: stale
                 entry_ids:
                 - 88231
                 - 88240
@@ -218610,10 +218797,9 @@ paths:
       tags:
       - Shopify
       summary: Download Product Mappings (CSV)
-      description: 'Downloads every product mapping for the instance as a CSV file
-        for bulk editing. Columns: shopify_variant_id, shopify_product_title, shopify_variant_title,
-        price, shopify_sku, mapped_sku. Edit the mapped_sku column and re-upload via
-        Upload Product Mappings (CSV); clearing mapped_sku unmaps the product.
+      description: 'Downloads every Shopify variant on the instance as a CSV file
+        for bulk mapping. Columns: shopify_variant_id, shopify_product_title, shopify_variant_title,
+        price, shopify_sku, mapped_sku.
 
 
         :::warning[Not yet available to API tokens]
@@ -218624,11 +218810,29 @@ paths:
         :::
 
 
+        Unmapped variants are included with an empty mapped_sku — those are the rows
+        to fill in. Edit the mapped_sku column and re-upload via Upload Product Mappings
+        (CSV); clearing mapped_sku unmaps the variant. Archived variants are excluded
+        unless an archived filter is supplied.
+
+
+        Accepts the same filter parameters as the product listing endpoint, so the
+        file contains exactly the rows that listing would return for the same query.
+        Omit them all to export the whole instance. Pagination and sort parameters
+        are ignored: the export always streams the complete filtered set in primary-key
+        order.
+
+
+        A channel with nothing mapped yet returns the header-only template rather
+        than an error, so the file can be used to start mapping from scratch.
+
+
         Authentication: Requires Bearer token.
 
 
-        The response is a text/csv file download, not JSON. Returns 404 when the instance
-        has no product mappings.'
+        The response is a text/csv file download, not JSON. The row tally is reported
+        in response headers: X-Export-Row-Count (total data rows), X-Export-Mapped-Count,
+        and X-Export-Unmapped-Count.'
       parameters:
       - name: integrationInstance
         in: path
@@ -218645,6 +218849,18 @@ paths:
               schema:
                 type: string
                 example: text/csv
+            X-Export-Row-Count:
+              schema:
+                type: integer
+                example: '3'
+            X-Export-Mapped-Count:
+              schema:
+                type: integer
+                example: '2'
+            X-Export-Unmapped-Count:
+              schema:
+                type: integer
+                example: '1'
           content:
             text/plain:
               schema:
@@ -218654,6 +218870,8 @@ paths:
                   45123456789,Blue T-Shirt,M,24.95,TSHIRT-M-BLUE,TSHIRT-M-BLUE
 
                   45123456790,Blue T-Shirt,L,24.95,TSHIRT-L-BLUE,TSHIRT-L-BLUE
+
+                  45123456791,Blue T-Shirt,XL,24.95,TSHIRT-XL-BLUE,
 
                   '
         '429': *id001
@@ -252101,8 +252319,9 @@ paths:
       tags:
       - TikTok Shop
       summary: Download CSV Mappings
-      description: 'Download a CSV of TikTok Shop SKU → SKU.io product mappings, scoped
-        by selection, unmapped-only, or all (filtered).
+      description: 'Downloads TikTok Shop SKUs as a CSV file for bulk mapping. Columns:
+        tiktok_sku_id, tiktok_product_id, seller_sku, product_title, sku_name, price,
+        map_to_sku.
 
 
         :::warning[Not yet available to API tokens]
@@ -252113,23 +252332,31 @@ paths:
         :::
 
 
-        Columns: tiktok_sku_id, tiktok_product_id, seller_sku, product_title, sku_name,
-        price, map_to_sku.
+        Unmapped SKUs are included with an empty map_to_sku — those are the rows to
+        fill in. Edit the map_to_sku column and re-upload via Upload CSV Mappings.
 
 
-        Users edit the `map_to_sku` column then re-upload via the upload endpoint
-        to bulk-apply mappings. Mirrors Shopify''s bulk mapping CSV flow but operates
-        per-SKU (TikTok lists each SKU as its own variant).
+        scope selects the base set (selected | unmapped | all) and the filters parameters
+        narrow it further. The filters use the same names as the SKU listing endpoint
+        and apply within every scope, so the file matches the rows that listing would
+        return. Archived SKUs are excluded unless filters[archived] is supplied.
 
 
-        Returns a binary CSV download (Content-Type: text/csv).'
+        A scope that matches nothing returns the header-only template rather than
+        an error.
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response is a text/csv file download, not JSON.'
       parameters:
       - name: scope
         in: query
         schema:
           type: string
-        description: 'Required. One of: selected | unmapped | all'
-        example: unmapped
+        description: selected | unmapped | all. 'selected' requires ids[].
+        example: all
       - name: integration_instance_id
         in: path
         schema:
