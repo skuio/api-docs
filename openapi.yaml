@@ -438970,7 +438970,15 @@ paths:
 
         Validation: a component line''s `product_id` may not equal the BOM''s own
         `product_id` or any `output_lines.*.product_id` — a BOM cannot consume its
-        own output as a component. Violations return 422 with an error on `component_lines.{index}.product_id`.'
+        own output as a component. Violations return 422 with an error on `component_lines.{index}.product_id`.
+
+
+        Units: `uom_id` is optional on every output and component line. When omitted,
+        the line is measured in that line product''s own stock unit, so a product
+        stocked by weight, volume or length never needs a conversion it does not have.
+        Send `uom_id` only to override that deliberately — it must be a unit enabled
+        on the product, or the request is rejected with a 422 naming the unit and
+        product.'
       requestBody:
         content:
           application/json:
@@ -439422,7 +439430,15 @@ paths:
         is recorded; `backflush` components are auto-consumed from the produced output
         quantity multiplied by the BOM per-unit usage.
 
-        Auth: requires Bearer token.'
+        Auth: requires Bearer token.
+
+
+        **Lot traceability.** The response carries `lot_traceability_gap`: null when
+        there is no gap, otherwise `{output_sku, components:[{id, sku, name}]}` naming
+        the components that are not lot-tracked while the output is. Their consumption
+        will not appear in the finished lot''s genealogy, so a recall cannot trace
+        them. Non-blocking — the recipe is valid — but worth surfacing wherever the
+        recipe is shown.'
       parameters:
       - name: id
         in: path
@@ -439694,6 +439710,9 @@ paths:
                     type: string
                   updated_at:
                     type: string
+                  lot_traceability_gap:
+                    type: string
+                    nullable: true
                 example:
                   id: 12
                   product_id: 1
@@ -439831,6 +439850,7 @@ paths:
                   archived_at: null
                   created_at: '2026-07-01T10:15:00.000000Z'
                   updated_at: '2026-07-02T08:30:00.000000Z'
+                  lot_traceability_gap: null
         '429': *id001
         '401': *id002
         '403': *id003
@@ -439875,7 +439895,15 @@ paths:
 
         Validation: a component line''s `product_id` may not equal the BOM''s own
         `product_id` or any `output_lines.*.product_id` — a BOM cannot consume its
-        own output as a component. Violations return 422 with an error on `component_lines.{index}.product_id`.'
+        own output as a component. Violations return 422 with an error on `component_lines.{index}.product_id`.
+
+
+        Units: `uom_id` is optional on every output and component line. When omitted,
+        the line is measured in that line product''s own stock unit, so a product
+        stocked by weight, volume or length never needs a conversion it does not have.
+        Send `uom_id` only to override that deliberately — it must be a unit enabled
+        on the product, or the request is rejected with a 422 naming the unit and
+        product.'
       requestBody:
         content:
           application/json:
@@ -441334,7 +441362,26 @@ paths:
         of their own and the charge is capitalized into output cost. When omitted
         the contractor''s default_outsourced_cost_basis applies, falling back to hybrid;
         service_fee_amount (optional, numeric, min 0). These three fields are rejected
-        for in_house orders.'
+        for in_house orders.
+
+
+        **Per-unit tolling rate (`service_fee_rate`):** instead of a flat `service_fee_amount`,
+        you can supply a per-unit rate. The backing purchase order carries a projected
+        fee of `rate x planned_quantity`, and each receipt re-trues the fee line to
+        `rate x max(planned_quantity, total produced)` so cost recognition always
+        matches quantity actually received - including over- and under-production.
+        If omitted, the contractor''s default rate applies when one is configured.
+
+
+        **Upstream planning (optional, default off).** Send `plan_upstream: true`
+        to also raise the draft orders that supply this one. It applies only when
+        the product being made is contract-manufactured: the stages feeding it are
+        raised recursively, each planned at required ÷ that stage''s expected yield
+        (needing 11,280 of a 94%-yield stage plans 12,000), routed to ship into the
+        warehouse that will consume it, and only for the shortfall after stock on
+        hand. Everything raised is a draft, so nothing reaches a vendor until it is
+        confirmed. Omit the field, or send `false`, to create exactly the order you
+        posted — which is what an ordinary multi-level recipe does either way.'
       requestBody:
         content:
           application/json:
@@ -441355,6 +441402,8 @@ paths:
                   type: integer
                 outsourced_cost_basis:
                   type: string
+                service_fee_rate:
+                  type: number
                 priority:
                   type: integer
                 scheduled_start:
@@ -441365,6 +441414,8 @@ paths:
                   type: string
                 internal_reference:
                   type: string
+                plan_upstream:
+                  type: boolean
               example:
                 bom_id: 1
                 warehouse_id: 1
@@ -441373,11 +441424,13 @@ paths:
                 production_method: in_house
                 contractor_supplier_id: 12
                 outsourced_cost_basis: toll
+                service_fee_rate: 1.25
                 priority: 10
                 scheduled_start: '2026-04-22'
                 scheduled_end: '2026-04-24'
                 notes: Standard production run
                 internal_reference: BATCH-001
+                plan_upstream: true
       parameters: []
       responses:
         '200':
@@ -446479,7 +446532,15 @@ paths:
         must reference an outsourced-manufacturing purchase order that is unlinked
         or already linked to this order. Omitting `service_fee_amount` preserves the
         existing fee on a reused purchase order — supply a value (including 0) to
-        change it.'
+        change it.
+
+
+        **Per-unit tolling rate (`service_fee_rate`):** instead of a flat `service_fee_amount`,
+        you can supply a per-unit rate. The backing purchase order carries a projected
+        fee of `rate x planned_quantity`, and each receipt re-trues the fee line to
+        `rate x max(planned_quantity, total produced)` so cost recognition always
+        matches quantity actually received - including over- and under-production.
+        If omitted, the contractor''s default rate applies when one is configured.'
       requestBody:
         content:
           application/json:
@@ -446497,8 +446558,11 @@ paths:
                   type: string
                 scheduled_end:
                   type: string
+                service_fee_rate:
+                  type: number
                 service_fee_amount:
-                  type: integer
+                  type: string
+                  nullable: true
                 notes:
                   type: string
               example:
@@ -446507,7 +446571,8 @@ paths:
                 outsourced_purchase_order_id: null
                 scheduled_start: '2026-06-01 09:00:00'
                 scheduled_end: '2026-06-05 17:00:00'
-                service_fee_amount: 250
+                service_fee_rate: 1.25
+                service_fee_amount: null
                 notes: Co-packer run for TecMATE
       parameters:
       - name: manufacturingOrder
@@ -446627,7 +446692,16 @@ paths:
         \ receipts\n  - received_quantity (required, numeric ≥ 0)\n  - batch_number\
         \ (optional, ≤ 128 chars) — auto-generated if blank\n  - expiry_date (optional,\
         \ date)\n- component_variance (optional): mo_component_line_id + actually_consumed_at_contractor\
-        \ — overrides per-component consumption"
+        \ — overrides per-component consumption\n\n**Service fee:** with a per-unit\
+        \ rate configured, the fee is computed automatically at each receipt - omit\
+        \ `service_fee_amount`. Sending `service_fee_amount` on a receipt overrides\
+        \ the purchase order's total fee explicitly and switches the order to flat-fee\
+        \ mode - later receipts keep that total instead of re-truing from a rate.\n\
+        \n**Inter-stage freight:** `freight_amount` (with optional `freight_supplier_id`\
+        \ and `freight_reference`) records the middle-mile shipping bill for goods\
+        \ arriving at this stage. It is added as a cost line on the backing purchase\
+        \ order and capitalizes into the received goods' landed cost rather than being\
+        \ expensed."
       requestBody:
         content:
           application/json:
@@ -446637,7 +446711,14 @@ paths:
                 receipt_date:
                   type: string
                 service_fee_amount:
+                  type: string
+                  nullable: true
+                freight_amount:
                   type: integer
+                freight_supplier_id:
+                  type: integer
+                freight_reference:
+                  type: string
                 lines:
                   type: array
                   items:
@@ -446665,7 +446746,10 @@ paths:
                         type: integer
               example:
                 receipt_date: '2026-04-28'
-                service_fee_amount: 250
+                service_fee_amount: null
+                freight_amount: 1500
+                freight_supplier_id: 14
+                freight_reference: PRO-88213
                 lines:
                 - mo_output_line_id: 1
                   purchase_order_line_id: null
@@ -446785,6 +446869,875 @@ paths:
         '404': *id004
       x-required-scope: manufacturing:read
       operationId: get-api-manufacturing-manufacturing-orders-manufacturingorder-backflush-preview
+  /api/manufacturing/chains:
+    post:
+      tags:
+      - Outsourced Production
+      summary: Create Co-Manufacturing Chain
+      description: 'Create a complete multi-stage co-manufacturing chain in one atomic
+        transaction: the finished good (created or reused), a lot-tracked work-in-progress
+        product for every intermediate stage, one bill of materials per stage (activated),
+        and - optionally - a set of chained draft manufacturing orders whose destinations
+        flow from each stage''s site to the next, ending at your warehouse.
+
+
+        **Stages** are ordered first to last (max 5). The first stage must include
+        `components` (the recipe per output unit); every stage except the last must
+        include `wip_product` (the storable intermediate it outputs). Later stages
+        consume the prior stage''s WIP product (1:1 by default; override with `input_quantity`).
+
+
+        **Per stage:** `production_method` (`outsourced` default, or `in_house`).
+        Outsourced stages require `contractor_supplier_id` and accept `service_fee_rate`
+        (per-unit tolling rate; falls back to the contractor''s default) OR `service_fee_amount`
+        (flat total - never both), plus `cost_basis` (`toll` or `hybrid`). In-house
+        stages require `warehouse_id` (the facility they run in) and carry no contractor
+        fee. Every stage accepts `expected_yield_percent`, `expects_inbound_freight`
+        (a middle-mile freight bill is captured at receipt), and `scheduled_start`
+        / `scheduled_end`.
+
+
+        **Quantities follow yields:** with `create_draft_mos`, each stage''s planned
+        quantity is the run quantity reduced by the expected yields of the stages
+        before it - downstream orders plan for what will actually arrive.
+
+
+        **Units:** `output_uom_id` sets the unit every output and hand-off is expressed
+        in; products minted by the chain stock in that unit. Recipe components default
+        to their own stock unit, with optional per-line `uom_id` and `expected_scrap_percent`.
+
+
+        **Finished good:** pass either `finished_product_id` (existing product) or
+        `finished_product` (`sku` + `name` to create). Lot tracking is enabled on
+        the finished good and all minted WIP products automatically; component products
+        are flipped to lot-tracked when `enable_lot_tracking` is true.
+
+
+        `internal_reference` and `priority` apply to every draft order (the reference
+        gains a per-stage suffix). The response `warnings` array lists lot-traceability
+        gaps detected while activating the chain''s BOMs. The whole request is all-or-nothing:
+        any failure rolls back every product, BOM, and order.
+
+
+        **Replacing an existing recipe:** when the finished good already has a live
+        single-stage recipe, pass `source_bom_id` to split it across vendors instead
+        of being blocked. Send that recipe''s component lines as stage 1''s `components`
+        (adjust them freely - the original is never edited in place). On success the
+        source recipe is archived, draft manufacturing orders that referenced it move
+        to the chain''s final stage - they still produce the same finished good, now
+        fed by the chain - and orders already past draft keep running the old recipe
+        untouched. Call `GET /api/manufacturing/chains/supersede-preview/{bom}` first
+        to show what will change. Without `source_bom_id`, a finished good that already
+        has a live recipe is rejected with 422.
+
+
+        `supersede_mode` decides what happens to that source recipe. `supersede` (the
+        default) archives it and moves its draft orders onto the chain. `keep` leaves
+        it live instead - activating the chain''s final recipe already makes the chain
+        the default, so the old recipe stays available for a direct single-stage run
+        and keeps its own orders.
+
+
+        :::info[Required scope: `manufacturing:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Components on any stage.** `stages[].components` is accepted for every stage,
+        not only the first. Stage 1''s list is the raw-ingredient recipe (required).
+        A later stage always consumes the previous stage''s output — added automatically,
+        do not list it — and its `components` are the goods YOU supply directly to
+        that vendor, typically packaging shipped to the co-packer that uses it. Materials
+        the contractor owns are not modelled: they are covered by the service fee,
+        or by their supplier price under the `hybrid` cost basis.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                finished_product:
+                  type: object
+                  properties:
+                    sku:
+                      type: string
+                    name:
+                      type: string
+                source_bom_id:
+                  type: integer
+                supersede_mode:
+                  type: string
+                final_destination_warehouse_id:
+                  type: integer
+                output_uom_id:
+                  type: integer
+                create_draft_mos:
+                  type: boolean
+                planned_quantity:
+                  type: integer
+                internal_reference:
+                  type: string
+                priority:
+                  type: integer
+                stages:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      contractor_supplier_id:
+                        type: integer
+                      service_fee_rate:
+                        type: number
+                      cost_basis:
+                        type: string
+                      expects_inbound_freight:
+                        type: boolean
+                      expected_yield_percent:
+                        type: integer
+                      scheduled_start:
+                        type: string
+                      scheduled_end:
+                        type: string
+                      wip_product:
+                        type: object
+                        properties:
+                          sku:
+                            type: string
+                          name:
+                            type: string
+                      components:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            product_id:
+                              type: integer
+                            quantity:
+                              type: number
+                            uom_id:
+                              type: integer
+                            expected_scrap_percent:
+                              type: integer
+                            enable_lot_tracking:
+                              type: boolean
+              example:
+                finished_product:
+                  sku: EMBERSAUCE
+                  name: Ember Reserve Hot Sauce
+                source_bom_id: 12
+                supersede_mode: supersede
+                final_destination_warehouse_id: 3
+                output_uom_id: 4
+                create_draft_mos: true
+                planned_quantity: 12000
+                internal_reference: RUN-2026-08
+                priority: 1000
+                stages:
+                - name: Cook & Blend
+                  contractor_supplier_id: 9
+                  service_fee_rate: 0.85
+                  cost_basis: toll
+                  expects_inbound_freight: false
+                  expected_yield_percent: 94
+                  scheduled_start: '2026-09-01'
+                  scheduled_end: '2026-09-05'
+                  wip_product:
+                    sku: EMBER-BULK
+                    name: Ember Reserve - Bulk Sauce (pre-bottling)
+                  components:
+                  - product_id: 101
+                    quantity: 0.6
+                    uom_id: 4
+                    expected_scrap_percent: 2
+                    enable_lot_tracking: true
+                  - product_id: 102
+                    quantity: 0.3
+                    enable_lot_tracking: true
+                  - product_id: 103
+                    quantity: 0.1
+                    enable_lot_tracking: true
+                - name: Bottle & Pasteurize
+                  contractor_supplier_id: 15
+                  service_fee_rate: 0.22
+                  cost_basis: toll
+                  expects_inbound_freight: true
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      products:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                      boms:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            product_id:
+                              type: integer
+                      manufacturing_orders:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            mo_number:
+                              type: string
+                            status:
+                              type: string
+                            production_method:
+                              type: string
+                            contractor_supplier_id:
+                              type: integer
+                            service_fee_rate:
+                              type: number
+                            planned_quantity:
+                              type: integer
+                      superseded_bom:
+                        type: object
+                        properties:
+                          bom_id:
+                            type: integer
+                          repointed_draft_mos:
+                            type: integer
+                          archived:
+                            type: boolean
+                  warnings:
+                    type: array
+                example:
+                  data:
+                    products:
+                    - id: 501
+                      sku: EMBERSAUCE
+                      name: Ember Reserve Hot Sauce
+                    - id: 502
+                      sku: EMBER-BULK
+                      name: Ember Reserve - Bulk Sauce (pre-bottling)
+                    boms:
+                    - id: 88
+                      name: EMBER-BULK - stage 1
+                      product_id: 502
+                    - id: 89
+                      name: EMBERSAUCE - stage 2
+                      product_id: 501
+                    manufacturing_orders:
+                    - id: 341
+                      mo_number: MO-000341
+                      status: draft
+                      production_method: outsourced
+                      contractor_supplier_id: 9
+                      service_fee_rate: 0.85
+                      planned_quantity: 12000
+                    - id: 342
+                      mo_number: MO-000342
+                      status: draft
+                      production_method: outsourced
+                      contractor_supplier_id: 15
+                      service_fee_rate: 0.22
+                      planned_quantity: 11280
+                    superseded_bom:
+                      bom_id: 12
+                      repointed_draft_mos: 1
+                      archived: true
+                  warnings: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: EMBERSAUCE already has an active BOM (#12). Start the chain
+                    from that recipe to replace it, or edit it on the BOMs page.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-required-scope: manufacturing:write
+      operationId: post-api-manufacturing-chains
+  /api/manufacturing/chains/supersede-preview/{bom}:
+    get:
+      tags:
+      - Outsourced Production
+      summary: Preview Recipe Supersede
+      description: 'Preview what splitting a single-stage recipe into a multi-stage
+        chain would do, before anything is written.
+
+
+        :::info[Required scope: `manufacturing:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: requires a Bearer token.
+
+
+        Returns the recipe being split, its components, and the impact of superseding
+        it. Each component carries the data needed to seed and price a new chain:
+        `unit_cost` (per stock unit), `stock_uom_id` / `stock_uom_code` (the unit
+        the line defaults to), and `units_of_measure` — every unit the product can
+        actually convert to, with the `conversion_factor` expressed in stock units.
+
+
+        `impact.draft_mos_repointed` counts draft production orders that would move
+        onto the new final stage; `impact.other_mos_untouched` counts orders already
+        in progress, which keep running the existing recipe. `bom.is_live` is false
+        for a draft — a draft supersedes nothing and is simply archived.
+
+
+        A non-empty `blockers` array means the recipe cannot be split; show the reasons
+        and do not proceed.
+
+
+        `live_bom` is set when a DIFFERENT recipe is the live one for this product
+        — it carries that recipe''s `{id, name}` so the caller can offer it directly
+        instead of asking the user to go and find it. Null when this recipe is itself
+        the live one, or when the product has no live recipe.'
+      parameters:
+      - name: bom
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The recipe you intend to split across vendors
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 - splittable recipe
+                  value:
+                    data:
+                      bom:
+                        id: 12
+                        name: EMBERSAUCE - Cook & Bottle
+                        version_number: 1
+                        product_id: 501
+                        product_sku: EMBERSAUCE
+                        product_name: Ember Reserve Hot Sauce
+                        expected_yield_percent: null
+                        output_uom_id: 4
+                        status: active
+                        is_live: true
+                      components:
+                      - product_id: 101
+                        sku: JAL-RED
+                        name: Red Jalapenos
+                        quantity: 0.6
+                        uom_id: 4
+                        unit_cost: 1.1
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        - uom_id: 3
+                          code: OZ
+                          name: Ounce
+                          conversion_factor: 0.0625
+                          is_stock_uom: false
+                        expected_scrap_percent: 2
+                      - product_id: 102
+                        sku: VIN-DIST
+                        name: Distilled Vinegar
+                        quantity: 0.3
+                        uom_id: 4
+                        unit_cost: 0.35
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        expected_scrap_percent: null
+                      - product_id: 103
+                        sku: GARLIC-MINCED
+                        name: Garlic, Minced
+                        quantity: 0.1
+                        uom_id: 4
+                        unit_cost: 2.2
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        expected_scrap_percent: null
+                      impact:
+                        draft_mos_repointed: 2
+                        other_mos_untouched: 1
+                        source_archived: true
+                        source_was_live: true
+                      blockers: []
+                      live_bom: null
+                example-1:
+                  summary: 200 - recipe cannot be split
+                  value:
+                    data:
+                      bom:
+                        id: 19
+                        name: EMBERSAUCE + TRIM - co-product
+                        version_number: 2
+                        product_id: 501
+                        product_sku: EMBERSAUCE
+                        product_name: Ember Reserve Hot Sauce
+                        expected_yield_percent: 92
+                      components: []
+                      impact:
+                        draft_mos_repointed: 0
+                        other_mos_untouched: 0
+                        source_archived: true
+                      blockers:
+                      - This recipe has more than one primary output, so it cannot
+                        become a chain stage.
+                      live_bom:
+                        id: 5
+                        name: EMBERSAUCE — stage 2
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: manufacturing:read
+      operationId: get-api-manufacturing-chains-supersede-preview-bom
+  /api/manufacturing/chains/clone-preview/{product}:
+    get:
+      tags:
+      - Outsourced Production
+      summary: Preview Chain Clone
+      description: 'Preview copying an existing product''s stage and vendor structure
+        onto a new finished good.
+
+
+        :::info[Required scope: `manufacturing:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: requires a Bearer token.
+
+
+        Returns the source product''s stages with their production method, contractor,
+        cost basis, service fee rate and expected yield, plus the first stage''s components
+        with their costs and units — enough to price the copy before the new product
+        is named. `output_uom_id` is the unit the source chain is measured in; run
+        the copy in the same unit or every per-unit rate changes meaning.
+
+
+        The source chain is never modified. A non-empty `blockers` array means the
+        product is not a clonable chain (no live recipe, or made in a single stage).'
+      parameters:
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The finished good whose chain you want to copy
+        example: '501'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 - two-stage chain
+                  value:
+                    data:
+                      product:
+                        id: 501
+                        sku: EMBERSAUCE
+                        name: Ember Reserve Hot Sauce
+                      output_uom_id: 4
+                      stages:
+                      - production_method: outsourced
+                        contractor_supplier_id: 9
+                        warehouse_id: 14
+                        cost_basis: toll
+                        service_fee_rate: 0.85
+                        expected_yield_percent: 94
+                        components:
+                        - product_id: 101
+                          sku: JAL-RED
+                          name: Red Jalapenos
+                          quantity: 0.6
+                          uom_id: 4
+                          unit_cost: 1.1
+                          stock_uom_id: 4
+                          stock_uom_code: LB
+                          units_of_measure:
+                          - uom_id: 4
+                            code: LB
+                            name: Pound
+                            conversion_factor: 1
+                            is_stock_uom: true
+                          - uom_id: 3
+                            code: OZ
+                            name: Ounce
+                            conversion_factor: 0.0625
+                            is_stock_uom: false
+                          expected_scrap_percent: 2
+                        - product_id: 102
+                          sku: VIN-DIST
+                          name: Distilled Vinegar
+                          quantity: 0.3
+                          uom_id: 4
+                          unit_cost: 0.35
+                          stock_uom_id: 4
+                          stock_uom_code: LB
+                          units_of_measure:
+                          - uom_id: 4
+                            code: LB
+                            name: Pound
+                            conversion_factor: 1
+                            is_stock_uom: true
+                          expected_scrap_percent: null
+                        - product_id: 103
+                          sku: GARLIC-MINCED
+                          name: Garlic, Minced
+                          quantity: 0.1
+                          uom_id: 4
+                          unit_cost: 2.2
+                          stock_uom_id: 4
+                          stock_uom_code: LB
+                          units_of_measure:
+                          - uom_id: 4
+                            code: LB
+                            name: Pound
+                            conversion_factor: 1
+                            is_stock_uom: true
+                          expected_scrap_percent: null
+                      - production_method: outsourced
+                        contractor_supplier_id: 11
+                        warehouse_id: 17
+                        cost_basis: toll
+                        service_fee_rate: 0.22
+                        expected_yield_percent: null
+                        components: []
+                      blockers: []
+                example-1:
+                  summary: 200 - nothing to clone
+                  value:
+                    data:
+                      product:
+                        id: 318
+                        sku: SIMPLE-SAUCE
+                        name: Simple Sauce
+                      stages: []
+                      blockers:
+                      - This product is made in a single stage — there is no multi-stage
+                        chain to clone.
+                      output_uom_id: null
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: manufacturing:read
+      operationId: get-api-manufacturing-chains-clone-preview-product
+  /api/manufacturing/products/{product}/chain:
+    get:
+      tags:
+      - Outsourced Production
+      summary: Get How a Product Is Made
+      description: 'How a product is made, worked out by walking its recipes.
+
+
+        :::info[Required scope: `manufacturing:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: requires a Bearer token.
+
+
+        There is no stored chain. Starting from the product''s live recipe, each component
+        that itself has a live recipe is the stage before it, so the stages are derived
+        and can never disagree with the recipes.
+
+
+        Returns an empty `stages` array when the product has no live recipe, and a
+        single-element array when it is made in one step. Only the first stage lists
+        `components` — every later stage consumes the stage before it.
+
+
+        Each stage carries the terms of the product it produces: `is_contract_manufactured`,
+        `contractor_name`, `service_fee_rate` and `cost_basis` for an outsourced stage,
+        or `operations_cost_per_unit` — the absorbed labour and overhead from the
+        recipe''s own operations, costed for one output unit — for a stage run in
+        house. A vendor''s charge is a payable and in-house work is absorbed cost,
+        so the two are reported separately and never summed into one field. `operations_cost_per_unit`
+        is null when the recipe has no operations.
+
+
+        A chain deeper than 5 stages, or recipes that reference each other in a loop,
+        are reported in `blockers`.'
+      parameters:
+      - name: product
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: The finished good
+        example: '501'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sku:
+                            type: string
+                          name:
+                            type: string
+                      stages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            stage:
+                              type: integer
+                            bom_id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            product_sku:
+                              type: string
+                            product_name:
+                              type: string
+                            is_contract_manufactured:
+                              type: boolean
+                            contractor_supplier_id:
+                              type: integer
+                            contractor_name:
+                              type: string
+                            service_fee_rate:
+                              type: number
+                            cost_basis:
+                              type: string
+                            expected_yield_percent:
+                              type: integer
+                            output_uom_id:
+                              type: integer
+                            operations_cost_per_unit:
+                              type: string
+                              nullable: true
+                            components:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  product_id:
+                                    type: integer
+                                  sku:
+                                    type: string
+                                  name:
+                                    type: string
+                                  quantity:
+                                    type: number
+                                  uom_id:
+                                    type: integer
+                                  unit_cost:
+                                    type: number
+                                  stock_uom_id:
+                                    type: integer
+                                  stock_uom_code:
+                                    type: string
+                                  units_of_measure:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        uom_id:
+                                          type: integer
+                                        code:
+                                          type: string
+                                        name:
+                                          type: string
+                                        conversion_factor:
+                                          type: integer
+                                        is_stock_uom:
+                                          type: boolean
+                                  expected_scrap_percent:
+                                    type: integer
+                      blockers:
+                        type: array
+                example:
+                  data:
+                    product:
+                      id: 501
+                      sku: EMBERSAUCE
+                      name: Ember Reserve Hot Sauce
+                    stages:
+                    - stage: 1
+                      bom_id: 88
+                      product_id: 502
+                      product_sku: EMBERSAUCE-WIP1
+                      product_name: Ember Reserve - bulk sauce
+                      is_contract_manufactured: true
+                      contractor_supplier_id: 9
+                      contractor_name: Sunrise Copack Co.
+                      service_fee_rate: 0.85
+                      cost_basis: toll
+                      expected_yield_percent: 94
+                      output_uom_id: 4
+                      operations_cost_per_unit: null
+                      components:
+                      - product_id: 101
+                        sku: JAL-RED
+                        name: Red Jalapenos
+                        quantity: 0.6
+                        uom_id: 4
+                        unit_cost: 1.1
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        - uom_id: 3
+                          code: OZ
+                          name: Ounce
+                          conversion_factor: 0.0625
+                          is_stock_uom: false
+                        expected_scrap_percent: 2
+                      - product_id: 102
+                        sku: VIN-DIST
+                        name: Distilled Vinegar
+                        quantity: 0.3
+                        uom_id: 4
+                        unit_cost: 0.35
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        expected_scrap_percent: null
+                      - product_id: 103
+                        sku: GARLIC-MINCED
+                        name: Garlic, Minced
+                        quantity: 0.1
+                        uom_id: 4
+                        unit_cost: 2.2
+                        stock_uom_id: 4
+                        stock_uom_code: LB
+                        units_of_measure:
+                        - uom_id: 4
+                          code: LB
+                          name: Pound
+                          conversion_factor: 1
+                          is_stock_uom: true
+                        expected_scrap_percent: null
+                    - stage: 2
+                      bom_id: 89
+                      product_id: 501
+                      product_sku: EMBERSAUCE
+                      product_name: Ember Reserve Hot Sauce
+                      is_contract_manufactured: true
+                      contractor_supplier_id: 11
+                      contractor_name: GlassLine Bottling Co.
+                      service_fee_rate: 0.22
+                      cost_basis: toll
+                      expected_yield_percent: null
+                      output_uom_id: 4
+                      operations_cost_per_unit: null
+                      components: []
+                    blockers: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: manufacturing:read
+      operationId: get-api-manufacturing-products-product-chain
   /api/manufacturing/simple-assemble:
     post:
       tags:
@@ -447744,7 +448697,12 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        `default_outsourced_service_fee_rate` sets the contractor''s default per-unit
+        tolling rate - outsourced manufacturing orders placed with this contractor
+        inherit it unless an explicit rate is provided.'
       requestBody:
         content:
           application/json:
@@ -447753,8 +448711,11 @@ paths:
               properties:
                 default_outsourced_cost_basis:
                   type: string
+                default_outsourced_service_fee_rate:
+                  type: number
               example:
                 default_outsourced_cost_basis: toll
+                default_outsourced_service_fee_rate: 1.25
       parameters:
       - name: supplier
         in: path

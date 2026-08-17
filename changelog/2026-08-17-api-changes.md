@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-17
-description: This release includes 4 additions, 1 removal. 1 breaking change — action required.
+description: This release includes 8 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-08-17
 ---
 
-This release includes 4 additions, 1 removal. 1 breaking change — action required.
+This release includes 8 additions, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -29,6 +29,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/amazon/unified/fnsku-products/unknown-items` — List Unknown Item FNSKUs
 - `POST /api/amazon/unified/fnsku-products/{fnskuProduct}/mark-unknown` — Mark FNSKU as Unknown Item
 - `POST /api/amazon/unified/fnsku-products/{fnskuProduct}/unmark-unknown` — Unmark FNSKU as Unknown Item
+
+### Outsourced Production
+- `POST /api/manufacturing/chains` — Create Co-Manufacturing Chain
+- `GET /api/manufacturing/chains/clone-preview/{product}` — Preview Chain Clone
+- `GET /api/manufacturing/chains/supersede-preview/{bom}` — Preview Recipe Supersede
+- `GET /api/manufacturing/products/{product}/chain` — Get How a Product Is Made
 
 ### Purchase Invoices
 - `GET /api/purchase-invoices/{purchaseInvoice}/print` — Print Purchase Invoice PDF
