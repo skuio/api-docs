@@ -149019,7 +149019,12 @@ paths:
 
         - `items[].quantity_blemished` — nullable integer >= 0
 
-        - `items[].blemished_configurations` — nullable array'
+        - `items[].blemished_configurations` — nullable array
+
+
+        `items[].product_id` may be null ONLY for a discard-only receipt of an FNSKU
+        marked as an unknown item (quantity_new and quantity_blemished must be 0,
+        quantity_discarded > 0). Otherwise product_id is required.'
       requestBody:
         content:
           application/json:
@@ -150229,7 +150234,12 @@ paths:
         to specific sales orders.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        `items[].product_id` may be null ONLY for a discard-only receipt of an FNSKU
+        marked as an unknown item (quantity_new and quantity_blemished must be 0,
+        quantity_discarded > 0). Otherwise product_id is required.'
       requestBody:
         content:
           application/json:
@@ -181036,7 +181046,11 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        `unknown_fnsku_count` counts FNSKUs marked as unknown items — they are excluded
+        from `unmapped_fnsku_count`.'
       parameters: []
       responses:
         '200':
@@ -181066,6 +181080,8 @@ paths:
                         type: integer
                       total_asin_count:
                         type: integer
+                      unknown_fnsku_count:
+                        type: integer
                   message:
                     type: string
                 example:
@@ -181076,6 +181092,7 @@ paths:
                     mapped_asin_count: 210
                     unmapped_asin_count: 22
                     total_asin_count: 232
+                    unknown_fnsku_count: 1
                   message: Success
         '429': *id001
         '401': *id002
@@ -181443,7 +181460,16 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Each `fnsku_records[]` entry includes `sources`: the provenance of the FNSKU
+        — every report document type it was seen in (`customer_return`, `removal_order`,
+        `removal_shipment`, `inbound_shipment`, `ledger`, `ledger_summary`, `initial_inventory`,
+        `storage_fee`, `longterm_storage_fee`, `awd_ledger`, `awd_initial_inventory`),
+        with occurrence counts, first/last seen dates, any product identity the source
+        carries (ASIN, MSKU, title), and up to 10 `documents` references for linking
+        to the underlying records.'
       parameters: []
       responses:
         '200':
@@ -181501,6 +181527,43 @@ paths:
                                 type: string
                               disposition:
                                 type: string
+                              sources:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    source_type:
+                                      type: string
+                                    label:
+                                      type: string
+                                    count:
+                                      type: integer
+                                    first_seen:
+                                      type: string
+                                    last_seen:
+                                      type: string
+                                    asin:
+                                      type: string
+                                      nullable: true
+                                    msku:
+                                      type: string
+                                      nullable: true
+                                    title:
+                                      type: string
+                                      nullable: true
+                                    documents:
+                                      type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          id:
+                                            type: integer
+                                          reference:
+                                            type: string
+                                          integration_instance_id:
+                                            type: integer
+                                          date:
+                                            type: string
                   current_page:
                     type: integer
                   last_page:
@@ -181535,6 +181598,33 @@ paths:
                       product: null
                       location: US
                       disposition: SELLABLE
+                      sources:
+                      - source_type: removal_shipment
+                        label: Removal Shipment
+                        count: 1
+                        first_seen: '2025-08-05'
+                        last_seen: '2025-08-05'
+                        asin: null
+                        msku: null
+                        title: null
+                        documents:
+                        - id: 2180
+                          reference: JqXoo+7Rdu
+                          integration_instance_id: 1
+                          date: '2025-08-05'
+                      - source_type: customer_return
+                        label: Customer Return
+                        count: 1
+                        first_seen: '2024-07-24'
+                        last_seen: '2024-07-24'
+                        asin: B0123ABCDE
+                        msku: SELLER-SKU-A
+                        title: Widget Black
+                        documents:
+                        - id: 890
+                          reference: 111-3145650-8037803
+                          integration_instance_id: 1
+                          date: '2024-07-24'
                   current_page: 1
                   last_page: 2
                   per_page: 15
@@ -181562,7 +181652,16 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Each `fnsku_records[]` entry includes `sources`: the provenance of the FNSKU
+        — every report document type it was seen in (`customer_return`, `removal_order`,
+        `removal_shipment`, `inbound_shipment`, `ledger`, `ledger_summary`, `initial_inventory`,
+        `storage_fee`, `longterm_storage_fee`, `awd_ledger`, `awd_initial_inventory`),
+        with occurrence counts, first/last seen dates, any product identity the source
+        carries (ASIN, MSKU, title), and up to 10 `documents` references for linking
+        to the underlying records.'
       parameters: []
       responses:
         '200':
@@ -181631,6 +181730,8 @@ paths:
                                 type: string
                               disposition:
                                 type: string
+                              sources:
+                                type: array
                   current_page:
                     type: integer
                   last_page:
@@ -181671,6 +181772,7 @@ paths:
                         name: Widget
                       location: US
                       disposition: SELLABLE
+                      sources: []
                   current_page: 1
                   last_page: 14
                   per_page: 15
@@ -184142,6 +184244,287 @@ paths:
         '422': *id005
       x-session-only: true
       operationId: post-api-amazon-unified-fnsku-products-create-fifo-layers
+  /api/amazon/unified/fnsku-products/unknown-items:
+    get:
+      tags:
+      - Amazon
+      summary: List Unknown Item FNSKUs
+      description: 'FNSKUs marked as unknown items — units Amazon removed that are
+        confirmed not to be one of the merchant''s products. These are excluded from
+        the unmapped FNSKU queue and notifications. Each row records who marked it,
+        when, and the source documents (`sources`) the FNSKU was seen in.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        fnsku:
+                          type: string
+                        integration_instance_id:
+                          type: integer
+                        integration_instance_name:
+                          type: string
+                        location:
+                          type: string
+                        disposition:
+                          type: string
+                        unknown_item_at:
+                          type: string
+                        unknown_item_by:
+                          type: string
+                        sources:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              source_type:
+                                type: string
+                              label:
+                                type: string
+                              count:
+                                type: integer
+                              first_seen:
+                                type: string
+                              last_seen:
+                                type: string
+                              asin:
+                                type: string
+                                nullable: true
+                              msku:
+                                type: string
+                                nullable: true
+                              title:
+                                type: string
+                                nullable: true
+                              documents:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: integer
+                                    reference:
+                                      type: string
+                                    integration_instance_id:
+                                      type: integer
+                                    date:
+                                      type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  path:
+                    type: string
+                  links:
+                    type: array
+                example:
+                  data:
+                  - id: 3202
+                    fnsku: X000O5LME5
+                    integration_instance_id: 1
+                    integration_instance_name: Amazon US (Production)
+                    location: US
+                    disposition: SELLABLE
+                    unknown_item_at: '2026-08-16T18:30:00.000000Z'
+                    unknown_item_by: Jane Operator
+                    sources:
+                    - source_type: removal_shipment
+                      label: Removal Shipment
+                      count: 1
+                      first_seen: '2025-08-05'
+                      last_seen: '2025-08-05'
+                      asin: null
+                      msku: null
+                      title: null
+                      documents:
+                      - id: 2180
+                        reference: JqXoo+7Rdu
+                        integration_instance_id: 1
+                        date: '2025-08-05'
+                  current_page: 1
+                  last_page: 1
+                  per_page: 15
+                  total: 1
+                  from: 1
+                  to: 1
+                  path: https://example.test/api/amazon/unified/fnsku-products/unknown-items
+                  links: []
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: get-api-amazon-unified-fnsku-products-unknown-items
+  /api/amazon/unified/fnsku-products/{fnskuProduct}/mark-unknown:
+    post:
+      tags:
+      - Amazon
+      summary: Mark FNSKU as Unknown Item
+      description: 'Record the verdict that this unmapped FNSKU is a genuine Amazon
+        unknown item (not one of the merchant''s products). The FNSKU leaves the unmapped
+        queue and notifications, its removal orders are flagged as unknown items,
+        and its removal shipments can then be discarded without a product mapping.
+        Fails with 422 when the FNSKU is mapped to a product. Reversible via Unmark
+        FNSKU as Unknown Item.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::'
+      requestBody:
+        content: {}
+      parameters:
+      - name: fnskuProduct
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The fnsku product ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      fnsku_product_id:
+                        type: integer
+                      unknown_item_at:
+                        type: string
+                example:
+                  data:
+                    fnsku_product_id: 3202
+                    unknown_item_at: '2026-08-16T18:30:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        message:
+                          type: string
+                        code:
+                          type: integer
+                        type:
+                          type: string
+                example:
+                  errors:
+                  - message: A mapped FNSKU cannot be marked as an unknown item. Unmap
+                      it first.
+                    code: 422
+                    type: unknown_item_error
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: post-api-amazon-unified-fnsku-products-fnskuproduct-mark-unknown
+  /api/amazon/unified/fnsku-products/{fnskuProduct}/unmark-unknown:
+    post:
+      tags:
+      - Amazon
+      summary: Unmark FNSKU as Unknown Item
+      description: 'Reverse the unknown-item verdict: the FNSKU returns to the unmapped
+        queue and the unknown flag is cleared from its removal orders.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::'
+      requestBody:
+        content: {}
+      parameters:
+      - name: fnskuProduct
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The fnsku product ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      fnsku_product_id:
+                        type: integer
+                example:
+                  data:
+                    fnsku_product_id: 3202
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: post-api-amazon-unified-fnsku-products-fnskuproduct-unmark-unknown
   /api/amazon/unified/ledgers:
     get:
       tags:
