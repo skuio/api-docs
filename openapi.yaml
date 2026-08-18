@@ -110,6 +110,7 @@ tags:
 - name: Data Feeds
 - name: Inventory Intelligence
 - name: Inventory Expiry & Shelf-Life
+- name: Setup & Readiness
 - name: Amazon
 - name: Shopify
 - name: WooCommerce
@@ -143668,6 +143669,144 @@ paths:
         '403': *id003
       x-required-scope: inventory:write
       operationId: post-api-inventory-expiry-lot-backfill
+  /api/integrations/readiness:
+    get:
+      tags:
+      - Setup & Readiness
+      summary: Get Integration Readiness
+      description: 'List outstanding integration setup across every connected sales
+        channel, expressed as records the merchant cannot see yet.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        A channel''s records reach SKU.io in two hops: they are first downloaded into
+        staging, then turned into usable SKU.io records (catalog products, sales orders).
+        Work that stalls between the two is invisible — a catalog can read empty while
+        listings sit downloaded but unimported. Each item here is one such stall.
+
+
+        Per item:
+
+        - `staged` — records downloaded from the channel
+
+        - `inSku` — of those, how many became usable SKU.io records
+
+        - `missing` — `staged - inSku`, always greater than zero (items with nothing
+        missing are omitted, so a healthy account returns an empty list)
+
+        - `message` — one sentence written for the merchant, safe to render verbatim
+
+        - `actionLabel` / `actionRoute` — the single step that closes it, deep-linked
+        to the specific store via `filter[integration_instance_ids]`
+
+        - `surface` — which SKU.io area it blocks: `products`, `orders` or `locations`
+
+        - `statusBreakdown` — for the `products` surface, the missing listings grouped
+        by channel status (`active`, `draft`, …) so active listings can be told apart
+        from drafts; `null` on other surfaces
+
+
+        Every count is a local comparison between two tables SKU.io already holds,
+        so this endpoint keeps working when the channel is unreachable or its credentials
+        have been revoked.
+
+
+        **Query parameters:**
+
+        - `surface` (optional, one of `products`, `orders`, `locations`)'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Success — work outstanding
+                  value:
+                    data:
+                      items:
+                      - channel: shopify
+                        channelLabel: Shopify
+                        integrationInstanceId: 6
+                        instanceName: Whimsy & Wonders
+                        surface: products
+                        staged: 7
+                        inSku: 0
+                        missing: 7
+                        message: 7 Shopify listings have been downloaded but not imported
+                          into your catalog yet, so they will not appear in products,
+                          inventory or reports.
+                        actionLabel: Review & import 7 products
+                        actionRoute: /integrations/shopify/listings/product-mappings?filter[integration_instance_ids]=6
+                        statusBreakdown:
+                          active: 5
+                          draft: 2
+                      - channel: shopify
+                        channelLabel: Shopify
+                        integrationInstanceId: 6
+                        instanceName: Whimsy & Wonders
+                        surface: orders
+                        staged: 2
+                        inSku: 0
+                        missing: 2
+                        message: No Shopify location is mapped to a SKU warehouse
+                          yet, so SKU is not downloading orders from this store.
+                        actionLabel: Map locations to warehouses
+                        actionRoute: /integrations/shopify/settings?filter[integration_instance_ids]=6&tab=warehouse-mappings
+                        statusBreakdown: null
+                      total_missing: 9
+                example-1:
+                  summary: 200 Success — nothing outstanding
+                  value:
+                    data:
+                      items: []
+                      total_missing: 0
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      surface:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected surface is invalid.
+                  errors:
+                    surface:
+                    - The selected surface is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+      x-session-only: true
+      operationId: get-api-integrations-readiness
   /api/amazon/list:
     get:
       tags:
@@ -204342,6 +204481,553 @@ paths:
         '403': *id003
       x-session-only: true
       operationId: get-api-shopify-dashboard
+  /api/shopify/{integrationInstance}/reconciliation:
+    get:
+      tags:
+      - Shopify
+      summary: Get Shopify Reconciliation Ledger
+      description: 'Compare, entity by entity, how many records the Shopify store
+        holds against how many reached SKU.io.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Each entry carries three counts, because the pipeline has three stages and
+        data can stall at either hop:
+
+        - `inChannel` — what the Shopify store itself reports. `null` when Shopify
+        could not be counted.
+
+        - `downloaded` — records pulled into SKU.io''s staging tables.
+
+        - `inSku` — records that became real SKU.io records (sales orders, catalog
+        products).
+
+
+        `gap` is `inChannel - inSku`, floored at 0, and is `null` whenever `inChannel`
+        is `null` — an unmeasured gap is never reported as zero.
+
+
+        **Status values** (`status` on each entry and on the ledger as a whole): `in_sync`,
+        `gap`, `unknown`, `not_applicable`. The overall status is the weakest entry,
+        never an average, so a single entity short of records prevents an all-clear.
+
+
+        When an entry has a gap it also carries `blocker` (why, in plain terms), `actionLabel`
+        and `actionRoute` (the single step that closes it).
+
+
+        **Query parameters:**
+
+        - `fresh` (optional, boolean) — bypass the 5-minute cache and re-count both
+        sides immediately.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shopify connection id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Success — records missing
+                  value:
+                    success: true
+                    data:
+                      integrationInstanceId: 12
+                      entries:
+                      - key: orders
+                        displayName: Orders
+                        inChannel: 18
+                        downloaded: 18
+                        inSku: 2
+                        gap: 16
+                        coveragePercentage: 11.1
+                        status: gap
+                        blocker: No Shopify location is mapped to a SKU warehouse,
+                          so SKU will not download orders.
+                        actionLabel: Map locations to warehouses
+                        actionRoute: /integrations/shopify/settings?tab=warehouse-mappings
+                        note: Compared from Jun 25, 2026
+                      - key: products
+                        displayName: Products
+                        inChannel: 7
+                        downloaded: 7
+                        inSku: 0
+                        gap: 7
+                        coveragePercentage: 0
+                        status: gap
+                        blocker: 7 Shopify listings are downloaded but not imported
+                          into your SKU catalog, so they do not appear in products,
+                          inventory or reports.
+                        actionLabel: Import 7 products
+                        actionRoute: /integrations/shopify/listings/product-mappings
+                        note: null
+                      - key: locations
+                        displayName: Locations mapped
+                        inChannel: 2
+                        downloaded: 2
+                        inSku: 2
+                        gap: 0
+                        coveragePercentage: 100
+                        status: in_sync
+                        blocker: null
+                        actionLabel: null
+                        actionRoute: null
+                        note: null
+                      totalGap: 23
+                      coveragePercentage: 14.8
+                      status: gap
+                      headline: Not fully synced — 23 records missing (16 orders,
+                        7 products). Only 14.8% of your Shopify data is in SKU.
+                      checkedAt: '2026-08-17T22:41:09+00:00'
+                      remoteCountsAvailable: true
+                      remoteCountsError: null
+                      windowStartsAt: '2026-06-25T00:00:00+00:00'
+                example-1:
+                  summary: 200 Success — Shopify unreachable, gap unverified
+                  value:
+                    success: true
+                    data:
+                      integrationInstanceId: 12
+                      entries:
+                      - key: orders
+                        displayName: Orders
+                        inChannel: null
+                        downloaded: 18
+                        inSku: 18
+                        gap: null
+                        coveragePercentage: null
+                        status: unknown
+                        blocker: null
+                        actionLabel: null
+                        actionRoute: null
+                        note: Compared from Jun 25, 2026
+                      totalGap: null
+                      coveragePercentage: null
+                      status: unknown
+                      headline: Could not compare against Shopify — sync status unverified.
+                      checkedAt: '2026-08-17T22:41:09+00:00'
+                      remoteCountsAvailable: false
+                      remoteCountsError: Shopify could not be reached to confirm its
+                        own record counts, so any gap below is unverified.
+                      windowStartsAt: '2026-06-25T00:00:00+00:00'
+        '500':
+          description: Internal Server Error
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Failed to reconcile Shopify against SKU
+                  message: Connection refused
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: get-api-shopify-integrationinstance-reconciliation
+  /api/shopify/{integrationInstance}/setup:
+    get:
+      tags:
+      - Shopify
+      summary: Get Shopify Setup State
+      description: 'Report what still has to be true before a Shopify connection is
+        usable.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Each step''s `completed` is DERIVED from live data on every read — a mapped
+        location, a stored import horizon, an imported catalog — never from a stored
+        "setup finished" flag. Undo the underlying thing and the step reopens.
+
+
+        Per step:
+
+        - `required` — whether it blocks `complete`
+
+        - `blocking` — records this step is holding out of SKU.io, when known
+
+        - `detail` — one line of plain-language status
+
+        - `actionLabel` / `actionRoute` — the single step that resolves it
+
+
+        `complete` is true when every REQUIRED step is done. `deferred` records that
+        the merchant chose to finish later — it is never the same as `complete`, and
+        a deferred connection still reports its outstanding steps.'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shopify connection id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      integrationInstanceId:
+                        type: integer
+                      instanceName:
+                        type: string
+                      steps:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            title:
+                              type: string
+                            description:
+                              type: string
+                            completed:
+                              type: boolean
+                            required:
+                              type: boolean
+                            detail:
+                              type: string
+                            blocking:
+                              type: string
+                              nullable: true
+                            actionLabel:
+                              type: string
+                              nullable: true
+                            actionRoute:
+                              type: string
+                              nullable: true
+                      complete:
+                        type: boolean
+                      completedCount:
+                        type: integer
+                      totalCount:
+                        type: integer
+                      percentComplete:
+                        type: integer
+                      nextStepKey:
+                        type: string
+                      deferred:
+                        type: boolean
+                example:
+                  data:
+                    integrationInstanceId: 12
+                    instanceName: Whimsy & Wonders
+                    steps:
+                    - key: authorize
+                      title: Connect your Shopify store
+                      description: Authorize SKU to read your orders, products and
+                        locations.
+                      completed: true
+                      required: true
+                      detail: Whimsy & Wonders is connected.
+                      blocking: null
+                      actionLabel: null
+                      actionRoute: null
+                    - key: locations
+                      title: Map your Shopify locations to SKU warehouses
+                      description: SKU will not download orders until at least one
+                        location points at a warehouse, and fulfillments cannot be
+                        written back without it.
+                      completed: false
+                      required: true
+                      detail: None of your 2 Shopify locations are mapped yet.
+                      blocking: 2
+                      actionLabel: Map locations
+                      actionRoute: /integrations/shopify/settings?tab=warehouse-mappings
+                    - key: order_history
+                      title: Choose how much order history to import
+                      description: Orders placed from now on arrive automatically.
+                        This controls the one-time import of past orders.
+                      completed: false
+                      required: true
+                      detail: No horizon chosen yet, so SKU would fall back to a bounded
+                        default you never saw.
+                      blocking: null
+                      actionLabel: Choose a date
+                      actionRoute: null
+                    - key: products
+                      title: Import your Shopify catalog into SKU
+                      description: Downloaded listings only appear in products, inventory
+                        and reports once they are imported as SKU products.
+                      completed: false
+                      required: true
+                      detail: 7 listings downloaded but not imported.
+                      blocking: 7
+                      actionLabel: Review & import 7 products
+                      actionRoute: /integrations/shopify/listings/product-mappings
+                    complete: false
+                    completedCount: 1
+                    totalCount: 4
+                    percentComplete: 25
+                    nextStepKey: locations
+                    deferred: false
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: get-api-shopify-integrationinstance-setup
+  /api/shopify/{integrationInstance}/setup/order-history:
+    put:
+      tags:
+      - Shopify
+      summary: Set Shopify Order-History Start
+      description: 'Record the one-time order-import horizon for this connection.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Writes the root-level `start_date` setting — the key the order backfill reads
+        first — so the choice actually governs the next import instead of being shadowed
+        by a legacy nested value. Without an explicit horizon the backfill falls back
+        to a bounded default the merchant never chose and cannot see.
+
+
+        **Body:**
+
+        - `start_date` (required, date, today or earlier) — import orders placed on
+        or after this date.
+
+
+        Returns the recalculated setup state.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                start_date:
+                  type: string
+              example:
+                start_date: '2026-06-01'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shopify connection id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      integrationInstanceId:
+                        type: integer
+                      instanceName:
+                        type: string
+                      steps:
+                        type: array
+                      complete:
+                        type: boolean
+                      completedCount:
+                        type: integer
+                      totalCount:
+                        type: integer
+                      percentComplete:
+                        type: integer
+                      nextStepKey:
+                        type: string
+                      deferred:
+                        type: boolean
+                example:
+                  data:
+                    integrationInstanceId: 12
+                    instanceName: Whimsy & Wonders
+                    steps: []
+                    complete: false
+                    completedCount: 2
+                    totalCount: 4
+                    percentComplete: 50
+                    nextStepKey: products
+                    deferred: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      start_date:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The start date field must be a date before or equal to
+                    today.
+                  errors:
+                    start_date:
+                    - The start date field must be a date before or equal to today.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-session-only: true
+      operationId: put-api-shopify-integrationinstance-setup-order-history
+  /api/shopify/{integrationInstance}/setup/defer:
+    post:
+      tags:
+      - Shopify
+      summary: Defer Shopify Setup
+      description: 'Record that the merchant chose to finish setup later.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        The connection stays usable — an app that traps you in setup is its own defect
+        — but deferring never marks it complete. The response still lists every outstanding
+        step, and the resulting gap continues to be reported on the catalog and sales-order
+        surfaces and on the reconciliation ledger, so a deferred setup can never reach
+        a screen that looks finished.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shopify connection id
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      integrationInstanceId:
+                        type: integer
+                      instanceName:
+                        type: string
+                      steps:
+                        type: array
+                      complete:
+                        type: boolean
+                      completedCount:
+                        type: integer
+                      totalCount:
+                        type: integer
+                      percentComplete:
+                        type: integer
+                      nextStepKey:
+                        type: string
+                      deferred:
+                        type: boolean
+                example:
+                  data:
+                    integrationInstanceId: 12
+                    instanceName: Whimsy & Wonders
+                    steps: []
+                    complete: false
+                    completedCount: 1
+                    totalCount: 4
+                    percentComplete: 25
+                    nextStepKey: locations
+                    deferred: true
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+        '422': *id005
+      x-session-only: true
+      operationId: post-api-shopify-integrationinstance-setup-defer
   /api/shopify/config:
     get:
       tags:
@@ -398994,6 +399680,8 @@ paths:
                               type: integer
                             quantity_shipped:
                               type: integer
+                            quantity_receivable:
+                              type: integer
                       tags:
                         type: array
                         items:
@@ -399052,6 +399740,7 @@ paths:
                       quantity_cancelled: 0
                       quantity_received: 0
                       quantity_shipped: 0
+                      quantity_receivable: 0
                     tags:
                     - restock
                     total_quantity: 100
@@ -403763,8 +404452,8 @@ paths:
       tags:
       - Adjustments & Transfers
       summary: Receive Warehouse Transfer Shipment
-      description: 'Records a receipt against a shipped warehouse transfer, adding
-        the received quantities to stock at the destination warehouse.
+      description: 'Records a receipt against a warehouse transfer, adding the received
+        quantities to stock at the destination warehouse.
 
 
         :::info[Required scope: `warehouses:write`]
@@ -403782,7 +404471,25 @@ paths:
         product with the given SKU), condition and integration_unique_id.
 
 
-        The transfer must be open, and received quantities cannot exceed shipped quantities.
+        The transfer must be open.
+
+
+        Shipping is handled for you per line: any line in the request that has NOT
+        been dispatched yet has a shipment created for the quantity being received,
+        so a transfer can be received without calling the shipment endpoint first.
+        This applies per line, so it still works when other lines on the same transfer
+        already shipped.
+
+
+        A line that is only PARTLY dispatched is not auto-shipped — a receipt cannot
+        be split across two shipments — so such a line yields only its already-dispatched
+        remainder. Read quantity_shipped and quantity_receivable on the transfer''s
+        lines to see what a receipt can take. Requesting a receipt where nothing at
+        all is receivable returns 422 rather than silently recording nothing.
+
+
+        Auto-shipping does not apply to channel-managed destinations (Amazon FBA/AWD,
+        Walmart WFS), whose dispatch and receipt are driven by the channel.
 
 
         Authentication: Requires Bearer token.'
@@ -403971,11 +404678,32 @@ paths:
                       code: WarehouseTransfer424
                       data:
                         transfer_id: 512
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: error
+                  message: Nothing on warehouse transfer WH-0102 (#102) can be received
+                    right now - the requested units have not been shipped yet, or
+                    have already been received. Ship the lines first, then record
+                    the receipt.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-required-scope: warehouses:write
       operationId: post-api-warehouses-transfers-transfer-receive
   /api/warehouses/transfers/{transfer}/receipts/{receipt}:
@@ -606535,6 +607263,7 @@ x-tagGroups:
   - Data Feeds
   - Inventory Intelligence
   - Inventory Expiry & Shelf-Life
+  - Setup & Readiness
   - Magento 2
   - Odoo 3PL
   - ShipBob
