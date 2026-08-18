@@ -585062,9 +585062,11 @@ paths:
 
         **Editability by status:** draft and pending-approval deposits accept the
         full field set. Approved/paid/applied deposits accept only the descriptive
-        fields — `deposit_date`, `due_date`, `external_reference`, `notes`; sending
-        any other field returns 422 with the locked field(s) named. Terminal deposits
-        (cancelled, void, refunded, written off) cannot be updated at all.
+        fields — `deposit_date`, `due_date`, `external_reference`, `vendor_invoice_number`,
+        `vendor_invoice_date`, `notes` — plus the two apply-behaviour settings `proportional_apply_enabled`
+        and `auto_apply_enabled`; sending any other field returns 422 with the locked
+        field(s) named. Terminal deposits (cancelled, void, refunded, written off)
+        cannot be updated at all.
 
 
         **Bank details:** `payee_bank_details` may be updated on draft/pending deposits.
@@ -585078,6 +585080,16 @@ paths:
         is that invoice''s record (a down-payment invoice). Do not create a goods
         invoice for a deposit. `vendor_invoice_date` must have a year between 1990
         and 2100 (422 otherwise). Both fields remain editable after approval.
+
+
+        **Apply behaviour:** `auto_apply_enabled` (boolean, nullable) overrides whether
+        this deposit auto-applies when a new bill is raised against its purchase order;
+        `null` falls back to the supplier setting and then the tenant-wide accounting
+        setting, and the resolved value is returned as `auto_apply_effective`. `proportional_apply_enabled`
+        (boolean) caps each auto-application at (bill total ÷ purchase order total)
+        × deposit amount, so a bill covering one shipment of a staged order does not
+        consume the whole deposit. Both remain editable after approval because they
+        govern how the remaining balance is applied to future bills.
 
 
         Accepts `related_purchase_order_id` (integer, nullable) — third-party PO reference,
@@ -585108,6 +585120,11 @@ paths:
                   type: string
                 vendor_invoice_date:
                   type: string
+                proportional_apply_enabled:
+                  type: boolean
+                auto_apply_enabled:
+                  type: string
+                  nullable: true
               example:
                 amount: 600
                 deposit_date: '2026-04-12'
@@ -585120,6 +585137,8 @@ paths:
                 bank_details_verified: false
                 vendor_invoice_number: VN-INV-2026-0114
                 vendor_invoice_date: '2026-06-28'
+                proportional_apply_enabled: true
+                auto_apply_enabled: null
       parameters:
       - name: vendorDepositId
         in: path
@@ -585129,14 +585148,168 @@ paths:
         description: The vendor deposit ID.
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  deposit_number:
+                    type: string
+                  status:
+                    type: string
+                  status_label:
+                    type: string
+                  created_via:
+                    type: string
+                  created_via_label:
+                    type: string
+                  amount_overridden_at:
+                    type: string
+                    nullable: true
+                  supplier_id:
+                    type: integer
+                  purchase_order_id:
+                    type: integer
+                  payment_term_schedule_line_index:
+                    type: integer
+                  inbound_shipment_id:
+                    type: string
+                    nullable: true
+                  is_ownership_transfer:
+                    type: boolean
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  currency_id:
+                    type: integer
+                  currency_rate:
+                    type: integer
+                  amount:
+                    type: number
+                  amount_in_tenant_currency:
+                    type: number
+                  amount_paid:
+                    type: number
+                  amount_applied:
+                    type: number
+                  amount_refunded:
+                    type: integer
+                  amount_written_off:
+                    type: integer
+                  available_balance:
+                    type: number
+                  tax_amount:
+                    type: integer
+                  deposit_date:
+                    type: string
+                  due_date:
+                    type: string
+                  paid_at:
+                    type: string
+                  external_reference:
+                    type: string
+                  vendor_invoice_number:
+                    type: string
+                  vendor_invoice_date:
+                    type: string
+                  notes:
+                    type: string
+                  attachments_count:
+                    type: integer
+                  proportional_apply_enabled:
+                    type: boolean
+                  auto_apply_enabled:
+                    type: string
+                    nullable: true
+                  auto_apply_effective:
+                    type: boolean
+                  approved_by:
+                    type: integer
+                  approved_at:
+                    type: string
+                  created_by:
+                    type: integer
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                example:
+                  id: 23
+                  deposit_number: VD-00019
+                  status: paid
+                  status_label: Paid
+                  created_via: auto_schedule
+                  created_via_label: Auto-created from schedule
+                  amount_overridden_at: null
+                  supplier_id: 14
+                  purchase_order_id: 5
+                  payment_term_schedule_line_index: 1
+                  inbound_shipment_id: null
+                  is_ownership_transfer: false
+                  related_purchase_order_id: null
+                  currency_id: 1
+                  currency_rate: 1
+                  amount: 7810.6
+                  amount_in_tenant_currency: 7810.6
+                  amount_paid: 7810.6
+                  amount_applied: 3124.24
+                  amount_refunded: 0
+                  amount_written_off: 0
+                  available_balance: 4686.36
+                  tax_amount: 0
+                  deposit_date: '2026-04-12'
+                  due_date: '2026-05-30'
+                  paid_at: '2026-08-10T16:16:55+00:00'
+                  external_reference: WIRE-2026-0001-REV
+                  vendor_invoice_number: VN-INV-2026-0114
+                  vendor_invoice_date: '2026-06-28'
+                  notes: Revised deposit amount
+                  attachments_count: 1
+                  proportional_apply_enabled: true
+                  auto_apply_enabled: null
+                  auto_apply_effective: true
+                  approved_by: 3
+                  approved_at: '2026-04-12T09:02:11+00:00'
+                  created_by: 3
+                  created_at: '2026-04-03T12:35:06+00:00'
+                  updated_at: '2026-08-18T19:44:59+00:00'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  error:
+                    type: string
+                example:
+                  message: 'Only deposit date, due date, external reference, vendor
+                    invoice number, vendor invoice date, notes, proportional apply
+                    enabled, auto apply enabled can be edited after approval. Locked
+                    field(s): amount.'
+                  error: 'Only deposit date, due date, external reference, vendor
+                    invoice number, vendor invoice date, notes, proportional apply
+                    enabled, auto apply enabled can be edited after approval. Locked
+                    field(s): amount.'
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-required-scope: accounting:write
       operationId: put-api-vendor-deposits-vendordepositid
     delete:
