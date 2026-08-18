@@ -92728,7 +92728,14 @@ paths:
 
         - is_automatic_sync_enabled (boolean, optional, default false).
 
-        - environment (string, optional): "production" or "sandbox".'
+        - environment (string, optional): "production" or "sandbox".
+
+
+        `integration_settings.pricing.pricingTier` sets the pricing tier listings
+        inherit their price from — send `{ "id": <tier id>, "name": "<tier name>"
+        }`, or `{ "id": null, "name": null }` to clear it. `id` must be an existing
+        pricing tier. A legacy flat `pricing_tier_id` is still accepted but is deprecated
+        and is not read back.'
       requestBody:
         content:
           application/json:
@@ -92780,6 +92787,13 @@ paths:
                               type: string
                             name:
                               type: string
+                        pricingTier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
                     inventory:
                       type: object
                       properties:
@@ -92809,6 +92823,9 @@ paths:
                     masterOfPrice:
                       id: neither
                       name: Neither
+                    pricingTier:
+                      id: 4
+                      name: Marketplace Retail
                   inventory:
                     masterOfStock: Neither
                     selectedWarehouses: []
@@ -237168,9 +237185,10 @@ paths:
     patch:
       tags:
       - Walmart
-      summary: Partial Update Integration Instance
-      description: 'Partially update a Walmart integration instance. Settings are
-        deep-merged with existing values — only send the fields you want to change.
+      summary: Update Walmart Integration Settings
+      description: 'Update the settings of a connected Walmart seller account. Accepts
+        `PUT` (full replace) or `PATCH` (deep merge into the stored settings — send
+        only the keys you want to change).
 
 
         :::warning[Not yet available to API tokens]
@@ -237181,24 +237199,218 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        **Request fields** — all optional; omit any key to leave it unchanged.
+
+
+        - `name` (string) — display name of the connection.
+
+        - `is_automatic_sync_enabled` (boolean) — turns scheduled syncing on or off.
+
+        - `connection_settings.clientId` (string) — Walmart API client ID.
+
+        - `connection_settings.clientSecret` (string) — Walmart API client secret.
+
+        - `integration_settings.start_date` (date `YYYY-MM-DD`) — orders placed before
+        this date are ignored.
+
+        - `integration_settings.store_id` (integer) — store this connection sells
+        into. Must exist.
+
+        - `integration_settings.auto_link_products` (boolean) — match incoming Walmart
+        items to existing products by identifier.
+
+        - `integration_settings.auto_create_products` (boolean) — create a product
+        when no match is found.
+
+        - `integration_settings.emailCustomers` (boolean) — send order emails to the
+        buyer.
+
+        - `integration_settings.sales_nominal_code_id`, `cogs_nominal_code_id`, `shipping_revenue_nominal_code_id`,
+        `shipping_refund_nominal_code_id`, `sales_returns_allowances_nominal_code_id`
+        (integer, nullable) — accounting codes. Each must exist.
+
+        - `integration_settings.proforma_marketplace_cost_percentage`, `proforma_payment_cost_percentage`
+        (number, nullable) — estimated marketplace and payment costs, as percentages.
+
+        - `integration_settings.sync_sales_order_invoices_to_accounting`, `sync_sales_credit_to_accounting`
+        (boolean) — push invoices and credits to the accounting connection.
+
+        - `integration_settings.batch_period_sales_order_fulfillments`, `batch_period_customer_returns`
+        (string, nullable) — batching period used when posting to accounting.
+
+        - `integration_settings.refunds.allow_refunds_from_sku` (boolean) — allow
+        refunds to be issued against Walmart orders.
+
+
+        **Pricing** — `integration_settings.pricing`:
+
+
+        - `masterOfPrice` (object) — which system owns price. `id` is one of `sku`,
+        `channel`, `neither`; `name` is its display label. Changing it re-caches every
+        listing price for this connection.
+
+        - `pricingTier` (object, nullable) — the pricing tier listings inherit their
+        price from. Send `{ "id": <tier id>, "name": "<tier name>" }`, or `{ "id":
+        null, "name": null }` to clear it. `id` must be an existing pricing tier.
+        This is the canonical field; a legacy flat `pricing_tier_id` is still accepted
+        but is deprecated and is not read back.
+
+
+        **Inventory** — `integration_settings.inventory`:
+
+
+        - `masterOfStock` (string) — which system owns stock levels.
+
+        - `selectedWarehouses` (array of integers) — warehouses whose stock is published
+        to Walmart. Sent as a whole list; it replaces the stored value rather than
+        merging into it, on `PATCH` too.
+
+        - `fulfillmentLatency` (integer, nullable) — handling days reported to Walmart.
+
+
+        **Behaviour to be aware of**
+
+
+        - Changed credentials are validated against Walmart before anything is stored.
+        Invalid credentials fail the whole request with `422` and nothing is saved.
+
+        - Saving valid credentials on a connection that is disconnected or awaiting
+        authorization switches it to credential-based authentication and reactivates
+        it.
+
+        - Changing `masterOfPrice`, `pricingTier`, or any inventory setting triggers
+        a background re-cache of prices and stock, so listing values may take a few
+        moments to settle.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
+                name:
+                  type: string
                 is_automatic_sync_enabled:
                   type: boolean
+                connection_settings:
+                  type: object
+                  properties:
+                    clientId:
+                      type: string
+                    clientSecret:
+                      type: string
+                integration_settings:
+                  type: object
+                  properties:
+                    start_date:
+                      type: string
+                    store_id:
+                      type: integer
+                    auto_link_products:
+                      type: boolean
+                    auto_create_products:
+                      type: boolean
+                    emailCustomers:
+                      type: boolean
+                    sales_nominal_code_id:
+                      type: integer
+                    cogs_nominal_code_id:
+                      type: integer
+                    shipping_revenue_nominal_code_id:
+                      type: integer
+                    shipping_refund_nominal_code_id:
+                      type: integer
+                    sales_returns_allowances_nominal_code_id:
+                      type: integer
+                    proforma_marketplace_cost_percentage:
+                      type: integer
+                    proforma_payment_cost_percentage:
+                      type: number
+                    sync_sales_order_invoices_to_accounting:
+                      type: boolean
+                    sync_sales_credit_to_accounting:
+                      type: boolean
+                    batch_period_sales_order_fulfillments:
+                      type: string
+                    batch_period_customer_returns:
+                      type: string
+                    pricing:
+                      type: object
+                      properties:
+                        masterOfPrice:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            name:
+                              type: string
+                        pricingTier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                    inventory:
+                      type: object
+                      properties:
+                        masterOfStock:
+                          type: string
+                        selectedWarehouses:
+                          type: array
+                          items:
+                            type: integer
+                        fulfillmentLatency:
+                          type: integer
+                    refunds:
+                      type: object
+                      properties:
+                        allow_refunds_from_sku:
+                          type: boolean
               example:
+                name: Walmart US Store
                 is_automatic_sync_enabled: true
+                connection_settings:
+                  clientId: REPLACE_WITH_YOUR_CLIENT_ID
+                  clientSecret: REPLACE_WITH_YOUR_CLIENT_SECRET
+                integration_settings:
+                  start_date: '2026-01-01'
+                  store_id: 2
+                  auto_link_products: true
+                  auto_create_products: false
+                  emailCustomers: false
+                  sales_nominal_code_id: 12
+                  cogs_nominal_code_id: 15
+                  shipping_revenue_nominal_code_id: 18
+                  shipping_refund_nominal_code_id: 19
+                  sales_returns_allowances_nominal_code_id: 21
+                  proforma_marketplace_cost_percentage: 15
+                  proforma_payment_cost_percentage: 2.9
+                  sync_sales_order_invoices_to_accounting: true
+                  sync_sales_credit_to_accounting: true
+                  batch_period_sales_order_fulfillments: daily
+                  batch_period_customer_returns: daily
+                  pricing:
+                    masterOfPrice:
+                      id: sku
+                      name: SKU.io
+                    pricingTier:
+                      id: 4
+                      name: Marketplace Retail
+                  inventory:
+                    masterOfStock: SKU.io
+                    selectedWarehouses:
+                    - 1
+                    - 3
+                    fulfillmentLatency: 2
+                  refunds:
+                    allow_refunds_from_sku: true
       parameters:
       - name: integrationInstance
         in: path
         schema:
           type: integer
         required: true
-        description: Integration instance ID
+        description: Walmart integration instance ID
         example: '1'
       responses:
         '200':
@@ -237218,23 +237430,189 @@ paths:
                     properties:
                       id:
                         type: integer
+                      integration_name:
+                        type: string
+                      sales_channel_id:
+                        type: integer
+                      store:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      environment:
+                        type: string
+                      oauth_connected:
+                        type: boolean
+                      oauth_pending:
+                        type: boolean
                       name:
                         type: string
+                      integration_id:
+                        type: integer
                       is_automatic_sync_enabled:
                         type: boolean
+                      connection_settings:
+                        type: object
+                        properties:
+                          clientId:
+                            type: string
+                          clientSecret:
+                            type: string
+                      integration_settings:
+                        type: object
+                        properties:
+                          start_date:
+                            type: string
+                          store_id:
+                            type: integer
+                          auto_link_products:
+                            type: boolean
+                          auto_create_products:
+                            type: boolean
+                          emailCustomers:
+                            type: boolean
+                          sales_nominal_code_id:
+                            type: integer
+                          cogs_nominal_code_id:
+                            type: integer
+                          shipping_revenue_nominal_code_id:
+                            type: integer
+                          shipping_refund_nominal_code_id:
+                            type: integer
+                          sales_returns_allowances_nominal_code_id:
+                            type: integer
+                          proforma_marketplace_cost_percentage:
+                            type: number
+                          proforma_payment_cost_percentage:
+                            type: number
+                          sync_sales_order_invoices_to_accounting:
+                            type: boolean
+                          sync_sales_credit_to_accounting:
+                            type: boolean
+                          batch_period_sales_order_fulfillments:
+                            type: string
+                          batch_period_customer_returns:
+                            type: string
+                          pricing:
+                            type: object
+                            properties:
+                              masterOfPrice:
+                                type: object
+                                properties:
+                                  id:
+                                    type: string
+                                  name:
+                                    type: string
+                              pricingTier:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                          inventory:
+                            type: object
+                            properties:
+                              masterOfStock:
+                                type: string
+                              selectedWarehouses:
+                                type: array
+                                items:
+                                  type: integer
+                              fulfillmentLatency:
+                                type: integer
+                          refunds:
+                            type: object
+                            properties:
+                              allow_refunds_from_sku:
+                                type: boolean
+                      created_at:
+                        type: string
                       updated_at:
                         type: string
                 example:
                   data:
-                    id: 1
-                    name: My Walmart Marketplace
+                    id: 3
+                    integration_name: Walmart
+                    sales_channel_id: 7
+                    store:
+                      id: 2
+                      name: US Retail
+                    environment: production
+                    oauth_connected: false
+                    oauth_pending: false
+                    name: Walmart US Store
+                    integration_id: 11
                     is_automatic_sync_enabled: true
-                    updated_at: '2024-06-10T00:00:00.000000Z'
+                    connection_settings:
+                      clientId: 3f1c...c2a9
+                      clientSecret: '********'
+                    integration_settings:
+                      start_date: '2026-01-01'
+                      store_id: 2
+                      auto_link_products: true
+                      auto_create_products: false
+                      emailCustomers: false
+                      sales_nominal_code_id: 12
+                      cogs_nominal_code_id: 15
+                      shipping_revenue_nominal_code_id: 18
+                      shipping_refund_nominal_code_id: 19
+                      sales_returns_allowances_nominal_code_id: 21
+                      proforma_marketplace_cost_percentage: 15.0
+                      proforma_payment_cost_percentage: 2.9
+                      sync_sales_order_invoices_to_accounting: true
+                      sync_sales_credit_to_accounting: true
+                      batch_period_sales_order_fulfillments: daily
+                      batch_period_customer_returns: daily
+                      pricing:
+                        masterOfPrice:
+                          id: sku
+                          name: SKU.io
+                        pricingTier:
+                          id: 4
+                          name: Marketplace Retail
+                      inventory:
+                        masterOfStock: SKU.io
+                        selectedWarehouses:
+                        - 1
+                        - 3
+                        fulfillmentLatency: 2
+                      refunds:
+                        allow_refunds_from_sku: true
+                    created_at: '2026-01-04T10:12:44.000000Z'
+                    updated_at: '2026-08-17T09:31:02.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Credentials rejected by Walmart
+                  value:
+                    message: The provided Walmart credentials were rejected. Check
+                      the client ID and client secret and try again.
+                example-1:
+                  summary: Validation error
+                  value:
+                    message: The selected integration settings.pricing.pricing tier.id
+                      is invalid.
+                    errors:
+                      integration_settings.pricing.pricingTier.id:
+                      - The selected integration settings.pricing.pricing tier.id
+                        is invalid.
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-session-only: true
       operationId: patch-api-walmart-integrationinstance
     delete:
