@@ -1,16 +1,27 @@
 ---
 title: API changes — 2026-08-19
-description: This release includes 27 additions.
+description: This release includes 28 additions, 1 removal. 1 breaking change — action required.
 authors: [product-team]
-tags: [added]
+tags: [added, removed, breaking]
 date: 2026-08-19
 ---
 
-This release includes 27 additions.
+This release includes 28 additions, 1 removal. 1 breaking change — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
+
+## ⚠️ Breaking changes
+
+### Removed endpoints
+
+#### ShipStation
+- **Removed** `DELETE /api/shipstation/integration-instances/{integration_instance}/shipping-methods/map/ups|ups_ground` — Unmap Shipping Method
 
 ## Added
 
@@ -36,6 +47,9 @@ This release includes 27 additions.
 - `DELETE /api/v2/products/{product}/specifications/{specification}` — Delete Product Specification
 - `PATCH /api/v2/products/{product}/specifications/{specification}` — Update Product Specification
 - `GET /api/v2/retention-samples` — List Retention Samples
+
+### ShipStation
+- `DELETE /api/shipstation/integration-instances/{integration_instance}/shipping-methods/map/{code}` — Unmap Shipping Method
 
 ### Suppliers
 - `GET /api/suppliers/{supplier}/compliance-documents` — List Supplier Compliance Documents
