@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-26
-description: This release includes 12 additions, 3 changes, 5 removals. 7 breaking changes — action required.
+description: This release includes 13 additions, 3 changes, 5 removals. 7 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-08-26
 ---
 
-This release includes 12 additions, 3 changes, 5 removals. 7 breaking changes — action required.
+This release includes 13 additions, 3 changes, 5 removals. 7 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -51,6 +51,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Faire
 - `PATCH /api/faire/instances/{integrationInstance}/products/{option}/revenue-mapping` — Set Revenue Line Mapping
+
+### Inventory Movements
+- `GET /api/v2/inventory-movements/aggregates` — Get Inventory Movement Aggregates
 
 ### Magento 1
 - `PATCH /api/magento1/instances/{integrationInstance}/products/{product}/revenue-mapping` — Set Revenue Line Mapping
