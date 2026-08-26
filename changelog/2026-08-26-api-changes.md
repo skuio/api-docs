@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-26
-description: This release includes 1 addition, 1 change, 4 removals. 4 breaking changes — action required.
+description: This release includes 1 addition, 3 changes, 4 removals. 6 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-08-26
 ---
 
-This release includes 1 addition, 1 change, 4 removals. 4 breaking changes — action required.
+This release includes 1 addition, 3 changes, 4 removals. 6 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -25,6 +25,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `POST /api/tracked-job-logs` — Create Tracked Job Log
 - **Removed** `DELETE /api/tracked-job-logs/{tracked_job_log}` — Delete Tracked Job Log
 - **Removed** `PUT /api/tracked-job-logs/{tracked_job_log}` — Update Tracked Job Log
+
+### Incompatible changes
+
+#### Amazon
+- **Changed** `GET /api/amazon/unified/ledgers` — List Ledgers
+  - removed parameter(s): `date_from`, `date_to`, `event_type`, `integration_instance_ids`, `page`, `per_page`, `search`, `sort`, `status`
+- **Changed** `GET /api/amazon/unified/ledgers/export` — Export Ledgers
+  - removed parameter(s): `date_from`, `date_to`, `event_type`, `integration_instance_ids`, `search`, `status`
 
 ## Added
 
