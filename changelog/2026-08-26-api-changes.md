@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-26
-description: This release includes 13 additions, 3 changes, 5 removals. 7 breaking changes — action required.
+description: This release includes 14 additions, 3 changes, 5 removals. 7 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-08-26
 ---
 
-This release includes 13 additions, 3 changes, 5 removals. 7 breaking changes — action required.
+This release includes 14 additions, 3 changes, 5 removals. 7 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -36,11 +36,11 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `date_from`, `date_to`, `event_type`, `integration_instance_ids`, `page`, `per_page`, `search`, `sort`, `status`
 - **Changed** `GET /api/amazon/unified/ledgers/export` — Export Ledgers
   - removed parameter(s): `date_from`, `date_to`, `event_type`, `integration_instance_ids`, `search`, `status`
-  - new response code(s): `422`
 
 ## Added
 
 ### Amazon
+- `GET /api/amazon/unified/ledgers/export/download` — Download Ledger Export
 - `PATCH /api/amazon/{integrationInstance}/products/{product}/revenue-mapping` — Set Revenue Line Mapping
 
 ### BigCommerce
