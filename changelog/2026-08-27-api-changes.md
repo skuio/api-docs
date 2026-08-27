@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-27
-description: This release includes 4 additions.
+description: This release includes 6 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-08-27
 ---
 
-This release includes 4 additions.
+This release includes 6 additions.
 
 <!-- truncate -->
 
@@ -19,5 +19,7 @@ This release includes 4 additions.
 - `GET /api/reporting/inventory-cogs/drilldown` — Get Inventory COGS Drilldown
 - `GET /api/reporting/inventory-cogs/drilldown/export` — Export Inventory COGS Drilldown
 - `GET /api/reporting/inventory-cogs/export` — Export Inventory COGS Report
+- `GET /api/reporting/inventory-value-change` — Get Inventory Value Change
+- `GET /api/reporting/inventory-value-change/transactions` — List Inventory Value Change Transactions
 
 _Spec version 1.0.0 → 1.0.0._
