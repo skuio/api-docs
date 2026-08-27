@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-08-27
-description: This release includes 8 additions, 1 change. 1 breaking change — action required.
+description: This release includes 10 additions, 1 change. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-08-27
 ---
 
-This release includes 8 additions, 1 change. 1 breaking change — action required.
+This release includes 10 additions, 1 change. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -25,6 +25,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed parameter(s): `inventory_status`
 
 ## Added
+
+### Amazon
+- `GET /api/amazon/unified/awd/ledgers/export` — Export AWD Ledgers
+- `POST /api/amazon/{integrationInstance}/draft-inbound-plans/portal/{hashedDraftInboundPlanId}/submit-verification-batch` — Submit Verification (Batch)
 
 ### Products
 - `GET /api/v2/products/{product}/fulfillment-debt-summary` — Get Product Fulfillment Debt Summary
