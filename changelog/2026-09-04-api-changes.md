@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-04
-description: This release includes 23 additions, 2 removals. 2 breaking changes — action required.
+description: This release includes 24 additions, 2 removals. 2 breaking changes — action required.
 authors: [product-team]
 tags: [added, removed, breaking]
 date: 2026-09-04
 ---
 
-This release includes 23 additions, 2 removals. 2 breaking changes — action required.
+This release includes 24 additions, 2 removals. 2 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -48,6 +48,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Ledger (Accounting v2)
 - `GET /api/ledger/reports/restatement-log` — List Restatement Log
+
+### Product Listings
+- `POST /api/v2/product-listings/{listing}/delete` — Delete Listing from Channel
 
 ### Walmart
 - `GET /api/walmart/{integrationInstance}/wfs/removals/candidates` — List WFS Removal Candidates
