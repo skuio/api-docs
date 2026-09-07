@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-07
-description: This release includes 5 additions.
+description: This release includes 5 additions, 1 change.
 authors: [product-team]
-tags: [added]
+tags: [added, changed]
 date: 2026-09-07
 ---
 
-This release includes 5 additions.
+This release includes 5 additions, 1 change.
 
 <!-- truncate -->
 
@@ -20,5 +20,12 @@ This release includes 5 additions.
 - `GET /api/reporting/sales-rep-commissions/monthly-breakdown-by-rep` — Get Monthly Breakdown by Rep
 - `GET /api/reporting/sales-rep-commissions/performance` — List Sales Rep Performance
 - `GET /api/reporting/sales-rep-commissions/performance-summary` — Get Performance Summary
+
+## Changed
+
+### ShipHero
+- `POST /api/shiphero/integration-instances/{integration_instance}/inventory/refresh` — Refresh Inventory
+  - new response code(s): `202`, `409`
+  - removed response code(s): `200`
 
 _Spec version 1.0.0 → 1.0.0._
