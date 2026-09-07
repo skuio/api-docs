@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-07
-description: This release includes 18 additions, 1 change, 21 removals. 21 breaking changes — action required.
+description: This release includes 18 additions, 1 change, 22 removals. 22 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-09-07
 ---
 
-This release includes 18 additions, 1 change, 21 removals. 21 breaking changes — action required.
+This release includes 18 additions, 1 change, 22 removals. 22 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -44,6 +44,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - **Removed** `GET /api/admin/portal/locations/{location}/impersonate` — Impersonate Buyer View
 - **Removed** `POST /api/admin/portal/locations/{location}/place-order` — Place Order on Behalf
 - **Removed** `POST /api/admin/portal/locations/{location}/push-cart` — Push Cart to Buyer
+
+#### Session
+- **Removed** `POST /api/portal/active-location` — Switch Active Location
 
 #### Settings
 - **Removed** `GET /api/admin/portal/companies/{company}/settings` — Get Company Settings
