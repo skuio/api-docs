@@ -19,10 +19,14 @@ const apiOperationCount = (() => {
   }
 })();
 
-// Release Notes moved to docs.sku.io (skuio/docs) in 2026-07. These client-side
-// redirects forward every old developer.sku.io/release-notes/* URL to its new
-// home; the list was generated from the release-notes build at move time. The
-// app's "What's New" popover and the navbar/footer now point at docs.sku.io.
+// Release Notes moved to skuio/docs in 2026-07. These client-side redirects
+// forward every old developer.sku.io/release-notes/* URL to its new home; the
+// list was generated from the release-notes build at move time.
+// Targets are www.sku.io/docs/release-notes/* — the FINAL URL, with the
+// trailing slash. `docs.sku.io` was retired soon after the move and now 301s
+// (twice: once for the host, once for the slash), so pointing here at the old
+// host put a 2-hop chain on all ~4,300 pages of this site. Keep these absolute
+// and current; do not reintroduce `docs.sku.io`.
 const releaseNotesRedirects: { from: string; to: string }[] = JSON.parse(
   fs.readFileSync("./release-notes-redirects.json", "utf8")
 );
@@ -120,7 +124,7 @@ const config: Config = {
     [
       "@docusaurus/plugin-client-redirects",
       {
-        // Old /release-notes/* URLs → docs.sku.io (the feed moved off this site).
+        // Old /release-notes/* URLs → www.sku.io/docs/ (the feed moved off this site).
         redirects: releaseNotesRedirects,
         createRedirects(existingPath: string) {
           const m = existingPath.match(
@@ -181,7 +185,7 @@ const config: Config = {
         },
       },
     ],
-    // Release Notes moved to docs.sku.io (skuio/docs) in 2026-07 — the
+    // Release Notes moved to skuio/docs in 2026-07 — the
     // content-blog + release-notes-tree plugins now live there. Old URLs are
     // forwarded by the client-redirects `releaseNotesRedirects` list above.
     // The API Changelog blog below stays on this site.
@@ -292,7 +296,7 @@ const config: Config = {
           position: "left",
         },
         {
-          href: "https://docs.sku.io/release-notes",
+          href: "https://www.sku.io/docs/release-notes/",
           label: "Release Notes",
           position: "left",
         },
@@ -331,7 +335,7 @@ const config: Config = {
             },
             {
               label: "Release Notes",
-              href: "https://docs.sku.io/release-notes",
+              href: "https://www.sku.io/docs/release-notes/",
             },
             {
               label: "API Changelog",
