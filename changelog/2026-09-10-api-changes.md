@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-10
-description: This release includes 15 additions.
+description: This release includes 17 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-09-10
 ---
 
-This release includes 15 additions.
+This release includes 17 additions.
 
 <!-- truncate -->
 
@@ -33,6 +33,10 @@ This release includes 15 additions.
 - `DELETE /api/v2/sales-channels/{salesChannel}/product-templates/{template}` — Delete Product Template
 - `GET /api/v2/sales-channels/{salesChannel}/product-templates/{template}` — Get Product Template
 - `PUT /api/v2/sales-channels/{salesChannel}/product-templates/{template}` — Update Product Template
+
+### Vendor Credits
+- `GET /api/vendor-credits/credit-reasons` — List Vendor Credit Reasons
+- `GET /api/vendor-credits/{vendor_credit}/cost-impact` — Preview Vendor Credit Cost Impact
 
 ### Xero
 - `POST /api/xero/v2/sync-status/{entity}/sync-now` — Sync Entity From Xero
