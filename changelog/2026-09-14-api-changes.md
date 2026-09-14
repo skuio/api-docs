@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-14
-description: This release includes 121 additions.
+description: This release includes 122 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-09-14
 ---
 
-This release includes 121 additions.
+This release includes 122 additions.
 
 <!-- truncate -->
 
@@ -50,6 +50,7 @@ This release includes 121 additions.
 - `POST /api/support/agent/macros/{macro}/render` — Render Agent Macro
 - `GET /api/support/agent/metrics` — Get Agent Dashboard Metrics
 - `GET /api/support/agent/metrics/daily` — Get Daily Support Metrics
+- `GET /api/support/agent/queue-counts` — Queue counts
 - `POST /api/support/agent/releases` — Record Support Release
 - `GET /api/support/agent/saved-views` — List Saved Views
 - `POST /api/support/agent/saved-views` — Create Saved View
@@ -89,7 +90,6 @@ This release includes 121 additions.
 - `GET /api/support/notification-preferences` — Get Support Notification Preferences
 - `DELETE /api/support/push/subscriptions` — Delete Support Push Subscription
 - `GET /api/support/push/subscriptions` — List Support Push Subscriptions
-- `POST /api/support/push/subscriptions` — Register Support Push Subscription
 - `GET /api/support/settings` — Get Support Settings
 - `GET /api/support/webhooks` — List Support Webhooks
 - `DELETE /api/support/webhooks/{webhook}` — Delete Support Webhook
@@ -130,6 +130,6 @@ This release includes 121 additions.
 - `DELETE /api/support/tickets/{ticket}/participants/{participant}` — Remove Support Ticket Participant
 - `DELETE /api/support/tickets/{ticket}/watchers/{user}` — Remove Support Ticket Watcher
 
-_…plus 21 more (see the API reference)._
+_…plus 22 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
