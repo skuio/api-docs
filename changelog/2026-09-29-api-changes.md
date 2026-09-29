@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-09-29
-description: This release includes 8 additions.
+description: This release includes 9 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-09-29
 ---
 
-This release includes 8 additions.
+This release includes 9 additions.
 
 <!-- truncate -->
 
@@ -19,6 +19,9 @@ This release includes 8 additions.
 
 ### Fulfillments
 - `POST /api/sales-order-fulfillments/lines/{salesOrderFulfillmentLine}/assign-serials` — Assign Missing Serials to a Shipment Line
+
+### Inbound Shipments
+- `POST /api/inbound-shipments/{inbound_shipment}/reopen` — Reopen Shipment
 
 ### Sales Orders
 - `POST /api/sales-order-fulfillments/{salesOrderFulfillment}/reverse-to-pre-tracked` — Reverse Sales Order Fulfillment to Pre-Tracked
