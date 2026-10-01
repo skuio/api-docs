@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-01
-description: This release includes 63 additions.
+description: This release includes 68 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-01
 ---
 
-This release includes 63 additions.
+This release includes 68 additions.
 
 <!-- truncate -->
 
@@ -16,8 +16,13 @@ This release includes 63 additions.
 
 ### Agent Console
 - `GET /api/support/agent/ai/control` — Get AI Control Feed
+- `GET /api/support/agent/ai/feed` — Get AI Runner Feed
 - `POST /api/support/agent/ai/instructions/{instruction}/consume` — Consume AI Instruction
 - `POST /api/support/agent/ai/runner-heartbeat` — Send AI Runner Heartbeat
+- `GET /api/support/agent/ai/runners` — List AI Runners
+- `GET /api/support/agent/ai/runners/me` — Get My AI Runner
+- `PUT /api/support/agent/ai/runners/me` — Update My AI Runner
+- `PUT /api/support/agent/ai/runners/{runner}` — Update AI Runner
 - `PUT /api/support/agent/ai/settings` — Update AI Agent Settings
 - `GET /api/support/agent/ai/status` — Get AI Agent Status
 - `GET /api/support/agent/alerts` — List Alerts
