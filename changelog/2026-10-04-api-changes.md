@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-04
-description: This release includes 69 additions, 3 changes.
+description: This release includes 71 additions, 3 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-10-04
 ---
 
-This release includes 69 additions, 3 changes.
+This release includes 71 additions, 3 changes.
 
 <!-- truncate -->
 
@@ -18,6 +18,8 @@ This release includes 69 additions, 3 changes.
 - `GET /api/amazon/unified/reimbursement-cases/remeasure-plan` — Get Remeasure Plan
 - `POST /api/amazon/unified/reimbursement-cases/remeasure-quota` — Record Remeasure Quota
 - `POST /api/amazon/unified/reimbursement-cases/remeasurements` — Record Remeasurements
+- `GET /api/v2/amazon/asins/{asin}/daily` — List ASIN Daily Data
+- `GET /api/v2/amazon/asins/{asin}/daily/export` — Export ASIN Daily Data
 - `GET /api/v2/amazon/asins/{asin}/evidence.pdf` — Download ASIN Offer Evidence PDF
 - `GET /api/v2/amazon/asins/{asin}/offer-events` — List ASIN Offer Change Events
 - `GET /api/v2/amazon/asins/{asin}/offer-history` — Get ASIN Offer History
