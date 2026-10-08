@@ -1,18 +1,24 @@
 ---
 title: API changes — 2026-10-08
-description: This release includes 17 additions, 2 changes.
+description: This release includes 21 additions, 5 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-10-08
 ---
 
-This release includes 17 additions, 2 changes.
+This release includes 21 additions, 5 changes.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Custom Report Builder
+- `POST /api/v2/report-builder/sql/export` — Export SQL Statement Results
+- `POST /api/v2/report-builder/sql/run` — Run SQL Statement
+- `GET /api/v2/report-builder/sql/schema` — Get SQL Schema
+- `POST /api/v2/report-builder/sql/validate` — Validate SQL Statement
 
 ### Products
 - `GET /api/products/{product}/three-pl-costs` — Get Product 3PL Costs
@@ -38,6 +44,15 @@ This release includes 17 additions, 2 changes.
 - `POST /api/shopify/{integrationInstance}/reserve-by-tag/release` — Release Tag Holds
 
 ## Changed
+
+### Custom Report Builder
+- `POST /api/v2/custom-reports` — Create Custom Report
+  - new response code(s): `201`
+  - removed response code(s): `200`
+- `POST /api/v2/custom-reports/{id}/export` — Export Custom Report
+  - removed response code(s): `200`
+- `POST /api/v2/custom-reports/{id}/shares` — Add Share
+  - removed response code(s): `200`
 
 ### ShipBob
 - `DELETE /api/shipbob/{instance}` — Delete Instance
