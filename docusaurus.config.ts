@@ -257,12 +257,13 @@ const config: Config = {
       typesenseServerConfig: {
         nodes: [
           {
-            host: "lnkop3txzmv2ic6up-1.a2.typesense.net",
+            // Self-hosted docs-search Typesense on pod-dev-1 (sku-ops role `typesense-docs`).
+            host: "search.sku.io",
             port: 443,
             protocol: "https",
           },
         ],
-        apiKey: "joMetD2UX5WlAisU4Vris1XyvQx0FSGV",
+        apiKey: "95fdbb875bea5e7f39539062f53f6efd761b53e91f0ef103",
       },
       typesenseSearchParameters: {},
     },
