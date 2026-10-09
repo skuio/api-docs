@@ -265,7 +265,17 @@ const config: Config = {
         ],
         apiKey: "95fdbb875bea5e7f39539062f53f6efd761b53e91f0ef103",
       },
-      typesenseSearchParameters: {},
+      typesenseSearchParameters: {
+        // The theme's default `group_by: "url"` (max 3 hits per page) cost ~0.4-1.2s per
+        // query on this ~169k-record collection — broad queries like "sales orders" ran
+        // past the widget's ~5s timeout and rendered "No results" (25.7s on the old
+        // Typesense Cloud box). Grouping is what's expensive, and it buys nothing here:
+        // measured 2026-10-09, the ungrouped top results were identical to the grouped
+        // ones for 8 sample queries, already spread across distinct pages, at 1-7ms.
+        // An empty group_by disables grouping; per_page keeps ~the same number of rows.
+        group_by: "",
+        per_page: 20,
+      },
     },
     // Default preview image for shared links (OG / Twitter). Brand card lives
     // at static/img/sku-social-card.png (1200×630).
