@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-11
-description: This release includes 11 additions.
+description: This release includes 14 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-11
 ---
 
-This release includes 11 additions.
+This release includes 14 additions.
 
 <!-- truncate -->
 
@@ -22,6 +22,11 @@ This release includes 11 additions.
 - `GET /api/channel-health/metrics/{metric}/orders` — List Orders Behind a Channel Health Metric
 - `GET /api/channel-health/snapshots` — List Channel Health Snapshots
 - `GET /api/channel-health/summary` — Get Channel Health Summary
+
+### PayPal
+- `POST /api/paypal-payment-links/{id}/email` — Email PayPal Pay Link
+- `POST /api/paypal/integrations/{id}/api-keys` — Connect PayPal With API Keys
+- `POST /api/sales-orders/{salesOrderId}/paypal-payment-links` — Create PayPal Pay Link
 
 ### Refresh
 - `POST /api/channel-health/refresh` — Refresh Channel Health
