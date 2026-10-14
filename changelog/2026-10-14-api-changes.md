@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-14
-description: This release includes 41 additions, 1 change.
+description: This release includes 43 additions, 1 change.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-10-14
 ---
 
-This release includes 41 additions, 1 change.
+This release includes 43 additions, 1 change.
 
 <!-- truncate -->
 
@@ -69,6 +69,8 @@ This release includes 41 additions, 1 change.
 ### Trackstar
 - `GET /api/trackstar/integration-instances/{integration_instance}/asn/inbound-types` — Get ASN Receipt Types
 - `GET /api/trackstar/integration-instances/{integration_instance}/products/push/changed` — List Changed Pushed Products
+- `DELETE /api/trackstar/integration-instances/{integration_instance}/products/{product}/mapping` — Remove Product Mapping
+- `PUT /api/trackstar/integration-instances/{integration_instance}/products/{product}/mapping` — Map Product to SKU.io Product
 
 ### Walmart
 - `GET /api/walmart/{integrationInstance}/lag-times` — List Lag Times
