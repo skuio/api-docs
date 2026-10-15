@@ -56012,6 +56012,9 @@ paths:
 
         **Slug `general`** accepts (validated keys):
 
+        - `weight_unit` (string: `lb`|`g`|`kg`|`oz`) and `dimension_unit` (string:
+        `in`|`cm`|`mm`) — the units new products start with.
+
         - `connectivity_alert_sound_enabled` (boolean) — play a repeating audio alert
         on the device when the app loses connection to the server, and a confirmation
         tone when restored. Non-boolean values are rejected with 422.
@@ -56094,6 +56097,34 @@ paths:
         - `show_barcodes_on_lines` (boolean, default `true`) — show each product''s
         barcode on sales order, purchase order and sales credit lines. Non-boolean
         values are rejected with 422.
+
+
+        **Slug `warehouse`** accepts the transfer numbering defaults:
+
+        - `transfer_prefix` (string|null, max 20) — prefix for new transfer numbers.
+
+        - `transfer_num_of_digits` (integer, 0-10) — zero-padded digits after the
+        prefix. Values outside 0-10 are rejected with 422.
+
+        - `transfer_shipping_method_id` (integer|null) — shipping method new transfers
+        start with.
+
+
+        **Slug `pos`** accepts the register toggles:
+
+        - `enabled` (boolean) — turn the point-of-sale register on.
+
+        - `require_customer` (boolean) — every sale must have a customer; checkout
+        without one is rejected with 422.
+
+        - `auto_print_receipt` (boolean) — open the printable receipt when a sale
+        completes.
+
+        - `auto_show_new_products_in_register` (boolean, default `true`) — new products
+        appear on the register''s product grid.
+
+        - `payment_processor` (string: `square`|`stripe`) and `square_location_id`
+        (string|null, max 64).
 
 
         **Serial format.** For `inventory-tracking`, `default_serial_format` must
@@ -203158,7 +203189,19 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Allowed only when the shortfall is a confirmed loss. For FBA, the Amazon inbound
+        shipment must be closed and the ledger synced. For an AWD purchase order,
+        Amazon''s AWD shipment record must confirm the missing cases and they must
+        match the ledger shortfall exactly — check `can_record_shortage` on Get AWD
+        Receipt Assessment first. When Amazon instead confirms every case arrived,
+        close the order with Confirm AWD Receipt; a shortage there would write off
+        stock Amazon holds.
+
+
+        Authentication: Requires Bearer token.'
       requestBody:
         content: {}
       parameters:
@@ -461309,8 +461352,10 @@ paths:
         servicelevel_token, servicelevel_name, amount/currency, amount_local/currency_local
         (amounts are strings), estimated_days, duration_terms, arrives_by, attributes
         (e.g. CHEAPEST, FASTEST, BESTVALUE), carrier_account, shipping_method_id (the
-        SKU.io shipping method mapped to this service level, or null), purchasable
-        and unavailable_reason (USPS rates are not purchasable for multi-parcel shipments).
+        SKU.io shipping method mapped to this service level, or null), shipping_method_name
+        (the display name of that shipping method, e.g. USPS Priority Mail, or null),
+        purchasable and unavailable_reason (USPS rates are not purchasable for multi-parcel
+        shipments).
 
 
         Returns 422 {message, reason} when the fulfillment order cannot use Shippo
@@ -461436,6 +461481,8 @@ paths:
                               type: string
                             shipping_method_id:
                               type: integer
+                            shipping_method_name:
+                              type: string
                             purchasable:
                               type: boolean
                             unavailable_reason:
@@ -461472,6 +461519,7 @@ paths:
                       - BESTVALUE
                       carrier_account: b741b99f95e841639b54272834bc478c
                       shipping_method_id: 7
+                      shipping_method_name: UPS Ground
                       purchasable: true
                       unavailable_reason: null
                     - object_id: 0a1b2c3d4e5f60718293a4b5c6d7e8f9
@@ -461491,6 +461539,7 @@ paths:
                       attributes: []
                       carrier_account: 3c2f6c1e8a0b4d3f9e7a5b1c0d2e4f68
                       shipping_method_id: 9
+                      shipping_method_name: USPS Ground Advantage
                       purchasable: true
                       unavailable_reason: null
                     - object_id: 545ab0a1a6ea4c9f9adb2512a57d6d8b
@@ -461511,6 +461560,7 @@ paths:
                       - FASTEST
                       carrier_account: 3c2f6c1e8a0b4d3f9e7a5b1c0d2e4f68
                       shipping_method_id: 8
+                      shipping_method_name: USPS Priority Mail
                       purchasable: true
                       unavailable_reason: null
                     messages: []
@@ -560456,7 +560506,12 @@ paths:
         **Requires permission:** `warehouse_transfers.update`
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        When the ASN is emailed, its email template must be turned on; otherwise the
+        request is refused with 422 and nothing is marked as sent. A transfer out
+        of an Amazon FBA warehouse uses the ASN (FBA) template.'
       requestBody:
         content: {}
       parameters:
@@ -560536,6 +560591,12 @@ paths:
                   value:
                     message: WT-0512 has no product lines, so there is nothing to
                       send an ASN for.
+                example-4:
+                  summary: 422 ASN Email Template Off
+                  value:
+                    status: failure
+                    message: The ASN email template is turned off. Turn it on under
+                      Settings → General → Email Templates, then send the ASN again.
             text/plain:
               schema:
                 type: object
@@ -597917,6 +597978,17 @@ paths:
                                       type: string
                                     blackouts:
                                       type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          start:
+                                            type: string
+                                          end:
+                                            type: string
+                                          label:
+                                            type: string
+                                          built_in:
+                                            type: boolean
                                     inherited_from:
                                       type: string
                                       nullable: true
@@ -597974,6 +598046,10 @@ paths:
                             send:
                               type: integer
                             need:
+                              type: integer
+                            buffer_need:
+                              type: integer
+                            selling_need:
                               type: integer
                             available:
                               type: integer
@@ -598366,7 +598442,11 @@ paths:
                           - 1
                           demand_multiplier: 1
                           rule_summary: ≥10 units per line
-                          blackouts: []
+                          blackouts:
+                          - start: '2026-11-27'
+                            end: '2026-12-06'
+                            label: FBT receiving paused
+                            built_in: true
                           inherited_from: null
                           buffer_days: 0
                           floor_strategy: days
@@ -598392,6 +598472,8 @@ paths:
                       products: 412
                       send: 18640
                       need: 23110
+                      buffer_need: 4540
+                      selling_need: 18570
                       available: 31250
                       reserve: 9420
                       sendable: 21830
@@ -598644,7 +598726,11 @@ paths:
                           - 1
                           demand_multiplier: 1
                           rule_summary: ≥10 units per line
-                          blackouts: []
+                          blackouts:
+                          - start: '2026-11-27'
+                            end: '2026-12-06'
+                            label: FBT receiving paused
+                            built_in: true
                           inherited_from: null
                           buffer_days: 0
                           floor_strategy: days
@@ -598665,6 +598751,8 @@ paths:
                       products: 412
                       send: 18640
                       need: 23110
+                      buffer_need: 4540
+                      selling_need: 18570
                       available: 31250
                       reserve: 9420
                       sendable: 21830
@@ -598795,7 +598883,11 @@ paths:
         When a working plan is already calculating (started within the last two hours),
         the in-flight plan is returned instead of starting another. When a working
         plan finishes it supersedes the previous ready working plan, and line overrides
-        from that plan are carried forward.
+        from that plan are carried forward. Likewise a send run that finishes supersedes
+        every earlier ready send run: their holds not yet in a draft are released,
+        the new run''s parent_send_plan_id points at the newest run it replaced, and
+        auto-draft skips the product × network pairs those runs already drafted (counted
+        in `auto_draft.already_drafted`).
 
 
         Authentication: a Personal Access Token in the Authorization header with the
@@ -599406,6 +599498,17 @@ paths:
                                         type: string
                                       blackouts:
                                         type: array
+                                        items:
+                                          type: object
+                                          properties:
+                                            start:
+                                              type: string
+                                            end:
+                                              type: string
+                                            label:
+                                              type: string
+                                            built_in:
+                                              type: boolean
                                       inherited_from:
                                         type: string
                                         nullable: true
@@ -599681,7 +599784,11 @@ paths:
                             - 1
                             demand_multiplier: 1
                             rule_summary: ≥10 units per line
-                            blackouts: []
+                            blackouts:
+                            - start: '2026-11-27'
+                              end: '2026-12-06'
+                              label: FBT receiving paused
+                              built_in: true
                             inherited_from: null
                             buffer_days: 0
                             floor_strategy: days
@@ -599783,6 +599890,13 @@ paths:
         Authentication: a Personal Access Token in the Authorization header with the
         `send-plans:read` scope. The token''s user also needs permission to view the
         send planner.
+
+
+        Reading the plan reconciles its supplier-direct orders: a suggestion whose
+        draft PO was deleted, archived, voided or canceled is open again and `totals.supplier_direct`
+        is recalculated. `totals` also carries `buffer_need` (need that only fills
+        a buffer network such as AWD, never short) and `selling_need` (need − buffer_need).
+        Plan fields are as in Get Send Plan.
 
 
         Either key is null when there is no such plan. `next_scheduled_run_at` is
@@ -600168,6 +600282,17 @@ paths:
                                         type: string
                                       blackouts:
                                         type: array
+                                        items:
+                                          type: object
+                                          properties:
+                                            start:
+                                              type: string
+                                            end:
+                                              type: string
+                                            label:
+                                              type: string
+                                            built_in:
+                                              type: boolean
                                       inherited_from:
                                         type: string
                                         nullable: true
@@ -600213,6 +600338,10 @@ paths:
                               send:
                                 type: integer
                               need:
+                                type: integer
+                              buffer_need:
+                                type: integer
+                              selling_need:
                                 type: integer
                               available:
                                 type: integer
@@ -600763,6 +600892,17 @@ paths:
                                         type: string
                                       blackouts:
                                         type: array
+                                        items:
+                                          type: object
+                                          properties:
+                                            start:
+                                              type: string
+                                            end:
+                                              type: string
+                                            label:
+                                              type: string
+                                            built_in:
+                                              type: boolean
                                       inherited_from:
                                         type: string
                                         nullable: true
@@ -600991,7 +601131,11 @@ paths:
                             - 1
                             demand_multiplier: 1
                             rule_summary: ≥10 units per line
-                            blackouts: []
+                            blackouts:
+                            - start: '2026-11-27'
+                              end: '2026-12-06'
+                              label: FBT receiving paused
+                              built_in: true
                             inherited_from: null
                             buffer_days: 0
                             floor_strategy: days
@@ -601012,6 +601156,8 @@ paths:
                         products: 412
                         send: 18640
                         need: 23110
+                        buffer_need: 4540
+                        selling_need: 18570
                         available: 31250
                         reserve: 9420
                         sendable: 21830
@@ -601265,7 +601411,11 @@ paths:
                             - 1
                             demand_multiplier: 1
                             rule_summary: ≥10 units per line
-                            blackouts: []
+                            blackouts:
+                            - start: '2026-11-27'
+                              end: '2026-12-06'
+                              label: FBT receiving paused
+                              built_in: true
                             inherited_from: null
                             buffer_days: 0
                             floor_strategy: days
@@ -601552,9 +601702,14 @@ paths:
         Send plan fields:
 
         - type: working | scenario | run. status: calculating | ready | failed | superseded
-        | archived.
+        | archived. A send run is superseded when a later run of it finishes calculating:
+        recalculating a run replaces every earlier ready run, releases their holds
+        that are not yet in a draft (holds kept for a draft stay with it) and leaves
+        them as read-only history — approvals, holds and drafts on a superseded run
+        are refused with 422.
 
-        - parent_send_plan_id: the scenario a promoted working plan came from.
+        - parent_send_plan_id: the scenario a promoted working plan came from; for
+        a recalculated send run, the newest run it replaced.
 
         - scope / policy_overrides: what the plan was requested with. policy: the
         fully resolved rules the plan ran with (tenant settings, every network''s
@@ -601570,8 +601725,10 @@ paths:
         - auto_draft (send runs only): what "Auto-create drafts for SKUs with no exceptions"
         drafted when the run finished — these drafts skip the per-network approval.
         Shape: at, lines, units, networks (destination_warehouse_id, label, lines,
-        units) and error (why drafting failed, else null). Null when nothing was auto-drafted
-        and on every other plan type.
+        units) and error (why drafting failed, else null), plus already_drafted: the
+        clean lines left out because a run this one replaced had already drafted them
+        (product × network), so they are never drafted twice. Null when nothing was
+        auto-drafted and on every other plan type.
 
         - as_of: when the calculation finished. stale_networks: an object keyed by
         destination warehouse ID of networks whose stock snapshot was out of date
@@ -601584,22 +601741,34 @@ paths:
         shortfall, exceptions and edited lines, plus per-network units, SKUs, cases,
         cubic feet and capacity usage in `totals.networks`, an object keyed by destination
         warehouse ID whose entries also carry destination_warehouse_id. Null while
-        calculating. `totals.carried_forward` counts the edits carried over from the
-        previous working plan. Each network''s `capacity` (null when no limit applies
-        this month) has limit, limit_multiplier (a scenario''s capacity what-if),
-        unit, storage_type, used_before, added, used_after, pct_used, cut_units, over_limit,
-        note and period_start for its first limit, with every storage type''s entry
-        under `by_storage_type` and `cut_units_total`. `capacity_missing` is set when
-        the network has limits for other months but none for this one, and `totals.capacity_warnings`
-        lists those messages plan-wide.
+        calculating. `totals.buffer_need` is the part of `need` that only fills a
+        buffer network (AWD) and is never counted as short; `totals.selling_need`
+        (need − buffer_need) is what `short` reads against. `totals.supplier_direct`
+        counts the supplier-direct suggestions still waiting for a PO (skus, lines,
+        units, unmet, suppliers, `by_destination` and `ordered` — the draft POs already
+        made); it is reconciled on every read: a suggestion whose draft PO was deleted,
+        archived, voided or canceled is open again and these totals are recalculated.
+        `totals.carried_forward` counts the edits carried over from the previous working
+        plan. Each network''s `capacity` (null when no limit applies this month) has
+        limit, limit_multiplier (a scenario''s capacity what-if), unit, storage_type,
+        used_before, added, used_after, pct_used, cut_units, over_limit, note and
+        period_start for its first limit, with every storage type''s entry under `by_storage_type`
+        and `cut_units_total`. `capacity_missing` is set when the network has limits
+        for other months but none for this one, and `totals.capacity_warnings` lists
+        those messages plan-wide.
 
         - policy.networks entries also carry the allocation rules the plan used: buffer_days,
         floor_strategy (days | service_level) with service_level, channel_priority
         (protect_other_channels | favor_network), seed_strategy (fixed | proxy) with
         seed_proxy_pct and seed_proxy_destination_warehouse_id, min_shelf_life_days,
         demand_windows and demand_window_factor, and inventory_refreshable (the network''s
-        stock can be refreshed with Refresh Network Inventory). policy.capacity_multiplier
-        scales every capacity limit.
+        stock can be refreshed with Refresh Network Inventory). `short_label` is unique
+        across destinations: several destinations of one network read as the short
+        label plus the country ("FBA US", "FBA CA"), or their own names when the countries
+        don''t tell them apart. `blackouts` entries that come from the network itself
+        (e.g. TikTok FBT''s peak receiving pause) carry `built_in: true`: always applied
+        and not editable in the network rules. policy.capacity_multiplier scales every
+        capacity limit.
 
         - tracked_job_log_id: the background job that calculated the plan. error:
         why a failed plan failed.
@@ -601799,7 +601968,11 @@ paths:
                             - 1
                             demand_multiplier: 1
                             rule_summary: ≥10 units per line
-                            blackouts: []
+                            blackouts:
+                            - start: '2026-11-27'
+                              end: '2026-12-06'
+                              label: FBT receiving paused
+                              built_in: true
                             inherited_from: null
                             buffer_days: 0
                             floor_strategy: days
@@ -601820,6 +601993,8 @@ paths:
                         products: 412
                         send: 18640
                         need: 23110
+                        buffer_need: 4540
+                        selling_need: 18570
                         available: 31250
                         reserve: 9420
                         sendable: 21830
@@ -602076,7 +602251,11 @@ paths:
                             - 1
                             demand_multiplier: 1
                             rule_summary: ≥10 units per line
-                            blackouts: []
+                            blackouts:
+                            - start: '2026-11-27'
+                              end: '2026-12-06'
+                              label: FBT receiving paused
+                              built_in: true
                             inherited_from: null
                             buffer_days: 0
                             floor_strategy: days
@@ -602517,6 +602696,17 @@ paths:
                                     type: string
                                   blackouts:
                                     type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        start:
+                                          type: string
+                                        end:
+                                          type: string
+                                        label:
+                                          type: string
+                                        built_in:
+                                          type: boolean
                                   buffer_days:
                                     type: integer
                                   floor_strategy:
@@ -602571,6 +602761,10 @@ paths:
                           send:
                             type: integer
                           need:
+                            type: integer
+                          buffer_need:
+                            type: integer
+                          selling_need:
                             type: integer
                           available:
                             type: integer
@@ -602926,7 +603120,11 @@ paths:
                           - 1
                           demand_multiplier: 1
                           rule_summary: ≥10 units per line
-                          blackouts: []
+                          blackouts:
+                          - start: '2026-11-27'
+                            end: '2026-12-06'
+                            label: FBT receiving paused
+                            built_in: true
                           buffer_days: 0
                           floor_strategy: days
                           service_level: 0.95
@@ -602951,6 +603149,8 @@ paths:
                       products: 412
                       send: 18640
                       need: 23110
+                      buffer_need: 4540
+                      selling_need: 18570
                       available: 31250
                       reserve: 9420
                       sendable: 21830
@@ -603556,6 +603756,17 @@ paths:
                                     type: string
                                   blackouts:
                                     type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        start:
+                                          type: string
+                                        end:
+                                          type: string
+                                        label:
+                                          type: string
+                                        built_in:
+                                          type: boolean
                                   buffer_days:
                                     type: integer
                                   floor_strategy:
@@ -603610,6 +603821,10 @@ paths:
                           send:
                             type: integer
                           need:
+                            type: integer
+                          buffer_need:
+                            type: integer
+                          selling_need:
                             type: integer
                           available:
                             type: integer
@@ -603966,7 +604181,11 @@ paths:
                           - 1
                           demand_multiplier: 1
                           rule_summary: ≥10 units per line
-                          blackouts: []
+                          blackouts:
+                          - start: '2026-11-27'
+                            end: '2026-12-06'
+                            label: FBT receiving paused
+                            built_in: true
                           buffer_days: 0
                           floor_strategy: days
                           service_level: 0.95
@@ -603991,6 +604210,8 @@ paths:
                       products: 412
                       send: 18640
                       need: 23110
+                      buffer_need: 4540
+                      selling_need: 18570
                       available: 31250
                       reserve: 9420
                       sendable: 21830
@@ -604637,6 +604858,17 @@ paths:
                                     type: string
                                   blackouts:
                                     type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        start:
+                                          type: string
+                                        end:
+                                          type: string
+                                        label:
+                                          type: string
+                                        built_in:
+                                          type: boolean
                                   buffer_days:
                                     type: integer
                                   floor_strategy:
@@ -604679,6 +604911,10 @@ paths:
                           send:
                             type: integer
                           need:
+                            type: integer
+                          buffer_need:
+                            type: integer
+                          selling_need:
                             type: integer
                           available:
                             type: integer
@@ -605035,7 +605271,11 @@ paths:
                           - 1
                           demand_multiplier: 1
                           rule_summary: ≥10 units per line
-                          blackouts: []
+                          blackouts:
+                          - start: '2026-11-27'
+                            end: '2026-12-06'
+                            label: FBT receiving paused
+                            built_in: true
                           buffer_days: 0
                           floor_strategy: days
                           service_level: 0.95
@@ -605055,6 +605295,8 @@ paths:
                       products: 412
                       send: 18640
                       need: 23110
+                      buffer_need: 4540
+                      selling_need: 18570
                       available: 31250
                       reserve: 9420
                       sendable: 21830
@@ -605208,11 +605450,13 @@ paths:
       - Send Planner
       summary: List Send Plan Products
       description: 'List a plan''s results one product per row: the product, its source
-        pool (available, protected, sendable, total need and send, shortfall, units
-        left over, and `pool.sources` — per source warehouse: available, kit-buildable
-        and inbound units with the nearest inbound ETA and reference, and whether
-        it serves your own orders), product-level flags, and that product''s line
-        for every network nested in `lines`.
+        pool (available, protected, sendable, total need and send, `buffer_need` —
+        the part of total need that only fills a buffer network such as AWD, never
+        counted as short, so the shortfall reads against total_need − buffer_need
+        —, shortfall, units left over, and `pool.sources` — per source warehouse:
+        available, kit-buildable and inbound units with the nearest inbound ETA and
+        reference, and whether it serves your own orders), product-level flags, and
+        that product''s line for every network nested in `lines`.
 
 
         :::info[Required scope: `send-plans:read`]
@@ -605364,6 +605608,11 @@ paths:
         purchase or manufacturing order they come from).
 
 
+        Reading the rows reconciles supplier-direct orders first: a suggestion whose
+        draft PO was deleted, archived, voided or canceled loses its `purchase_order`
+        (it is open again) and the plan''s totals are recalculated.
+
+
         Line `meta` also carries `on_order` / `on_order_note` (units on supplier POs
         shipping straight to the network, already inside `inbound`, e.g. "PO-0001
         (draft) 800 in 28 d") and `supplier_direct` when your warehouses can''t cover
@@ -605443,6 +605692,8 @@ paths:
                             sendable:
                               type: integer
                             total_need:
+                              type: integer
+                            buffer_need:
                               type: integer
                             total_send:
                               type: integer
@@ -605775,6 +606026,7 @@ paths:
                       reserved_local: 402
                       sendable: 238
                       total_need: 230
+                      buffer_need: 0
                       total_send: 228
                       shortfall: 2
                       awd_unfilled: 0
@@ -606050,6 +606302,12 @@ paths:
         was raised earlier, quantity is 0 and only `existing` is filled.
 
 
+        `row.pool.buffer_need` is always null here (the row is built without its lines;
+        the lines are in `lines`). Reading the product reconciles supplier-direct
+        orders like List Send Plan Products: a suggestion whose draft PO was deleted,
+        archived, voided or canceled is open again.
+
+
         Returns 404 when the product is not in the plan.'
       parameters:
       - name: sendPlan
@@ -606125,6 +606383,9 @@ paths:
                                 type: integer
                               total_need:
                                 type: integer
+                              buffer_need:
+                                type: string
+                                nullable: true
                               total_send:
                                 type: integer
                               shortfall:
@@ -606465,6 +606726,7 @@ paths:
                         reserved_local: 402
                         sendable: 238
                         total_need: 230
+                        buffer_need: null
                         total_send: 228
                         shortfall: 2
                         awd_unfilled: 0
@@ -608011,8 +608273,10 @@ paths:
 
 
         Authentication: a Personal Access Token in the Authorization header with the
-        `send-plans:write` scope. The token''s user also needs permission to edit
-        the send planner and to run MRP.
+        `send-plans:write` scope. The token''s user also needs the Send Planner →
+        Edit permission (the route''s own gate) and MRP Planning → Run; without the
+        latter, 403 "Adding demand to the production schedule needs the "MRP Planning
+        → Run" permission."
 
 
         Body fields:
@@ -608375,8 +608639,9 @@ paths:
         lines and error; user is null).
 
 
-        Returns 422 when the plan is not a ready send run, the network is not part
-        of the run, or nothing is going to it.'
+        Returns 422 when the plan is not a ready send run (a run superseded by a recalculated
+        run takes no approvals: "This send run is not ready."), the network is not
+        part of the run, or nothing is going to it.'
       requestBody:
         content:
           application/json:
@@ -608617,7 +608882,8 @@ paths:
         lines and error; user is null).
 
 
-        Returns 422 when the plan is not a ready send run.'
+        Returns 422 when the plan is not a ready send run (including one superseded
+        by a recalculated run).'
       parameters:
       - name: sendPlan
         in: path
@@ -608809,14 +609075,17 @@ paths:
         own screen, so its lines reopened and their holds were released), `draft_type`
         and `draft_id` (the inbound draft created in that network), `reference`, `route`
         (relative path that opens the draft in SKU.io), `error` (why it failed, or
-        what to do for a manual network), `lines_count`, `units`, and `hold` (whether
-        source stock was held). `options`: what was chosen for the group (draft_name,
-        append_to_draft_id, listing_skus). `shortage`: why the group''s stock could
-        not be held — per product: product_id, sku, line_id, warehouse_id, planned
-        and available units. `skipped_lines`: lines the network left out of the draft,
-        each with line_id, sku and reason. `warehouse_transfer`: for a manual group
-        followed by a transfer draft, its id, reference and route. `lines`: the group''s
-        lines (line_id, product_id, sku, name, quantity, case_pack). `updated_at`.
+        what to do for a manual network — a failure names the reason when it is safe
+        to show and the next step, e.g. "Could not create the FBT draft. Retry, or
+        create it on TikTok Shop → FBT → Inbound plans."), `lines_count`, `units`,
+        and `hold` (whether source stock was held). `options`: what was chosen for
+        the group (draft_name, append_to_draft_id, listing_skus). `shortage`: why
+        the group''s stock could not be held — per product: product_id, sku, line_id,
+        warehouse_id, planned and available units. `skipped_lines`: lines the network
+        left out of the draft, each with line_id, sku and reason. `warehouse_transfer`:
+        for a manual group followed by a transfer draft, its id, reference and route.
+        `lines`: the group''s lines (line_id, product_id, sku, name, quantity, case_pack).
+        `updated_at`.
 
 
         Query parameters:
@@ -609066,10 +609335,22 @@ paths:
         \ line ID → listing SKU to send under, for products with more than one listing\
         \ on the network.\n\nFor a send run, every network with units must first be\
         \ approved at its current quantity (see Send Run Approvals); otherwise 422\
-        \ with an `approvals` error naming each network still to approve.\n\nReturns\
-        \ 422 when the plan is not ready, is a scenario, is more than 3 days old,\
-        \ has nothing to draft in the selection, or a source no longer has the stock\
-        \ to hold."
+        \ with an `approvals` error naming each network still to approve.\n\n403 (nothing\
+        \ held or drafted) when the user lacks the permission the hand-off needs,\
+        \ named as the role editor shows it: marketplace drafts (FBA, AWD, WFS, FBT)\
+        \ — \"Creating marketplace drafts also needs the \"Integrations → Edit\" permission,\
+        \ the same one the FBA, AWD, WFS and FBT inbound screens need.\"; warehouse\
+        \ transfer drafts — \"Creating warehouse transfer drafts also needs the \"\
+        Warehouse Transfers → Create\" permission.\"; holding source stock — \"Allocating\
+        \ source stock also needs the \"Warehouse Transfers → Create\" permission,\
+        \ because it sets stock aside in your warehouses.\"\n\nA group that fails\
+        \ keeps a message that names what went wrong (when it is safe to show) and\
+        \ the next step, e.g. \"Could not create the WFS draft: &lt;reason>. Retry,\
+        \ or create it on Walmart → WFS → Inbound shipments.\"; errors not written\
+        \ for people stay in the logs.\n\nReturns 422 when the plan is not ready (including\
+        \ a send run superseded by a recalculated run), is a scenario, is more than\
+        \ 3 days old, has nothing to draft in the selection, or a source no longer\
+        \ has the stock to hold."
       requestBody:
         content:
           application/json:
@@ -609527,6 +609808,16 @@ paths:
         first (422 with an `approvals` error otherwise).
 
 
+        403 (nothing held or drafted) when the user lacks the permission the hand-off
+        needs, named as the role editor shows it: marketplace drafts (FBA, AWD, WFS,
+        FBT) — "Creating marketplace drafts also needs the "Integrations → Edit" permission,
+        the same one the FBA, AWD, WFS and FBT inbound screens need."; warehouse transfer
+        drafts — "Creating warehouse transfer drafts also needs the "Warehouse Transfers
+        → Create" permission."; holding source stock — "Allocating source stock also
+        needs the "Warehouse Transfers → Create" permission, because it sets stock
+        aside in your warehouses."
+
+
         Returns 422 when there are no failed drafts.'
       requestBody:
         content:
@@ -609707,6 +609998,16 @@ paths:
         No request body. Returns 202 with `tracked_job_log_id`, the `drafts` being
         created, and `fitted` (sku, from, to for every line that was cut). `drafts`
         is empty when nothing is available at the source now.
+
+
+        403 (nothing held or drafted) when the user lacks the permission the hand-off
+        needs, named as the role editor shows it: marketplace drafts (FBA, AWD, WFS,
+        FBT) — "Creating marketplace drafts also needs the "Integrations → Edit" permission,
+        the same one the FBA, AWD, WFS and FBT inbound screens need."; warehouse transfer
+        drafts — "Creating warehouse transfer drafts also needs the "Warehouse Transfers
+        → Create" permission."; holding source stock — "Allocating source stock also
+        needs the "Warehouse Transfers → Create" permission, because it sets stock
+        aside in your warehouses."
 
 
         Returns 404 when the group is not part of the plan, and 422 when the group
@@ -609910,8 +610211,13 @@ paths:
         sku, line_id, warehouse_id, planned and available units).
 
 
-        Returns 422 when the plan is not ready, is a scenario, or no group could be
-        held.'
+        403 without the Warehouse Transfers → Create permission: "Allocating source
+        stock also needs the "Warehouse Transfers → Create" permission, because it
+        sets stock aside in your warehouses."
+
+
+        Returns 422 when the plan is not ready (including a superseded send run),
+        is a scenario, or no group could be held.'
       requestBody:
         content:
           application/json:
@@ -610159,6 +610465,12 @@ paths:
         (suggestions in scope that already have a PO and would be skipped).
 
 
+        "Ordered" is reconciled on read: a suggestion whose draft PO has since been
+        deleted, archived, voided or canceled is open again (its `purchase_order`
+        is cleared, the plan''s `totals.supplier_direct` is recalculated) and is previewed
+        as an order again instead of counting in `already_ordered`.
+
+
         Needs the `send_planner.view` permission. API tokens: `send-plans:read`.'
       parameters:
       - name: sendPlan
@@ -610263,8 +610575,10 @@ paths:
         the product, or its average cost when the supplier has no price (or a $0 price).
         Nothing is sent to the supplier: the POs are drafts. Use **Preview supplier
         POs** first to see what would be created. A suggestion that already has a
-        PO is skipped. The next plan counts the PO as on its way to the network (line
-        `inbound`, `meta.on_order`), so the units aren''t suggested again.
+        PO is skipped; one whose PO was since deleted, archived, voided or canceled
+        is open again and is ordered again. The next plan counts the PO as on its
+        way to the network (line `inbound`, `meta.on_order`), so the units aren''t
+        suggested again.
 
 
         :::info[Required scope: `send-plans:write`]
@@ -610280,11 +610594,22 @@ paths:
 
 
         Response: `created` (id, number, supplier_id, supplier_name, destination_warehouse_id,
-        products, units per PO) and `skipped` (suggestions that already had a PO).
+        products, units per PO — counting only the products actually put on the PO),
+        `skipped` (suggestions that already had a PO) and `not_created` — the suggestions
+        no PO was made for, one entry per supplier × network: supplier_id, supplier_name,
+        destination_warehouse_id, skus (string[]) and reason (`no_longer_supplied`:
+        the supplier no longer has a supplier product for those SKUs; `nothing_to_order`:
+        the product is gone or no quantity is left). `message` says how many POs were
+        created and, when anything was not created, appends one sentence naming each
+        supplier and its SKUs (first five, then "and N more") with the fix: "1 order
+        not created: Castor Mills no longer supplies JBC-2. Add the product to the
+        supplier (or choose another supplier), recalculate the plan, then order again."
 
 
-        Needs the `send_planner.draft` and `purchase_orders.create` permissions (403
-        with an explanation otherwise). API tokens: `send-plans:write`.'
+        Needs the `send_planner.draft` and `purchase_orders.create` permissions; without
+        the latter, 403 "Creating purchase orders also needs the "Purchase Orders
+        → Create" permission." (permissions are named as the role editor shows them).
+        API tokens: `send-plans:write`.'
       requestBody:
         content:
           application/json:
@@ -610343,6 +610668,23 @@ paths:
                               type: integer
                       skipped:
                         type: integer
+                      not_created:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            supplier_id:
+                              type: integer
+                            supplier_name:
+                              type: string
+                            destination_warehouse_id:
+                              type: integer
+                            skus:
+                              type: array
+                              items:
+                                type: string
+                            reason:
+                              type: string
                   message:
                     type: string
                 example:
@@ -610356,8 +610698,17 @@ paths:
                       products: 1
                       units: 800
                     skipped: 0
-                  message: Created 1 draft purchase order, delivered straight to the
-                    network.
+                    not_created:
+                    - supplier_id: 3
+                      supplier_name: Castor Mills
+                      destination_warehouse_id: 4
+                      skus:
+                      - JBC-2
+                      reason: no_longer_supplied
+                  message: 'Created 1 draft purchase order, delivered straight to
+                    the network. 1 order not created: Castor Mills no longer supplies
+                    JBC-2. Add the product to the supplier (or choose another supplier),
+                    recalculate the plan, then order again.'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -610540,7 +610891,8 @@ paths:
 
         Authentication: a Personal Access Token in the Authorization header with the
         `send-plans:write` scope. The token''s user also needs permission to create
-        send planner drafts and to create warehouse transfers (403 otherwise).
+        send planner drafts and to create warehouse transfers (403 otherwise: "Creating
+        a transfer draft needs the "Warehouse Transfers → Create" permission.").
 
 
         Body fields (optional):
@@ -610774,6 +611126,15 @@ paths:
         - capacity_missing: networks with capacity limits for other months but none
         for this one (destination_warehouse_id, label, month, message) — plans do
         not cap them this month.
+
+
+        `blackouts` merges the network''s own windows — flagged `built_in: true` (e.g.
+        TikTok FBT''s peak receiving pause): always applied, not editable here, and
+        never saved into `setting.blackouts` — with the windows you saved. `short_label`
+        is unique across destinations: when several destinations share one (FBA US
+        / CA / MX, two 3PLs stocked by transfer) each reads as the short label plus
+        its country ("FBA US"), or its own name when the countries don''t tell them
+        apart.
 
 
         Each network entry also carries inherited_from: the name of the marketplace''s
@@ -611193,7 +611554,11 @@ paths:
                       - 1
                       demand_multiplier: 1
                       rule_summary: ≥10 units per line
-                      blackouts: []
+                      blackouts:
+                      - start: '2026-11-27'
+                        end: '2026-12-06'
+                        label: FBT receiving paused
+                        built_in: true
                       setting: null
                       lanes:
                       - source_warehouse_id: 1
@@ -611988,7 +612353,11 @@ paths:
                       - 1
                       demand_multiplier: 1
                       rule_summary: ≥10 units per line
-                      blackouts: []
+                      blackouts:
+                      - start: '2026-11-27'
+                        end: '2026-12-06'
+                        label: FBT receiving paused
+                        built_in: true
                       setting: null
                       lanes:
                       - source_warehouse_id: 1
@@ -612522,12 +612891,13 @@ paths:
         :::\n\nAuthentication: a Personal Access Token in the Authorization header\
         \ with the `send-plans:write` scope. The token's user also needs permission\
         \ to edit the send planner.\n\nBody fields:\n- lanes (array, required, max\
-        \ 200)\n  - lanes[].source_warehouse_id (integer, required): must exist.\n\
+        \ 2000)\n  - lanes[].source_warehouse_id (integer, required): must exist.\n\
         \  - lanes[].destination_warehouse_id (integer, required): must exist.\n \
         \ - lanes[].priority (integer, required, 1-1000): lower is tried first.\n\
         \  - lanes[].enabled (boolean, required).\n  - lanes[].lead_days_override\
-        \ (integer, 0-180, nullable).\n\nResponse: the full network list, as in List\
-        \ Send Networks."
+        \ (integer, 0-180, nullable): omit it to keep the lane's stored override;\
+        \ send null to clear it.\n\nResponse: the full network list, as in List Send\
+        \ Networks."
       requestBody:
         content:
           application/json:
@@ -612972,7 +613342,11 @@ paths:
                       - 1
                       demand_multiplier: 1
                       rule_summary: ≥10 units per line
-                      blackouts: []
+                      blackouts:
+                      - start: '2026-11-27'
+                        end: '2026-12-06'
+                        label: FBT receiving paused
+                        built_in: true
                       setting: null
                       lanes:
                       - source_warehouse_id: 1
@@ -613474,7 +613848,11 @@ paths:
                       - 1
                       demand_multiplier: 1
                       rule_summary: ≥10 units per line
-                      blackouts: []
+                      blackouts:
+                      - start: '2026-11-27'
+                        end: '2026-12-06'
+                        label: FBT receiving paused
+                        built_in: true
                       setting: null
                       lanes:
                       - source_warehouse_id: 1
@@ -614067,13 +614445,15 @@ paths:
 
 
         Response `data`: `warehouses` — your own active warehouses and 3PLs (id, name,
-        type, country_code, stocked_by_transfer, distribution_sources: names of the
-        warehouses Demand Planning''s distribution network already transfers to it
-        from) — `selected`, the IDs stocked by transfer — and `double_planned` (id,
-        name, distribution_sources), the selected warehouses the distribution network
-        also feeds, which can be stocked twice. A warehouse stocked by transfer becomes
-        a destination of the plan (network warehouse_transfer) instead of a source,
-        and its sends are drafted as warehouse transfers.'
+        type, country_code, stocked_by_transfer, excluded_from_planning — flagged
+        "Exclude from Purchasing / Demand Planning": the planner neither sends from
+        it nor stocks it, so it can''t be chosen —, distribution_sources: names of
+        the warehouses Demand Planning''s distribution network already transfers to
+        it from) — `selected`, the IDs stocked by transfer — and `double_planned`
+        (id, name, distribution_sources), the selected warehouses the distribution
+        network also feeds, which can be stocked twice. A warehouse stocked by transfer
+        becomes a destination of the plan (network warehouse_transfer) instead of
+        a source, and its sends are drafted as warehouse transfers.'
       parameters: []
       responses:
         '200':
@@ -614106,6 +614486,8 @@ paths:
                               type: string
                             stocked_by_transfer:
                               type: boolean
+                            excluded_from_planning:
+                              type: boolean
                             distribution_sources:
                               type: array
                       selected:
@@ -614133,12 +614515,21 @@ paths:
                       type: direct
                       country_code: US
                       stocked_by_transfer: false
+                      excluded_from_planning: false
+                      distribution_sources: []
+                    - id: 9
+                      name: Returns Warehouse
+                      type: direct
+                      country_code: US
+                      stocked_by_transfer: false
+                      excluded_from_planning: true
                       distribution_sources: []
                     - id: 4
                       name: West Coast 3PL
                       type: 3pl
                       country_code: US
                       stocked_by_transfer: true
+                      excluded_from_planning: false
                       distribution_sources:
                       - Main Warehouse (NJ)
                     selected:
@@ -614181,22 +614572,26 @@ paths:
 
 
         Response `data`: `warehouses` — your own active warehouses and 3PLs (id, name,
-        type, country_code, stocked_by_transfer, distribution_sources: names of the
-        warehouses Demand Planning''s distribution network already transfers to it
-        from) — `selected`, the IDs stocked by transfer — and `double_planned` (id,
-        name, distribution_sources), the selected warehouses the distribution network
-        also feeds, which can be stocked twice. A warehouse stocked by transfer becomes
-        a destination of the plan (network warehouse_transfer) instead of a source,
-        and its sends are drafted as warehouse transfers.
+        type, country_code, stocked_by_transfer, excluded_from_planning — flagged
+        "Exclude from Purchasing / Demand Planning": the planner neither sends from
+        it nor stocks it, so it can''t be chosen —, distribution_sources: names of
+        the warehouses Demand Planning''s distribution network already transfers to
+        it from) — `selected`, the IDs stocked by transfer — and `double_planned`
+        (id, name, distribution_sources), the selected warehouses the distribution
+        network also feeds, which can be stocked twice. A warehouse stocked by transfer
+        becomes a destination of the plan (network warehouse_transfer) instead of
+        a source, and its sends are drafted as warehouse transfers.
 
 
         The response also carries `warning`: a message naming any double-planned warehouses,
         or null. Saving is not blocked.
 
 
-        Returns 422 when an ID is not one of your own active warehouses, or when every
-        warehouse would be stocked by transfer (at least one must remain a ship-from
-        source).'
+        Returns 422 when an ID is not one of your own active warehouses, when an ID
+        is a warehouse excluded from planning ("A warehouse excluded from Purchasing
+        / Demand Planning can''t be stocked by transfer."), or when no ship-from source
+        would be left — at least one warehouse that is neither excluded from planning
+        nor stocked by transfer must remain.'
       requestBody:
         content:
           application/json:
@@ -614242,6 +614637,8 @@ paths:
                               type: string
                             stocked_by_transfer:
                               type: boolean
+                            excluded_from_planning:
+                              type: boolean
                             distribution_sources:
                               type: array
                       selected:
@@ -614273,12 +614670,14 @@ paths:
                       type: direct
                       country_code: US
                       stocked_by_transfer: false
+                      excluded_from_planning: false
                       distribution_sources: []
                     - id: 4
                       name: West Coast 3PL
                       type: 3pl
                       country_code: US
                       stocked_by_transfer: true
+                      excluded_from_planning: false
                       distribution_sources:
                       - Main Warehouse (NJ)
                     selected:
@@ -614335,14 +614734,19 @@ paths:
       description: 'Everything a one-click approval of a send plan approves, calculated
         from the plan (the AI only words the narrative): totals (units, cases, estimated
         weight in lb, volume in ft³, pallets, value at average cost, SKUs, kept for
-        self-fulfilled orders, stock-outs before arrival, shortfall, supplier units/value);
-        per destination the same numbers plus sources, draft groups, reasons and checks
-        before shipping; supplier orders shipped direct (supplier × destination, units,
-        value, lead time, ETA, prep notes); lines already drafted; the SKU closest
-        to running out; what changed since the previous full working plan; a plain
-        `narrative`; `approvable` (why this plan can''t be approved here, or null
-        — scenarios and send runs aren''t); and the latest `approval` with its run
-        state.
+        self-fulfilled orders, stock-outs before arrival, shortfall, supplier units/value,
+        `plan_units` — the plan''s own units to send — and `already_drafted_units`
+        — the units of lines already handed to a network draft, which are not approved
+        again, so `units` + `already_drafted_units` = `plan_units`); per destination
+        the same numbers plus sources, draft groups, `already_drafted_units` (that
+        destination''s units already in drafts), reasons and checks before shipping;
+        supplier orders shipped direct (supplier × destination, units, value, lead
+        time, ETA, prep notes); lines already drafted; the SKU closest to running
+        out; what changed since the previous full working plan; a plain `narrative`
+        (when units are already in drafts it adds "N more units are already in network
+        drafts and are not sent again (the plan''s M units include them)."); `approvable`
+        (why this plan can''t be approved here, or null — scenarios and send runs
+        aren''t); and the latest `approval` with its run state.
 
 
         :::info[Required scope: `send-plans:read`]
@@ -614427,6 +614831,10 @@ paths:
                             type: integer
                           supplier_value:
                             type: integer
+                          plan_units:
+                            type: integer
+                          already_drafted_units:
+                            type: integer
                       destinations:
                         type: array
                         items:
@@ -614481,6 +614889,8 @@ paths:
                               type: array
                               items:
                                 type: integer
+                            already_drafted_units:
+                              type: integer
                             reasons:
                               type: array
                               items:
@@ -614590,6 +615000,8 @@ paths:
                       short_units: 1412
                       supplier_units: 14888
                       supplier_value: 60641
+                      plan_units: 11190
+                      already_drafted_units: 0
                     destinations:
                     - destination_warehouse_id: 4
                       network: amazon_fba
@@ -614618,6 +615030,7 @@ paths:
                       line_ids:
                       - 1201
                       - 1205
+                      already_drafted_units: 0
                       reasons:
                       - 'JBC-LAV-2: 1 day of cover today → 54 days after this send
                         (lands in 9 d)'
@@ -614690,11 +615103,18 @@ paths:
 
 
         Responses: 201 with the run state (`status` running | done | partial, `drafts`
-        as SendPlanDraft resources, `purchase_orders`, `po_error`); 409 when the plan
+        as SendPlanDraft resources, `purchase_orders`, `po_error` — why supplier POs
+        failed, or the not-created sentence of Draft supplier POs when a supplier
+        no longer supplies some SKUs or nothing was left to order); 409 when the plan
         changed since the summary (review again); 403 without `integrations.update`
-        (drafts), `warehouse_transfers.create` (hold) or `purchase_orders.create`
-        (when supplier orders are included) — nothing is created; 422 for scenarios,
-        send runs, a plan still calculating, or when everything is switched off. Needs
+        (marketplace drafts), `warehouse_transfers.create` (warehouse transfer drafts,
+        or the hold) or `purchase_orders.create` (when supplier orders are included)
+        — nothing is created, and the message names the permission as the role editor
+        shows it, e.g. "Creating marketplace drafts also needs the "Integrations →
+        Edit" permission, the same one the FBA, AWD, WFS and FBT inbound screens need."
+        or "Creating purchase orders also needs the "Purchase Orders → Create" permission.
+        Switch the supplier orders off to approve the rest."; 422 for scenarios, send
+        runs, a plan still calculating, or when everything is switched off. Needs
         `send_planner.draft`; API tokens: `send-plans:write`.'
       requestBody:
         content:
@@ -651978,7 +652398,11 @@ paths:
         \ warehouse) span both returns 422. Lines with quantity 0 are ignored for\
         \ this check.\n\n**Serial numbers:** for serial-tracked products, a serial\
         \ that can't be shipped (unknown, already shipped, or not in stock) or that\
-        \ is listed twice returns **422** with a message naming the serial."
+        \ is listed twice returns **422** with a message naming the serial.\n\n**Locked\
+        \ accounting period:** a `fulfilled_at` on or before the accounting lock date\
+        \ returns **422** with error code `InventoryPeriodLocked` under `errors.fulfilled_at`\
+        \ (its `data` carries `date` and `lock_date`). Nothing is created; resubmit\
+        \ with a date after the lock date, or move the lock date back first."
       requestBody:
         content:
           application/json:
@@ -652125,6 +652549,22 @@ paths:
                         allocated: 2
                         shortfall: 3
                 example-1:
+                  summary: 422 Locked Accounting Period
+                  value:
+                    message: 'Can''t fulfill on 2026-09-17: the books are locked through
+                      2026-09-30. Choose a fulfillment date after 2026-09-30, or move
+                      the lock date back first.'
+                    errors:
+                      fulfilled_at:
+                      - message: 'Cannot change a inventory movement dated 2026-09-17:
+                          it falls within a locked accounting period (locked through
+                          2026-09-30). Move the lock date back to correct it.'
+                        code: InventoryPeriodLocked
+                        data:
+                          date: '2026-09-17'
+                          lock_date: '2026-09-30'
+                    status: failure
+                example-2:
                   summary: 422 Validation Error
                   value:
                     message: The given data was invalid.
@@ -652133,7 +652573,7 @@ paths:
                       - The selected fulfillment type is invalid.
                       fulfillment_lines.0.quantity:
                       - Exceeds remaining to fulfill
-                example-2:
+                example-3:
                   summary: 422 Mixed Delivery Methods
                   value:
                     message: Shipped and Click & Collect items must be fulfilled separately
@@ -652143,7 +652583,7 @@ paths:
                       - message: Shipped and Click & Collect items must be fulfilled
                           separately — choose the lines of one fulfillment order.
                         code: MixesDeliveryModes
-                example-3:
+                example-4:
                   summary: 422 Serial Number Rejected
                   value:
                     message: 'Serial "SN-000417" for WIDGET-01 is not available (status:
@@ -699724,7 +700164,9 @@ paths:
         Purchase orders that cannot be deleted are skipped and reported per id in
         `warnings` — e.g. a dropship purchase order whose shipping label is still
         being bought, refunded, or in transit (`warnings.ids.{id}.dropship_labels`,
-        code `PurchaseOrderIsLinked`). The rest are deleted.
+        code `PurchaseOrderIsLinked`), or a purchase order with invoices attached
+        (`warnings.ids.{id}.purchase_invoices`, same code; delete the invoices first).
+        The rest are deleted.
 
 
         **Requires permission:** `purchase_orders.delete`'
@@ -699759,6 +700201,18 @@ paths:
                         data:
                           resource: purchase order
                           resource_id: 103
+                example-2:
+                  summary: 200 OK - Partial (Invoices Attached)
+                  value:
+                    message: 1 from 2 purchase orders had been deleted successfully
+                    warnings:
+                      ids.18.purchase_invoices:
+                      - message: Cannot delete purchase order PO-0016 because it has
+                          invoices. Please delete the invoices first.
+                        code: PurchaseOrderIsLinked
+                        data:
+                          resource: purchase order
+                          resource_id: 18
         '429': *id001
         '401': *id002
         '403': *id003
@@ -705707,6 +706161,334 @@ paths:
         '404': *id004
         '422': *id005
       operationId: put-api-purchase-orders-purchase-order-update-shipment
+  /api/purchase-orders/{purchase_order}/awd-receipt-assessment:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Get AWD Receipt Assessment
+      description: 'Compare an AWD purchase order''s unreceived quantity with Amazon''s
+        own AWD shipment record.
+
+
+        :::info[Required scope: `purchase-orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        An AWD purchase order is received only from RECEIVED rows on the AWD Inventory
+        Ledger you upload. Amazon''s AWD shipment record (synced automatically) carries
+        its own count of cases received. This endpoint sets the two against each other,
+        per merchant SKU, and returns a verdict:
+
+
+        - `matched` — nothing to reconcile.
+
+        - `shipment_open` — Amazon has not closed the shipment; receipts may still
+        arrive.
+
+        - `settling` — Amazon closed the shipment, but no uploaded ledger reaches
+        7 days past the close yet (Amazon posts ledger rows late). `settles_after`
+        is the date the uploaded ledger must reach.
+
+        - `amazon_confirms_received` — Amazon received every case, but its ledger
+        export never posted some of them. `can_confirm_received` is true: close the
+        order with **Confirm AWD Receipt**.
+
+        - `amazon_confirms_short` — Amazon received fewer cases than expected and
+        the missing cases match the ledger shortfall exactly: a real loss. `can_record_shortage`
+        is true: record an inbound shortage on the order''s pending inbound.
+
+        - `needs_review` — the two records disagree in a way neither close can explain
+        (over-received SKUs, a shortfall that is not whole cases, a SKU on no order
+        line, or part loss / part missing rows). `reason` says which.
+
+
+        `lines` lists only SKUs where the records disagree. Use `verdict` rather than
+        the order''s receipt status to tell a ledger gap from a genuine shortage.
+
+
+        Returns 422 for an order that is not bound for AWD or has no linked AWD shipment.
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order id
+        example: '15'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      verdict:
+                        type: string
+                      verdict_label:
+                        type: string
+                      reason:
+                        type: string
+                      amazon_awd_inbound_shipment_id:
+                        type: integer
+                      shipment_id:
+                        type: string
+                      shipment_status:
+                        type: string
+                      shipment_closed_at:
+                        type: string
+                      expected_cases:
+                        type: integer
+                      received_cases:
+                        type: integer
+                      ledger_through:
+                        type: string
+                      settles_after:
+                        type: string
+                      missing_units:
+                        type: integer
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            msku:
+                              type: string
+                            product_id:
+                              type: integer
+                            purchase_order_line_id:
+                              type: integer
+                            expected_units:
+                              type: integer
+                            ledger_units:
+                              type: integer
+                            missing_units:
+                              type: integer
+                            units_per_case:
+                              type: integer
+                            missing_cases:
+                              type: integer
+                      can_confirm_received:
+                        type: boolean
+                      can_record_shortage:
+                        type: boolean
+                example:
+                  data:
+                    verdict: amazon_confirms_received
+                    verdict_label: Amazon confirms every case was received
+                    reason: Amazon received all 106 cases of this shipment, but its
+                      AWD Inventory Ledger never posted 3 of them. The stock is at
+                      Amazon; only the ledger rows are missing.
+                    amazon_awd_inbound_shipment_id: 10
+                    shipment_id: STAR-TADQXMSNYBDX6
+                    shipment_status: CLOSED
+                    shipment_closed_at: '2026-02-24T04:21:08+00:00'
+                    expected_cases: 106
+                    received_cases: 106
+                    ledger_through: '2026-10-11T03:31:45+00:00'
+                    settles_after: '2026-03-03T04:21:08+00:00'
+                    missing_units: 450
+                    lines:
+                    - msku: PEELER-SS
+                      product_id: 88
+                      purchase_order_line_id: 172
+                      expected_units: 4350
+                      ledger_units: 4200
+                      missing_units: 150
+                      units_per_case: 150
+                      missing_cases: 1
+                    - msku: PEELER-GO
+                      product_id: 87
+                      purchase_order_line_id: 173
+                      expected_units: 3000
+                      ledger_units: 2850
+                      missing_units: 150
+                      units_per_case: 150
+                      missing_cases: 1
+                    - msku: CKNIFE-SS
+                      product_id: 85
+                      purchase_order_line_id: 174
+                      expected_units: 4350
+                      ledger_units: 4200
+                      missing_units: 150
+                      units_per_case: 150
+                      missing_cases: 1
+                    can_confirm_received: true
+                    can_record_shortage: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Only AWD purchase orders with a linked AWD shipment can
+                    be compared with Amazon's shipment record.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: purchase-orders:read
+      operationId: get-api-purchase-orders-purchase-order-awd-receipt-assessment
+  /api/purchase-orders/{purchase_order}/awd-receipt-assessment/confirm:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Confirm AWD Receipt
+      description: 'Close an AWD purchase order as received from Amazon''s AWD shipment
+        record.
+
+
+        :::info[Required scope: `purchase-orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Only allowed when **Get AWD Receipt Assessment** returns `amazon_confirms_received`.
+        Records the cases Amazon received but never posted to its AWD Inventory Ledger
+        as received on the order, so the order closes as Received and the units stop
+        counting as in transit. AWD on-hand stock and its value do not change — AWD
+        stock follows Amazon''s ledger.
+
+
+        The receipt appears on the AWD Inventory Ledger as a row with facility `SKUIO`
+        on the shipment, paired with an equal negative adjustment (reference `SKUIO-CONFIRMED-<shipment
+        id>`). Once closed, a second call is refused.
+
+
+        No request body.
+
+
+        Permissions: requires the purchase order receive permission.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order id
+        example: '15'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      verdict:
+                        type: string
+                      verdict_label:
+                        type: string
+                      reason:
+                        type: string
+                      amazon_awd_inbound_shipment_id:
+                        type: integer
+                      shipment_id:
+                        type: string
+                      shipment_status:
+                        type: string
+                      shipment_closed_at:
+                        type: string
+                      expected_cases:
+                        type: integer
+                      received_cases:
+                        type: integer
+                      ledger_through:
+                        type: string
+                      settles_after:
+                        type: string
+                      missing_units:
+                        type: integer
+                      lines:
+                        type: array
+                      can_confirm_received:
+                        type: boolean
+                      can_record_shortage:
+                        type: boolean
+                example:
+                  message: Closed as received from Amazon's shipment record.
+                  data:
+                    verdict: matched
+                    verdict_label: Matched
+                    reason: This order is already received.
+                    amazon_awd_inbound_shipment_id: 10
+                    shipment_id: STAR-TADQXMSNYBDX6
+                    shipment_status: CLOSED
+                    shipment_closed_at: '2026-02-24T04:21:08+00:00'
+                    expected_cases: 106
+                    received_cases: 106
+                    ledger_through: '2026-10-11T03:31:45+00:00'
+                    settles_after: '2026-03-03T04:21:08+00:00'
+                    missing_units: 0
+                    lines: []
+                    can_confirm_received: false
+                    can_record_shortage: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Amazon closed this shipment on 2026-02-24 and posts ledger
+                    rows late. Upload an AWD Inventory Ledger that reaches 2026-03-03
+                    or later before closing the order.
+        '429': *id001
+        '401': *id002
+        '403': *id003
+        '404': *id004
+      x-required-scope: purchase-orders:write
+      operationId: post-api-purchase-orders-purchase-order-awd-receipt-assessment-confirm
   /api/purchase-orders/{purchase_order}/notes:
     get:
       tags:
@@ -708642,7 +709424,11 @@ paths:
         **Requires permission:** `purchase_orders.update`
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        When the ASN is emailed, its email template must be turned on; otherwise the
+        request is refused with 422 and nothing is marked as sent.'
       requestBody:
         content: {}
       parameters:
@@ -708722,6 +709508,12 @@ paths:
                   value:
                     message: PO-0660 has no product lines, so there is nothing to
                       send an ASN for.
+                example-4:
+                  summary: 422 ASN Email Template Off
+                  value:
+                    status: failure
+                    message: The ASN email template is turned off. Turn it on under
+                      Settings → General → Email Templates, then send the ASN again.
             text/plain:
               schema:
                 type: object
@@ -765381,9 +766173,10 @@ paths:
 
 
         Includes the master `enabled` flag, the `require_customer` and `auto_print_receipt`
-        behaviour toggles, the active card `payment_processor` (square|stripe), the
-        Square `square_location_id`, and the list of `available_processors`. The admin-facing
-        toggles are also editable via `PUT /api/v2/settings/pos`.'
+        behaviour toggles (plus `auto_show_new_products_in_register`, set via `PUT
+        /api/v2/settings/pos`), the active card `payment_processor` (square|stripe),
+        the Square `square_location_id`, and the list of `available_processors`. The
+        admin-facing toggles are also editable via `PUT /api/v2/settings/pos`.'
       parameters: []
       responses:
         '200':
@@ -765458,8 +766251,8 @@ paths:
         Payments SDK initialises against.
 
 
-        The admin toggles (`enabled`, `require_customer`, `auto_print_receipt`) are
-        managed via `PUT /api/v2/settings/pos`; this endpoint focuses on the operational
+        The admin toggles (`enabled`, `require_customer`, `auto_print_receipt`, `auto_show_new_products_in_register`)
+        are managed via `PUT /api/v2/settings/pos`; this endpoint focuses on the operational
         card-processor config.
 
 
@@ -768312,7 +769105,10 @@ paths:
       tags:
       - Applications
       summary: List Applications
-      description: 'List submitted wholesale-account applications for review.
+      description: 'List submitted wholesale-account applications for review, newest
+        first. Supports the standard data-table contract: `filter[...]` quick filters,
+        a `filter_groups` advanced-filter tree, `filter[search]` with `search_columns`,
+        `sort`, `page` and `per_page`.
 
 
         :::warning[Not yet available to API tokens]
@@ -768334,7 +769130,34 @@ paths:
         the state-registry result and its source URLs. It is evidence only and never
         sets tax exemption. `tax_id` is kept for older applications; the portal form
         no longer asks for it.'
-      parameters: []
+      parameters:
+      - name: filter[status]
+        in: query
+        schema:
+          type: string
+        description: 'Quick status filter: `pending`, `approved` or `rejected` (any
+          text operator also works, e.g. `filter[status.is_one_of]=pending,rejected`).'
+        example: pending
+      - name: sort
+        in: query
+        schema:
+          type: string
+        description: One of `id`, `company_name`, `contact_name`, `email`, `status`,
+          `customer_id`, `created_at`, `updated_at`; prefix with `-` for descending.
+          Default `-created_at`.
+        example: -created_at
+      - name: page
+        in: query
+        schema:
+          type: integer
+        example: '1'
+        description: Page number (default 1).
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        description: Rows per page (default 10).
+        example: '25'
       responses:
         '200':
           description: OK

@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-15
-description: This release includes 113 additions.
+description: This release includes 115 additions, 1 change.
 authors: [product-team]
-tags: [added]
+tags: [added, changed]
 date: 2026-10-15
 ---
 
-This release includes 113 additions.
+This release includes 115 additions, 1 change.
 
 <!-- truncate -->
 
@@ -75,6 +75,10 @@ This release includes 113 additions.
 - `GET /api/etsy/instances/{integrationInstance}/webhook-events/summary` — Get Etsy Webhook Event Summary
 - `GET /api/etsy/oauth/config` — Get Etsy OAuth Configuration
 
+### Purchase Orders
+- `GET /api/purchase-orders/{purchase_order}/awd-receipt-assessment` — Get AWD Receipt Assessment
+- `POST /api/purchase-orders/{purchase_order}/awd-receipt-assessment/confirm` — Confirm AWD Receipt
+
 ### Send Planner
 - `DELETE /api/send-planner/capacity/{capacity}` — Delete Network Capacity Limit
 - `GET /api/send-planner/network-insights` — List Send Network Insights
@@ -115,8 +119,6 @@ This release includes 113 additions.
 - `POST /api/send-plans/{sendPlan}/lines/{line}/reset` — Reset Send Plan Line Override
 - `POST /api/send-plans/{sendPlan}/lines/{line}/resolve` — Resolve Send Plan Line
 - `GET /api/send-plans/{sendPlan}/products/{product}` — Get Send Plan Product Detail
-- `POST /api/send-plans/{sendPlan}/products/{product}/production` — Plan Production for Send Plan Product
-- `POST /api/send-plans/{sendPlan}/promote` — Promote Scenario
 - `GET /api/send-plans/{sendPlan}/supplier-purchase-orders` — Preview supplier POs (supplier-direct sends)
 
 ### TikTok Shop
@@ -126,6 +128,12 @@ This release includes 113 additions.
 - `DELETE /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Discard Send Planner Inbound Draft
 - `GET /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Get Send Planner Inbound Draft
 
-_…plus 13 more (see the API reference)._
+_…plus 15 more (see the API reference)._
+
+## Changed
+
+### Applications
+- `GET /api/admin/portal/applications` — List Applications
+  - new parameter(s): `filter[status]`, `page`, `per_page`, `sort`
 
 _Spec version 1.0.0 → 1.0.0._
