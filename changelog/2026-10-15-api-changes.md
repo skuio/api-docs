@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-15
-description: This release includes 112 additions.
+description: This release includes 113 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-15
 ---
 
-This release includes 112 additions.
+This release includes 113 additions.
 
 <!-- truncate -->
 
@@ -126,6 +126,6 @@ This release includes 112 additions.
 - `DELETE /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Discard Send Planner Inbound Draft
 - `GET /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Get Send Planner Inbound Draft
 
-_…plus 12 more (see the API reference)._
+_…plus 13 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
