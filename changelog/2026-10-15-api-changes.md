@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-15
-description: This release includes 56 additions.
+description: This release includes 112 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-15
 ---
 
-This release includes 56 additions.
+This release includes 112 additions.
 
 <!-- truncate -->
 
@@ -20,23 +20,71 @@ This release includes 56 additions.
 ### Authentication
 - `POST /api/portal/auth/view-as/end` — End Staff View (tab closed)
 
+### Etsy
+- `GET /api/etsy/instances` — List Etsy Integration Instances
+- `POST /api/etsy/instances` — Create Etsy Integration Instance
+- `DELETE /api/etsy/instances/{integrationInstance}` — Delete Etsy Integration Instance
+- `GET /api/etsy/instances/{integrationInstance}` — Get Etsy Integration Instance
+- `GET /api/etsy/instances/{integrationInstance}/activity-log` — List Etsy Activity Log
+- `POST /api/etsy/instances/{integrationInstance}/authorization-url` — Get Etsy Authorization URL
+- `POST /api/etsy/instances/{integrationInstance}/check-shipping-access` — Check Etsy Shipping Data Access
+- `GET /api/etsy/instances/{integrationInstance}/dashboard` — Get Etsy Dashboard
+- `GET /api/etsy/instances/{integrationInstance}/inventory` — List Etsy Inventory
+- `POST /api/etsy/instances/{integrationInstance}/inventory/fetch` — Fetch Etsy Inventory
+- `POST /api/etsy/instances/{integrationInstance}/inventory/push` — Push Etsy Inventory
+- `POST /api/etsy/instances/{integrationInstance}/inventory/recache` — Recalculate Etsy Inventory
+- `GET /api/etsy/instances/{integrationInstance}/inventory/summary` — Get Etsy Inventory Summary
+- `GET /api/etsy/instances/{integrationInstance}/listings` — List Etsy Listings
+- `POST /api/etsy/instances/{integrationInstance}/listings/bulk` — Bulk Update Etsy Listings
+- `GET /api/etsy/instances/{integrationInstance}/listings/export` — Export Etsy Listings
+- `POST /api/etsy/instances/{integrationInstance}/listings/refresh-tracked` — Refresh Etsy Listings
+- `GET /api/etsy/instances/{integrationInstance}/listings/{listingProduct}` — Get Etsy Listing
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/create-sku-product` — Create SKU.io Product from Etsy Listing
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/disable-sync` — Disable Etsy Listing Inventory Sync
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/enable-sync` — Enable Etsy Listing Inventory Sync
+- `DELETE /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/map` — Unmap Etsy Listing
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/map` — Map Etsy Listing
+- `GET /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/orders` — List Orders for Etsy Listing
+- `GET /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/raw` — Get Raw Etsy Listing
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/refresh` — Refresh Etsy Listing
+- `PATCH /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/revenue-mapping` — Set Etsy Listing Revenue Mapping
+- `POST /api/etsy/instances/{integrationInstance}/listings/{listingProduct}/smart-match` — Smart Match Etsy Listing
+- `GET /api/etsy/instances/{integrationInstance}/mappings` — Get Etsy Field Mappings
+- `GET /api/etsy/instances/{integrationInstance}/orders` — List Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-archive` — Bulk Archive Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-create-sku-orders` — Bulk Create SKU.io Sales Orders from Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-delete` — Bulk Delete Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-delete-sku-orders` — Bulk Delete SKU.io Sales Orders for Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-unarchive` — Bulk Unarchive Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/bulk-update-sku-orders` — Bulk Update SKU.io Sales Orders from Etsy Orders
+- `GET /api/etsy/instances/{integrationInstance}/orders/pre-start-date` — Query Pre-Start-Date Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/pre-start-date/import` — Import Pre-Start-Date Etsy Orders
+- `POST /api/etsy/instances/{integrationInstance}/orders/refresh-tracked` — Refresh Etsy Orders
+- `GET /api/etsy/instances/{integrationInstance}/orders/{receipt}` — Get Etsy Order
+- `GET /api/etsy/instances/{integrationInstance}/orders/{receipt}/activity-log` — List Etsy Order Activity Log
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/archive` — Archive Etsy Order
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/create-sku-order` — Create SKU.io Sales Order from Etsy Order
+- `GET /api/etsy/instances/{integrationInstance}/orders/{receipt}/raw` — Get Raw Etsy Order
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/refetch` — Refetch Etsy Order
+- `DELETE /api/etsy/instances/{integrationInstance}/orders/{receipt}/sku-order` — Delete SKU.io Sales Order for Etsy Order
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/submit-tracking` — Submit Etsy Order Tracking
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/unarchive` — Unarchive Etsy Order
+- `POST /api/etsy/instances/{integrationInstance}/orders/{receipt}/update-sku-order` — Update SKU.io Sales Order from Etsy Order
+- `POST /api/etsy/instances/{integrationInstance}/revoke` — Revoke Etsy Connection
+- `GET /api/etsy/instances/{integrationInstance}/webhook-events` — List Etsy Webhook Events
+- `GET /api/etsy/instances/{integrationInstance}/webhook-events/summary` — Get Etsy Webhook Event Summary
+- `GET /api/etsy/oauth/config` — Get Etsy OAuth Configuration
+
 ### Send Planner
-- `PUT /api/send-planner/capacity` — Upsert Network Capacity Limit
 - `DELETE /api/send-planner/capacity/{capacity}` — Delete Network Capacity Limit
-- `PUT /api/send-planner/lanes` — Save Send Lanes
 - `GET /api/send-planner/network-insights` — List Send Network Insights
 - `GET /api/send-planner/networks` — List Send Networks
-- `PUT /api/send-planner/networks/{warehouse}` — Update Send Network Rules
 - `GET /api/send-planner/networks/{warehouse}/products` — List Network Product Rules
-- `PUT /api/send-planner/networks/{warehouse}/products` — Upsert Network Product Rule
 - `POST /api/send-planner/networks/{warehouse}/refresh-inventory` — Refresh Network Inventory
 - `POST /api/send-planner/networks/{warehouse}/refresh-recommendations` — Refresh Network Recommendations
 - `DELETE /api/send-planner/product-settings/{setting}` — Delete Network Product Rule
 - `GET /api/send-planner/settings` — Get Send Planner Settings
-- `PUT /api/send-planner/settings` — Update Send Planner Settings
-- `PUT /api/send-planner/sources` — Save Send Source Settings
 - `GET /api/send-planner/transfer-destinations` — Get Transfer Destinations
-- `PUT /api/send-planner/transfer-destinations` — Update Transfer Destinations
 - `GET /api/send-plans` — List Send Plans
 - `POST /api/send-plans` — Create Send Plan
 - `GET /api/send-plans/compare` — Compare Send Plans
@@ -69,9 +117,7 @@ This release includes 56 additions.
 - `GET /api/send-plans/{sendPlan}/products/{product}` — Get Send Plan Product Detail
 - `POST /api/send-plans/{sendPlan}/products/{product}/production` — Plan Production for Send Plan Product
 - `POST /api/send-plans/{sendPlan}/promote` — Promote Scenario
-- `POST /api/send-plans/{sendPlan}/rebalance` — Rebalance Send Plan Products
 - `GET /api/send-plans/{sendPlan}/supplier-purchase-orders` — Preview supplier POs (supplier-direct sends)
-- `POST /api/send-plans/{sendPlan}/supplier-purchase-orders` — Draft supplier POs (supplier-direct sends)
 
 ### TikTok Shop
 - `GET /api/tiktok-shop/{integrationInstance}/fbt/inbound-products/suggested` — List Suggested FBT Inbound Products
@@ -79,5 +125,7 @@ This release includes 56 additions.
 ### Walmart
 - `DELETE /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Discard Send Planner Inbound Draft
 - `GET /api/walmart/{integrationInstance}/wfs/inbound-drafts/{draft}` — Get Send Planner Inbound Draft
+
+_…plus 12 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
