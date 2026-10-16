@@ -549649,7 +549649,9 @@ paths:
       tags:
       - Adjustments & Transfers
       summary: Reorder Allocation
-      description: 'Reorders an allocation relative to another.
+      description: 'Moves a queued backorder (status `planned` or `awaiting_receipt`)
+        within its product''s release order. Stock arriving for the product is released
+        to backorders in priority order.
 
 
         :::info[Required scope: `orders:write`]
@@ -549660,12 +549662,31 @@ paths:
         :::
 
 
+        Any move **pins** the moved backorder: when the queue is later re-sorted by
+        demand date (on a purchase order cover, release or cancel), a pinned backorder
+        keeps its place in line and every other backorder stays in date order around
+        it. Only the moved backorder is pinned. The pin ends when the backorder leaves
+        the queue, moves to another warehouse, or is sent back with `back_to_date_order`.
+
+
         **Body**:
 
-        - `reorder_type` — `above` | `below` | `top` | `bottom`
+        - `reorder_type` (required) — `move_to_top` | `move_to_bottom` | `move_up`
+        | `move_down` | `move_above_id` | `back_to_date_order`
 
-        - `options.above_id` — ID of the allocation to place this one above (used
-        when reorder_type is `above`)'
+        - `options.above_id` (integer, used by `move_above_id`) — the backorder to
+        take the place of; it and the rows after it move down one. Ignored unless
+        it is a queued backorder of the same product.
+
+
+        A backorder with no priority (not queued) is returned unchanged. Returns the
+        moved backorder. Each row: `id`, `priority` (1 = released first), `is_priority_pinned`
+        (true when the backorder was moved by hand — the priority reshuffle keeps
+        it at its place in line), `priority_pinned_at`, `backorder_date`, `backordered_quantity`,
+        `quantity`, `status` (`planned` | `awaiting_receipt`), `status_label`, `is_tight_coverage`,
+        `demand_type` (`sales` | `manufacturing`), `source_number`, `source_id`, `manufacturing_order_id`,
+        `demand_date`, `sales_order` (null for manufacturing demand), `sku`, `supplier`,
+        `coverage` (the covering purchase order line, or null), `scheduled_at`, `created_at`.'
       requestBody:
         content:
           application/json:
@@ -549680,9 +549701,9 @@ paths:
                     above_id:
                       type: integer
               example:
-                reorder_type: above
+                reorder_type: move_above_id
                 options:
-                  above_id: 10040
+                  above_id: 9680
       parameters:
       - name: allocation
         in: path
@@ -549704,15 +549725,136 @@ paths:
               schema:
                 type: object
                 properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      priority:
+                        type: integer
+                      is_priority_pinned:
+                        type: boolean
+                      priority_pinned_at:
+                        type: string
+                      backorder_date:
+                        type: string
+                      backordered_quantity:
+                        type: integer
+                      quantity:
+                        type: integer
+                      status:
+                        type: string
+                      status_label:
+                        type: string
+                      is_tight_coverage:
+                        type: boolean
+                      demand_type:
+                        type: string
+                      source_number:
+                        type: string
+                      source_id:
+                        type: integer
+                      manufacturing_order_id:
+                        type: string
+                        nullable: true
+                      demand_date:
+                        type: string
+                      sales_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          number:
+                            type: string
+                          order_date:
+                            type: string
+                      sku:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sku:
+                            type: string
+                          name:
+                            type: string
+                      supplier:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      coverage:
+                        type: string
+                        nullable: true
+                      scheduled_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                example:
+                  data:
+                    id: 9698
+                    priority: 2
+                    is_priority_pinned: true
+                    priority_pinned_at: '2026-10-16T09:12:44.000000Z'
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSAU-18422'
+                    source_id: 419698
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 419698
+                      number: '#FSAU-18422'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
+                    supplier:
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
                   message:
                     type: string
+                  errors:
+                    type: object
+                    properties:
+                      reorder_type:
+                        type: array
+                        items:
+                          type: string
                 example:
-                  message: Allocation reordered successfully.
+                  message: 'Unknown reorder type. Use one of: move_to_top, move_to_bottom,
+                    move_up, move_down, move_above_id, back_to_date_order.'
+                  errors:
+                    reorder_type:
+                    - 'Unknown reorder type. Use one of: move_to_top, move_to_bottom,
+                      move_up, move_down, move_above_id, back_to_date_order.'
         '429': *id001
         '401': *id002
         '403': *id003
         '404': *id004
-        '422': *id005
       x-required-scope: orders:write
       operationId: post-api-v2-inventory-allocations-allocation-reorder
   /api/v2/inventory-allocations/{allocation}/reassign-coverage:
@@ -551483,8 +551625,8 @@ paths:
       tags:
       - Adjustments & Transfers
       summary: Get Product Analysis
-      description: 'Returns allocation analysis for a specific product — current allocations,
-        coverage status, and demand history.
+      description: 'Lists a product''s queued backorders (status `planned` or `awaiting_receipt`)
+        in release order — the order arriving stock is released in.
 
 
         :::info[Required scope: `orders:read`]
@@ -551492,7 +551634,16 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Each row: `id`, `priority` (1 = released first), `is_priority_pinned` (true
+        when the backorder was moved by hand — the priority reshuffle keeps it at
+        its place in line), `priority_pinned_at`, `backorder_date`, `backordered_quantity`,
+        `quantity`, `status` (`planned` | `awaiting_receipt`), `status_label`, `is_tight_coverage`,
+        `demand_type` (`sales` | `manufacturing`), `source_number`, `source_id`, `manufacturing_order_id`,
+        `demand_date`, `sales_order` (null for manufacturing demand), `sku`, `supplier`,
+        `coverage` (the covering purchase order line, or null), `scheduled_at`, `created_at`.'
       parameters:
       - name: productId
         in: path
@@ -551515,38 +551666,163 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: object
-                    properties:
-                      product:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
-                          sku:
-                            type: string
-                          name:
-                            type: string
-                      active_allocations:
-                        type: integer
-                      total_allocated_quantity:
-                        type: integer
-                      total_stock:
-                        type: integer
-                      available_after_allocations:
-                        type: integer
-                      tight_coverage:
-                        type: boolean
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        priority:
+                          type: integer
+                        is_priority_pinned:
+                          type: boolean
+                        priority_pinned_at:
+                          type: string
+                        backorder_date:
+                          type: string
+                        backordered_quantity:
+                          type: integer
+                        quantity:
+                          type: integer
+                        status:
+                          type: string
+                        status_label:
+                          type: string
+                        is_tight_coverage:
+                          type: boolean
+                        demand_type:
+                          type: string
+                        source_number:
+                          type: string
+                        source_id:
+                          type: integer
+                        manufacturing_order_id:
+                          type: string
+                          nullable: true
+                        demand_date:
+                          type: string
+                        sales_order:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            number:
+                              type: string
+                            order_date:
+                              type: string
+                        sku:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                        supplier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        coverage:
+                          type: string
+                          nullable: true
+                        scheduled_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
                 example:
                   data:
-                    product:
-                      id: 812
-                      sku: WIDGET-BLU
-                      name: Blue Widget
-                    active_allocations: 3
-                    total_allocated_quantity: 15
-                    total_stock: 20
-                    available_after_allocations: 5
-                    tight_coverage: false
+                  - id: 9735
+                    priority: 1
+                    is_priority_pinned: true
+                    priority_pinned_at: '2026-10-16T09:12:44.000000Z'
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSAU-18452'
+                    source_id: 419735
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 419735
+                      number: '#FSAU-18452'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
+                    supplier:
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
+                  - id: 8601
+                    priority: 2
+                    is_priority_pinned: false
+                    priority_pinned_at: null
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSUS-1019'
+                    source_id: 418601
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 418601
+                      number: '#FSUS-1019'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
+                    supplier:
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
+                  - id: 9680
+                    priority: 3
+                    is_priority_pinned: false
+                    priority_pinned_at: null
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSAU-18409'
+                    source_id: 419680
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 419680
+                      number: '#FSAU-18409'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
+                    supplier:
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
         '429': *id001
         '401': *id002
         '403': *id003
@@ -551558,8 +551834,8 @@ paths:
       tags:
       - Adjustments & Transfers
       summary: Get Supplier Analysis
-      description: 'Returns allocation analysis for a specific supplier — coverage
-        metrics, pending PO quantities, backorder exposure.
+      description: 'Lists the queued backorders (status `planned` or `awaiting_receipt`)
+        for products supplied by this supplier, in release order.
 
 
         :::info[Required scope: `orders:read`]
@@ -551567,7 +551843,16 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Each row: `id`, `priority` (1 = released first), `is_priority_pinned` (true
+        when the backorder was moved by hand — the priority reshuffle keeps it at
+        its place in line), `priority_pinned_at`, `backorder_date`, `backordered_quantity`,
+        `quantity`, `status` (`planned` | `awaiting_receipt`), `status_label`, `is_tight_coverage`,
+        `demand_type` (`sales` | `manufacturing`), `source_number`, `source_id`, `manufacturing_order_id`,
+        `demand_date`, `sales_order` (null for manufacturing demand), `sku`, `supplier`,
+        `coverage` (the covering purchase order line, or null), `scheduled_at`, `created_at`.'
       parameters:
       - name: supplierId
         in: path
@@ -551590,32 +551875,134 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: object
-                    properties:
-                      supplier:
-                        type: object
-                        properties:
-                          id:
-                            type: integer
-                          name:
-                            type: string
-                      pending_backorders:
-                        type: integer
-                      total_backordered_quantity:
-                        type: integer
-                      po_covered_quantity:
-                        type: integer
-                      uncovered_quantity:
-                        type: integer
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        priority:
+                          type: integer
+                        is_priority_pinned:
+                          type: boolean
+                        priority_pinned_at:
+                          type: string
+                        backorder_date:
+                          type: string
+                        backordered_quantity:
+                          type: integer
+                        quantity:
+                          type: integer
+                        status:
+                          type: string
+                        status_label:
+                          type: string
+                        is_tight_coverage:
+                          type: boolean
+                        demand_type:
+                          type: string
+                        source_number:
+                          type: string
+                        source_id:
+                          type: integer
+                        manufacturing_order_id:
+                          type: string
+                          nullable: true
+                        demand_date:
+                          type: string
+                        sales_order:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            number:
+                              type: string
+                            order_date:
+                              type: string
+                        sku:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                        supplier:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        coverage:
+                          type: string
+                          nullable: true
+                        scheduled_at:
+                          type: string
+                          nullable: true
+                        created_at:
+                          type: string
                 example:
                   data:
+                  - id: 9735
+                    priority: 1
+                    is_priority_pinned: true
+                    priority_pinned_at: '2026-10-16T09:12:44.000000Z'
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSAU-18452'
+                    source_id: 419735
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 419735
+                      number: '#FSAU-18452'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
                     supplier:
-                      id: 14
-                      name: Acme Corp
-                    pending_backorders: 8
-                    total_backordered_quantity: 42
-                    po_covered_quantity: 30
-                    uncovered_quantity: 12
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
+                  - id: 8601
+                    priority: 2
+                    is_priority_pinned: false
+                    priority_pinned_at: null
+                    backorder_date: '2026-10-12T03:21:09.000000Z'
+                    backordered_quantity: 1
+                    quantity: 1
+                    status: planned
+                    status_label: Planned
+                    is_tight_coverage: false
+                    demand_type: sales
+                    source_number: '#FSUS-1019'
+                    source_id: 418601
+                    manufacturing_order_id: null
+                    demand_date: '2026-10-12'
+                    sales_order:
+                      id: 418601
+                      number: '#FSUS-1019'
+                      order_date: '2026-10-12'
+                    sku:
+                      id: 158
+                      sku: SS-CT05-800BR
+                      name: Palermo Stainless Steel Cookware Set
+                    supplier:
+                      id: 12
+                      name: Stainless Supply Co
+                    coverage: null
+                    scheduled_at: null
+                    created_at: '2026-10-12T03:21:09.000000Z'
         '429': *id001
         '401': *id002
         '403': *id003
