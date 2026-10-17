@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-17
-description: This release includes 62 additions, 92 changes, 20 removals. 20 breaking changes — action required.
+description: This release includes 64 additions, 92 changes, 20 removals. 20 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-17
 ---
 
-This release includes 62 additions, 92 changes, 20 removals. 20 breaking changes — action required.
+This release includes 64 additions, 92 changes, 20 removals. 20 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -81,6 +81,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/automation/runners/{runner}/jobs` — List Agent Runner Jobs
 - `POST /api/automation/runners/{runner}/revoke` — Revoke Agent Runner
 - `POST /api/automation/runners/{runner}/rotate` — Rotate Agent Runner Token
+
+### Dashboard
+- `GET /api/v2/dashboard/widget/{key}/data` — Widget Data
+- `GET /api/v2/dashboard/widgets` — Widget Catalog
 
 ### Odoo 3PL
 - `GET /api/odoo-3pl/{integration_instance}/inventory` — List Inventory Levels
@@ -308,7 +312,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/shipfusion/integration-instances/{integration_instance}/orders/update-tracking` — Update Tracking Info
   - removed response code(s): `200`
 - `DELETE /api/shipfusion/integration-instances/{integration_instance}/orders/{order}` — Delete Order
-  - removed response code(s): `200`
+  - new response code(s): `409`, `502`
 - `POST /api/shipfusion/integration-instances/{integration_instance}/orders/{order}/sync-detail` — Sync Order Detail
   - removed response code(s): `200`
 - `POST /api/shipfusion/integration-instances/{integration_instance}/warehouse-shipments/sync` — Sync Warehouse Shipments (Queue Job)

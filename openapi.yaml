@@ -49641,7 +49641,7 @@ paths:
       tags:
       - Misc
       summary: Bulk Update Alert Preferences
-      description: 'Updates multiple alert preferences at once.
+      description: 'Updates multiple alert preferences at once (company-wide).
 
 
         :::warning[Not yet available to API tokens]
@@ -49655,7 +49655,19 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Requires a token with permission to update alert preferences.'
+        Requires the `alert_preferences.update` permission.
+
+
+        **Each row:** `alert_type` (required), `enabled`, `email_enabled`, `slack_enabled`
+        (required booleans), `notification_frequency` (instant|daily_digest|weekly_digest),
+        `priority` (nullable), `email_recipients` (required, at least one valid email,
+        when `email_enabled` is true), `slack_webhook_id` (required, an existing Slack
+        webhook, when `slack_enabled` is true).
+
+
+        A row with Slack on and no webhook would never send anything, so it is refused
+        with 422 on that row''s `preferences.N.slack_webhook_id` — "Pick a Slack webhook
+        for this alert, or turn Slack off." — and nothing is saved.'
       requestBody:
         content:
           application/json:
@@ -49669,18 +49681,41 @@ paths:
                     properties:
                       alert_type:
                         type: string
-                      email:
+                      enabled:
                         type: boolean
-                      in_app:
+                      priority:
+                        type: string
+                      email_enabled:
                         type: boolean
+                      email_recipients:
+                        type: array
+                        items:
+                          type: string
+                      slack_enabled:
+                        type: boolean
+                      slack_webhook_id:
+                        type: integer
+                      notification_frequency:
+                        type: string
               example:
                 preferences:
-                - alert_type: low_stock
-                  email: true
-                  in_app: true
-                - alert_type: order_pending
-                  email: true
-                  in_app: true
+                - alert_type: purchase_order_sent
+                  enabled: true
+                  priority: high
+                  email_enabled: true
+                  email_recipients:
+                  - buyer@example.com
+                  slack_enabled: true
+                  slack_webhook_id: 3
+                  notification_frequency: instant
+                - alert_type: purchase_order_approved
+                  enabled: true
+                  priority: null
+                  email_enabled: false
+                  email_recipients: []
+                  slack_enabled: false
+                  slack_webhook_id: null
+                  notification_frequency: daily_digest
       parameters: []
       responses:
         '200':
@@ -49694,10 +49729,53 @@ paths:
                     type: string
                 example:
                   message: Alert preferences updated.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      preferences.0.slack_webhook_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                index:
+                                  type: integer
+                                slack_webhook_id:
+                                  type: string
+                                  nullable: true
+                example:
+                  message: Pick a Slack webhook for this alert, or turn Slack off.
+                  errors:
+                    preferences.0.slack_webhook_id:
+                    - message: Pick a Slack webhook for this alert, or turn Slack
+                        off.
+                      code: SlackWebhookIdRequired
+                      data:
+                        index: 0
+                        slack_webhook_id: null
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-session-only: true
       operationId: put-api-alert-preferences
   /api/notes:
@@ -65351,6 +65429,262 @@ paths:
         '401': *id002
       x-session-only: true
       operationId: get-api-v2-dashboard-summary
+  /api/v2/dashboard/widgets:
+    get:
+      tags:
+      - Dashboard
+      summary: Widget Catalog
+      description: 'The dashboard widget catalog for the signed-in user — powers the
+        "Add a widget" gallery.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Response fields**
+
+        - `widgets` — the widgets this user may add. A widget is left out when the
+        tenant hides financial data (Settings → Dashboard), when the user lacks the
+        permission for the widget''s data (e.g. `sales_orders.index`), or when the
+        widget shows money and the user lacks `financials.index`.
+
+        - `categories`, `allowed_widths` — gallery groupings and the widths a widget
+        may be resized to.
+
+        - `hidden_financial_widgets` — `{count, reason}`: how many money widgets (revenue,
+        inventory value, payables…) were left out because the user lacks the **Financials
+        → List** permission, and the sentence the gallery shows. `count` is 0 and
+        `reason` is null when nothing was withheld.
+
+
+        POs arriving this week stays visible without Financials: it hides only its
+        inbound value per user.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      widgets:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            title:
+                              type: string
+                            description:
+                              type: string
+                            category:
+                              type: string
+                            category_label:
+                              type: string
+                            type:
+                              type: string
+                            icon:
+                              type: string
+                            default_width:
+                              type: integer
+                            min_width:
+                              type: integer
+                            tags:
+                              type: array
+                              items:
+                                type: string
+                            has_provider:
+                              type: boolean
+                            is_financial:
+                              type: boolean
+                            status:
+                              type: string
+                      categories:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                      allowed_widths:
+                        type: array
+                        items:
+                          type: integer
+                      hidden_financial_widgets:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          reason:
+                            type: string
+                example:
+                  data:
+                    widgets:
+                    - key: operational_kpis
+                      title: Operational KPIs
+                      description: Low stock, backorders, unfulfilled orders, POs
+                        arriving and AP due.
+                      category: operations
+                      category_label: Operations & Activity
+                      type: custom
+                      icon: mdi-speedometer
+                      default_width: 12
+                      min_width: 12
+                      tags:
+                      - kpi
+                      - operations
+                      - stock
+                      - orders
+                      has_provider: false
+                      is_financial: false
+                      status: ready
+                    categories:
+                    - value: overview
+                      label: Overview
+                    - value: sales
+                      label: Sales & Orders
+                    allowed_widths:
+                    - 3
+                    - 4
+                    - 6
+                    - 8
+                    - 9
+                    - 12
+                    hidden_financial_widgets:
+                      count: 19
+                      reason: Widgets that show money (revenue, inventory value, payables…)
+                        are hidden — they need the "Financials → List" permission.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-v2-dashboard-widgets
+  /api/v2/dashboard/widget/{key}/data:
+    get:
+      tags:
+      - Dashboard
+      summary: Widget Data
+      description: 'Data for one provider-backed dashboard widget.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Query parameters (all optional, per widget):** `period` (week|month), `days`
+        (1–365), `trailing_days` (1–730), `limit`/`per_page` (1–50), `metric`, `warehouse_id`.
+
+
+        **Responses**
+
+        - 200 `{data: …}` — the widget''s payload; `data` is null for a financial
+        widget when the tenant hides financial data.
+
+        - 403 — the widget shows money amounts and the user lacks the **Financials
+        → List** permission (`financials.index`); the message says so and what to
+        do. A plain 403 means the user lacks the permission for the widget''s own
+        data.
+
+        - 404 — unknown widget key, or a widget without a data provider.'
+      parameters:
+      - name: key
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Widget key from the catalog (`widgets[].key`)
+        example: orders_by_status
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            label:
+                              type: string
+                            count:
+                              type: integer
+                            color:
+                              type: string
+                      total:
+                        type: integer
+                example:
+                  data:
+                    items:
+                    - label: Reserved
+                      count: 1
+                      color: warning
+                    - label: Open
+                      count: 6
+                      color: success
+                    - label: Closed
+                      count: 2
+                      color: default
+                    total: 9
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This widget shows money amounts, so it needs the "Financials
+                    → List" permission. Ask an admin to add it to your role.
+        '429': *id001
+        '401': *id002
+        '404': *id003
+      x-session-only: true
+      operationId: get-api-v2-dashboard-widget-key-data
   /api/tags/{id}:
     get:
       tags:
@@ -165456,8 +165790,9 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Get Supplier Summary
-      description: 'Get a summary of suppliers with product counts. Used for lazy-loading
-        supplier tabs in the forecast UI before running the full forecast.
+      description: 'Product counts per supplier for the forecast''s supplier tabs,
+        before the full build. The count is the number of products the build will
+        list for that supplier.
 
 
         :::info[Required scope: `purchase-orders:write`]
@@ -165471,11 +165806,27 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        forecast_type: optional — if provided, filters product counts based on type
-        compatibility.
+        **Body**
+
+        - `supplier_ids` (required)
+
+        - `product_filters` — the build''s product filters (filter_groups + flags
+        `has_moq`, `has_leadtime`, `supplier_in_stock`, `has_sales_history`).
+
+        - `forecast_type` — `fill_backorders` counts backordered products only (the
+        flags don''t apply to it).
+
+        - `sales_history_days` or `sales_start_date` + `sales_end_date` — the build''s
+        sales window (default: last 30 days).
+
+        - `sales_filters`, `destination_warehouse_id` — the build''s sales filters
+        and warehouse.
 
 
-        product_filters: optional filter_groups structure.'
+        Send the same window, sales filters and warehouse as the build: period-scoped
+        product filters and **Has sales** (`has_sales_history` — only products with
+        sales in the window, units sold inside kits counting for their components)
+        depend on them, and the counts then match the rows the build shows.'
       requestBody:
         content:
           application/json:
@@ -165488,16 +165839,38 @@ paths:
                     type: integer
                 product_filters:
                   type: object
-                  properties: {}
+                  properties:
+                    has_sales_history:
+                      type: boolean
                 forecast_type:
                   type: string
+                sales_history_days:
+                  type: integer
+                sales_start_date:
+                  type: string
+                  nullable: true
+                sales_end_date:
+                  type: string
+                  nullable: true
+                sales_filters:
+                  type: object
+                  properties: {}
+                destination_warehouse_id:
+                  type: string
+                  nullable: true
               example:
                 supplier_ids:
                 - 1
                 - 2
                 - 3
-                product_filters: {}
-                forecast_type: sales_history
+                product_filters:
+                  has_sales_history: true
+                forecast_type: with_sales_history
+                sales_history_days: 90
+                sales_start_date: null
+                sales_end_date: null
+                sales_filters: {}
+                destination_warehouse_id: null
       parameters: []
       responses:
         '200':
@@ -165523,18 +165896,17 @@ paths:
                           type: string
                         product_count:
                           type: integer
-                        active_product_count:
-                          type: integer
+                  status:
+                    type: string
                 example:
                   data:
                   - supplier_id: 1
                     supplier_name: Acme Supplier Co.
-                    product_count: 120
-                    active_product_count: 105
+                    product_count: 42
                   - supplier_id: 2
                     supplier_name: Beta Parts Ltd.
-                    product_count: 45
-                    active_product_count: 42
+                    product_count: 7
+                  status: success
         '429': *id001
         '401': *id002
         '403': *id005
@@ -424299,7 +424671,8 @@ paths:
       tags:
       - Shipfusion
       summary: Delete Order
-      description: 'Cancel/delete a Shipfusion order.
+      description: 'Cancel a Shipfusion order from the Orders page. `:order` is the
+        **Shipfusion order id** (`shipfusion_id`), not SKU.io''s row id.
 
 
         :::warning[Not yet available to API tokens]
@@ -424313,7 +424686,28 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Requires the `integrations.update` permission.'
+        Requires the `integrations.update` permission.
+
+
+        **What happens**
+
+        - The order is linked to a live SKU.io fulfillment order → the fulfillment
+        order is cancelled the normal way: SKU.io recalls it from Shipfusion and voids
+        it, so its items are free to fulfill again.
+
+        - No live fulfillment order → the order is cancelled at Shipfusion and its
+        row is marked Cancelled.
+
+
+        **Refusals**
+
+        - 409 — Shipfusion can no longer cancel it (it is picking, packing or has
+        shipped), or the fulfillment order can''t be changed. The message gives the
+        reason; when a fulfillment order is linked it adds "Open fulfillment order
+        #N to void it in SKU.io only."
+
+        - 502 — Shipfusion returned an error; the message names the order and Shipfusion''s
+        reason.'
       parameters:
       - name: integration_instance
         in: path
@@ -424329,6 +424723,29 @@ paths:
         description: Shipfusion order number
         example: SF-12345
       responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Cancelled and fulfillment order voided
+                  value:
+                    status: success
+                    message: 'Order cancelled at Shipfusion and fulfillment order
+                      #4182 voided.'
+                example-1:
+                  summary: 200 Cancelled (no linked fulfillment order)
+                  value:
+                    status: success
+                    message: Order cancelled at Shipfusion.
         '403':
           description: Forbidden
           headers:
@@ -424356,6 +424773,84 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - integrations.update
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 409 Already shipped — fulfillment order linked
+                  value:
+                    status: failure
+                    message: 'Shipfusion order SF-12345 is "shipped" and can no longer
+                      be cancelled. Open fulfillment order #4182 to void it in SKU.io
+                      only.'
+                    errors:
+                      order:
+                      - message: 'Shipfusion order SF-12345 is "shipped" and can no
+                          longer be cancelled. Open fulfillment order #4182 to void
+                          it in SKU.io only.'
+                        code: OrderNotCancellable
+                        data: []
+                example-1:
+                  summary: 409 Already shipped — no fulfillment order
+                  value:
+                    status: failure
+                    message: Shipfusion order SF-12345 is "shipped" and can no longer
+                      be cancelled.
+                    errors:
+                      order:
+                      - message: Shipfusion order SF-12345 is "shipped" and can no
+                          longer be cancelled.
+                        code: OrderNotCancellable
+                        data: []
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      order:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: failure
+                  message: 'Shipfusion couldn''t cancel order SF-12345: Shipment not
+                    found'
+                  errors:
+                    order:
+                    - message: 'Shipfusion couldn''t cancel order SF-12345: Shipment
+                        not found'
+                      code: OrderCancellationFailed
+                      data: []
         '429': *id001
         '401': *id002
         '404': *id003
