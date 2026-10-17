@@ -351764,7 +351764,7 @@ paths:
         Body:
 
         - `force_submit` (boolean, optional, default false): submit even when SKU.io
-        is not running in production.
+        is not running in production. It does not bypass the integration''s sync controls.
 
 
         For each fulfillment, SKU.io marks the TikTok package shipped with the fulfillment''s
@@ -351777,9 +351777,10 @@ paths:
         - **Already shipped**: TikTok Shop already had every item shipped; nothing
         new is sent and the fulfillment is marked as submitted.
 
-        - **Skipped**: nothing to send, and the fulfillment is left as it is. This
-        happens when TikTok ships the order itself, the TikTok order is cancelled,
-        the fulfillment has not shipped, or it was already submitted.
+        - **Skipped**: nothing is sent, and the fulfillment is left as it is. This
+        happens when the fulfillment is not pending on this integration (already submitted,
+        not fulfilled, a pickup, a cancelled sales order, or another integration''s
+        order), TikTok ships the order itself, or the TikTok order is cancelled.
 
         - **Failed**: for example, a missing tracking number, a carrier that matches
         none of TikTok Shop''s shipping providers, or TikTok Shop rejecting the shipment.
@@ -351787,13 +351788,26 @@ paths:
         order.
 
 
-        Nothing is sent when outbound tracking sync is turned off for this integration.
-        Outside production, nothing is sent unless `force_submit` is true.
+        **Nothing sent returns 409**, never a success. The body is `{success: false,
+        skipped: true, reason, message}`, and `message` says why and what to do:
+
+        - `reason: sync_disabled` (also `skipped_sync_disabled: true`): outbound Tracking
+        sync is turned off for this integration. Turn it on in the TikTok Shop integration''s
+        sync controls. `force_submit` does not bypass this. A paused sync schedule
+        does not block these endpoints: pausing stops only the automatic submissions.
+
+        - `reason: non_production` (also `skipped_non_production: true`): SKU.io is
+        not running in production and `force_submit` was not true. Send again with
+        `force_submit: true` to submit anyway.
+
+        - `reason` is the skip reason otherwise: `already_submitted`, `not_fulfilled`,
+        `pickup`, `order_cancelled`, `not_for_this_integration`, `not_found`, or `not_sent`
+        (TikTok ships the order, or the TikTok order is cancelled).
 
 
-        Response: `success` and a `message` describing the outcome. A failure returns
-        422. Outside production without `force_submit`, the response is 200 with `skipped_non_production:
-        true`.'
+        Response: 200 `{success: true, skipped: false, message}` when TikTok Shop
+        received it; 422 `{success: false, skipped: false, message}` when the submission
+        failed.'
       requestBody:
         content:
           application/json:
@@ -351829,25 +351843,66 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  success:
+                    type: boolean
+                  skipped:
+                    type: boolean
+                  message:
+                    type: string
+                example:
+                  success: true
+                  skipped: false
+                  message: Marked 2 item(s) shipped on TikTok Shop with USPS 9400111899223197428490
+                    (package 1153016627837355345).
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
               examples:
                 example-0:
-                  summary: 200 — Submitted
+                  summary: 409 — Tracking sync turned off
                   value:
-                    success: true
-                    message: Marked 2 item(s) shipped on TikTok Shop with USPS 9400111899223197428490
-                      (package 1153016627837355345).
+                    success: false
+                    skipped: true
+                    reason: sync_disabled
+                    skipped_sync_disabled: true
+                    message: 'Nothing was sent to TikTok Shop: outbound Tracking sync
+                      is turned off for this TikTok Shop integration. Turn on Tracking
+                      under "Send to TikTok Shop" in Settings > Sync (Sync Controls)
+                      on the TikTok Shop integration to submit tracking.'
                 example-1:
-                  summary: 200 — Skipped (TikTok ships this order)
+                  summary: 409 — Not on production
                   value:
-                    success: true
+                    success: false
+                    skipped: true
+                    reason: non_production
+                    skipped_non_production: true
+                    message: 'Nothing was sent to TikTok Shop: this is not the production
+                      environment. Submit again with force_submit to send anyway.'
+                example-2:
+                  summary: 409 — Already submitted
+                  value:
+                    success: false
+                    skipped: true
+                    reason: already_submitted
+                    message: 'Fulfillment #SO-10482.1 was already submitted to TikTok
+                      Shop on Thu, Oct 16, 2026 2:14 PM, so it was not sent again.'
+                example-3:
+                  summary: 409 — Skipped (TikTok ships this order)
+                  value:
+                    success: false
+                    skipped: true
+                    reason: not_sent
                     message: TikTok ships this order (shipping type TIKTOK, seller_shipping),
                       so its tracking comes from TikTok, not SKU.io.
-                example-2:
-                  summary: 200 — Not on production
-                  value:
-                    success: true
-                    message: Submission skipped (not on production environment)
-                    skipped_non_production: true
         '422':
           description: Unprocessable Entity
           headers:
@@ -351862,13 +351917,15 @@ paths:
                 properties:
                   success:
                     type: boolean
+                  skipped:
+                    type: boolean
                   message:
                     type: string
                 example:
                   success: false
-                  message: Fulfillment SO-10482.1 has no tracking number, so TikTok
-                    Shop cannot be told it shipped. Add the tracking number to the
-                    fulfillment, then submit it from TikTok Shop → Fulfillments.
+                  skipped: false
+                  message: 'TikTok Shop rejected the shipment (21011001): The tracking
+                    number is invalid.'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -351898,10 +351955,11 @@ paths:
         Body:
 
         - `ids` (array of integers, required): sales order fulfillment ids. Each must
-        exist. Ids that are not pending on this integration are ignored.
+        exist. Ids that are not pending on this integration are skipped and reported
+        in `skipped_details`.
 
         - `force_submit` (boolean, optional, default false): submit even when SKU.io
-        is not running in production.
+        is not running in production. It does not bypass the integration''s sync controls.
 
 
         For each fulfillment, SKU.io marks the TikTok package shipped with the fulfillment''s
@@ -351914,9 +351972,10 @@ paths:
         - **Already shipped**: TikTok Shop already had every item shipped; nothing
         new is sent and the fulfillment is marked as submitted.
 
-        - **Skipped**: nothing to send, and the fulfillment is left as it is. This
-        happens when TikTok ships the order itself, the TikTok order is cancelled,
-        the fulfillment has not shipped, or it was already submitted.
+        - **Skipped**: nothing is sent, and the fulfillment is left as it is. This
+        happens when the fulfillment is not pending on this integration (already submitted,
+        not fulfilled, a pickup, a cancelled sales order, or another integration''s
+        order), TikTok ships the order itself, or the TikTok order is cancelled.
 
         - **Failed**: for example, a missing tracking number, a carrier that matches
         none of TikTok Shop''s shipping providers, or TikTok Shop rejecting the shipment.
@@ -351924,15 +351983,27 @@ paths:
         order.
 
 
-        Nothing is sent when outbound tracking sync is turned off for this integration.
-        Outside production, nothing is sent unless `force_submit` is true.
+        Response (200) when anything was submitted or failed: `success` is true when
+        nothing failed; `data.submitted` counts fulfillments submitted or already
+        shipped, `data.failed` counts failures and `data.skipped` counts fulfillments
+        nothing was sent for. `errors` lists each failure as {`id`, `message`}; `skipped_details`
+        lists each skipped fulfillment as {`id`, `reason`, `message`}.
 
 
-        Response: `success` is true when nothing failed. `data.submitted` counts fulfillments
-        submitted or already shipped, and `data.failed` counts failures. Skipped fulfillments
-        are in neither count. `errors` lists each failure as {`id`, `message`}. Outside
-        production without `force_submit`, the response is `{success: true, skipped_non_production:
-        true}` and nothing is sent.'
+        **Nothing sent returns 409**, never a success. The body is `{success: false,
+        skipped: true, reason, message}`, and `message` says why and what to do:
+
+        - `reason: sync_disabled` (also `skipped_sync_disabled: true`): outbound Tracking
+        sync is turned off for this integration. Turn it on in the TikTok Shop integration''s
+        sync controls. `force_submit` does not bypass this. A paused sync schedule
+        does not block these endpoints: pausing stops only the automatic submissions.
+
+        - `reason: non_production` (also `skipped_non_production: true`): SKU.io is
+        not running in production and `force_submit` was not true. Send again with
+        `force_submit: true` to submit anyway.
+
+        - `reason: nothing_eligible`: none of the listed fulfillments could be submitted.
+        `data` and `skipped_details` say why for each.'
       requestBody:
         content:
           application/json:
@@ -351973,12 +352044,16 @@ paths:
                 properties:
                   success:
                     type: boolean
+                  skipped:
+                    type: boolean
                   data:
                     type: object
                     properties:
                       submitted:
                         type: integer
                       failed:
+                        type: integer
+                      skipped:
                         type: integer
                   errors:
                     type: array
@@ -351989,18 +352064,86 @@ paths:
                           type: integer
                         message:
                           type: string
+                  skipped_details:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        reason:
+                          type: string
+                        message:
+                          type: string
                   message:
                     type: string
                 example:
                   success: false
+                  skipped: false
                   data:
                     submitted: 2
                     failed: 1
+                    skipped: 1
                   errors:
                   - id: 48213
                     message: 'TikTok Shop rejected the shipment (21011001): The tracking
                       number is invalid.'
-                  message: 2 fulfillment(s) submitted, 1 failed
+                  skipped_details:
+                  - id: 48214
+                    reason: already_submitted
+                    message: 'Fulfillment #SO-10482.1 was already submitted to TikTok
+                      Shop on Thu, Oct 16, 2026 2:14 PM, so it was not sent again.'
+                  message: 'Fulfillment(s): 2 submitted, 1 failed, 1 skipped.'
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 409 — Tracking sync turned off
+                  value:
+                    success: false
+                    skipped: true
+                    reason: sync_disabled
+                    skipped_sync_disabled: true
+                    message: 'Nothing was sent to TikTok Shop: outbound Tracking sync
+                      is turned off for this TikTok Shop integration. Turn on Tracking
+                      under "Send to TikTok Shop" in Settings > Sync (Sync Controls)
+                      on the TikTok Shop integration to submit tracking.'
+                example-1:
+                  summary: 409 — Not on production
+                  value:
+                    success: false
+                    skipped: true
+                    reason: non_production
+                    skipped_non_production: true
+                    message: 'Nothing was sent to TikTok Shop: this is not the production
+                      environment. Submit again with force_submit to send anyway.'
+                example-2:
+                  summary: 409 — Nothing eligible
+                  value:
+                    success: false
+                    skipped: true
+                    reason: nothing_eligible
+                    data:
+                      submitted: 0
+                      failed: 0
+                      skipped: 1
+                    errors: []
+                    skipped_details:
+                    - id: 48214
+                      reason: already_submitted
+                      message: 'Fulfillment #SO-10482.1 was already submitted to TikTok
+                        Shop on Thu, Oct 16, 2026 2:14 PM, so it was not sent again.'
+                    message: None of the selected fulfillments could be submitted
+                      to TikTok Shop, so nothing was sent (1 skipped).
         '422':
           description: Unprocessable Entity
           headers:
@@ -352057,7 +352200,7 @@ paths:
         Body:
 
         - `force_submit` (boolean, optional, default false): submit even when SKU.io
-        is not running in production.
+        is not running in production. It does not bypass the integration''s sync controls.
 
 
         For each fulfillment, SKU.io marks the TikTok package shipped with the fulfillment''s
@@ -352070,9 +352213,10 @@ paths:
         - **Already shipped**: TikTok Shop already had every item shipped; nothing
         new is sent and the fulfillment is marked as submitted.
 
-        - **Skipped**: nothing to send, and the fulfillment is left as it is. This
-        happens when TikTok ships the order itself, the TikTok order is cancelled,
-        the fulfillment has not shipped, or it was already submitted.
+        - **Skipped**: nothing is sent, and the fulfillment is left as it is. This
+        happens when the fulfillment is not pending on this integration (already submitted,
+        not fulfilled, a pickup, a cancelled sales order, or another integration''s
+        order), TikTok ships the order itself, or the TikTok order is cancelled.
 
         - **Failed**: for example, a missing tracking number, a carrier that matches
         none of TikTok Shop''s shipping providers, or TikTok Shop rejecting the shipment.
@@ -352080,15 +352224,27 @@ paths:
         order.
 
 
-        Nothing is sent when outbound tracking sync is turned off for this integration.
-        Outside production, nothing is sent unless `force_submit` is true.
+        Response (200) when anything was submitted or failed: `success` is true when
+        nothing failed; `data.submitted` counts fulfillments submitted or already
+        shipped, `data.failed` counts failures and `data.skipped` counts fulfillments
+        nothing was sent for. `errors` lists each failure as {`id`, `message`}; `skipped_details`
+        lists each skipped fulfillment as {`id`, `reason`, `message`}.
 
 
-        Response: `success` is true when nothing failed. `data.submitted` counts fulfillments
-        submitted or already shipped, and `data.failed` counts failures. Skipped fulfillments
-        are in neither count. `errors` lists each failure as {`id`, `message`}. Outside
-        production without `force_submit`, the response is `{success: true, skipped_non_production:
-        true}` and nothing is sent.'
+        **Nothing sent returns 409**, never a success. The body is `{success: false,
+        skipped: true, reason, message}`, and `message` says why and what to do:
+
+        - `reason: sync_disabled` (also `skipped_sync_disabled: true`): outbound Tracking
+        sync is turned off for this integration. Turn it on in the TikTok Shop integration''s
+        sync controls. `force_submit` does not bypass this. A paused sync schedule
+        does not block these endpoints: pausing stops only the automatic submissions.
+
+        - `reason: non_production` (also `skipped_non_production: true`): SKU.io is
+        not running in production and `force_submit` was not true. Send again with
+        `force_submit: true` to submit anyway.
+
+        - `reason: nothing_eligible`: no fulfillment is pending (or every pending
+        one was skipped), so nothing was sent.'
       requestBody:
         content:
           application/json:
@@ -352118,22 +352274,82 @@ paths:
             application/json:
               schema:
                 type: object
+                properties:
+                  success:
+                    type: boolean
+                  skipped:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      submitted:
+                        type: integer
+                      failed:
+                        type: integer
+                      skipped:
+                        type: integer
+                  errors:
+                    type: array
+                  skipped_details:
+                    type: array
+                  message:
+                    type: string
+                example:
+                  success: true
+                  skipped: false
+                  data:
+                    submitted: 3
+                    failed: 0
+                    skipped: 0
+                  errors: []
+                  skipped_details: []
+                  message: 'Fulfillment(s): 3 submitted.'
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
               examples:
                 example-0:
-                  summary: 200 — All submitted
+                  summary: 409 — Tracking sync turned off
                   value:
-                    success: true
-                    data:
-                      submitted: 3
-                      failed: 0
-                    errors: []
-                    message: 3 fulfillment(s) submitted, 0 failed
+                    success: false
+                    skipped: true
+                    reason: sync_disabled
+                    skipped_sync_disabled: true
+                    message: 'Nothing was sent to TikTok Shop: outbound Tracking sync
+                      is turned off for this TikTok Shop integration. Turn on Tracking
+                      under "Send to TikTok Shop" in Settings > Sync (Sync Controls)
+                      on the TikTok Shop integration to submit tracking.'
                 example-1:
-                  summary: 200 — Not on production
+                  summary: 409 — Not on production
                   value:
-                    success: true
-                    message: Bulk sync skipped (not on production)
+                    success: false
+                    skipped: true
+                    reason: non_production
                     skipped_non_production: true
+                    message: 'Nothing was sent to TikTok Shop: this is not the production
+                      environment. Submit again with force_submit to send anyway.'
+                example-2:
+                  summary: 409 — Nothing pending
+                  value:
+                    success: false
+                    skipped: true
+                    reason: nothing_eligible
+                    data:
+                      submitted: 0
+                      failed: 0
+                      skipped: 0
+                    errors: []
+                    skipped_details: []
+                    message: No fulfillments are waiting to be submitted to TikTok
+                      Shop, so nothing was sent.
         '429': *id001
         '401': *id002
         '403': *id005

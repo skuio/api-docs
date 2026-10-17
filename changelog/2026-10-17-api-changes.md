@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-17
-description: This release includes 64 additions, 92 changes, 20 removals. 20 breaking changes — action required.
+description: This release includes 64 additions, 95 changes, 20 removals. 20 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-17
 ---
 
-This release includes 64 additions, 92 changes, 20 removals. 20 breaking changes — action required.
+This release includes 64 additions, 95 changes, 20 removals. 20 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -343,6 +343,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - new response code(s): `400`
 
 ### TikTok Shop
+- `POST /api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/submit-all` — Submit All Pending Fulfillments
+  - new response code(s): `409`
+- `POST /api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/submit-bulk` — Submit Bulk Fulfillments
+  - new response code(s): `409`
+- `POST /api/tiktok-shop/integration-instances/{integration_instance_id}/fulfillments/{sales_order_fulfillment_id}/submit` — Submit Single Fulfillment
+  - new response code(s): `409`
 - `DELETE /api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/map` — Unmap Product SKU
   - removed response code(s): `200`
 - `POST /api/tiktok-shop/integration-instances/{integration_instance_id}/products/{product_id}/map` — Map Product SKU
