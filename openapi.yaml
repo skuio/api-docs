@@ -198569,10 +198569,10 @@ paths:
       - Amazon
       summary: Update Amazon Settings (Partial)
       description: 'Optimized partial update used by the application UI Amazon settings
-        page. Validated by `UpdateAmazonSettingsOnlyData` — every field is Optional,
-        so the client may send only the fields the user actually changed. Internally,
-        root-level fields (`name`, `is_automatic_sync_enabled`) are separated from
-        `integration_settings` fields and merged into the existing settings JSON.
+        page. Every field is optional, so the client may send only the fields the
+        user actually changed. Internally, root-level fields (`name`, `is_automatic_sync_enabled`)
+        are separated from `integration_settings` fields and merged into the existing
+        settings JSON.
 
 
         :::warning[Not yet available to API tokens]
@@ -198585,6 +198585,12 @@ paths:
 
         Returns the freshly reloaded Amazon integration instance object with `salesChannel.store`
         and `integration` eager-loaded.
+
+
+        store_id (optional, integer): The store new Amazon orders are created in.
+        Changing it also moves this connection''s sales channel to that store; orders
+        already imported keep their store. It must be an existing store id, otherwise
+        the request returns 422 and nothing is saved.
 
 
         fbmBackup (optional): catalog-wide FBM Backup Mode default { enabled: bool,
@@ -198851,11 +198857,51 @@ paths:
                       name: Main Store
                     created_at: '2026-01-15T10:30:00.000000Z'
                     updated_at: '2026-05-29T12:00:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      store_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                store_id:
+                                  type: integer
+                example:
+                  message: That store doesn't exist, so the connection was not moved.
+                    Pick one of your stores and save again.
+                  errors:
+                    store_id:
+                    - message: That store doesn't exist, so the connection was not
+                        moved. Pick one of your stores and save again.
+                      code: InvalidStoreId
+                      data:
+                        store_id: 999999
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: patch-api-amazon-integrationinstance-settings
   /amazon/callback:
@@ -293202,8 +293248,11 @@ paths:
       tags:
       - Shopify
       summary: Delete SKU Create from Shopify
-      description: 'Delete the SKU fulfillment and create a new one from the Shopify
-        fulfillment data. Resolves mismatches where Shopify is the source of truth.
+      description: 'Replace the SKU fulfillment with Shopify''s: the SKU fulfillment
+        is deleted (its stock movements are reversed) and Shopify''s fulfillment is
+        recorded in its place with the items and quantities Shopify shipped, so their
+        stock is deducted again. Resolves mismatches where Shopify is the source of
+        truth.
 
 
         :::warning[Not yet available to API tokens]
@@ -293218,7 +293267,23 @@ paths:
 
 
         Both fulfillments must belong to the same order of this Shopify store; any
-        other pairing returns 403 and nothing is changed.'
+        other pairing returns 403 and nothing is changed.
+
+
+        If none of the items Shopify''s fulfillment shipped match a line of the sales
+        order, the request returns 422 and the SKU fulfillment is kept. Link the two
+        fulfillments or update the Shopify tracking instead.
+
+
+        The new fulfillment does not send the customer a shipment notification (Shopify
+        already sent one). Shipping cost recorded on the SKU fulfillment is lost:
+        the response then carries a `warning`.
+
+
+        A 200 with `success: true` can still report that Shopify''s shipment could
+        not be recorded (for example when it predates the inventory start date); the
+        SKU fulfillment is removed in that case, so check the order''s notes for what
+        is still unshipped.'
       requestBody:
         content: {}
       parameters:
@@ -293255,14 +293320,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  success:
-                    type: boolean
-                  message:
-                    type: string
-                example:
-                  success: true
-                  message: SKU fulfillment replaced with Shopify fulfillment data
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    success: true
+                    message: 'SKU shipment replaced with Shopify''s: its shipped items
+                      were recorded and their stock deducted again.'
+                example-1:
+                  summary: 200 OK (cost lost)
+                  value:
+                    success: true
+                    message: 'SKU shipment replaced with Shopify''s: its shipped items
+                      were recorded and their stock deducted again.'
+                    warning: Cost information from the original SKU fulfillment has
+                      been lost
         '403':
           description: Forbidden
           headers:
@@ -293283,10 +293355,30 @@ paths:
                   success: false
                   message: The fulfillments do not belong to the same order of this
                     Shopify store.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                example:
+                  success: false
+                  message: Shopify's fulfillment has no shipped items that match this
+                    order's lines, so the SKU shipment was kept. Link the two shipments
+                    or update the Shopify tracking instead.
         '429': *id001
         '401': *id002
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-shopify-integrationinstance-fulfillments-salesorderfulfillment-create-from-shopify-shopifyfulfillment
   /api/shopify/{integrationInstance}/fulfillments/{fulfillment}/detailed:
@@ -329638,6 +329730,14 @@ paths:
         - lines[].amount (required with lines, integer): Quantity to cancel on that
         line.
 
+        - reason (optional, string): The cancellation reason sent to Walmart. One
+        of `SELLER_CANCEL_OUT_OF_STOCK` (out of stock, the default when omitted),
+        `CUSTOMER_REQUESTED_SELLER_TO_CANCEL` (the buyer asked to cancel), `SELLER_CANCEL_PRICING_ERROR`,
+        `SELLER_CANCEL_ADDRESS_NOT_SERVICEABLE` or `SELLER_CANCEL_FRAUD_STOP_SHIPMENT`.
+        Walmart counts seller-caused cancellations against your cancellation rate,
+        so send `CUSTOMER_REQUESTED_SELLER_TO_CANCEL` when the buyer requested it.
+        Any other value returns 422 and nothing is sent to Walmart.
+
 
         Requires the `sales_orders.cancel` permission.'
       requestBody:
@@ -329655,10 +329755,13 @@ paths:
                         type: string
                       amount:
                         type: integer
+                reason:
+                  type: string
               example:
                 lines:
                 - lineNumber: '1'
                   amount: 2
+                reason: CUSTOMER_REQUESTED_SELLER_TO_CANCEL
       parameters:
       - name: integrationInstance
         in: path
@@ -329800,12 +329903,34 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                example:
-                  message: No cancellable lines remain on this order — lines are already
-                    shipped or cancelled.
+              examples:
+                example-0:
+                  summary: 422 Unprocessable Entity
+                  value:
+                    message: No cancellable lines remain on this order — lines are
+                      already shipped or cancelled.
+                example-1:
+                  summary: 422 Invalid Reason
+                  value:
+                    message: 'Walmart only accepts these cancellation reasons: SELLER_CANCEL_OUT_OF_STOCK
+                      (Out of stock), CUSTOMER_REQUESTED_SELLER_TO_CANCEL (Customer
+                      requested cancellation), SELLER_CANCEL_PRICING_ERROR (Pricing
+                      error), SELLER_CANCEL_ADDRESS_NOT_SERVICEABLE (Can''t ship to
+                      this address), SELLER_CANCEL_FRAUD_STOP_SHIPMENT (Suspected
+                      fraud). Send one of these codes, or leave reason empty to report
+                      the cancel as out of stock.'
+                    errors:
+                      reason:
+                      - message: 'Walmart only accepts these cancellation reasons:
+                          SELLER_CANCEL_OUT_OF_STOCK (Out of stock), CUSTOMER_REQUESTED_SELLER_TO_CANCEL
+                          (Customer requested cancellation), SELLER_CANCEL_PRICING_ERROR
+                          (Pricing error), SELLER_CANCEL_ADDRESS_NOT_SERVICEABLE (Can''t
+                          ship to this address), SELLER_CANCEL_FRAUD_STOP_SHIPMENT
+                          (Suspected fraud). Send one of these codes, or leave reason
+                          empty to report the cancel as out of stock.'
+                        code: InvalidReason
+                        data:
+                          reason: CANCEL_BY_SELLER
         '429': *id001
         '401': *id002
         '404': *id003
@@ -329839,6 +329964,14 @@ paths:
 
 
         Requires the `sales_orders.fulfill` permission.
+
+
+        Only an eligible fulfillment is sent, under the same rules as Walmart''s fulfillment
+        submit endpoints: it must be fulfilled (shipped), not already submitted to
+        Walmart, not a pickup, not on a cancelled sales order, and shipped within
+        one month either side of today (the window Walmart accepts). An ineligible
+        fulfillment returns 422 with the reason and nothing is sent to Walmart. When
+        Walmart rejects the shipment, the 422 carries Walmart''s error.
 
 
         Returns 404 when the sales order fulfillment belongs to an order of a different
@@ -329881,7 +330014,7 @@ paths:
                     type: string
                 example:
                   data: null
-                  message: Successfully submitted to sales channel.
+                  message: 'Fulfillment #SO-1042.1 submitted successfully'
         '403':
           description: Forbidden
           headers:
@@ -329936,23 +330069,29 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The sales order fulfillment id field must exist in sales
+                      order fulfillments.
+                    errors:
                       sales_order_fulfillment_id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The sales order fulfillment id field must exist in sales
-                    order fulfillments.
-                  errors:
-                    sales_order_fulfillment_id:
-                    - The sales order fulfillment id field must exist in sales order
-                      fulfillments.
+                      - The sales order fulfillment id field must exist in sales order
+                        fulfillments.
+                example-1:
+                  summary: 422 Not Eligible (already submitted)
+                  value:
+                    message: 'Fulfillment #SO-1042.1 was already submitted to Walmart
+                      on Thu, Oct 15, 2026 2:30 PM. It was not sent again, so the
+                      customer was not notified twice.'
+                    status: failure
+                example-2:
+                  summary: 422 Not Eligible (not shipped)
+                  value:
+                    message: 'Fulfillment #SO-1042.1 is not fulfilled yet (status:
+                      submitted).'
+                    status: failure
         '429': *id001
         '401': *id002
       x-session-only: true
@@ -373288,7 +373427,18 @@ paths:
 
 
         Returns 403 when the order belongs to a different integration instance than
-        the one in the URL.'
+        the one in the URL.
+
+
+        **Response field:** `amount_lookup_error` — null normally. Temu''s order list
+        carries no prices, so SKU.io asks Temu''s Order Amount API for them; when
+        Temu refuses that lookup (it is a Temu sensitive interface a store must be
+        granted), the order is still imported and this field holds Temu''s answer,
+        and the lines carry no price until a later refresh succeeds.
+
+
+        **Response field:** `line_items[].unit_price` — the unit price Temu''s Order
+        Amount API returned for the line, or null when the amounts have not been fetched.'
       parameters:
       - name: integrationInstance
         in: path
@@ -373347,6 +373497,9 @@ paths:
                       status:
                         type: string
                       error_log:
+                        type: string
+                        nullable: true
+                      amount_lookup_error:
                         type: string
                         nullable: true
                       json_object:
@@ -373482,6 +373635,56 @@ paths:
                                 type: string
                               updated_at:
                                 type: string
+                      line_items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            order_sn:
+                              type: string
+                            goods_id:
+                              type: string
+                            sku_id:
+                              type: string
+                            goods_name:
+                              type: string
+                            spec_name:
+                              type: string
+                            thumb_url:
+                              type: string
+                            quantity:
+                              type: integer
+                            unit_price:
+                              type: number
+                            temu_product:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                goodsId:
+                                  type: string
+                                goodsName:
+                                  type: string
+                                thumbUrl:
+                                  type: string
+                                integration_instance_id:
+                                  type: integer
+                                revenue_line:
+                                  type: string
+                                  nullable: true
+                            mapped_product:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                name:
+                                  type: string
+                            is_mapped:
+                              type: boolean
                       unmapped_line_item_count:
                         type: integer
                       archived_at:
@@ -373507,6 +373710,7 @@ paths:
                     currency: USD
                     status: shipped
                     error_log: null
+                    amount_lookup_error: null
                     json_object:
                       parentOrderMap:
                         parentOrderSn: PO-1024-AB
@@ -373567,6 +373771,46 @@ paths:
                           skcId: '55512346'
                         created_at: '2025-02-15T09:00:00+00:00'
                         updated_at: '2025-02-15T09:00:00+00:00'
+                    line_items:
+                    - id: 88101
+                      order_sn: 211-1024-0001
+                      goods_id: '401234567890'
+                      sku_id: '77712345'
+                      goods_name: Wireless Earbuds
+                      spec_name: Black
+                      thumb_url: https://img.kwcdn.com/product/earbuds-black.jpg
+                      quantity: 2
+                      unit_price: 29.99
+                      temu_product:
+                        id: 7012
+                        goodsId: '401234567890'
+                        goodsName: Wireless Earbuds
+                        thumbUrl: https://img.kwcdn.com/product/earbuds-black.jpg
+                        integration_instance_id: 1
+                        revenue_line: null
+                      mapped_product:
+                        id: 4501
+                        sku: WE-001
+                        name: Wireless Earbuds
+                      is_mapped: true
+                    - id: 88102
+                      order_sn: 211-1024-0002
+                      goods_id: '401234567891'
+                      sku_id: '77712346'
+                      goods_name: Charging Cable
+                      spec_name: null
+                      thumb_url: null
+                      quantity: 1
+                      unit_price: 29.99
+                      temu_product:
+                        id: 7013
+                        goodsId: '401234567891'
+                        goodsName: Charging Cable
+                        thumbUrl: null
+                        integration_instance_id: 1
+                        revenue_line: null
+                      mapped_product: null
+                      is_mapped: false
                     unmapped_line_item_count: 1
                     archived_at: null
                     created_at: '2025-03-01T12:35:10+00:00'
@@ -555415,7 +555659,22 @@ paths:
         across every warehouse
 
         - inventory_advice_buffer (integer, optional, min 0): units held back from
-        every item''s 846 quantity'
+        every item''s 846 quantity
+
+        - asn_structures (object, optional): maps each trading partner ID to its 856
+        structure — order_item, pick_and_pack, store_order_item (one order level per
+        store) or store_pick_and_pack (Split by store / DC); null or omitted uses
+        the connection default from pack_level_asn. A single shipment can override
+        it with Update Shipment Ship Notice Structure.
+
+        - asn_store_address_types (object, optional): maps each trading partner ID
+        to how a split-by-store 856 names each store — Z7 (mark-for, the default),
+        BY or MA, per the retailer''s 856 guide.
+
+
+        The response also lists asn_store_address_type_options, asn_structure_options
+        (every structure with its label) and trading_partner_ids (partners that sent
+        an 850, plus any configured).'
       requestBody:
         content:
           application/json:
@@ -555446,12 +555705,24 @@ paths:
                   properties:
                     WALMARTDC:
                       type: string
+                asn_structures:
+                  type: object
+                  properties:
+                    NORDSTROM:
+                      type: string
+                    TARGET:
+                      type: string
                 inventory_advice_warehouse_ids:
                   type: array
                   items:
                     type: integer
                 inventory_advice_buffer:
                   type: integer
+                asn_store_address_types:
+                  type: object
+                  properties:
+                    WALMARTDC:
+                      type: string
                 ship_notice_number_partner_ids:
                   type: array
                   items:
@@ -555468,9 +555739,14 @@ paths:
                 sscc_extension_digit: 0
                 carton_label_ids:
                   WALMARTDC: walmart-dc-ucc128
+                asn_structures:
+                  NORDSTROM: store_pick_and_pack
+                  TARGET: order_item
                 inventory_advice_warehouse_ids:
                 - 1
                 inventory_advice_buffer: 2
+                asn_store_address_types:
+                  WALMARTDC: BY
                 ship_notice_number_partner_ids:
                 - NORDSTROM
       parameters:
@@ -555535,7 +555811,32 @@ paths:
                       carton_label_ids:
                         type: object
                         properties: {}
-                      ship_notice_number_partner_ids:
+                      asn_structures:
+                        type: object
+                        properties:
+                          NORDSTROM:
+                            type: string
+                          TARGET:
+                            type: string
+                      asn_store_address_types:
+                        type: object
+                        properties:
+                          WALMARTDC:
+                            type: string
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      asn_store_address_type_options:
                         type: array
                         items:
                           type: string
@@ -555549,6 +555850,10 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      ship_notice_number_partner_ids:
+                        type: array
+                        items:
+                          type: string
                 example:
                   success: true
                   data:
@@ -555569,14 +555874,42 @@ paths:
                     gs1_company_prefix: null
                     sscc_extension_digit: 0
                     carton_label_ids: {}
-                    ship_notice_number_partner_ids:
-                    - NORDSTROM
+                    asn_structures:
+                      NORDSTROM: store_pick_and_pack
+                      TARGET: order_item
+                    asn_store_address_types:
+                      WALMARTDC: BY
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    asn_store_address_type_options:
+                    - Z7
+                    - BY
+                    - MA
                     trading_partner_ids:
                     - SPSALLTESTID
                     - NORDSTROM
+                    - TARGET
+                    - WALMARTDC
                     sales_channel_id: 3
                     created_at: '2026-10-04T18:22:05.000000Z'
                     updated_at: '2026-10-04T20:31:40.000000Z'
+                    ship_notice_number_partner_ids:
+                    - NORDSTROM
         '429': *id001
         '401': *id002
         '403': *id005
@@ -555788,7 +556121,14 @@ paths:
         with the case pack on the retailer''s 850 (purchase_order_case_quantity).
         The catalog is authoritative: the ship notice (856) reports catalog_case_quantity
         on each item, falling back to the 850''s value only when the product has no
-        case quantity. Empty when everything agrees.'
+        case quantity. Empty when everything agrees.
+
+
+        stores_unresolved_reason (string or null): when the shipment''s ship notice
+        is split by store and a shipped line''s store cannot be told — its 850 store
+        quantities did not add up, or the order was imported before store quantities
+        were kept — the reason the ship notice (856) is held, with what to do. Null
+        otherwise.'
       parameters:
       - name: salesOrderFulfillment
         in: path
@@ -555822,6 +556162,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -555858,8 +556224,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -555883,19 +556247,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -555935,6 +556286,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                 example:
                   success: true
                   data:
@@ -555942,6 +556311,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -555958,7 +556350,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -555969,11 +556360,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -555990,6 +556376,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
         '429': *id001
         '401': *id002
         '403': *id005
@@ -556102,6 +556495,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -556138,8 +556557,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -556163,19 +556580,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -556215,6 +556619,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                 example:
                   success: true
                   data:
@@ -556222,6 +556644,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -556238,7 +556683,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -556249,11 +556693,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -556270,6 +556709,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
         '429': *id001
         '401': *id002
         '403': *id005
@@ -556342,6 +556788,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -556378,8 +556850,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -556403,19 +556873,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -556455,6 +556912,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                   warnings:
                     type: array
                     items:
@@ -556466,6 +556941,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -556482,7 +556980,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -556493,11 +556990,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -556514,6 +557006,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
                   warnings:
                   - 'SPSSupplierHD-20: 5 does not divide into cases of 2, so the last
                     1 went into a partial carton.'
@@ -556632,6 +557131,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -556665,8 +557190,6 @@ paths:
                             type: string
                           shipment_status_code:
                             type: string
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -556690,19 +557213,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -556742,6 +557252,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                   warnings:
                     type: array
                 example:
@@ -556751,6 +557279,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -556767,7 +557318,6 @@ paths:
                       ship_notice_number: NRD-LOAD-88912
                       routing_sequence_code: B
                       shipment_status_code: CL
-                    requires_ship_notice_number: true
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -556778,11 +557328,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -556799,6 +557344,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: true
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
                   warnings: []
         '429': *id001
         '401': *id002
@@ -556807,6 +557359,295 @@ paths:
         '422': *id004
       x-session-only: true
       operationId: put-api-spscommerce-fulfillments-salesorderfulfillment-packing-freight
+  /api/spscommerce/fulfillments/{salesOrderFulfillment}/packing/asn-structure:
+    put:
+      tags:
+      - SPS Commerce
+      summary: Update Shipment Ship Notice Structure
+      description: 'Choose the 856 advance ship notice structure for this one shipment,
+        overriding its trading partner''s structure — for retailers whose routing
+        varies per shipment (e.g. Split by DC for an LTL load to a distribution center,
+        Small Package for parcel). Send asn_structure as one of order_item, pick_and_pack,
+        store_order_item, store_pick_and_pack, or null to go back to the trading partner''s
+        structure.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Pick-and-pack structures report every carton with its SSCC-18 and wait for
+        packing to be finalized; store structures send one order level per store of
+        a multi-store purchase order, so each carton must hold a single store''s items.
+        When a shipped shipment moves to a structure without cartons (or its packing
+        is already finalized), its ship notice is sent. Returns 422 once the shipment''s
+        856 exists.
+
+
+        Authentication: Requires Bearer token. Available for shipments of SPS Commerce
+        EDI orders; other shipments return 404. Requires the sales_orders.update permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asn_structure:
+                  type: string
+              example:
+                asn_structure: order_item
+      parameters:
+      - name: salesOrderFulfillment
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The sales order fulfillment ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      sales_order_fulfillment_id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      po_number:
+                        type: string
+                      pack_level_enabled:
+                        type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
+                      trading_partner_id:
+                        type: string
+                      label_template_id:
+                        type: string
+                      has_company_prefix:
+                        type: boolean
+                      is_fully_packed:
+                        type: boolean
+                      is_finalized:
+                        type: boolean
+                      is_locked:
+                        type: boolean
+                      ship_notice_status:
+                        type: string
+                      invoice_status:
+                        type: string
+                      freight:
+                        type: object
+                        properties:
+                          bill_of_lading_number:
+                            type: string
+                          carrier_pro_number:
+                            type: string
+                          carrier_scac:
+                            type: string
+                          carrier_name:
+                            type: string
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            case_quantity:
+                              type: integer
+                            shipped:
+                              type: integer
+                            packed:
+                              type: integer
+                            remaining:
+                              type: integer
+                            unit_weight_lb:
+                              type: number
+                      cartons:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            carton_number:
+                              type: integer
+                            sscc:
+                              type: string
+                            weight:
+                              type: number
+                            weight_unit:
+                              type: string
+                            length:
+                              type: integer
+                            width:
+                              type: integer
+                            height:
+                              type: integer
+                            dimension_unit:
+                              type: string
+                            tracking_number:
+                              type: string
+                              nullable: true
+                            has_label:
+                              type: boolean
+                            label_fetched_at:
+                              type: string
+                            lines:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  sales_order_fulfillment_line_id:
+                                    type: integer
+                                  quantity:
+                                    type: integer
+                example:
+                  success: true
+                  data:
+                    sales_order_fulfillment_id: 2
+                    integration_instance_id: 4
+                    po_number: PO584615-1
+                    pack_level_enabled: false
+                    asn_structure: order_item
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: true
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
+                    trading_partner_id: SPSALLTESTID
+                    label_template_id: 15aa5856
+                    has_company_prefix: true
+                    is_fully_packed: true
+                    is_finalized: true
+                    is_locked: false
+                    ship_notice_status: ready
+                    invoice_status: waiting
+                    freight:
+                      bill_of_lading_number: BOL-0001842
+                      carrier_pro_number: PRO-5531907
+                      carrier_scac: ODFL
+                      carrier_name: Old Dominion
+                    lines:
+                    - sales_order_fulfillment_line_id: 31
+                      product_id: 7
+                      sku: SPSSupplierHD-20
+                      name: Sample Product HD-20
+                      case_quantity: 2
+                      shipped: 5
+                      packed: 5
+                      remaining: 0
+                      unit_weight_lb: 47.99
+                    cartons:
+                    - id: 11
+                      carton_number: 1
+                      sscc: '006141410000000012'
+                      weight: 95.98
+                      weight_unit: LB
+                      length: 16
+                      width: 12
+                      height: 10
+                      dimension_unit: IN
+                      tracking_number: null
+                      has_label: true
+                      label_fetched_at: '2026-10-08T23:08:12.000000Z'
+                      lines:
+                      - sales_order_fulfillment_line_id: 31
+                        quantity: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Ship Notice Already Sent
+                  value:
+                    success: false
+                    message: The ship notice for these cartons has been sent, so they
+                      can no longer change.
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: Choose one of the listed ship notice structures
+                    errors:
+                      asn_structure:
+                      - Choose one of the listed ship notice structures
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: put-api-spscommerce-fulfillments-salesorderfulfillment-packing-asn-structure
   /api/spscommerce/fulfillments/{salesOrderFulfillment}/packing/finalize:
     post:
       tags:
@@ -556863,6 +557704,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -556899,8 +557766,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -556924,19 +557789,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -556976,6 +557828,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                 example:
                   success: true
                   data:
@@ -556983,6 +557853,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -556999,7 +557892,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -557010,11 +557902,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -557031,6 +557918,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
         '429': *id001
         '401': *id002
         '403': *id005
@@ -557093,6 +557987,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -557129,8 +558049,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -557154,19 +558072,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -557206,6 +558111,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                 example:
                   success: true
                   data:
@@ -557213,6 +558136,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -557229,7 +558175,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -557240,11 +558185,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -557261,6 +558201,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
         '429': *id001
         '401': *id002
         '403': *id005
@@ -557325,6 +558272,32 @@ paths:
                         type: string
                       pack_level_enabled:
                         type: boolean
+                      asn_structure:
+                        type: string
+                      partner_asn_structure:
+                        type: string
+                      is_asn_structure_overridden:
+                        type: boolean
+                      asn_structure_options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            value:
+                              type: string
+                            label:
+                              type: string
+                            pack_level:
+                              type: boolean
+                            splits_by_store:
+                              type: boolean
+                      store_codes:
+                        type: object
+                        properties:
+                          '5':
+                            type: string
+                          '6':
+                            type: string
                       trading_partner_id:
                         type: string
                       label_template_id:
@@ -557361,8 +558334,6 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
-                      requires_ship_notice_number:
-                        type: boolean
                       lines:
                         type: array
                         items:
@@ -557386,19 +558357,6 @@ paths:
                               type: integer
                             unit_weight_lb:
                               type: number
-                      case_pack_mismatches:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            sales_order_fulfillment_line_id:
-                              type: integer
-                            sku:
-                              type: string
-                            catalog_case_quantity:
-                              type: integer
-                            purchase_order_case_quantity:
-                              type: integer
                       cartons:
                         type: array
                         items:
@@ -557438,6 +558396,24 @@ paths:
                                     type: integer
                                   quantity:
                                     type: integer
+                      requires_ship_notice_number:
+                        type: boolean
+                      stores_unresolved_reason:
+                        type: string
+                        nullable: true
+                      case_pack_mismatches:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_order_fulfillment_line_id:
+                              type: integer
+                            sku:
+                              type: string
+                            catalog_case_quantity:
+                              type: integer
+                            purchase_order_case_quantity:
+                              type: integer
                   labels_generated:
                     type: integer
                 example:
@@ -557447,6 +558423,29 @@ paths:
                     integration_instance_id: 4
                     po_number: PO584615-1
                     pack_level_enabled: true
+                    asn_structure: store_pick_and_pack
+                    partner_asn_structure: store_pick_and_pack
+                    is_asn_structure_overridden: false
+                    asn_structure_options:
+                    - value: order_item
+                      label: Order / item (no cartons)
+                      pack_level: false
+                      splits_by_store: false
+                    - value: pick_and_pack
+                      label: Pick & pack (cartons with SSCC-18)
+                      pack_level: true
+                      splits_by_store: false
+                    - value: store_order_item
+                      label: Split by store — order / item
+                      pack_level: false
+                      splits_by_store: true
+                    - value: store_pick_and_pack
+                      label: Split by store / DC — pick & pack
+                      pack_level: true
+                      splits_by_store: true
+                    store_codes:
+                      '5': '0004'
+                      '6': '0221'
                     trading_partner_id: SPSALLTESTID
                     label_template_id: 15aa5856
                     has_company_prefix: true
@@ -557463,7 +558462,6 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
-                    requires_ship_notice_number: false
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -557474,11 +558472,6 @@ paths:
                       packed: 5
                       remaining: 0
                       unit_weight_lb: 47.99
-                    case_pack_mismatches:
-                    - sales_order_fulfillment_line_id: 31
-                      sku: SPSSupplierHD-20
-                      catalog_case_quantity: 2
-                      purchase_order_case_quantity: 1
                     cartons:
                     - id: 11
                       carton_number: 1
@@ -557495,6 +558488,13 @@ paths:
                       lines:
                       - sales_order_fulfillment_line_id: 31
                         quantity: 2
+                    requires_ship_notice_number: false
+                    stores_unresolved_reason: null
+                    case_pack_mismatches:
+                    - sales_order_fulfillment_line_id: 31
+                      sku: SPSSupplierHD-20
+                      catalog_case_quantity: 2
+                      purchase_order_case_quantity: 1
                   labels_generated: 5
         '429': *id001
         '401': *id002
@@ -558757,6 +559757,14 @@ paths:
         - Trading partner information
 
         - Acknowledgment status
+
+        - Linked sales order (if mapped)
+
+
+        Each line carries locations: the per-store quantities of a multi-store (SDQ)
+        purchase order line — location_code (the retailer''s store or DC number),
+        quantity, requested_ship_date and the sales_order_line_id created for that
+        store. Empty for a single ship-to line.
 
         - Linked sales order (if mapped) Each line carries pack_quantity: the case
         pack (units per outer pack) the retailer''s 850 stated for it, or null when
@@ -682935,6 +683943,13 @@ paths:
         :::
 
 
+        A mapping is applied when SKU.io creates the sales order for a Magento order:
+        the order''s shipping method is set to the mapped SKU.io method. An unmapped
+        method leaves the shipping method empty and keeps the Magento method as the
+        order''s requested shipping method. Changing a mapping affects orders imported
+        afterwards, not orders already created.
+
+
         Authenticated. Requires a Bearer token.
 
 
@@ -719158,6 +720173,23 @@ paths:
         (string).
 
 
+        Tax on lines:
+
+        - The order''s `tax_rate_id` is the default rate for lines added later. Changing
+        it never re-rates the order''s existing lines, whether or not the same request
+        sends `sales_order_lines`. To change an existing line''s tax, send that line
+        with its own `tax_rate_id`.
+
+        - A line sent with `tax_rate_id: null` (and no `tax_allocation` of its own)
+        has its tax rate removed and its tax cleared to 0. A line sent without a rate
+        but with its own `tax_allocation` keeps that amount.
+
+        - A line''s tax is computed on its discounted amount, not its gross: (quantity
+        × unit price − the line''s pre-tax discount) × rate, rounded to 2 decimals.
+        On a tax-inclusive order (`is_tax_included: true`) the tax is the part of
+        that discounted amount that is tax.
+
+
         Picking a saved address by id: send `shipping_address: {"id": 812}` (or `billing_address`)
         with no other address fields to attach one of the customer''s saved addresses
         as-is. The id must be one of the address-book addresses of the customer the
@@ -723356,6 +724388,23 @@ paths:
         `hold_until_date` (YYYY-MM-DD) sets the earliest ship date — the order is
         held until this date. Incoming dates are treated as tenant-timezone and stored
         as UTC.
+
+
+        Re-importing an existing order (`action: update`):
+
+        - Lines: when the sheet''s lines are identical to the order''s current lines
+        (same SKUs, quantities and unit prices), the order''s lines are kept as they
+        are, so their shipments, allocations and stock movements are untouched, including
+        on an order that has already shipped. When any line differs, the order''s
+        lines are replaced by the sheet''s.
+
+        - Totals: the order discount (`order_discount_amount` / `order_discount_rate`),
+        the line discounts (line `discount`, per unit) and the shipping charge (`shipping_amount`)
+        are each replaced only when the sheet provides them. Leave one empty to keep
+        what the previous import created; when the lines are replaced and no line
+        has a `discount`, the previous import''s per-unit line discounts are carried
+        onto the new lines of the same product. Discounts and shipping that did not
+        come from an import are never changed.
 
 
         Returns 201 when anything was newly created, 200 when the import only updated
@@ -925631,33 +926680,23 @@ paths:
       tags:
       - Walmart
       summary: Start Tracked Walmart Order Refresh
-      description: 'Pull orders from the Walmart Marketplace API into SKU.io. This
-        queues an asynchronous background job and returns immediately. Poll progress
-        using the returned tracked_job_log_id.
-
-
-        :::warning[Not yet available to API tokens]
-
-        This endpoint currently requires session authentication; Personal Access Token
-        scope support is in progress.
-
-        :::
-
-
-        Request body (all fields optional):
-
-        - mode — which orders to pull: `latest` (default; orders modified since the
-        most recent local order), `from_start_date` (orders modified since the integration''s
-        configured start date), `date_range` (orders modified since `date_from`),
-        or `all`.
-
-        - date_from — start of the modification window (date). Used with mode `date_range`.
-
-        - date_to — end of the window (date). Accepted for validation but the pull
-        is open-ended from `date_from`.
-
-
-        Requires the `integrations.sync` permission.'
+      description: "Pull orders from the Walmart Marketplace API into SKU.io. This\
+        \ queues an asynchronous background job and returns immediately. Poll progress\
+        \ using the returned tracked_job_log_id.\n\n:::warning[Not yet available to\
+        \ API tokens]\nThis endpoint currently requires session authentication; Personal\
+        \ Access Token scope support is in progress.\n:::\n\nRequest body (all fields\
+        \ optional):\n- mode — which orders to pull:\n  - `latest` (default): Walmart's\
+        \ recent orders (Walmart has no \"modified since\" filter; without a date\
+        \ filter it returns the orders of the last 7 days).\n  - `from_start_date`\
+        \ and `all`: every order created since the integration's configured start\
+        \ date (from the start of that day in your account's timezone). Without a\
+        \ configured start date they behave like `latest`.\n  - `date_range`: the\
+        \ orders created from the start of `date_from` through the end of `date_to`,\
+        \ both in your account's timezone (sent to Walmart in UTC). Either date can\
+        \ be left out for an open-ended range.\n- date_from — first day of the range\
+        \ (date). Used with mode `date_range`.\n- date_to — last day of the range,\
+        \ inclusive (date). Used with mode `date_range`.\n\nRequires the `integrations.sync`\
+        \ permission."
       requestBody:
         content:
           application/json:
@@ -939357,10 +940396,16 @@ paths:
         - `from_start_date` - orders created since the integration''s configured start
         date
 
-        - `date_range` - orders created on or after `date_from` (`date_to` is accepted
-        but not currently applied)
+        - `date_range` - orders created from the start of `date_from` through the
+        end of `date_to`, both in your account''s timezone (sent to WooCommerce in
+        GMT). `date_to` is optional; without it the range is open-ended.
 
-        - `all` - every order in the store
+        - `all` - no creation-date filter
+
+
+        In every mode WooCommerce is also asked only for orders modified since the
+        most recent order already synced, so an order that has not changed since the
+        last sync is not fetched again.
 
 
         The job runs asynchronously. The response includes a `tracked_job_log_id`
