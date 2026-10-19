@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-19
-description: This release includes 54 additions.
+description: This release includes 55 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-19
 ---
 
-This release includes 54 additions.
+This release includes 55 additions.
 
 <!-- truncate -->
 
@@ -16,6 +16,9 @@ This release includes 54 additions.
 
 ### Billing & Invoices
 - `GET /api/portal/invoices/by-order/{salesOrder}` — List Invoices for Sales Order
+
+### Fulfillments
+- `GET /api/v2/sales-order-fulfillments/export/download` — Download Fulfillments Export
 
 ### PayPal
 - `POST /api/sales-invoices/{salesInvoiceId}/paypal-payment-links` — Create PayPal Pay Link for Sales Invoice

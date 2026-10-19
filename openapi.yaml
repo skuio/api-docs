@@ -731335,19 +731335,24 @@ paths:
 
 
         Summary mode columns: ID, Fulfillment #, Status, Type, Order #, Customer,
-        Warehouse, Tracking #, Req. Method, Req. Method (Manual), Ful. Method, Ful.
-        Method (Manual), Items, Qty, Cost, Fulfilled At, Packing Slip Printed At,
-        Created At, Updated At.
+        Sales Channel, Warehouse, Tracking #, Req. Method, Req. Method (Manual), Ful.
+        Method, Ful. Method (Manual), Items, Qty, Cost, Fulfilled At, Packing Slip
+        Printed At, Created At, Updated At.
 
 
         Line items mode also includes per-line: Item SKU, Item Name, Item Description,
         Item Qty, Unit Price, Line Total.
 
 
-        Authentication: Requires Bearer token.
+        Delivery depends on size: up to 1,000 fulfillments (or scope=current_page)
+        the response is the file itself. Above 1,000 fulfillments the export runs
+        as a background job and the response is JSON carrying tracked_job_log_id and
+        queued=true; when the job completes, its results include download_url and
+        file — fetch the file with Download Fulfillments Export. Background xlsx exports
+        above 15,000 fulfillments are written as CSV instead.
 
 
-        Response: File download (binary), not JSON.'
+        Authentication: Requires Bearer token.'
       parameters:
       - name: format
         in: query
@@ -731377,11 +731382,114 @@ paths:
               schema:
                 type: string
                 example: '[Binary XLSX file download — fulfillments-2024-01-20-10-30-00.xlsx]'
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                      queued:
+                        type: boolean
+                example:
+                  status: success
+                  message: Export started
+                  data:
+                    tracked_job_log_id: 48213
+                    queued: true
         '429': *id001
         '401': *id002
         '403': *id005
       x-required-scope: orders:read
       operationId: get-api-v2-sales-order-fulfillments-export
+  /api/v2/sales-order-fulfillments/export/download:
+    get:
+      tags:
+      - Fulfillments
+      summary: Download Fulfillments Export
+      description: 'Downloads a completed background export produced by Export Fulfillments.
+        The file name is the one reported in the export job''s results.file field
+        (also embedded in results.download_url).
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response is the binary file (CSV or XLSX) with an attachment Content-Disposition
+        header.
+
+
+        `file` must be a file name produced by this endpoint''s export. Any other
+        name, or a name containing a path, returns 404.
+
+
+        Only the user who started the export, or an account admin, can download it;
+        anyone else gets the same 404 as a missing file.'
+      parameters:
+      - name: file
+        in: query
+        schema:
+          type: string
+        description: File name from the completed export job's results.file.
+        example: fulfillments-detail-2026-10-19-04-15-02.csv
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="fulfillments-detail-2026-10-19-04-15-02.csv"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'ID,Fulfillment #,Status,Item SKU,Item Qty
+
+                  50211,SO-10442.1,fulfilled,MEL-TEE-BLK-M,2
+
+                  '
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Export file not found. Only the person who started an export
+                    (or an account admin) can download it — start the export again
+                    to get your own copy.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: orders:read
+      operationId: get-api-v2-sales-order-fulfillments-export-download
   /api/v2/sales-order-fulfillments/{salesOrderFulfillment}/detail:
     get:
       tags:
