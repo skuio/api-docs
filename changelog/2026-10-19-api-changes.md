@@ -1,18 +1,55 @@
 ---
 title: API changes — 2026-10-19
-description: This release includes 55 additions, 3 changes.
+description: This release includes 62 additions, 3 changes, 22 removals. 22 breaking changes — action required.
 authors: [product-team]
-tags: [added, changed]
+tags: [added, changed, removed, breaking]
 date: 2026-10-19
 ---
 
-This release includes 55 additions, 3 changes.
+This release includes 62 additions, 3 changes, 22 removals. 22 breaking changes — action required.
+
+:::danger Breaking changes — action required
+This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
+:::
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
+## ⚠️ Breaking changes
+
+### Removed endpoints
+
+#### eBay
+- **Removed** `GET /api/ebay/integration-instances` — List Integration Instances
+- **Removed** `PUT /api/ebay/{integrationInstance}/legacy-products/archive` — Archive Legacy Products
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/archiveable` — Check Archiveable Products
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/create-sku-products` — Create SKU Products from Listings
+- **Removed** `PUT /api/ebay/{integrationInstance}/legacy-products/delete` — Delete Legacy Products (Bulk)
+- **Removed** `PUT /api/ebay/{integrationInstance}/legacy-products/deleteable` — Check Deleteable Products
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/hydrate-product-template` — Hydrate Product Template
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/import-mappings` — Import Mappings
+- **Removed** `PUT /api/ebay/{integrationInstance}/legacy-products/map` — Map Products
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/refresh` — Refresh Legacy Products
+- **Removed** `POST /api/ebay/{integrationInstance}/legacy-products/sync-inventory` — Sync Inventory
+- **Removed** `PUT /api/ebay/{integrationInstance}/legacy-products/unarchive` — Unarchive Legacy Products
+- **Removed** `GET /api/ebay/{integrationInstance}/legacy-products/{product}` — Show Legacy Product
+
+#### WooCommerce
+- **Removed** `DELETE /api/woo-commerce/{integration_instance}` — Delete Integration Instance
+- **Removed** `GET /api/woo-commerce/{integration_instance}` — Show Integration Instance
+- **Removed** `PATCH /api/woo-commerce/{integration_instance}` — Update WooCommerce Integration
+- **Removed** `PUT /api/woo-commerce/{integration_instance}` — Update Integration Instance
+- **Removed** `DELETE /api/woo-commerce/{integration_instance}/orders/{order}` — Delete Order
+- **Removed** `PUT /api/woo-commerce/{integration_instance}/orders/{order}` — Update Order
+- **Removed** `POST /api/woo-commerce/{integration_instance}/products/refresh-tracked` — Refresh Products (Tracked)
+- **Removed** `DELETE /api/woo-commerce/{integration_instance}/products/{product}` — Delete Product
+- **Removed** `PUT /api/woo-commerce/{integration_instance}/products/{product}` — Update Product
+
 ## Added
+
+### Adjustments & Transfers
+- `GET /api/warehouses/transfers/{transfer}` — Get Warehouse Transfer
 
 ### Billing & Invoices
 - `GET /api/portal/invoices/by-order/{salesOrder}` — List Invoices for Sales Order
@@ -22,6 +59,9 @@ This release includes 55 additions, 3 changes.
 
 ### PayPal
 - `POST /api/sales-invoices/{salesInvoiceId}/paypal-payment-links` — Create PayPal Pay Link for Sales Invoice
+
+### Sales Channel Product Templates
+- `GET /api/sales-channel-product-templates` — List Sales Channel Product Templates
 
 ### Sales Credits
 - `POST /api/sales-credits/{salesCredit}/reconcile-invoice-application` — Reconcile Sales Credit Invoice Application
@@ -82,6 +122,13 @@ This release includes 55 additions, 3 changes.
 ### SPS Commerce
 - `POST /api/sales-invoices/{salesInvoice}/edi/regenerate` — Regenerate Sales Invoice 810
 - `POST /api/sales-invoices/{salesInvoice}/edi/send` — Send Sales Invoice 810
+
+### WooCommerce
+- `POST /api/woo-commerce/{id}/products/refresh-tracked` — Refresh Products (Tracked)
+- `DELETE /api/woo-commerce/{integrationInstance}` — Delete Integration Instance
+- `GET /api/woo-commerce/{integrationInstance}` — Show Integration Instance
+- `PATCH /api/woo-commerce/{integrationInstance}` — Update WooCommerce Integration
+- `PUT /api/woo-commerce/{integrationInstance}` — Update Integration Instance
 
 ## Changed
 
