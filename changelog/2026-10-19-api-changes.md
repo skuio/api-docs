@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-19
-description: This release includes 55 additions.
+description: This release includes 55 additions, 3 changes.
 authors: [product-team]
-tags: [added]
+tags: [added, changed]
 date: 2026-10-19
 ---
 
-This release includes 55 additions.
+This release includes 55 additions, 3 changes.
 
 <!-- truncate -->
 
@@ -82,5 +82,19 @@ This release includes 55 additions.
 ### SPS Commerce
 - `POST /api/sales-invoices/{salesInvoice}/edi/regenerate` — Regenerate Sales Invoice 810
 - `POST /api/sales-invoices/{salesInvoice}/edi/send` — Send Sales Invoice 810
+
+## Changed
+
+### PayPal
+- `POST /api/paypal/captures/{captureId}/refund` — Refund PayPal Payment
+  - new response code(s): `409`
+
+### Sales Orders
+- `POST /api/sales-orders/{salesOrder}/fulfill` — Fulfill Sales Order
+  - new response code(s): `502`
+
+### Special Order List
+- `GET /api/admin/portal/special-order-list/items` — List Special Order Items
+  - new parameter(s): `active`, `page`, `per_page`, `search`
 
 _Spec version 1.0.0 → 1.0.0._

@@ -47305,8 +47305,11 @@ paths:
       tags:
       - Integration Instances
       summary: Update Integration Instance
-      description: 'Update an integration instance. Settings are merged (not replaced)
-        with existing settings.
+      description: 'Update an integration instance. `integration_settings` are merged
+        with the stored settings: keys you leave out are kept and objects merge key
+        by key, but a list you send (for example a set of warehouse ids) replaces
+        the stored list as a whole, so sending a shorter list removes the missing
+        entries.
 
 
         :::info[Required scope: `integrations:write`]
@@ -93389,10 +93392,19 @@ paths:
         Rate limits: 2000 requests per 60 minutes.
 
 
-        Only products that are for sale on this channel are listed: products carrying
-        the connection''s excluded tag, products excluded from this sales channel,
-        and products marked not for sale on any channel are left out — the same rule
-        as List Products.'
+        Which stock is returned depends on the connection type, and archived products
+        are never listed:
+
+        - A 3PL / fulfillment-provider connection sees all stock — it holds the goods
+        whether or not they are sold anywhere.
+
+        - A partner / API sales channel sees products that are for sale on it: products
+        carrying the connection''s excluded tag, products excluded from this sales
+        channel, and products marked not for sale on any channel are left out — the
+        same rule as List Products.
+
+        - A marketplace or storefront connection additionally sees only products listed
+        on its own sales channel.'
       parameters:
       - name: page
         in: query
@@ -117805,7 +117817,12 @@ paths:
 
         **Response:**
 
-        Returns full integration instance details including sync timestamps and configuration.'
+        Returns full integration instance details including sync timestamps and configuration.
+
+
+        `orders_import_failures` lists orders the last order sync could not save,
+        as `{ faire_order_id, error }`. They are fetched again on every order sync
+        until they import, so the list empties once the cause is fixed.'
       parameters:
       - name: integrationInstance
         in: path
@@ -117877,6 +117894,15 @@ paths:
                             nullable: true
                       last_orders_sync:
                         type: string
+                      orders_import_failures:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            faire_order_id:
+                              type: string
+                            error:
+                              type: string
                       last_products_sync:
                         type: string
                       orders_count:
@@ -117920,6 +117946,9 @@ paths:
                       - 3
                       inventoryModificationRules: null
                     last_orders_sync: '2026-04-24T10:00:00+00:00'
+                    orders_import_failures:
+                    - faire_order_id: bo_x7k2m9p4
+                      error: Product SKU "FA-RED-01" is not mapped to a SKU.io product
                     last_products_sync: '2026-04-24T09:00:00+00:00'
                     orders_count: 142
                     products_count: 27
@@ -120252,7 +120281,11 @@ paths:
         and `sku_product` fields on each line item resolve via the explicit `FaireProductOption
         → ProductListing → Product` chain (joined on `faire_variant_id`). They populate
         only when the variant has been explicitly mapped via the Variants Listing
-        page (Map / Smart Match / Bulk Map). String-based SKU matching is NOT used.'
+        page (Map / Smart Match / Bulk Map). String-based SKU matching is NOT used.
+
+
+        If Faire does not return the order (unavailable or rate limiting), the response
+        is **422** and the order keeps its last synced details.'
       requestBody:
         content: {}
       parameters:
@@ -120392,11 +120425,28 @@ paths:
                     is_archived: false
                     faire_admin_url: https://www.faire.com/brand-portal/orders/bo_abc123xyz/order-fulfilment
                   message: Order refetched from Faire successfully
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: 'Couldn''t refresh this order from Faire: Faire did not
+                    return it (it may be unavailable or limiting requests right now).
+                    The order keeps its last synced details — try again in a few minutes.'
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-faire-orders-order-refetch
   /api/faire/orders/filter-options:
@@ -203595,7 +203645,12 @@ paths:
 
         `items[].product_id` may be null ONLY for a discard-only receipt of an FNSKU
         marked as an unknown item (quantity_new and quantity_blemished must be 0,
-        quantity_discarded > 0). Otherwise product_id is required.'
+        quantity_discarded > 0). Otherwise product_id is required.
+
+
+        A receipt larger than what is still pending on the shipment (what Amazon shipped
+        minus what is already received, discarded or reconciled) is refused with **422**
+        saying how many are left.'
       requestBody:
         content:
           application/json:
@@ -203724,7 +203779,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -203748,6 +203803,39 @@ paths:
                     - The receipt date field is required.
                     items:
                     - The items field is required.
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      removal_receipt_error:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  message: 'Can''t receive 12 units on removal shipment 1Z999AA10123456784:
+                    Amazon shipped 10 and 4 are already received, discarded or reconciled,
+                    so only 6 are left. Receive or discard at most 6, or undo an earlier
+                    receipt first.'
+                  errors:
+                    removal_receipt_error:
+                    - message: 'Can''t receive 12 units on removal shipment 1Z999AA10123456784:
+                        Amazon shipped 10 and 4 are already received, discarded or
+                        reconciled, so only 6 are left. Receive or discard at most
+                        6, or undo an earlier receipt first.'
+                      code: '422'
+                      data: []
         '429': *id001
         '401': *id002
         '403': *id005
@@ -203784,7 +203872,11 @@ paths:
         - `shipments[].shipment_id` — required, exists:amazon_fba_report_removal_shipments,id
 
         - `shipments[].items` — required, min:1 — same item shape as the single receive
-        endpoint.'
+        endpoint.
+
+
+        If any shipment in the batch would receive more than is still pending on it,
+        the whole batch is refused with **422** and nothing is received.'
       requestBody:
         content:
           application/json:
@@ -203891,11 +203983,51 @@ paths:
                     shipment_ids:
                     - 12345
                     - 12346
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      removal_receipt_error:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  message: 'Can''t receive 12 units on removal shipment 1Z999AA10123456784:
+                    Amazon shipped 10 and 4 are already received, discarded or reconciled,
+                    so only 6 are left. Receive or discard at most 6, or undo an earlier
+                    receipt first.'
+                  errors:
+                    removal_receipt_error:
+                    - message: 'Can''t receive 12 units on removal shipment 1Z999AA10123456784:
+                        Amazon shipped 10 and 4 are already received, discarded or
+                        reconciled, so only 6 are left. Receive or discard at most
+                        6, or undo an earlier receipt first.'
+                      code: '422'
+                      data: []
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-amazon-integrationinstance-removal-shipments-receive-bulk
   /api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/remove-receipt:
@@ -269592,7 +269724,12 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        A shipment can only be linked to a purchase order bound for its own Amazon
+        account''s warehouse; a purchase order bound for another account''s warehouse
+        is refused with **422** naming the order, its warehouse and account.'
       requestBody:
         content:
           application/json:
@@ -269660,11 +269797,30 @@ paths:
                         name: PO-2024-001
                         displayType: Purchase Order
                     warnings: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Purchase order PO-2024-001 is bound for AWD US (EU Store),
+                    a warehouse of another Amazon account (EU Store). An AWD shipment
+                    can only be linked to a purchase order bound for its own account's
+                    warehouse — pick a purchase order for this account, or change
+                    the purchase order's destination.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-amazon-unified-awd-shipments-id-link-purchase-order
   /api/amazon/unified/awd/shipments/{id}/unlink-purchase-order:
@@ -306617,7 +306773,10 @@ paths:
 
         - customer_pii_access_blocked (boolean): false after resuming
 
-        - is_automatic_sync_enabled (boolean): true after resuming'
+        - is_automatic_sync_enabled (boolean): true after resuming, unless access
+        token is still invalid — then it stays false
+
+        - message (string): says whether sync resumed or why it stays paused'
       requestBody:
         content: {}
       parameters:
@@ -306640,21 +306799,27 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      customer_pii_access_blocked:
-                        type: boolean
-                      is_automatic_sync_enabled:
-                        type: boolean
-                example:
-                  success: true
-                  data:
-                    customer_pii_access_blocked: false
-                    is_automatic_sync_enabled: true
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    success: true
+                    message: Orders sync resumed — the next scheduled sync will run
+                      automatically.
+                    data:
+                      customer_pii_access_blocked: false
+                      is_automatic_sync_enabled: true
+                example-1:
+                  summary: 200 OK — Sync Stays Paused
+                  value:
+                    success: true
+                    message: Customer-data access is marked resolved, but automatic
+                      sync stays paused because Shopify still rejects this store's
+                      access token. Reconnect the Shopify app, then press Resume on
+                      the access-token banner.
+                    data:
+                      customer_pii_access_blocked: false
+                      is_automatic_sync_enabled: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -306691,7 +306856,10 @@ paths:
 
         - access_token_invalid (boolean): false after resuming
 
-        - is_automatic_sync_enabled (boolean): true after resuming'
+        - is_automatic_sync_enabled (boolean): true after resuming, unless customer-data
+        access is still blocked — then it stays false
+
+        - message (string): says whether sync resumed or why it stays paused'
       requestBody:
         content: {}
       parameters:
@@ -306714,21 +306882,26 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  success:
-                    type: boolean
-                  data:
-                    type: object
-                    properties:
-                      access_token_invalid:
-                        type: boolean
-                      is_automatic_sync_enabled:
-                        type: boolean
-                example:
-                  success: true
-                  data:
-                    access_token_invalid: false
-                    is_automatic_sync_enabled: true
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    success: true
+                    message: Sync resumed — the next scheduled sync will run automatically.
+                    data:
+                      access_token_invalid: false
+                      is_automatic_sync_enabled: true
+                example-1:
+                  summary: 200 OK — Sync Stays Paused
+                  value:
+                    success: true
+                    message: The access token is marked fixed, but automatic sync
+                      stays paused because Shopify still blocks access to protected
+                      customer data. Resolve the app's protected customer data approval
+                      with Shopify, then press Resume on the customer-data banner.
+                    data:
+                      access_token_invalid: false
+                      is_automatic_sync_enabled: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -330676,7 +330849,12 @@ paths:
 
 
         Send exactly one of `source_warehouse_id` or `source_supplier_id`; sending
-        both returns 422.'
+        both returns 422.
+
+
+        A warehouse-sourced inbound that asks for more units than the source warehouse
+        has available is refused with **422** before anything is sent to Walmart,
+        naming each short SKU. Supplier-sourced inbounds are not checked.'
       requestBody:
         content:
           application/json:
@@ -330896,6 +331074,13 @@ paths:
                     errors:
                       source_warehouse_id:
                       - Pick either a warehouse or a supplier, not both.
+                example-4:
+                  summary: 422 Not Enough Source Stock
+                  value:
+                    message: 'Not enough stock at Main Warehouse for this inbound:
+                      WIDGET-RED-01 needs 120 but only 80 are available (40 short).
+                      Nothing was sent to Walmart — lower the quantity or restock
+                      the warehouse, then try again.'
         '429': *id001
         '401': *id002
         '404': *id003
@@ -340699,7 +340884,13 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Requires the `sales_orders.fulfill` permission.'
+        Requires the `sales_orders.fulfill` permission.
+
+
+        The box holds each order line''s unshipped quantity: the ordered quantity
+        minus what Walmart already reports as Shipped, Delivered or Cancelled on that
+        line. Fully shipped or cancelled lines are left out, and an order with nothing
+        left to ship is refused with **422**.'
       requestBody:
         content:
           application/json:
@@ -340810,7 +341001,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -340818,6 +341009,15 @@ paths:
                     type: string
                 example:
                   error: Failed to purchase shipping label from Walmart.
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Every line on this Walmart order is already shipped or cancelled,
+                    so there is nothing left to put in the box.
         '429': *id001
         '401': *id002
         '404': *id003
@@ -363336,7 +363536,14 @@ paths:
         `404`.
 
 
-        Requires the `integrations.update` permission.'
+        Requires the `integrations.update` permission.
+
+
+        If TikTok does not answer (or answers with a server error or rate limit) while
+        cancelling one of the inbound orders, that order is not treated as refused:
+        its stock stays held, the plan is left unchanged, and the next sync reads
+        whether TikTok cancelled it. The response is **422** saying so; refresh the
+        plan before trying again.'
       requestBody:
         content:
           application/json:
@@ -363889,21 +364096,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: Validation Error
+                  value:
+                    message: TikTok requires a reason when an inbound is cancelled.
+                    errors:
                       reason:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: TikTok requires a reason when an inbound is cancelled.
-                  errors:
-                    reason:
-                    - TikTok requires a reason when an inbound is cancelled.
+                      - TikTok requires a reason when an inbound is cancelled.
+                example-1:
+                  summary: Cancel Not Confirmed
+                  value:
+                    message: Cancelled 1 inbound order(s), then TikTok didn't confirm
+                      the cancel of IBO-7303881120411258901. Its stock stays held
+                      until the next sync shows whether TikTok cancelled it — the
+                      plan is unchanged; refresh it before trying again.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -427441,7 +427648,11 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Requires the `integrations.create` permission.'
+        Requires the `integrations.create` permission.
+
+
+        Only one ShipHero account can be connected. A second connection is refused
+        with **422** under `errors.integration`; change the existing connection instead.'
       requestBody:
         content:
           application/json:
@@ -427501,9 +427712,39 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - integrations.create
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      integration:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: ShipHero is already connected for this account ("Main ShipHero").
+                    Only one ShipHero account is supported — open that connection
+                    to change its settings or credentials instead of connecting another.
+                  errors:
+                    integration:
+                    - ShipHero is already connected for this account ("Main ShipHero").
+                      Only one ShipHero account is supported — open that connection
+                      to change its settings or credentials instead of connecting
+                      another.
         '429': *id001
         '401': *id002
-        '422': *id004
       x-session-only: true
       operationId: post-api-shiphero-integration-instances
   /api/shiphero/integration-instances/{integration_instance}:
@@ -433962,7 +434203,10 @@ paths:
         \ automatically without manual review.\n- is_automatic_sync_enabled (boolean,\
         \ optional): toggle the hourly scheduled syncs for this instance.\n\nResponse:\
         \ `data.id` and `data.name` of the created instance.\n\nAuthentication: Requires\
-        \ Bearer token.\n\nRequires the `integrations.create` permission."
+        \ Bearer token.\n\nRequires the `integrations.create` permission.\n\nOnly\
+        \ one ShipStation account can be connected. A second connection is refused\
+        \ with **422** under `errors.integration`; change the existing connection\
+        \ instead."
       requestBody:
         content:
           application/json:
@@ -434077,6 +434321,19 @@ paths:
                     errors:
                       name:
                       - The name has already been taken.
+                example-2:
+                  summary: 422 Already Connected
+                  value:
+                    message: ShipStation is already connected for this account ("Main
+                      ShipStation"). Only one ShipStation account is supported — open
+                      that connection to change its settings or credentials instead
+                      of connecting another.
+                    errors:
+                      integration:
+                      - ShipStation is already connected for this account ("Main ShipStation").
+                        Only one ShipStation account is supported — open that connection
+                        to change its settings or credentials instead of connecting
+                        another.
         '429': *id001
         '401': *id002
       x-session-only: true
@@ -442211,7 +442468,11 @@ paths:
         `UTC`.
 
 
-        Requires the `integrations.create` permission.'
+        Requires the `integrations.create` permission.
+
+
+        Only one Veracore account can be connected. A second connection is refused
+        with **422** under `errors.integration`; change the existing connection instead.'
       requestBody:
         content:
           application/json:
@@ -442287,9 +442548,39 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - integrations.create
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      integration:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Veracore is already connected for this account ("Main Veracore").
+                    Only one Veracore account is supported — open that connection
+                    to change its settings or credentials instead of connecting another.
+                  errors:
+                    integration:
+                    - Veracore is already connected for this account ("Main Veracore").
+                      Only one Veracore account is supported — open that connection
+                      to change its settings or credentials instead of connecting
+                      another.
         '429': *id001
         '401': *id002
-        '422': *id004
       x-session-only: true
       operationId: post-api-veracore-integration-instances
   /api/veracore/integration-instances/{integration_instance}:
@@ -452074,7 +452365,26 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        **Body:**
+
+        - `sku` (string, required) — the SKU.io product SKU.
+
+        - `quantity` (number, required).
+
+        - `adjustment_type` (string, required) — one of `increase`, `decrease`, `set`.
+
+        - `notes` (string, optional, max 1000).
+
+        - `adjustment_date` (date, optional; defaults to today).
+
+        - `external_warehouse_id` (string, optional, max 255) — your id for the warehouse
+        whose stock changes. Required when your integration is linked to more than
+        one warehouse; an id that is missing or not linked to your integration returns
+        **422** listing the ids you can send. With a single linked warehouse it may
+        be left out.'
       requestBody:
         content:
           application/json:
@@ -452091,22 +452401,84 @@ paths:
                   type: string
                 adjustment_date:
                   type: string
+                external_warehouse_id:
+                  type: string
               example:
                 sku: WIDGET-001
                 quantity: 5
                 adjustment_type: decrease
                 notes: Damaged in transit
                 adjustment_date: '2024-01-20'
+                external_warehouse_id: EXT_WAREHOUSE_001
       parameters: []
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      adjustment_id:
+                        type: integer
+                      sku:
+                        type: string
+                      adjustment_type:
+                        type: string
+                      quantity:
+                        type: integer
+                example:
+                  message: Inventory adjustment created successfully.
+                  data:
+                    adjustment_id: 52104
+                    sku: WIDGET-001
+                    adjustment_type: decrease
+                    quantity: 5
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Warehouse Required
+                  value:
+                    message: 'This integration is linked to more than one warehouse,
+                      so external_warehouse_id is required to say whose stock to adjust.
+                      Send one of: EXT_WAREHOUSE_001, EXT_WAREHOUSE_002.'
+                    errors:
+                      external_warehouse_id:
+                      - 'This integration is linked to more than one warehouse, so
+                        external_warehouse_id is required to say whose stock to adjust.
+                        Send one of: EXT_WAREHOUSE_001, EXT_WAREHOUSE_002.'
+                example-1:
+                  summary: 422 Unknown Warehouse
+                  value:
+                    message: 'Warehouse ''EXT_WAREHOUSE_009'' is not linked to this
+                      integration. Send one of: EXT_WAREHOUSE_001, EXT_WAREHOUSE_002.'
+                    errors:
+                      external_warehouse_id:
+                      - 'Warehouse ''EXT_WAREHOUSE_009'' is not linked to this integration.
+                        Send one of: EXT_WAREHOUSE_001, EXT_WAREHOUSE_002.'
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-session-only: true
       operationId: post-api-3pl-inventory-adjustments
   /api/3pl/orders/{fulfillmentOrder}/fulfill:
@@ -463289,7 +463661,11 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Requires the `integrations.create` permission.'
+        Requires the `integrations.create` permission.
+
+
+        Only one Starshipit account can be connected. A second connection is refused
+        with **422** under `errors.integration`; change the existing connection instead.'
       requestBody:
         content:
           application/json:
@@ -463389,21 +463765,27 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The name has already been taken.
+                    errors:
                       name:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The name has already been taken.
-                  errors:
-                    name:
-                    - The name has already been taken.
+                      - The name has already been taken.
+                example-1:
+                  summary: 422 Already Connected
+                  value:
+                    message: Starshipit is already connected for this account ("Main
+                      Starshipit"). Only one Starshipit account is supported — open
+                      that connection to change its settings or credentials instead
+                      of connecting another.
+                    errors:
+                      integration:
+                      - Starshipit is already connected for this account ("Main Starshipit").
+                        Only one Starshipit account is supported — open that connection
+                        to change its settings or credentials instead of connecting
+                        another.
         '429': *id001
         '401': *id002
       x-session-only: true
@@ -549682,7 +550064,7 @@ paths:
         with each link''s PayPal payments (fee, refunded and remaining refundable
         amounts, dispute status, and `refund_unavailable_reason` — why the payment
         can''t be refunded through SKU.io right now, such as a disconnected PayPal
-        account, or null when it can).
+        account or an earlier refund still processing at PayPal, or null when it can).
 
 
         **Authentication:** Requires Bearer token.
@@ -550420,7 +550802,14 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        **409 Conflict:** returned while an earlier refund of this payment is still
+        processing at PayPal (or when refunds through PayPal are unavailable for the
+        connection). Refund again once PayPal completes it. Each attempt carries its
+        own PayPal request id, so an unanswered refund can be retried safely with
+        the same amount.'
       requestBody:
         content:
           application/json:
@@ -550486,6 +550875,24 @@ paths:
                     type: string
                 example:
                   message: PayPal capture not found.
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: A PayPal refund of 40.00 USD is still processing. You can
+                    refund again once PayPal completes it — it is then recorded on
+                    the order.
         '422':
           description: Unprocessable Content
           headers:
@@ -692003,6 +692410,9 @@ paths:
 
         - `iteration_belongs_to_other_mo`
 
+        - `order_closed_blocks_reverse` — the manufacturing order is Closed (reopen
+        it first) or Cancelled (read-only)
+
 
         **Success:** 200 with the refreshed manufacturing order object.'
       requestBody:
@@ -692113,6 +692523,16 @@ paths:
                     code: iteration_belongs_to_other_mo
                     message: Iteration 0fa1c2bb-8b1b-4c5a-9d63-1f4b5e6d7c80 does not
                       belong to MO MO-000002.
+                example-3:
+                  summary: 422 — Order Closed Blocks Reverse
+                  value:
+                    error: 'Production run #1 can''t be reversed because this manufacturing
+                      order is Closed. Reopen the order before reversing a production
+                      run.'
+                    message: 'Production run #1 can''t be reversed because this manufacturing
+                      order is Closed. Reopen the order before reversing a production
+                      run.'
+                    code: order_closed_blocks_reverse
         '429': *id001
         '401': *id002
         '403': *id005
@@ -714049,7 +714469,11 @@ paths:
         \ accounting period:** a `fulfilled_at` on or before the accounting lock date\
         \ returns **422** with error code `InventoryPeriodLocked` under `errors.fulfilled_at`\
         \ (its `data` carries `date` and `lock_date`). Nothing is created; resubmit\
-        \ with a date after the lock date, or move the lock date back first."
+        \ with a date after the lock date, or move the lock date back first.\n\n**Shipping\
+        \ provider did not answer:** when the order is submitted to a shipping provider\
+        \ and the provider does not answer in time, the request returns **502**. SKU.io\
+        \ cannot tell whether the provider created the shipment, so nothing is retried\
+        \ automatically — check the order in the provider before fulfilling again."
       requestBody:
         content:
           application/json:
@@ -714237,6 +714661,32 @@ paths:
                       Shipped).'
                     errors:
                       resource: serials
+        '502':
+          description: Bad Gateway
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      resource:
+                        type: string
+                example:
+                  message: The shipping provider didn't answer in time, so SKU.io
+                    can't tell whether it created the shipment for order SO-1042.
+                    Check the order in the shipping provider before fulfilling it
+                    again — fulfilling again now may create a duplicate shipment.
+                  errors:
+                    resource: fulfillment
         '429': *id001
         '401': *id002
         '403': *id005
@@ -775417,8 +775867,10 @@ paths:
         already confirms received, broken down by merchant SKU.
 
 
-        ⚠ These are candidates, not attributions. A candidate is matched on **supplier**,
-        so the same shipment appears on every open AWD order from that supplier. `contested_by_open_purchase_orders`
+        ⚠ These are candidates, not attributions. A candidate is matched on **supplier**
+        and **Amazon account** (only shipments received on the Amazon account of this
+        order''s destination warehouse), so the same shipment appears on every open
+        AWD order from that supplier for that account. `contested_by_open_purchase_orders`
         says how many — when it is greater than 1 the receipts cannot be attributed
         to this order from the API alone, and `received_units` must not be subtracted
         from an outstanding quantity. Treat `awaiting_link` as "this order''s status
@@ -852123,7 +852575,29 @@ paths:
         scope support is in progress.
 
         :::'
-      parameters: []
+      parameters:
+      - name: search
+        in: query
+        schema:
+          type: string
+        description: Free-text search across the resource’s searchable fields.
+      - name: active
+        in: query
+        schema:
+          type: integer
+        example: '1'
+      - name: page
+        in: query
+        schema:
+          type: integer
+        example: '1'
+        description: Page number (default 1).
+      - name: per_page
+        in: query
+        schema:
+          type: integer
+        example: '50'
+        description: Results per page (default 10).
       responses:
         '200':
           description: OK
@@ -918281,46 +918755,48 @@ paths:
         \ `none`\n- `against_id` (optional) — ID of the source doc when `against_type`\
         \ is set\n- `reason` (optional, max 1000 chars)\n- `lines[]` (required, min\
         \ 1):\n    - `product_id` (required)\n    - `quantity` (required, non-zero\
-        \ — positive for inbound, negative for outbound)\n    - `unit_cost` (optional,\
-        \ >= 0)\n    - `serials[]` (optional, each max 100 chars)\n    - `lot` (optional):\
-        \ `lot_number`, `expires_at`, `manufactured_at`\n    - `override_reason` (optional,\
-        \ max 500 chars)\n- `void_confirmations[]` (required when preview-demotion\
-        \ returned `requires_void_confirmation=true`):\n    - `fulfillment_id` (required)\n\
-        \    - `attempt_void` (required bool)\n    - `reason` (optional, max 500 chars)\n\
-        \n**Response shape (200):**\n```\n{\n  \"data\": {\n    \"adjustment_ids\"\
-        : [101, 102],\n    \"voided_fulfillment_ids\": [9001],\n    \"skipped_fulfillments\"\
-        : []\n  },\n  \"message\": \"Receipt committed — 1 line(s).\"\n}\n```\n\n\
-        `voided_fulfillment_ids` lists the fulfillments whose labels were voided.\
-        \ `skipped_fulfillments` lists any confirmed fulfillment that could not be\
-        \ voided (already voided, or part of a multi-shipment merge group) as `{ fulfillment_id,\
-        \ kind, reason }` — these are skipped, not fatal.\n\n**Error (422):** Returned\
-        \ when hard-allocated fulfillments are missing from `void_confirmations` or\
-        \ any other `\\InvalidArgumentException` is thrown by the manager.\n```\n\
-        { \"error\": \"Hard-allocated fulfillment #9001 requires an explicit void\
-        \ confirmation before committing.\" }\n```\n\n`release_backorders` (boolean,\
-        \ inbound only, default true): when true, the received stock is applied to\
-        \ any waiting back-orders (promoting them to allocated); when false, the stock\
-        \ is received as free inventory and the back-orders keep waiting.\n\n`release_sales_order_ids`\
-        \ (array of ints, inbound only, optional): granular release. Omit or null\
-        \ to release ALL waiting back-orders; pass a list of sales order ids to release\
-        \ only those orders' back-orders. Requires `release_backorders` = true.\n\n\
-        **created_lots** — the lots this commit created, each with its `fifo_layer_id`\
-        \ and `batch_number`. Returned for inbound directions (`receive`, `adjust_up`)\
-        \ only; an outbound commit creates no lot and returns an empty array. Use\
-        \ it to attach a Certificate of Analysis to the lot after the movement is\
-        \ committed, via `POST /api/v2/fifo-layers/{fifoLayer}/documents`.\n\n- `rechain_affected`\
-        \ (optional bool, default false) — when the entry is dated earlier than existing\
-        \ consumption in an affected product/warehouse pool, opt in to re-anchor those\
-        \ later transactions to the oldest available stock (true FIFO) after the save\
-        \ commits. Runs as a background job; pools in a locked accounting period or\
-        \ with unsupported shapes are skipped and reported.\n\n**Serial numbers:**\
-        \ for a serial-tracked product, a line may carry `serials` (one per unit moved).\
-        \ An empty list is accepted. A non-empty list must match the line quantity\
-        \ (for an inbound direction in Auto generation mode it may be shorter), must\
-        \ not repeat a serial, and on an inbound direction must not name a serial\
-        \ that already exists; on an outbound direction the Require exact match availability\
-        \ rules apply. Otherwise the request returns **422** with a message naming\
-        \ the serial."
+        \ whole number — positive for inbound, negative for outbound; a fraction is\
+        \ refused with 422)\n    - `unit_cost` (optional, >= 0)\n    - `serials[]`\
+        \ (optional, each max 100 chars)\n    - `lot` (optional): `lot_number`, `expires_at`,\
+        \ `manufactured_at`\n    - `override_reason` (optional, max 500 chars)\n-\
+        \ `void_confirmations[]` (required when preview-demotion returned `requires_void_confirmation=true`):\n\
+        \    - `fulfillment_id` (required)\n    - `attempt_void` (required bool)\n\
+        \    - `reason` (optional, max 500 chars)\n\n  A confirmation for a fulfillment\
+        \ that holds none of the stock this movement reduces is refused with 422 —\
+        \ remove it, or void that fulfillment from its own sales order.\n\n**Response\
+        \ shape (200):**\n```\n{\n  \"data\": {\n    \"adjustment_ids\": [101, 102],\n\
+        \    \"voided_fulfillment_ids\": [9001],\n    \"skipped_fulfillments\": []\n\
+        \  },\n  \"message\": \"Receipt committed — 1 line(s).\"\n}\n```\n\n`voided_fulfillment_ids`\
+        \ lists the fulfillments whose labels were voided. `skipped_fulfillments`\
+        \ lists any confirmed fulfillment that could not be voided (already voided,\
+        \ or part of a multi-shipment merge group) as `{ fulfillment_id, kind, reason\
+        \ }` — these are skipped, not fatal.\n\n**Error (422):** Returned when hard-allocated\
+        \ fulfillments are missing from `void_confirmations` or any other `\\InvalidArgumentException`\
+        \ is thrown by the manager.\n```\n{ \"error\": \"Hard-allocated fulfillment\
+        \ #9001 requires an explicit void confirmation before committing.\" }\n```\n\
+        \n`release_backorders` (boolean, inbound only, default true): when true, the\
+        \ received stock is applied to any waiting back-orders (promoting them to\
+        \ allocated); when false, the stock is received as free inventory and the\
+        \ back-orders keep waiting.\n\n`release_sales_order_ids` (array of ints, inbound\
+        \ only, optional): granular release. Omit or null to release ALL waiting back-orders;\
+        \ pass a list of sales order ids to release only those orders' back-orders.\
+        \ Requires `release_backorders` = true.\n\n**created_lots** — the lots this\
+        \ commit created, each with its `fifo_layer_id` and `batch_number`. Returned\
+        \ for inbound directions (`receive`, `adjust_up`) only; an outbound commit\
+        \ creates no lot and returns an empty array. Use it to attach a Certificate\
+        \ of Analysis to the lot after the movement is committed, via `POST /api/v2/fifo-layers/{fifoLayer}/documents`.\n\
+        \n- `rechain_affected` (optional bool, default false) — when the entry is\
+        \ dated earlier than existing consumption in an affected product/warehouse\
+        \ pool, opt in to re-anchor those later transactions to the oldest available\
+        \ stock (true FIFO) after the save commits. Runs as a background job; pools\
+        \ in a locked accounting period or with unsupported shapes are skipped and\
+        \ reported.\n\n**Serial numbers:** for a serial-tracked product, a line may\
+        \ carry `serials` (one per unit moved). An empty list is accepted. A non-empty\
+        \ list must match the line quantity (for an inbound direction in Auto generation\
+        \ mode it may be shorter), must not repeat a serial, and on an inbound direction\
+        \ must not name a serial that already exists; on an outbound direction the\
+        \ Require exact match availability rules apply. Otherwise the request returns\
+        \ **422** with a message naming the serial."
       requestBody:
         content:
           application/json:
@@ -918449,10 +918925,36 @@ paths:
                     - fifo_layer_id: 20514
                       batch_number: LOT-2026-04
                   message: Receipt committed — 1 adjustment created.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Fractional Quantity
+                  value:
+                    message: 'Enter a whole number of units: the movement composer
+                      cannot post part of a unit.'
+                    errors:
+                      lines.0.quantity:
+                      - 'Enter a whole number of units: the movement composer cannot
+                        post part of a unit.'
+                example-1:
+                  summary: 422 Void Outside Consumption Path
+                  value:
+                    message: 'Fulfillment #9001 isn''t holding any of the stock this
+                      movement reduces, so it can''t be voided here. Remove it from
+                      the labels to void, or void it from its own sales order.'
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-session-only: true
       operationId: post-api-v2-inventory-movements-composer
   /api/v2/inventory/fifo-chain/preview-discrepancy:
@@ -953293,9 +953795,10 @@ paths:
         - `all` - no creation-date filter
 
 
-        In every mode WooCommerce is also asked only for orders modified since the
-        most recent order already synced, so an order that has not changed since the
-        last sync is not fetched again.
+        Only `latest` (and the scheduled sync) asks WooCommerce for orders modified
+        since the most recent order already synced. `from_start_date`, `date_range`
+        and `all` fetch every order in their window, whether or not it changed since
+        the last sync.
 
 
         The job runs asynchronously. The response includes a `tracked_job_log_id`
