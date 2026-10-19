@@ -5914,9 +5914,14 @@ paths:
         \ `filter_groups`, and `sort` params from the List Bills endpoint also apply\
         \ when `scope=filtered`.\n\nIn `line_items` mode these line columns are always\
         \ appended: Line Description, Line Cost Category, Line Qty, Line Amount, Line\
-        \ Extended, Line Tax Rate.\n\n## Response\nBinary file download:\n- XLSX:\
-        \ `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`\n\
-        - CSV: `Content-Type: text/csv`\n- Filename: `landed-cost-bills-{timestamp}.{ext}`\
+        \ Extended, Line Tax Rate. They are followed by Allocation SKU, Allocation\
+        \ Line ID and Allocation Amount, which are filled only for bills with the\
+        \ `manual` proration strategy: such a bill gets one extra row per allocation\
+        \ (line columns blank). The file can be imported back with the data-import\
+        \ endpoints: `entity_type=bills` for bill and line rows, `entity_type=bill_allocations`\
+        \ for allocation rows.\n\n## Response\nBinary file download:\n- XLSX: `Content-Type:\
+        \ application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`\n- CSV:\
+        \ `Content-Type: text/csv`\n- Filename: `landed-cost-bills-{timestamp}.{ext}`\
         \ (summary) or `landed-cost-bills-detail-{timestamp}.{ext}` (line_items)\n\
         \n**Documents.** `documents_count` is available as a `columns` key and exports\
         \ as a `Documents` column holding the number of attached supporting documents."
@@ -5962,6 +5967,78 @@ paths:
         '403': *id005
       x-required-scope: purchase-orders:read
       operationId: get-api-bills-list-export
+  /api/bills/import/template:
+    get:
+      tags:
+      - Bills
+      summary: Download Bill Import Template
+      description: 'Download the landed cost bill import template as an XLSX file.
+        Import the filled-in file through the data-import endpoints with `entity_type=bills`
+        (see Upload Data Import); allocations and payments import as `bill_allocations`
+        and `bill_payments`. The response is a binary file download, not JSON.
+
+
+        :::info[Required scope: `purchase-orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token. Scope: `purchase-orders` (read/write).
+        Requires the `purchase_orders.create` permission.
+
+
+        ## Sheets
+
+        - **Import Here** — the import columns with sample rows built from your account.
+        One row per bill line or manual allocation; repeat the invoice # and header
+        fields on every row of a bill.
+
+        - **Field Guide** — every column, whether it is required, valid values and
+        an example.
+
+        - **Reference Data** — your service suppliers, link types, proration strategies,
+        currencies, payment terms, cost categories, tax rates and nominal codes.
+
+
+        ## Columns
+
+        `id`, `invoice_number`, `invoice_date`, `supplier_name`, `supplier_email`,
+        `link_type`, `link_reference`, `currency_code`, `currency_rate`, `payment_term`,
+        `proration_strategy`, `line_description`, `line_quantity`, `line_amount`,
+        `line_cost_category`, `line_tax_rate`, `line_nominal_code`, `allocation_sku`,
+        `allocation_line_id`, `allocation_amount`
+
+
+        ## Response
+
+        `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`,
+        filename `landed-cost-bill-import-template-YYYY-MM-DD.xlsx`.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=landed-cost-bill-import-template-2026-10-19.xlsx
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: (binary XLSX file)
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: purchase-orders:read
+      operationId: get-api-bills-import-template
   /api/bills/{id}:
     get:
       tags:
@@ -55230,12 +55307,27 @@ paths:
 
 
         Also gated: `sales_credit_lines` needs `returns.update`, `vendor_credit_lines`
-        needs `purchase_orders.update` and `product_listing_inventory` needs `listings.update`
-        (the same permission as each screen''s own import route). Contact imports
-        take their owner''s import permission from `metadata.link_type` (`supplier`
-        → `suppliers.import`, `customer` → `customers.import`, `warehouse` → `warehouses.import`);
-        a missing or unknown `link_type` is a 422 "A valid owner (link_type) is required
-        for contact imports."'
+        needs `purchase_orders.update` and `product_listing_inventory` needs `listings.
+        Landed cost bills: `bills` needs `purchase_orders.create`; `bill_allocations`
+        and `bill_payments` need `purchase_orders.update`.
+
+
+        Landed cost bill imports: `bills` (one row per bill line; rows sharing `id`
+        or `invoice_number` form one bill, an existing bill is updated and a new invoice
+        number created; fields id, invoice_number, invoice_date, supplier_name, supplier_email,
+        link_type, link_reference, currency_code, currency_rate, payment_term, proration_strategy,
+        line_description, line_quantity, line_amount, line_cost_category, line_tax_rate,
+        line_nominal_code — a bill with any error is rejected whole), `bill_allocations`
+        (manual allocations of existing bills, one row per document line: id or invoice_number,
+        allocation_sku or allocation_line_id, allocation_amount; the rows replace
+        that bill''s allocations and make it manual) and `bill_payments` (one row
+        per payment: id or invoice_number, payment_date, amount, payment_method, reference;
+        the same bill + payment method + reference updates that payment, and payments
+        may not exceed the bill''s remaining balance).update` (the same permission
+        as each screen''s own import route). Contact imports take their owner''s import
+        permission from `metadata.link_type` (`supplier` → `suppliers.import`, `customer`
+        → `customers.import`, `warehouse` → `warehouses.import`); a missing or unknown
+        `link_type` is a 422 "A valid owner (link_type) is required for contact imports."'
       requestBody:
         content:
           application/json:
@@ -81234,9 +81326,12 @@ paths:
         - `from_start_date` - orders modified since the integration''s configured
         start date
 
-        - `date_range` - orders modified within the `date_from` / `date_to` range
+        - `date_range` - orders modified within the `date_from` / `date_to` range.
+        Both are whole calendar days in the account''s time zone: from local midnight
+        on `date_from` to 23:59:59 local on `date_to`
 
-        - `all` - every order in the store
+        - `all` - a full re-sync: every order modified since the integration''s configured
+        start date
 
 
         The job runs asynchronously. The response includes a `tracked_job_log_id`
@@ -114059,9 +114154,9 @@ paths:
         Body fields (all optional):
 
         - mode (string): One of latest, from_start_date, date_range, all. Defaults
-        to latest (fetch orders updated since the last sync). from_start_date fetches
-        all orders created since the integration start date; date_range fetches orders
-        created between date_from and date_to; all fetches everything.
+        to latest (fetch orders updated since the last sync). from_start_date and
+        all fetch every order created since the integration start date; date_range
+        fetches orders created between date_from and date_to.
 
         - date_from (date): Start of the creation-date window. Required in practice
         when mode is date_range.
@@ -320619,6 +320714,18 @@ paths:
         - `integration_settings.refunds.allow_refunds_from_sku` (boolean) — allow
         refunds to be issued against Walmart orders.
 
+        - `integration_settings.orders.push_cancellations` (boolean) — when a Walmart
+        sales order is cancelled in SKU.io, also cancel its unshipped lines on Walmart
+        (sent with the reason "Out of stock"). Lines that have shipped, and orders
+        already cancelled on Walmart, are never sent.
+
+        - `integration_settings.orders.auto_acknowledge` (boolean) — acknowledge newly
+        imported orders to Walmart automatically.
+
+
+        The `orders` keys you omit keep their stored values, with `PUT` as well as
+        `PATCH`.
+
 
         **Pricing** — `integration_settings.pricing`:
 
@@ -320764,6 +320871,11 @@ paths:
                       properties:
                         allow_refunds_from_sku:
                           type: boolean
+                    orders:
+                      type: object
+                      properties:
+                        push_cancellations:
+                          type: boolean
               example:
                 name: Walmart US Store
                 is_automatic_sync_enabled: true
@@ -320802,6 +320914,8 @@ paths:
                     fulfillmentLatency: 2
                   refunds:
                     allow_refunds_from_sku: true
+                  orders:
+                    push_cancellations: true
       parameters:
       - name: integrationInstance
         in: path
@@ -624025,7 +624139,14 @@ paths:
 
 
         `warehouse_id` can only change while the stock take is a draft; otherwise
-        422. `notes` is limited to 255 characters.'
+        422. `notes` is limited to 255 characters.
+
+
+        **Locked accounting period:** editing the counted quantities or unit costs
+        of a closed stock take (including an initial count) whose date falls on or
+        before the accounting lock date returns `422` with error code `InventoryPeriodLocked`
+        and the `date` / `lock_date` involved. Re-submitting unchanged values is accepted.
+        Move the lock date back first to correct a locked count.'
       requestBody:
         content:
           application/json:
@@ -624197,6 +624318,47 @@ paths:
                 type: string
                 example: application/json
           content:
+            text/plain:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      date_count:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                date:
+                                  type: string
+                                lock_date:
+                                  type: string
+                  status:
+                    type: string
+                example:
+                  message: 'Can''t change Stock Take #12: it is dated 2026-07-31,
+                    inside the books locked through 2026-09-30. Move the lock date
+                    back first to correct it.'
+                  errors:
+                    date_count:
+                    - message: 'Cannot change a FIFO layer dated 2026-07-31: it falls
+                        within a locked accounting period (locked through 2026-09-30).
+                        Move the lock date back to correct it.'
+                      code: InventoryPeriodLocked
+                      data:
+                        date: '2026-07-31'
+                        lock_date: '2026-09-30'
+                  status: failure
             application/json:
               schema:
                 type: object
@@ -675613,12 +675775,12 @@ paths:
         \ `since_at` then to the integration's configured start_date).\n  - `from_start_date`\
         \ walks from the integration's configured start date (Settings → Orders →\
         \ Start date).\n  - `date_range` walks a bounded `[date_from, date_to]` window.\n\
-        \  - `all` — **Full Re-sync.** Walks every order Magento returns, ignoring\
-        \ start_date entirely. Mirrors the option BigCommerce / eBay / WooCommerce\
-        \ already expose.\n- `since_at` *(optional, ISO datetime)* — fallback cursor\
-        \ used by `since_latest` when our local orders table is empty.\n- `date_from`\
-        \ / `date_to` *(required when `mode=date_range`, ISO date)* — inclusive bounds\
-        \ of the date window."
+        \  - `all` — **Full Re-sync.** Walks every order updated since the integration's\
+        \ configured start date, like every channel's Full Re-sync. With no start\
+        \ date set, walks every order Magento returns.\n- `since_at` *(optional, ISO\
+        \ datetime)* — fallback cursor used by `since_latest` when our local orders\
+        \ table is empty.\n- `date_from` / `date_to` *(required when `mode=date_range`,\
+        \ ISO date)* — inclusive bounds of the date window."
       requestBody:
         content:
           application/json:
@@ -739129,16 +739291,17 @@ paths:
         '404': *id003
       x-required-scope: orders:read
       operationId: get-api-export-sales-invoices-salesinvoice-pdf
-  /api/sales-invoices/{salesInvoice}/credit-notes:
-    post:
+  /api/sales-invoices/{salesInvoice}/credit-notes/preview:
+    get:
       tags:
       - Sales Invoices
-      summary: Create Credit Note for Sales Invoice
-      description: 'Create a draft sales credit against the invoice, prefilled with
-        the invoice''s creditable lines. Returns the new credit''s ID.
+      summary: Get Creditable Lines for Sales Invoice
+      description: 'What can still be credited on each line of an issued sales invoice
+        — use it to choose quantities before calling **Create Credit Note for Sales
+        Invoice**.
 
 
-        :::info[Required scope: `orders:write`]
+        :::info[Required scope: `orders:read`]
 
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
@@ -739146,10 +739309,172 @@ paths:
         :::
 
 
-        Requires `orders:write` and both the `returns.create` (sales credits have
-        no permission of their own) and `sales_invoices.update` permissions.'
+        Each line returns its invoiced quantity, the quantity still creditable (product
+        lines), the net amount per unit, and the net amount still creditable (the
+        cap for fee lines). Amounts are before tax.
+
+
+        Returns 422 for an order invoice (credit the sales order instead), a draft
+        or void invoice, or a consolidated invoice.
+
+
+        Requires `orders:read` and both the `returns.create` and `sales_invoices.update`
+        permissions.'
+      parameters:
+      - name: salesInvoice
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales invoice ID
+        example: '123'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            sales_invoice_line_id:
+                              type: integer
+                            line_type:
+                              type: string
+                            sales_order_line_id:
+                              type: integer
+                            financial_line_id:
+                              type: string
+                              nullable: true
+                            description:
+                              type: string
+                            sku:
+                              type: string
+                            invoiced_quantity:
+                              type: string
+                            creditable_quantity:
+                              type: string
+                            unit_amount:
+                              type: string
+                            creditable_amount:
+                              type: string
+                example:
+                  data:
+                    lines:
+                    - sales_invoice_line_id: 5512
+                      line_type: product
+                      sales_order_line_id: 9001
+                      financial_line_id: null
+                      description: ZipString Hiking Bootlace — Black
+                      sku: ZS-HBK-BLK
+                      invoiced_quantity: '36'
+                      creditable_quantity: '34'
+                      unit_amount: '18.50'
+                      creditable_amount: '629.00'
+                    - sales_invoice_line_id: 5514
+                      line_type: financial
+                      sales_order_line_id: null
+                      financial_line_id: 771
+                      description: Freight
+                      sku: null
+                      invoiced_quantity: '1'
+                      creditable_quantity: '0'
+                      unit_amount: '77.50'
+                      creditable_amount: '77.50'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      sales_invoice:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'This invoice mirrors its sales order: credit the sales
+                    order instead.'
+                  errors:
+                    sales_invoice:
+                    - 'This invoice mirrors its sales order: credit the sales order
+                      instead.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:read
+      operationId: get-api-sales-invoices-salesinvoice-credit-notes-preview
+  /api/sales-invoices/{salesInvoice}/credit-notes:
+    post:
+      tags:
+      - Sales Invoices
+      summary: Create Credit Note for Sales Invoice
+      description: "Credit an issued sales invoice. The credit note is applied to\
+        \ the invoice straight away: the invoice's balance drops by the credit and\
+        \ it posts to accounting. Returns the new credit's ID.\n\n:::info[Required\
+        \ scope: `orders:write`]\nGrant this scope to your token under [Settings →\
+        \ Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::\n\n**Body (all optional):**\n- `lines` (array, min 1): the lines to credit.\
+        \ Omit it to credit every line for whatever is still creditable on it. Use\
+        \ **Get Creditable Lines for Sales Invoice** to see what is left per line.\n\
+        \  - `lines.*.sales_invoice_line_id` (integer, required): an invoice line;\
+        \ each line once.\n  - `lines.*.quantity` (decimal, > 0, up to 6 decimal places):\
+        \ units to credit on a product line. Omit for everything still creditable\
+        \ on it.\n  - `lines.*.amount` (decimal, > 0, up to 2 decimal places): amount\
+        \ (before tax) to credit on a fee line. Omit for everything still creditable\
+        \ on it.\n- `note` (string, max 1000): the credit note's note. Defaults to\
+        \ \"Credit note for invoice {number}\".\n\nA quantity or amount above what\
+        \ is still creditable on its line is refused with 422. Order invoices (one\
+        \ invoice per order) can't be credited here — credit the sales order instead.\n\
+        \nRequires `orders:write` and both the `returns.create` (sales credits have\
+        \ no permission of their own) and `sales_invoices.update` permissions."
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                lines:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      sales_invoice_line_id:
+                        type: integer
+                      quantity:
+                        type: string
+                note:
+                  type: string
+              example:
+                lines:
+                - sales_invoice_line_id: 5512
+                  quantity: '2'
+                - sales_invoice_line_id: 5514
+                  amount: '25.00'
+                note: Two laces arrived damaged; freight refunded
       parameters:
       - name: salesInvoice
         in: path
@@ -739196,15 +739521,16 @@ paths:
                   errors:
                     type: object
                     properties:
-                      sales_invoice:
+                      lines.0.quantity:
                         type: array
                         items:
                           type: string
                 example:
-                  message: Only issued invoices can be credited.
+                  message: Credit a quantity greater than zero, or leave the line
+                    out.
                   errors:
-                    sales_invoice:
-                    - Only issued invoices can be credited.
+                    lines.0.quantity:
+                    - Credit a quantity greater than zero, or leave the line out.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -770522,6 +770848,14 @@ paths:
         Response: Binary file download (XLSX or CSV).
 
 
+        Delivery depends on size: up to 1,000 purchase orders (or scope=current_page)
+        the response is the file itself. Above 1,000 purchase orders the export runs
+        as a background job and the response is JSON carrying tracked_job_log_id and
+        queued=true; when the job completes, its results include download_url and
+        file — fetch the file with Download Purchase Orders Export. Background xlsx
+        exports above 15,000 purchase orders are written as CSV instead.
+
+
         Scope options:
 
         - filtered: Apply active filters (default)
@@ -770614,11 +770948,114 @@ paths:
               schema:
                 type: string
                 example: (Binary XLSX file)
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                      queued:
+                        type: boolean
+                example:
+                  status: success
+                  message: Export started
+                  data:
+                    tracked_job_log_id: 48213
+                    queued: true
         '429': *id001
         '401': *id002
         '403': *id005
       x-required-scope: purchase-orders:read
       operationId: get-api-purchase-orders-list-export
+  /api/purchase-orders/list/export/download:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Download Purchase Orders Export
+      description: 'Downloads a completed background export produced by Export Purchase
+        Orders. The file name is the one reported in the export job''s results.file
+        field (also embedded in results.download_url).
+
+
+        :::info[Required scope: `purchase-orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response is the binary file (CSV or XLSX) with an attachment Content-Disposition
+        header.
+
+
+        `file` must be a file name produced by this endpoint''s export. Any other
+        name, or a name containing a path, returns 404.
+
+
+        Only the user who started the export, or an account admin, can download it;
+        anyone else gets the same 404 as a missing file.'
+      parameters:
+      - name: file
+        in: query
+        schema:
+          type: string
+        description: File name from the completed export job's results.file.
+        example: purchase-orders-detail-2026-10-19-21-40-12.csv
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="purchase-orders-detail-2026-10-19-21-40-12.csv"
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'ID,PO #,Supplier,Order Status,Item SKU,Item Qty
+
+                  3612,PO-3612,Acme Espresso Parts,open,GSK-E61-8MM,24
+
+                  '
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Export file not found. Only the person who started an export
+                    (or an account admin) can download it — start the export again
+                    to get your own copy.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: purchase-orders:read
+      operationId: get-api-purchase-orders-list-export-download
   /api/purchase-orders/csv-columns:
     get:
       tags:
@@ -920197,9 +920634,9 @@ paths:
 
         Only bills in the credit''s own currency are settled. When bills in other
         currencies were passed over, the success message says so ("Applied credit
-        to 1 invoice(s). Skipped 1 open bill in EUR — a credit only settles bills
-        in its own currency (USD)."). When the only open bills are in other currencies
-        the request is refused with 422 naming them.'
+        to 1 bill. Skipped 1 open bill in EUR — a credit only settles bills in its
+        own currency (USD)."). When the only open bills are in other currencies the
+        request is refused with 422 naming them.'
       requestBody:
         content: {}
       parameters:
@@ -920276,7 +920713,7 @@ paths:
                             email:
                               type: string
                 example:
-                  message: Applied credit to 1 invoice(s).
+                  message: Applied credit to 1 bill.
                   data:
                   - id: 61
                     vendor_credit_id: 17
@@ -949999,7 +950436,8 @@ paths:
         end of `date_to`, both in your account''s timezone (sent to WooCommerce in
         GMT). `date_to` is optional; without it the range is open-ended.
 
-        - `all` - no creation-date filter
+        - `all` - Full Re-sync: every order created since the integration''s configured
+        start date (same window as `from_start_date`)
 
 
         Only `latest` (and the scheduled sync) asks WooCommerce for orders modified

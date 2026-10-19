@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-19
-description: This release includes 63 additions, 3 changes, 22 removals. 22 breaking changes — action required.
+description: This release includes 66 additions, 3 changes, 22 removals. 22 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-19
 ---
 
-This release includes 63 additions, 3 changes, 22 removals. 22 breaking changes — action required.
+This release includes 66 additions, 3 changes, 22 removals. 22 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -57,11 +57,17 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Billing & Invoices
 - `GET /api/portal/invoices/by-order/{salesOrder}` — List Invoices for Sales Order
 
+### Bills
+- `GET /api/bills/import/template` — Download Bill Import Template
+
 ### Fulfillments
 - `GET /api/v2/sales-order-fulfillments/export/download` — Download Fulfillments Export
 
 ### PayPal
 - `POST /api/sales-invoices/{salesInvoiceId}/paypal-payment-links` — Create PayPal Pay Link for Sales Invoice
+
+### Purchase Orders
+- `GET /api/purchase-orders/list/export/download` — Download Purchase Orders Export
 
 ### Sales Channel Product Templates
 - `GET /api/sales-channel-product-templates` — List Sales Channel Product Templates
@@ -92,6 +98,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/sales-invoices/{salesInvoice}/activity-log` — Get Sales Invoice Activity Log
 - `POST /api/sales-invoices/{salesInvoice}/allocations` — Allocate Payment to Sales Invoice
 - `POST /api/sales-invoices/{salesInvoice}/credit-notes` — Create Credit Note for Sales Invoice
+- `GET /api/sales-invoices/{salesInvoice}/credit-notes/preview` — Get Creditable Lines for Sales Invoice
 - `GET /api/sales-invoices/{salesInvoice}/documents` — List Sales Invoice Documents
 - `POST /api/sales-invoices/{salesInvoice}/documents` — Upload Sales Invoice Document
 - `DELETE /api/sales-invoices/{salesInvoice}/documents/{document}` — Delete Sales Invoice Document
