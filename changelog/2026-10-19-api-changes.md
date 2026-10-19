@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-19
-description: This release includes 62 additions, 3 changes, 22 removals. 22 breaking changes — action required.
+description: This release includes 63 additions, 3 changes, 22 removals. 22 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-19
 ---
 
-This release includes 62 additions, 3 changes, 22 removals. 22 breaking changes — action required.
+This release includes 63 additions, 3 changes, 22 removals. 22 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -50,6 +50,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Adjustments & Transfers
 - `GET /api/warehouses/transfers/{transfer}` — Get Warehouse Transfer
+
+### Agent Console
+- `POST /api/support/agent/tickets/{ticket}/draft` — Create or Replace Ticket Draft
 
 ### Billing & Invoices
 - `GET /api/portal/invoices/by-order/{salesOrder}` — List Invoices for Sales Order
