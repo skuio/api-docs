@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-20
-description: This release includes 118 additions, 5 changes, 35 removals. 37 breaking changes — action required.
+description: This release includes 116 additions, 6 changes, 35 removals. 37 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-20
 ---
 
-This release includes 118 additions, 5 changes, 35 removals. 37 breaking changes — action required.
+This release includes 116 additions, 6 changes, 35 removals. 37 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -91,6 +91,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/webhooks/bc-webhook/{integration_instance}/order-updated` — Receive Order Updated Webhook
 - `POST /api/webhooks/bc-webhook/{integration_instance}/product-created` — Receive Product Created Webhook
 - `POST /api/webhooks/bc-webhook/{integration_instance}/product-updated` — Receive Product Updated Webhook
+- `POST /api/webhooks/bc-webhook/{integration_instance}/shipment-created` — Receive Shipment Created Webhook
+- `POST /api/webhooks/bc-webhook/{integration_instance}/shipment-updated` — Receive Shipment Updated Webhook
 
 ### Custom Report Builder
 - `DELETE /api/v2/custom-reports/{customReport}` — Delete Custom Report
@@ -163,11 +165,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/v2/sales-orders/{salesOrder}/channel-mappings/replace` — Replace Channel-Linked Sales Order Lines
 
 ### ShipMyOrders
-- `POST /api/shipmyorders/integration-instances` — Create ShipMyOrders Integration Instance
 - `DELETE /api/shipmyorders/integration-instances/{integration_instance}` — Delete ShipMyOrders Integration Instance
 - `GET /api/shipmyorders/integration-instances/{integration_instance}` — Get ShipMyOrders Integration Instance
 - `GET /api/shipmyorders/inventory/discrepancies` — List ShipMyOrders Inventory Discrepancies
-- `POST /api/shipmyorders/inventory/refresh` — Refresh ShipMyOrders Inventory
 - `GET /api/shipmyorders/inventory/without-sku-products` — List ShipMyOrders Products Missing in SKU.io
 - `GET /api/shipmyorders/inventory/without-smo-inventory` — List SKU.io Products Missing in ShipMyOrders
 - `DELETE /api/shipmyorders/invoices` — Bulk Delete ShipMyOrders Invoices
@@ -191,7 +191,7 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Xero
 - `GET /xero/auth/callback` — Complete Xero Authorization (OAuth Callback)
 
-_…plus 18 more (see the API reference)._
+_…plus 16 more (see the API reference)._
 
 ## Changed
 
@@ -203,5 +203,9 @@ _…plus 18 more (see the API reference)._
 - `POST /webhooks/seventeentrack/{webhook_token}` — 17TRACK Webhook (TRACKING_UPDATED)
   - new parameter(s): `sign`
   - new response code(s): `401`
+
+### Sales Channels
+- `PUT /api/channel/orders/{id}` — Update Order
+  - new response code(s): `400`
 
 _Spec version 1.0.0 → 1.0.0._

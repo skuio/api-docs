@@ -87002,7 +87002,11 @@ paths:
         `fulfillment_status`, `fulfilled_at`, `canceled_at`, the internal `bypass_fulfillment_recompute`
         flag, and bare `shipping_address_id` / `billing_address_id`. Name addresses
         through `shipping_address` / `billing_address` instead. The success message
-        names the order number.'
+        names the order number.
+
+
+        Sending a line `id` that does not exist on this order returns **400** with
+        a message naming the line, instead of a server error.'
       requestBody:
         content:
           application/json:
@@ -87062,6 +87066,30 @@ paths:
                     order_status: open
                     requested_shipping_method: express
                     ship_by_date: '2024-06-06T00:00:00.000000Z'
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      resource:
+                        type: string
+                example:
+                  message: 'Can''t update non-existing sales order line with id: 987654.
+                    for sales order with id: SO-10422'
+                  errors:
+                    resource: sales order line
         '422':
           description: Unprocessable Entity
           headers:
@@ -333930,7 +333958,12 @@ paths:
         hour fields are null when no packet has reached that milestone yet.
 
 
-        Only inbound shipments of the Walmart account in the URL are counted.'
+        Only inbound shipments of the Walmart account in the URL are counted.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters:
       - name: integrationInstance
         in: path
@@ -334070,7 +334103,12 @@ paths:
         Response: { data: { summary, partners[] } }. summary is the ''All partners''
         aggregate; partners[] is one row per 3PL warehouse / supplier, sorted by shipments_sent
         desc. partner_type is ''all'' (summary), ''3pl'', or ''supplier''. Median/avg
-        hour fields are null when no packet has reached that milestone yet.'
+        hour fields are null when no packet has reached that milestone yet.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters:
       - name: warehouse
         in: path
@@ -334201,7 +334239,12 @@ paths:
         Response: { data: { summary, partners[] } }. summary is the ''All partners''
         aggregate; partners[] is one row per 3PL warehouse / supplier, sorted by shipments_sent
         desc. partner_type is ''all'' (summary), ''3pl'', or ''supplier''. Median/avg
-        hour fields are null when no packet has reached that milestone yet.'
+        hour fields are null when no packet has reached that milestone yet.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters:
       - name: supplier
         in: path
@@ -350480,7 +350523,11 @@ paths:
 
 
         Named route: `tiktok-shop.products.bulk-progress`. Returns **404** when the
-        log id is unknown.'
+        log id is unknown.
+
+
+        Returns **403** when the tracked job belongs to another user (the same rule
+        as the tracked job log endpoints).'
       parameters:
       - name: integration_instance_id
         in: path
@@ -350590,9 +350637,24 @@ paths:
                     progress_percentage: 43
                     progress_mode: items
                     stages: null
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: You do not have permission to view this job.
         '429': *id001
         '401': *id002
-        '403': *id005
         '404': *id003
       x-session-only: true
       operationId: get-api-tiktok-shop-integration-instances-integration-instance-id-products-bulk-progress-tracked-job-log-id
@@ -358561,7 +358623,11 @@ paths:
         \ (Amazon FBA/AWD, Walmart WFS, TikTok FBT, and virtual), legacy rows carrying\
         \ `subtype = amazon_fba`, and dropship/supplier warehouses are rejected with\
         \ a 422. Faire FBF is accepted: Faire exposes no inventory API, so SKU.io's\
-        \ ledger is the system of record for FBF stock."
+        \ ledger is the system of record for FBF stock.\n\n**Plans already sent to\
+        \ TikTok (status PLANNED):** an edit to the lines or inbound type is pushed\
+        \ to TikTok first. If TikTok rejects it, the response is **422** and nothing\
+        \ changes locally. A line with a quantity but no TikTok FBT goods id is refused\
+        \ with **422** before TikTok is called. Draft edits are never sent to TikTok."
       requestBody:
         content:
           application/json:
@@ -359157,21 +359223,19 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: Validation Error
+                  value:
+                    message: Each line needs a quantity.
+                    errors:
                       lines.0.quantity:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: Each line needs a quantity.
-                  errors:
-                    lines.0.quantity:
-                    - Each line needs a quantity.
+                      - Each line needs a quantity.
+                example-1:
+                  summary: 422 TikTok rejected the plan update
+                  value:
+                    message: TikTok did not accept this change to the planned inbound
+                      plan, so nothing was changed.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -372160,7 +372224,12 @@ paths:
 
         **Not instance-scoped.** A partner''s turnaround spans every TikTok instance,
         so this route carries no `{integrationInstance}` segment — it previously did,
-        which advertised a scope nothing enforced.'
+        which advertised a scope nothing enforced.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters: []
       responses:
         '200':
@@ -372301,7 +372370,12 @@ paths:
         - `date_to` — optional, nullable date.
 
 
-        Permission: none beyond a valid token.'
+        Permission: none beyond a valid token.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters:
       - name: warehouse
         in: path
@@ -372441,7 +372515,12 @@ paths:
         - `date_to` — optional, nullable date.
 
 
-        Permission: none beyond a valid token.'
+        Permission: none beyond a valid token.
+
+
+        `date_from` and `date_to` are whole days in the account''s timezone: `date_from`
+        starts at local midnight and `date_to` runs to the end of that local day (both
+        converted to UTC before filtering).'
       parameters:
       - name: supplier
         in: path
@@ -521893,164 +521972,6 @@ paths:
         '422': *id004
       x-required-scope: integrations:write
       operationId: post-api-easypost-instances-integrationinstance-test-connection
-  /api/shipmyorders/integration-instances:
-    post:
-      tags:
-      - ShipMyOrders
-      summary: Create ShipMyOrders Integration Instance
-      description: 'Attempts to connect a new ShipMyOrders integration instance. ShipMyOrders
-        is a deprecated integration: the provider service no longer exists, so nothing
-        is sent to or pulled from it. Historical invoices and inventory snapshots
-        stay readable and manageable.
-
-
-        :::warning[Not yet available to API tokens]
-
-        This endpoint currently requires session authentication; Personal Access Token
-        scope support is in progress.
-
-        :::
-
-
-        The request is validated first, then rejected: once validation passes the
-        endpoint always returns **400** with error code `IsUnacceptable` because ShipMyOrders
-        can no longer be connected. It is listed only so existing clients get a clear
-        answer.
-
-
-        Body: `name` (string, required, unique across integration instances), `integration_id`
-        (integer, required, must exist), `connection_settings` (object: `username`,
-        `password`, `clientId`), `integration_settings` (object, required: `connection_name`,
-        `linked_warehouse_id` (required — a direct or 3PL warehouse), `enable_fulfillment`,
-        `fulfillment_cost_financial_line_type_id`), `is_automatic_sync_enabled` (boolean,
-        default false).
-
-
-        Requires the `integrations.create` permission.
-
-
-        Authentication: Bearer token (Personal Access Token).'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                name:
-                  type: string
-                integration_id:
-                  type: integer
-                connection_settings:
-                  type: object
-                  properties:
-                    username:
-                      type: string
-                    password:
-                      type: string
-                    clientId:
-                      type: string
-                integration_settings:
-                  type: object
-                  properties:
-                    connection_name:
-                      type: string
-                    linked_warehouse_id:
-                      type: integer
-                    enable_fulfillment:
-                      type: boolean
-                    fulfillment_cost_financial_line_type_id:
-                      type: integer
-                is_automatic_sync_enabled:
-                  type: boolean
-              example:
-                name: ShipMyOrders
-                integration_id: 19
-                connection_settings:
-                  username: siber-api
-                  password: s3cr3t-Pa55
-                  clientId: SIBER
-                integration_settings:
-                  connection_name: ShipMyOrders
-                  linked_warehouse_id: 4
-                  enable_fulfillment: false
-                  fulfillment_cost_financial_line_type_id: 3
-                is_automatic_sync_enabled: false
-      parameters: []
-      responses:
-        '400':
-          description: Bad Request
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  errors:
-                    type: object
-                    properties:
-                      integration:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            message:
-                              type: string
-                            code:
-                              type: string
-                            data:
-                              type: array
-                  status:
-                    type: string
-                  message:
-                    type: string
-                example:
-                  errors:
-                    integration:
-                    - message: ShipMyOrders is a deprecated integration and can no
-                        longer be connected.
-                      code: IsUnacceptable
-                      data: []
-                  status: failure
-                  message: ShipMyOrders is a deprecated integration and can no longer
-                    be connected.
-        '422':
-          description: Unprocessable Entity
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
-                      linked_warehouse:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: Shipping provider instance must be linked to a direct or
-                    3pl warehouse.
-                  errors:
-                    linked_warehouse:
-                    - Shipping provider instance must be linked to a direct or 3pl
-                      warehouse.
-        '429': *id001
-        '401': *id002
-        '403': *id005
-      deprecated: true
-      x-session-only: true
-      operationId: post-api-shipmyorders-integration-instances
   /api/shipmyorders/integration-instances/{integration_instance}:
     get:
       tags:
@@ -522536,85 +522457,6 @@ paths:
         '403': *id005
       x-session-only: true
       operationId: delete-api-shipmyorders-integration-instances-integration-instance
-  /api/shipmyorders/inventory/refresh:
-    post:
-      tags:
-      - ShipMyOrders
-      summary: Refresh ShipMyOrders Inventory
-      description: 'Formerly pulled a fresh stock snapshot from ShipMyOrders. ShipMyOrders
-        is a deprecated integration: the provider service no longer exists, so nothing
-        is sent to or pulled from it. Historical invoices and inventory snapshots
-        stay readable and manageable.
-
-
-        :::warning[Not yet available to API tokens]
-
-        This endpoint currently requires session authentication; Personal Access Token
-        scope support is in progress.
-
-        :::
-
-
-        This endpoint now always returns **410 Gone** and contacts nothing. The last
-        snapshot synced before the provider shut down remains available through the
-        other Inventory endpoints.
-
-
-        Requires the `integrations.sync` permission.
-
-
-        Authentication: Bearer token (Personal Access Token).'
-      requestBody:
-        content: {}
-      parameters: []
-      responses:
-        '410':
-          description: Gone
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  errors:
-                    type: object
-                    properties:
-                      shipmyorders:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            message:
-                              type: string
-                            code:
-                              type: string
-                            data:
-                              type: array
-                  status:
-                    type: string
-                  message:
-                    type: string
-                example:
-                  errors:
-                    shipmyorders:
-                    - message: ShipMyOrders is a deprecated integration and can no
-                        longer refresh inventory from the provider.
-                      code: IsUnacceptable
-                      data: []
-                  status: failure
-                  message: ShipMyOrders is a deprecated integration and can no longer
-                    refresh inventory from the provider.
-        '429': *id001
-        '401': *id002
-        '403': *id005
-        '422': *id004
-      deprecated: true
-      x-session-only: true
-      operationId: post-api-shipmyorders-inventory-refresh
   /api/shipmyorders/inventory/discrepancies:
     get:
       tags:
@@ -525174,7 +525016,7 @@ paths:
 
 
         If the invoice is already archived the call still succeeds (HTTP 200) with
-        `status: warning` and code `ProductBrandIsAlreadyArchived` under `warnings.id`.
+        `status: warning` and code `ShipMyOrdersInvoiceIsAlreadyArchived` under `warnings.id`.
 
 
         No body. Returns the invoice in the same shape as Get ShipMyOrders Invoice.
@@ -525296,7 +525138,7 @@ paths:
                     warnings:
                       id:
                       - message: The smo invoice 'SIBER10495' is already archived
-                        code: ProductBrandIsAlreadyArchived
+                        code: ShipMyOrdersInvoiceIsAlreadyArchived
                         data:
                           id: 42
                     data:
@@ -525419,7 +525261,7 @@ paths:
 
 
         If the invoice is not archived the call still succeeds (HTTP 200) with `status:
-        warning` and code `ProductBrandIsAlreadyUnarchived` under `warnings.id`.
+        warning` and code `ShipMyOrdersInvoiceIsAlreadyUnarchived` under `warnings.id`.
 
 
         No body. Returns the invoice in the same shape as Get ShipMyOrders Invoice.
