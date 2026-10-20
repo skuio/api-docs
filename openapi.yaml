@@ -172582,6 +172582,16 @@ paths:
                       type: boolean
                     rounding_method:
                       type: string
+                    baseline_method:
+                      type: string
+                    trend_damping_factor:
+                      type: number
+                    trend_max_growth_pct:
+                      type: integer
+                    trend_half_life_days:
+                      type: integer
+                    exclude_detected_anomalies:
+                      type: boolean
                     product_filters:
                       type: object
                       properties: {}
@@ -172607,6 +172617,11 @@ paths:
                   use_measured_lead_time: false
                   use_moq: true
                   rounding_method: round_half_up
+                  baseline_method: damped_trend
+                  trend_damping_factor: 0.85
+                  trend_max_growth_pct: 100
+                  trend_half_life_days: 21
+                  exclude_detected_anomalies: true
                   product_filters: {}
                   sales_filters: {}
                   demand_modifiers: []
@@ -458351,12 +458366,16 @@ paths:
       summary: Get Product Push Capability
       description: 'Whether SKU products can be pushed INTO the WMS behind this Trackstar
         connection, and how. `strategy` is `create_product` when the connection lists
-        `create_product` in its `available_actions` (Trackstar `POST /wms/products`),
-        `logiwa_passthrough` for legacy Logiwa (Trackstar `POST /wms/passthrough`
+        `create_product` in its `available_actions` (Trackstar `POST /wms/products`
+        — legacy Logiwa included, since Trackstar added product writes for it), `logiwa_passthrough`
+        for a legacy Logiwa connection without that action (Trackstar `POST /wms/passthrough`
         → Logiwa `InsertInventoryItem`), or null with a `reason` when the WMS can''t
-        take product writes. `warehouse_customers` (from Trackstar `GET /wms/warehouse-customers`)
-        lists who the products can be filed under — when there are several, `POST
-        products/push` needs `warehouse_customer_id`.
+        take product writes. `can_update_existing` is true when products the WMS already
+        holds can be re-sent with `update_existing` to update them in place — on `logiwa_passthrough`,
+        or on `create_product` when the connection also lists `update_product` (Trackstar
+        `PUT /wms/products/{product_id}`). `warehouse_customers` (from Trackstar `GET
+        /wms/warehouse-customers`) lists who the products can be filed under — when
+        there are several, `POST products/push` needs `warehouse_customer_id`.
 
 
         :::warning[Not yet available to API tokens]
@@ -458408,13 +458427,14 @@ paths:
                     status: success
                     data:
                       supported: true
-                      strategy: logiwa_passthrough
+                      strategy: create_product
                       reason: null
                       warehouse_customers:
                       - id: wc_01
                         name: Fleur Studios
                       wms_name: Logiwa
                       integration_name: logiwa
+                      can_update_existing: true
                       settings:
                         currencies:
                         - code: AUD
@@ -458442,6 +458462,7 @@ paths:
                       warehouse_customers: []
                       wms_name: Mintsoft
                       integration_name: mintsoft
+                      can_update_existing: false
                       settings:
                         currencies:
                         - code: AUD
@@ -458575,10 +458596,10 @@ paths:
         fields (`name`, `barcode`, `weight`, `dimensions`, `price`).
 
 
-        On legacy Logiwa connections these products can be re-sent with `POST products/push`
-        and `update_existing: true` (Logiwa updates the item in place). Connections
-        using `create_product` never update existing products, so there the list is
-        informational.
+        Where the push capability''s `can_update_existing` is true (legacy Logiwa,
+        and any connection offering Trackstar''s `update_product`), these products
+        can be re-sent with `POST products/push` and `update_existing: true` to update
+        the item in place. Elsewhere the list is informational.
 
 
         Optional query: `warehouse_customer_id` limits the list to products pushed
@@ -458681,27 +458702,38 @@ paths:
         Body: `all` (bool — push everything from `products/pushable`, resolved server-side)
         OR `sku_product_ids` (int[]); `sales_channel_ids` (int[], optional — with
         `all`, only push products listed on these sales channels; the same filter
-        `products/pushable` takes); `update_existing` (bool, default false — legacy
-        Logiwa only: re-send products the WMS already has; Logiwa''s InsertInventoryItem
-        OVERWRITES the existing item''s fields. Ignored for `create_product` connections,
-        which never update); `warehouse_customer_id` (string, required when the connection
-        has more than one warehouse customer); `price_currency` (string, 3-letter
-        currency code, default `USD` — the currency the warehouse system keeps prices
-        in; prices are read from the tenant''s default pricing tier and converted
-        from that tier''s currency with the tenant''s exchange rates); `logiwa` {`consumer_unit`,
-        `pack_unit`, `item_type`, `weight_unit`} (optional overrides for the Logiwa
-        lookups, default UNIT / UNIT / Purchased; `weight_unit` is the unit the Logiwa
-        warehouse keeps item weights in: `lb` (default), `oz` or `kg`).
+        `products/pushable` takes); `update_existing` (bool, default false — re-send
+        products the WMS already has, OVERWRITING the existing item''s fields. Only
+        honoured when the capability''s `can_update_existing` is true: on `create_product`
+        connections each product Trackstar already holds is updated with `PUT /wms/products/{product_id}`
+        (name, GTIN, measurements, unit price, HS code, item type — never the SKU
+        or owner); on `logiwa_passthrough` Logiwa''s InsertInventoryItem updates it.
+        A product Logiwa holds that Trackstar has not synced yet is skipped with a
+        reason — push it again after Trackstar''s next product sync); `warehouse_customer_id`
+        (string, required when the connection has more than one warehouse customer);
+        `price_currency` (string, 3-letter currency code, default `USD` — the currency
+        the warehouse system keeps prices in; prices are read from the tenant''s default
+        pricing tier and converted from that tier''s currency with the tenant''s exchange
+        rates); `logiwa` {`consumer_unit`, `pack_unit`, `item_type`, `weight_unit`,
+        `uom`} (optional overrides for the Logiwa lookups. `item_type` (default Purchased)
+        is sent on both write paths; on `create_product` connections `uom` (string,
+        max 50 — Logiwa''s unit of measure and pack type, omitted when blank so Trackstar''s
+        default `Unit` applies) is sent too. `consumer_unit` / `pack_unit` (default
+        UNIT) and `weight_unit` (the unit the Logiwa warehouse keeps item weights
+        in: `lb` (default), `oz` or `kg`) apply to `logiwa_passthrough` only — `create_product`
+        sends measurements with their units).
 
 
-        Before a create-only Logiwa push, SKU asks Logiwa which item codes the warehouse
-        customer already holds and skips them; if Logiwa can''t be read, nothing is
-        sent. Logiwa items are sent 50 per call, paced ≥1.2s apart, with Logiwa throttle
-        replies retried; weights are converted to `logiwa.weight_unit` (pounds by
-        default), dimensions to inches, and prices to `price_currency`. After anything
-        is pushed, the job asks Trackstar to re-crawl products and queues a products
-        sync. Per-product outcomes (pushed / skipped / failed with a reason) are in
-        the tracked job''s results.
+        Before a Logiwa push (create-only, or any push on `create_product`), SKU asks
+        Logiwa which item codes the warehouse customer already holds; a create-only
+        push skips them, and if Logiwa can''t be read, nothing is sent. On `create_product`
+        connections the product''s HS code is sent as `harmonized_code`. Logiwa items
+        are sent 50 per call, paced ≥1.2s apart, with Logiwa throttle replies retried;
+        weights are converted to `logiwa.weight_unit` (pounds by default), dimensions
+        to inches, and prices to `price_currency`. After anything is pushed, the job
+        asks Trackstar to re-crawl products and queues a products sync. Per-product
+        outcomes (pushed / skipped / failed with a reason) are in the tracked job''s
+        results.
 
 
         409 when a push to this connection is already running. 422 when the WMS can''t
@@ -458737,6 +458769,8 @@ paths:
                       type: string
                     weight_unit:
                       type: string
+                    uom:
+                      type: string
               example:
                 sku_product_ids:
                 - 101
@@ -458749,6 +458783,7 @@ paths:
                   pack_unit: UNIT
                   item_type: Purchased
                   weight_unit: lb
+                  uom: Unit
       parameters:
       - name: integration_instance
         in: path
