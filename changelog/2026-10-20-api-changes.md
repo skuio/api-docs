@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-20
-description: This release includes 116 additions, 6 changes, 35 removals. 37 breaking changes — action required.
+description: This release includes 116 additions, 8 changes, 35 removals. 37 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-20
 ---
 
-This release includes 116 additions, 6 changes, 35 removals. 37 breaking changes — action required.
+This release includes 116 additions, 8 changes, 35 removals. 37 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -204,8 +204,16 @@ _…plus 16 more (see the API reference)._
   - new parameter(s): `sign`
   - new response code(s): `401`
 
+### Purchase Orders
+- `POST /api/purchase-orders/{purchase_order}/dropship` — Dropship (Ship Fulfillment)
+  - new response code(s): `400`
+
 ### Sales Channels
 - `PUT /api/channel/orders/{id}` — Update Order
+  - new response code(s): `400`
+
+### Stock Takes
+- `POST /api/stock-takes/{stockTake}/initiate` — Initiate Count
   - new response code(s): `400`
 
 _Spec version 1.0.0 → 1.0.0._

@@ -30213,6 +30213,14 @@ paths:
         a supported accounting connection.
 
 
+        Returns `422` with error code `TrialBalanceUnavailable` (under `errors.as_of`)
+        when the provider can''t be reached (for example, the connection needs re-authorising)
+        and no trial balance captured earlier for that exact `as_of` date exists.
+        Opening balances must come from that exact date, so a trial balance captured
+        for another day is never used. Reconnect the accounting connection and try
+        again.
+
+
         **Authentication:** Requires Bearer token. (Read-only route — no extra permission
         middleware; the mutating apply/upsert routes enforce `accounting.manage_settings`.)
 
@@ -30358,27 +30366,37 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The connection id field is required.
+                    errors:
                       connection_id:
-                        type: array
-                        items:
-                          type: string
+                      - The connection id field is required.
                       as_of:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The connection id field is required.
-                  errors:
-                    connection_id:
-                    - The connection id field is required.
-                    as_of:
-                    - The as of does not match the format Y-m-d.
+                      - The as of does not match the format Y-m-d.
+                example-1:
+                  summary: 422 Trial Balance Unavailable for the Date
+                  value:
+                    message: Couldn't read the trial balance as at 2026-01-01 from
+                      your accounting provider, and no copy captured for that date
+                      exists. Opening balances must come from that exact date, so
+                      a trial balance from another day is not used. Check that the
+                      accounting connection is authorised (reconnect it if needed)
+                      and try again.
+                    errors:
+                      as_of:
+                      - message: Couldn't read the trial balance as at 2026-01-01
+                          from your accounting provider, and no copy captured for
+                          that date exists. Opening balances must come from that exact
+                          date, so a trial balance from another day is not used. Check
+                          that the accounting connection is authorised (reconnect
+                          it if needed) and try again.
+                        code: TrialBalanceUnavailable
+                        data:
+                          as_of: '2026-01-01'
+                    status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -33526,6 +33544,12 @@ paths:
         422 when the entry already has a link on this connection.
 
 
+        422 when the provider document is already linked to another ledger entry:
+        a provider document belongs to one entry only, otherwise both entries would
+        push updates to it. Unlink it from the other entry first, or choose a different
+        document.
+
+
         **Ownership validation:** the (remote_type, remote_id) pair must be a cached
         provider document belonging to the given connection. A document from another
         connection (or one not yet pulled into the local cache) is rejected with HTTP
@@ -33606,13 +33630,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                example:
-                  message: Document qbo_invoice:184 is not a cached provider document
-                    of this connection — refresh the provider cache or re-check the
-                    selected connection.
+              examples:
+                example-0:
+                  summary: 422 Unprocessable — document not owned by the connection
+                  value:
+                    message: Document qbo_invoice:184 is not a cached provider document
+                      of this connection — refresh the provider cache or re-check
+                      the selected connection.
+                example-1:
+                  summary: 422 Unprocessable — document already linked to another
+                    entry
+                  value:
+                    message: This provider document is already linked to ledger entry
+                      JE-004810. A document can belong to only one entry, so both
+                      would overwrite it. Unlink it from JE-004810 first, or pick
+                      a different document.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -65888,7 +65920,24 @@ paths:
         dollar amounts are hidden: `pos_arriving.inbound_value` is `null` with `pos_arriving.inbound_value_hidden_reason`
         = "Amount hidden — needs the \"Financials → List\" permission", and the `detail`
         line of money-valued Needs Attention alerts (financial-alert loss, overdue
-        vendor-deposit total) is replaced by that same text.'
+        vendor-deposit total) is replaced by that same text.
+
+
+        Keys under `data`: `low_stock` {count, critically_low}, `backorders` {count,
+        total_units}, `unfulfilled_orders` {count, past_ship_by_date}, `pos_arriving`
+        {count, inbound_value}, `ap_due` {overdue, due_soon}, `ar_overdue` {amount,
+        count}, `stranded_orders` {count, oldest_days}, `releasable_backorders` {count,
+        units, orders}, `inventory_debt` {claims, units, clearing_balance, oldest_age_days}
+        and `needs_attention` (alert list).
+
+
+        **`releasable_backorders`** — backorders whose stock is already on hand at
+        their warehouse. `count` is how many backorder allocations the available stock
+        can actually cover, `orders` how many orders they belong to, and `units` the
+        quantity a release would actually move: each backorder''s quantity capped
+        by the stock left after the backorders ahead of it. Three 6-unit backorders
+        on 9 units in stock report `count: 2`, `units: 9` (6 + 3), not the backorders''
+        full 12.'
       parameters: []
       responses:
         '200':
@@ -65901,23 +65950,128 @@ paths:
                   data:
                     type: object
                     properties:
-                      open_sales_orders:
-                        type: integer
-                      pending_fulfillments:
-                        type: integer
-                      low_stock_products:
-                        type: integer
-                      open_purchase_orders:
-                        type: integer
-                      pending_receipts:
-                        type: integer
+                      low_stock:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          critically_low:
+                            type: integer
+                      backorders:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          total_units:
+                            type: integer
+                      unfulfilled_orders:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          past_ship_by_date:
+                            type: integer
+                      pos_arriving:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          inbound_value:
+                            type: integer
+                      ap_due:
+                        type: object
+                        properties:
+                          overdue:
+                            type: integer
+                          due_soon:
+                            type: integer
+                      ar_overdue:
+                        type: object
+                        properties:
+                          amount:
+                            type: string
+                          count:
+                            type: integer
+                      stranded_orders:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          oldest_days:
+                            type: integer
+                      releasable_backorders:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          units:
+                            type: integer
+                          orders:
+                            type: integer
+                      inventory_debt:
+                        type: object
+                        properties:
+                          claims:
+                            type: integer
+                          units:
+                            type: integer
+                          clearing_balance:
+                            type: integer
+                          oldest_age_days:
+                            type: integer
+                      needs_attention:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            icon:
+                              type: string
+                            message:
+                              type: string
+                            detail:
+                              type: string
+                            link:
+                              type: string
                 example:
                   data:
-                    open_sales_orders: 42
-                    pending_fulfillments: 15
-                    low_stock_products: 8
-                    open_purchase_orders: 6
-                    pending_receipts: 3
+                    low_stock:
+                      count: 8
+                      critically_low: 3
+                    backorders:
+                      count: 14
+                      total_units: 62
+                    unfulfilled_orders:
+                      count: 42
+                      past_ship_by_date: 5
+                    pos_arriving:
+                      count: 6
+                      inbound_value: 18450
+                    ap_due:
+                      overdue: 2
+                      due_soon: 4
+                    ar_overdue:
+                      amount: '3120.50'
+                      count: 3
+                    stranded_orders:
+                      count: 1
+                      oldest_days: 2
+                    releasable_backorders:
+                      count: 2
+                      units: 9
+                      orders: 2
+                    inventory_debt:
+                      claims: 0
+                      units: 0
+                      clearing_balance: 0
+                      oldest_age_days: 0
+                    needs_attention:
+                    - type: critical
+                      icon: mdi-package-variant-closed-check
+                      message: 2 backorders can be released now
+                      detail: 9 units in stock across 2 orders · review to release
+                      link: /dashboard?release_backorders=1
         '429': *id001
         '401': *id002
         '403': *id005
@@ -326435,6 +326589,7 @@ paths:
                       environment: production
                       oauth_connected: false
                       oauth_pending: false
+                      authorization_expired: false
                       name: Walmart US Store
                       integration_id: 11
                       is_automatic_sync_enabled: true
@@ -326487,6 +326642,7 @@ paths:
                       environment: production
                       oauth_connected: false
                       oauth_pending: false
+                      authorization_expired: false
                       name: Walmart US Store
                       integration_id: 11
                       is_automatic_sync_enabled: true
@@ -359678,14 +359834,16 @@ paths:
         \ you send becomes what is on file.\n\n:::warning[Not yet available to API\
         \ tokens]\nThis endpoint currently requires session authentication; Personal\
         \ Access Token scope support is in progress.\n:::\n\n**Body**\n- `cartons`\
-        \ (array, required, max 500).\n  - `cartons.*.carton_number` (integer, required,\
-        \ min 1).\n  - `cartons.*.carton_type` (string, optional) — `SINGLE_SKU` (default)\
-        \ or `MIXED_SKU`.\n  - `cartons.*.weight_kg` (numeric, optional, nullable,\
-        \ min 0).\n  - `cartons.*.length_cm` (numeric, optional, nullable, min 0).\n\
-        \  - `cartons.*.width_cm` (numeric, optional, nullable, min 0).\n  - `cartons.*.height_cm`\
-        \ (numeric, optional, nullable, min 0).\n  - `cartons.*.contents` (array,\
-        \ required, min 1 entry).\n    - `cartons.*.contents.*.plan_line_id` (integer,\
-        \ required) — must be a line on this plan.\n    - `cartons.*.contents.*.quantity`\
+        \ (array, required). A small-parcel plan (or one whose shipping mode is not\
+        \ chosen yet) takes at most 200 cartons — TikTok's small-parcel limit. A freight\
+        \ (LTL/FTL) plan has no carton-count cap.\n  - `cartons.*.carton_number` (integer,\
+        \ required, min 1).\n  - `cartons.*.carton_type` (string, optional) — `SINGLE_SKU`\
+        \ (default) or `MIXED_SKU`.\n  - `cartons.*.weight_kg` (numeric, optional,\
+        \ nullable, min 0).\n  - `cartons.*.length_cm` (numeric, optional, nullable,\
+        \ min 0).\n  - `cartons.*.width_cm` (numeric, optional, nullable, min 0).\n\
+        \  - `cartons.*.height_cm` (numeric, optional, nullable, min 0).\n  - `cartons.*.contents`\
+        \ (array, required, min 1 entry).\n    - `cartons.*.contents.*.plan_line_id`\
+        \ (integer, required) — must be a line on this plan.\n    - `cartons.*.contents.*.quantity`\
         \ (integer, required, min 1).\n    - `cartons.*.contents.*.lot_code` (string,\
         \ optional, nullable, max 64) — required by TikTok for lot-managed goods.\n\
         \    - `cartons.*.contents.*.expiration_at` (date, optional, nullable) — required\
@@ -359935,36 +360093,30 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: Validation Error
+                  value:
+                    message: Cartons must account for every unit on TT-HYDRA-500ML
+                      exactly once — 100 of 120 packed.
+                    errors:
                       lines.0.cartons:
-                        type: array
-                        items:
-                          type: string
+                      - Cartons must account for every unit on TT-HYDRA-500ML exactly
+                        once — 100 of 120 packed.
                       cartons.1.carton_type:
-                        type: array
-                        items:
-                          type: string
+                      - A single-SKU carton may only hold one SKU — mark it mixed-SKU
+                        or split it.
                       cartons.0.contents.0.plan_line_id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: Cartons must account for every unit on TT-HYDRA-500ML exactly
-                    once — 100 of 120 packed.
-                  errors:
-                    lines.0.cartons:
-                    - Cartons must account for every unit on TT-HYDRA-500ML exactly
-                      once — 100 of 120 packed.
-                    cartons.1.carton_type:
-                    - A single-SKU carton may only hold one SKU — mark it mixed-SKU
-                      or split it.
-                    cartons.0.contents.0.plan_line_id:
-                    - That line is not on this inbound plan.
+                      - That line is not on this inbound plan.
+                example-1:
+                  summary: 422 Too Many Small-Parcel Cartons
+                  value:
+                    message: TikTok accepts at most 200 small-parcel cartons on one
+                      inbound — switch the shipment to freight (LTL/FTL) to send more.
+                    errors:
+                      cartons:
+                      - TikTok accepts at most 200 small-parcel cartons on one inbound
+                        — switch the shipment to freight (LTL/FTL) to send more.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -530909,7 +531061,9 @@ paths:
       tags:
       - QuickBooks Online
       summary: Get Unlinked Customers
-      description: 'Returns QBO customers not yet linked to a SKU customer.
+      description: 'Returns active QBO customers not yet linked to a SKU customer.
+        Customers that are inactive in QuickBooks (deleted or merged away there) are
+        not listed.
 
 
         :::warning[Not yet available to API tokens]
@@ -530960,7 +531114,10 @@ paths:
       - QuickBooks Online
       summary: Create SKU Customers from QBO
       description: 'Bulk creates SKU customers from unlinked QBO customers. Omit ids
-        to process all unlinked.
+        to process all unlinked **active** customers: customers that are inactive
+        in QuickBooks (deleted or merged away there) are skipped and counted in `skipped_archived`,
+        and the message says how many were skipped. Pass their ids explicitly to create
+        them anyway — explicitly selected customers are processed whatever their state.
 
 
         :::warning[Not yet available to API tokens]
@@ -531011,12 +531168,38 @@ paths:
                     type: integer
                   failed:
                     type: integer
+                  skipped_archived:
+                    type: integer
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        qbo_customer_id:
+                          type: integer
+                        sku_customer_id:
+                          type: integer
+                        status:
+                          type: string
                 example:
                   success: true
-                  message: Created 3, linked to existing 0, failed 0.
+                  message: Created 3, linked to existing 0, failed 0. Skipped 2 archived
+                    QuickBooks customers (inactive or merged in QuickBooks) — select
+                    them to create them anyway.
                   created: 3
                   linked: 0
                   failed: 0
+                  skipped_archived: 2
+                  results:
+                  - qbo_customer_id: 1
+                    sku_customer_id: 812
+                    status: created
+                  - qbo_customer_id: 2
+                    sku_customer_id: 813
+                    status: created
+                  - qbo_customer_id: 3
+                    sku_customer_id: 814
+                    status: created
         '403':
           description: Forbidden
           headers:
@@ -542510,7 +542693,15 @@ paths:
         :::
 
 
-        Requires the `accounting.manage_settings` permission.'
+        Requires the `accounting.manage_settings` permission.
+
+
+        The account must be an active Bank or Credit Card account of the connected
+        QuickBooks company. An account that is inactive in QuickBooks is refused with
+        422 (`error: "Inactive QBO account"`) because QuickBooks would reject payments
+        posted to it — reactivate it in QuickBooks and sync accounts, or choose an
+        active account. Existing mappings to accounts made inactive later are left
+        as they are.'
       requestBody:
         content:
           application/json:
@@ -542557,10 +542748,33 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - accounting.manage_settings
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Inactive QBO account
+                  message: '''Old Checking'' is inactive in QuickBooks, so QuickBooks
+                    would reject payments posted to it. Reactivate it in QuickBooks
+                    and sync accounts, or choose an active Bank or Credit Card account.'
         '429': *id001
         '401': *id002
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: put-api-qbo-payment-type-mappings-paymenttypeid
   /api/qbo/payment-type-mappings/available-accounts:
@@ -542606,7 +542820,12 @@ paths:
         :::
 
 
-        Requires the `accounting.manage_settings` permission.'
+        Requires the `accounting.manage_settings` permission.
+
+
+        Each mapping is applied independently. A mapping to an account that is inactive
+        in QuickBooks is not applied and comes back in `data.results` with `success:
+        false` and an `error` explaining why; it counts toward `summary.failed`.'
       requestBody:
         content:
           application/json:
@@ -542640,7 +542859,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -542680,6 +542899,52 @@ paths:
                       total: 3
                       successful: 3
                       failed: 0
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            payment_type_id:
+                              type: integer
+                            success:
+                              type: boolean
+                      summary:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          successful:
+                            type: integer
+                          failed:
+                            type: integer
+                example:
+                  success: false
+                  message: Updated 1 mapping(s), 1 failed
+                  data:
+                    results:
+                    - payment_type_id: 1
+                      success: true
+                    - payment_type_id: 2
+                      success: false
+                      error: '''Old Checking'' is inactive in QuickBooks, so QuickBooks
+                        would reject payments posted to it. Reactivate it in QuickBooks
+                        and sync accounts, or choose an active Bank or Credit Card
+                        account.'
+                    summary:
+                      total: 2
+                      successful: 1
+                      failed: 1
         '403':
           description: Forbidden
           headers:
@@ -543248,7 +543513,13 @@ paths:
         :::
 
 
-        Requires the `accounting.manage_tax_settings` permission.'
+        Requires the `accounting.manage_tax_settings` permission.
+
+
+        A tax code that is inactive in QuickBooks is refused with 422 (`error: "Inactive
+        QBO tax code"`) because QuickBooks would reject transactions that use it —
+        reactivate it in QuickBooks and sync tax codes, or choose an active tax code.
+        Existing mappings to codes made inactive later are left as they are.'
       requestBody:
         content:
           application/json:
@@ -543295,10 +543566,33 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - accounting.manage_tax_settings
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  error:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  success: false
+                  error: Inactive QBO tax code
+                  message: '''GST Old'' is inactive in QuickBooks, so QuickBooks would
+                    reject transactions that use it. Reactivate it in QuickBooks and
+                    sync tax codes, or choose an active tax code.'
         '429': *id001
         '401': *id002
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: put-api-qbo-tax-code-mappings-taxrateid
   /api/qbo/tax-code-mappings/available-tax-codes:
@@ -543343,7 +543637,12 @@ paths:
         :::
 
 
-        Requires the `accounting.manage_tax_settings` permission.'
+        Requires the `accounting.manage_tax_settings` permission.
+
+
+        Each mapping is applied independently. A mapping to a tax code that is inactive
+        in QuickBooks is not applied and comes back in `data.results` with `success:
+        false` and an `error` explaining why; it counts toward `summary.failed`.'
       requestBody:
         content:
           application/json:
@@ -543375,7 +543674,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -543415,6 +543714,51 @@ paths:
                       total: 2
                       successful: 2
                       failed: 0
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      results:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            tax_rate_id:
+                              type: integer
+                            success:
+                              type: boolean
+                      summary:
+                        type: object
+                        properties:
+                          total:
+                            type: integer
+                          successful:
+                            type: integer
+                          failed:
+                            type: integer
+                example:
+                  success: false
+                  message: Updated 1 mapping(s), 1 failed
+                  data:
+                    results:
+                    - tax_rate_id: 1
+                      success: true
+                    - tax_rate_id: 2
+                      success: false
+                      error: '''GST Old'' is inactive in QuickBooks, so QuickBooks
+                        would reject transactions that use it. Reactivate it in QuickBooks
+                        and sync tax codes, or choose an active tax code.'
+                    summary:
+                      total: 2
+                      successful: 1
+                      failed: 1
         '403':
           description: Forbidden
           headers:
@@ -623632,7 +623976,12 @@ paths:
         unreceived quantity remaining, sorted by earliest resolved ETA first (lines
         with no resolvable ETA sort last, by creation order). `resolved_eta` is the
         inbound-shipment expected arrival date, falling back to the PO header''s estimated
-        delivery date.'
+        delivery date.
+
+
+        `covered_quantity` is the quantity backorders already hold on the line (allocations
+        awaiting receipt), and `uncovered_quantity` is what is left to allocate (`unreceived_quantity`
+        minus `covered_quantity`, never below 0).'
       parameters:
       - name: productId
         in: path
@@ -623671,6 +624020,10 @@ paths:
                           type: integer
                         unreceived_quantity:
                           type: integer
+                        covered_quantity:
+                          type: integer
+                        uncovered_quantity:
+                          type: integer
                         resolved_eta:
                           type: string
                 example:
@@ -623681,6 +624034,8 @@ paths:
                     quantity: 100
                     received_quantity: 20
                     unreceived_quantity: 80
+                    covered_quantity: 65
+                    uncovered_quantity: 15
                     resolved_eta: '2026-05-28'
                   - purchase_order_line_id: 5612
                     purchase_order_id: 915
@@ -623688,6 +624043,8 @@ paths:
                     quantity: 50
                     received_quantity: 0
                     unreceived_quantity: 50
+                    covered_quantity: 0
+                    uncovered_quantity: 50
                     resolved_eta: '2026-06-10'
         '429': *id001
         '401': *id002
@@ -628506,9 +628863,11 @@ paths:
         \ line's requested quantity exceeds its allocated sum (allocations out of\
         \ sync, e.g. stuck Fulfilled rows); the message includes the product SKU and\
         \ the allocated quantity\n- `422 Unprocessable Entity` — transfer is an Amazon\
-        \ FBA transfer (use the Amazon-specific flow instead)\n- `400 Bad Request`\
-        \ (`ProductIsUnacceptable`) — not enough stock at the source warehouse for\
-        \ one of the requested lines\n\n**Requires permission:** `warehouse_transfers.ship`\n\
+        \ FBA transfer (use the Amazon-specific flow instead)\n- `422 Unprocessable\
+        \ Entity` — nothing is left to ship (every line has already shipped in full,\
+        \ or every requested quantity resolves to zero). No empty shipment is recorded.\n\
+        - `400 Bad Request` (`ProductIsUnacceptable`) — not enough stock at the source\
+        \ warehouse for one of the requested lines\n\n**Requires permission:** `warehouse_transfers.ship`\n\
         Form Request: `App\\Http\\Requests\\CreateWarehouseTransferShipmentRequest`\n\
         Route name: `warehouses.transfers.shipments.store`\n\nSource bin: each line\
         \ may optionally set `warehouse_location_id` — the source-warehouse bin the\
@@ -628705,9 +629064,9 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
+                type: string
               examples:
                 example-0:
                   summary: 422 — transfer not open
@@ -628730,6 +629089,19 @@ paths:
                         code: WarehouseTransferLineIsUnacceptable
                         data:
                           warehouse_transfer_line_id: 87499
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: Nothing left to ship on this transfer — every line has
+                    already shipped in full. Receive the shipped units instead, or
+                    add quantity to a line before shipping again.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -643100,6 +643472,8 @@ paths:
 
 
         exclude_product_ids: optional array of product IDs to remove before initiating.
+        If the exclusions would leave no items to count, the request is refused with
+        400 and the draft is left unchanged (no item is removed).
 
 
         is_integrity_fix: if true, marks as integrity fix count.
@@ -643189,6 +643563,27 @@ paths:
                       product_id: 55
                       snapshot_inventory: 100
                       qty_counted: 100
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: All items were excluded. Stock take must have at least
+                    one item to initiate. Your draft was not changed — keep at least
+                    one item in the count, or fix the excluded products first.
+                  status: failure
         '422':
           description: Unprocessable Content
           headers:
@@ -650455,7 +650850,14 @@ paths:
         (defaults to today), period_start, period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when the chosen strategy has nothing to divide by — no item has
+        the measure it uses (for example every product is weightless under `weight_based`).
+        The message names the missing measure; nothing is allocated. Add the missing
+        values to the products, or choose another strategy. A strategy that can''t
+        divide automatically (`specific_line`, `manual`) is refused the same way.'
       requestBody:
         content:
           application/json:
@@ -650601,7 +651003,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -650610,6 +651012,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -650640,7 +651055,12 @@ paths:
         amount), allocation_date (defaults to today), period_start and period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when none of the document''s lines has the measure the chosen
+        strategy divides by (for example no product has a weight under `weight_based`);
+        the message names the missing measure and nothing is allocated.'
       requestBody:
         content:
           application/json:
@@ -650771,7 +651191,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -650780,6 +651200,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -650809,7 +651242,12 @@ paths:
         amount), allocation_date (defaults to today), period_start and period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when none of the document''s lines has the measure the chosen
+        strategy divides by (for example no product has a weight under `weight_based`);
+        the message names the missing measure and nothing is allocated.'
       requestBody:
         content:
           application/json:
@@ -650939,7 +651377,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -650948,6 +651386,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -650978,7 +651429,12 @@ paths:
         amount), allocation_date (defaults to today), period_start and period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when none of the document''s lines has the measure the chosen
+        strategy divides by (for example no product has a weight under `weight_based`);
+        the message names the missing measure and nothing is allocated.'
       requestBody:
         content:
           application/json:
@@ -651109,7 +651565,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -651118,6 +651574,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -651148,7 +651617,12 @@ paths:
         amount), allocation_date (defaults to today), period_start and period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when none of the document''s lines has the measure the chosen
+        strategy divides by (for example no product has a weight under `weight_based`);
+        the message names the missing measure and nothing is allocated.'
       requestBody:
         content:
           application/json:
@@ -651279,7 +651753,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -651288,6 +651762,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -651317,7 +651804,12 @@ paths:
         amount), allocation_date (defaults to today), period_start and period_end.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 when none of the document''s lines has the measure the chosen
+        strategy divides by (for example no product has a weight under `weight_based`);
+        the message names the missing measure and nothing is allocated.'
       requestBody:
         content:
           application/json:
@@ -651447,7 +651939,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -651456,6 +651948,19 @@ paths:
                 example:
                   message: Allocation amount exceeds the cost entry's unallocated
                     amount
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: None of these lines has a weight, so a "By weight" allocation
+                    has nothing to divide the cost by. Add the missing values to the
+                    products, or choose another allocation method.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -713146,7 +713651,23 @@ paths:
         when the lot was produced on a manufacturing order (including outsourced finished
         goods, which are bridged to the run through their production iteration), and
         `purchase_order_id` / `supplier_id` / `supplier_name` when the lot was received
-        against a purchase order. An outsourced finished good carries both.'
+        against a purchase order. An outsourced finished good carries both.
+
+
+        **Batches received more than once.** A batch number can be received across
+        several receipts (one inventory lot per receipt). Every receipt is traced:
+
+        - A batch with a single receipt is rooted on that receipt''s lot, exactly
+        as before.
+
+        - A batch with several receipts returns one synthetic root node with `entity_type:
+        "lot"`, `id` = `lot-{product_id}-{batch_number}`, `fifo_layer_id: null`, `quantity`
+        = the total received across all receipts, `date` = the earliest receipt date,
+        `receipt_count` = the number of receipts, and one child per receipt (oldest
+        first), each child being that receipt''s own trace in the requested direction.
+
+
+        `resolved_product_id` is the product the batch belongs to.'
       parameters:
       - name: batch_number
         in: query
@@ -713186,129 +713707,122 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      id:
-                        type: string
-                      entity_type:
-                        type: string
-                      reference:
-                        type: string
-                      product_id:
-                        type: integer
-                      product_name:
-                        type: string
-                      product_sku:
-                        type: string
-                      batch_number:
-                        type: string
-                      quantity:
-                        type: integer
-                      consumed_quantity:
-                        type: string
-                        nullable: true
-                      date:
-                        type: string
-                      fifo_layer_id:
-                        type: integer
-                      manufacturing_order_id:
-                        type: integer
-                      manufacturing_order_number:
-                        type: string
-                      purchase_order_id:
-                        type: string
-                        nullable: true
-                      supplier_id:
-                        type: string
-                        nullable: true
-                      supplier_name:
-                        type: string
-                        nullable: true
+              examples:
+                example-0:
+                  summary: 200 OK — Tree returned
+                  value:
+                    data:
+                      id: fifo-512
+                      entity_type: manufacturing_order
+                      reference: MO-000123
+                      product_id: 88
+                      product_name: Widget Kit
+                      product_sku: KIT-A
+                      batch_number: LOT-2026-04-001
+                      quantity: 50
+                      consumed_quantity: null
+                      date: '2026-04-01'
+                      fifo_layer_id: 512
+                      manufacturing_order_id: 123
+                      manufacturing_order_number: MO-000123
+                      purchase_order_id: null
+                      supplier_id: null
+                      supplier_name: null
                       children:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: string
-                            entity_type:
-                              type: string
-                            reference:
-                              type: string
-                            product_id:
-                              type: integer
-                            product_name:
-                              type: string
-                            product_sku:
-                              type: string
-                            batch_number:
-                              type: string
-                            quantity:
-                              type: integer
-                            consumed_quantity:
-                              type: integer
-                            date:
-                              type: string
-                            fifo_layer_id:
-                              type: integer
-                            manufacturing_order_id:
-                              type: string
-                              nullable: true
-                            manufacturing_order_number:
-                              type: string
-                              nullable: true
-                            purchase_order_id:
-                              type: integer
-                            supplier_id:
-                              type: integer
-                            supplier_name:
-                              type: string
-                            children:
-                              type: array
-                  direction:
-                    type: string
-                  resolved_product_id:
-                    type: integer
-                example:
-                  data:
-                    id: fifo-512
-                    entity_type: manufacturing_order
-                    reference: MO-000123
-                    product_id: 88
-                    product_name: Widget Kit
-                    product_sku: KIT-A
-                    batch_number: LOT-2026-04-001
-                    quantity: 50
-                    consumed_quantity: null
-                    date: '2026-04-01'
-                    fifo_layer_id: 512
-                    manufacturing_order_id: 123
-                    manufacturing_order_number: MO-000123
-                    purchase_order_id: null
-                    supplier_id: null
-                    supplier_name: null
-                    children:
-                    - id: fifo-488
-                      entity_type: purchase_order
-                      reference: PO-004417
+                      - id: fifo-488
+                        entity_type: purchase_order
+                        reference: PO-004417
+                        product_id: 44
+                        product_name: Vitamin C Powder
+                        product_sku: RAW-VITC
+                        batch_number: VIT-2026-03-014
+                        quantity: 500
+                        consumed_quantity: 120
+                        date: '2026-03-14'
+                        fifo_layer_id: 488
+                        manufacturing_order_id: null
+                        manufacturing_order_number: null
+                        purchase_order_id: 4417
+                        supplier_id: 31
+                        supplier_name: Nordic Ingredients AB
+                        children: []
+                    direction: backward
+                    resolved_product_id: 88
+                example-1:
+                  summary: 200 OK — Batch received in several receipts
+                  value:
+                    data:
+                      id: lot-44-VIT-2026-03-014
+                      entity_type: lot
+                      reference: VIT-2026-03-014
                       product_id: 44
                       product_name: Vitamin C Powder
                       product_sku: RAW-VITC
                       batch_number: VIT-2026-03-014
-                      quantity: 500
-                      consumed_quantity: 120
+                      quantity: 800
+                      consumed_quantity: null
                       date: '2026-03-14'
-                      fifo_layer_id: 488
+                      fifo_layer_id: null
                       manufacturing_order_id: null
                       manufacturing_order_number: null
-                      purchase_order_id: 4417
-                      supplier_id: 31
-                      supplier_name: Nordic Ingredients AB
-                      children: []
-                  direction: backward
-                  resolved_product_id: 88
+                      purchase_order_id: null
+                      supplier_id: null
+                      supplier_name: null
+                      receipt_count: 2
+                      children:
+                      - id: fifo-488
+                        entity_type: purchase_order
+                        reference: PO-004417
+                        product_id: 44
+                        product_name: Vitamin C Powder
+                        product_sku: RAW-VITC
+                        batch_number: VIT-2026-03-014
+                        quantity: 500
+                        consumed_quantity: null
+                        date: '2026-03-14'
+                        fifo_layer_id: 488
+                        manufacturing_order_id: null
+                        manufacturing_order_number: null
+                        purchase_order_id: 4417
+                        supplier_id: 31
+                        supplier_name: Nordic Ingredients AB
+                        children:
+                        - id: fifo-512
+                          entity_type: manufacturing_order
+                          reference: MO-000123
+                          product_id: 88
+                          product_name: Widget Kit
+                          product_sku: KIT-A
+                          batch_number: LOT-2026-04-001
+                          quantity: 50
+                          consumed_quantity: 120
+                          date: '2026-04-01'
+                          fifo_layer_id: 512
+                          manufacturing_order_id: 123
+                          manufacturing_order_number: MO-000123
+                          purchase_order_id: null
+                          supplier_id: null
+                          supplier_name: null
+                          children: []
+                      - id: fifo-503
+                        entity_type: purchase_order
+                        reference: PO-004452
+                        product_id: 44
+                        product_name: Vitamin C Powder
+                        product_sku: RAW-VITC
+                        batch_number: VIT-2026-03-014
+                        quantity: 300
+                        consumed_quantity: null
+                        date: '2026-03-28'
+                        fifo_layer_id: 503
+                        manufacturing_order_id: null
+                        manufacturing_order_number: null
+                        purchase_order_id: 4452
+                        supplier_id: 31
+                        supplier_name: Nordic Ingredients AB
+                        children: []
+                    direction: forward
+                    resolved_product_id: 44
         '404':
           description: Not Found
           headers:
@@ -727507,22 +728021,29 @@ paths:
         \ warehouse.\n    - fulfillment_lines.*.lot_allocation.*.fifo_layer_id (integer,\
         \ required with lot_allocation): Inventory lot/layer to consume from.\n  \
         \  - fulfillment_lines.*.lot_allocation.*.quantity (number, required with\
-        \ lot_allocation, > 0): Quantity to take from that lot.\n- metadata.signature_required\
-        \ (boolean, optional): Require a delivery signature.\n- metadata.saturday_delivery\
-        \ (boolean, optional): Request Saturday delivery.\n- metadata.shipping_speed\
-        \ (string, optional): Provider shipping speed hint.\n- metadata.comments (string,\
-        \ optional): Comments passed to the provider.\n- metadata.veracore_packing_slip_comments\
-        \ (string, optional, max 500): Packing slip comments (Veracore fulfillments).\n\
-        - metadata.veracore_shipping_comments (string, optional, max 500): Shipping\
-        \ comments (Veracore fulfillments).\n- metadata.veracore_third_party_account_number\
-        \ (string, optional, max 100): Third-party billing account number (Veracore\
-        \ fulfillments).\n- metadata.veracore_third_party_type (integer, optional,\
-        \ one of 1, 2, 3): Third-party billing type (Veracore fulfillments).\n\nBehavior:\n\
-        - The order must be approved (not draft). Closed orders can only be fulfilled\
-        \ while their fulfillment status is out_of_sync.\n- Fulfillments recorded\
-        \ with a Personal Access Token are treated as external/channel imports (the\
-        \ order was shipped outside SKU.io) rather than shipments dispatched from\
-        \ SKU.io.\n- Insufficient allocated inventory returns 422 with a structured\
+        \ lot_allocation, > 0): Quantity to take from that lot.\n  - fulfillment_lines.*.pick_allocations\
+        \ (array, optional): The bins the line's units were picked from. The quantities\
+        \ must sum to the line's quantity.\n    - fulfillment_lines.*.pick_allocations.*.warehouse_location_id\
+        \ (integer, required with pick_allocations): A bin (warehouse location). It\
+        \ must be in the warehouse the line ships from (the request's `warehouse_id`,\
+        \ or the line's own warehouse when omitted); a bin in another warehouse returns\
+        \ 422 on this field with code `PickBinInAnotherWarehouse`.\n    - fulfillment_lines.*.pick_allocations.*.quantity\
+        \ (number, required with pick_allocations, > 0): Units picked from that bin.\n\
+        - metadata.signature_required (boolean, optional): Require a delivery signature.\n\
+        - metadata.saturday_delivery (boolean, optional): Request Saturday delivery.\n\
+        - metadata.shipping_speed (string, optional): Provider shipping speed hint.\n\
+        - metadata.comments (string, optional): Comments passed to the provider.\n\
+        - metadata.veracore_packing_slip_comments (string, optional, max 500): Packing\
+        \ slip comments (Veracore fulfillments).\n- metadata.veracore_shipping_comments\
+        \ (string, optional, max 500): Shipping comments (Veracore fulfillments).\n\
+        - metadata.veracore_third_party_account_number (string, optional, max 100):\
+        \ Third-party billing account number (Veracore fulfillments).\n- metadata.veracore_third_party_type\
+        \ (integer, optional, one of 1, 2, 3): Third-party billing type (Veracore\
+        \ fulfillments).\n\nBehavior:\n- The order must be approved (not draft). Closed\
+        \ orders can only be fulfilled while their fulfillment status is out_of_sync.\n\
+        - Fulfillments recorded with a Personal Access Token are treated as external/channel\
+        \ imports (the order was shipped outside SKU.io) rather than shipments dispatched\
+        \ from SKU.io.\n- Insufficient allocated inventory returns 422 with a structured\
         \ `shortfalls` list, and the shortfall is also recorded as a note on the order.\n\
         - If the shipping provider times out, the fulfillment is queued and processed\
         \ in the background; the request still succeeds with a processing message.\n\
@@ -727730,6 +728251,17 @@ paths:
                       Shipped).'
                     errors:
                       resource: serials
+                example-5:
+                  summary: 422 Pick Bin in Another Warehouse
+                  value:
+                    message: This pick bin belongs to a different warehouse than the
+                      one this line ships from. Choose a bin in the shipping warehouse.
+                    errors:
+                      fulfillment_lines.0.pick_allocations.0.warehouse_location_id:
+                      - message: This pick bin belongs to a different warehouse than
+                          the one this line ships from. Choose a bin in the shipping
+                          warehouse.
+                        code: PickBinInAnotherWarehouse
         '502':
           description: Bad Gateway
           headers:
@@ -727802,6 +728334,11 @@ paths:
         records the shipment later.
 
         - Per-order failures do not abort the batch; they are collected and returned.
+        Every error row is keyed `sales_order_id` with a `message`.
+
+        - An order whose submission to its warehouse or fulfillment provider fails
+        is counted as an error (not a success), with a message starting "Order {sales_order_number}
+        could not be sent to the warehouse:" followed by the provider''s reason.
 
         - Returns a summary with `total`, `success`, `errors`, and an overall `status`
         of `success` or `error`. When some orders fail, the response is returned as
@@ -727855,6 +728392,14 @@ paths:
                     - sales_order_id: 7118
                       message: Order SO-7118 is held until Fri, Jul 10, 2026 5:00
                         PM and cannot be fulfilled before then.
+                example-2:
+                  summary: 200 Partial Success (warehouse submit failed)
+                  value:
+                    message: 2/3 sales orders had been fulfilled successfully
+                    warnings:
+                    - sales_order_id: 7117
+                      message: 'Order SO-7117 could not be sent to the warehouse:
+                        ShipStation rejected the order: Invalid ship-to postal code.'
         '422':
           description: Unprocessable Entity
           headers:
@@ -736561,7 +737106,13 @@ paths:
         Returns 422 when the order has a PayPal payment recorded or still clearing:
         cancel or archive it instead. Deleting an order cancels its active PayPal
         pay links. The same block applies to every delete path, including deleting
-        a sales channel or integration whose orders hold PayPal money.'
+        a sales channel or integration whose orders hold PayPal money.
+
+
+        Returns 422 when a sales credit that belongs to **another** order has a line
+        referring to one of this order''s lines — deleting the order would also delete
+        that credit, with the other order''s payments. Remove or change that credit
+        line first, or cancel or archive this order instead.'
       parameters:
       - name: salesOrder
         in: path
@@ -736634,58 +737185,42 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  data:
-                    type: object
-                    properties:
-                      sales_order_number:
-                        type: string
-                      reason:
-                        type: string
-                      message:
-                        type: string
-                      consumed_returns:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            return_receipt_number:
-                              type: string
-                            product_sku:
-                              type: string
-                            original_quantity:
-                              type: integer
-                            consumed_quantity:
-                              type: integer
-                            usages:
-                              type: array
-                              items:
-                                type: object
-                                properties:
-                                  reference:
-                                    type: string
-                                  quantity:
-                                    type: integer
-                example:
-                  message: 'Has return receipts with inventory already consumed by
-                    other transactions: Return Receipt RR-0021 - Product WB-32-BLU:
-                    2 of 2 units used by SO-0201 (2 units)'
-                  data:
-                    sales_order_number: SO-0158
-                    reason: consumed_returns
+              examples:
+                example-0:
+                  summary: 422 Blocked by Consumed Returns
+                  value:
                     message: 'Has return receipts with inventory already consumed
                       by other transactions: Return Receipt RR-0021 - Product WB-32-BLU:
                       2 of 2 units used by SO-0201 (2 units)'
-                    consumed_returns:
-                    - return_receipt_number: RR-0021
-                      product_sku: WB-32-BLU
-                      original_quantity: 2
-                      consumed_quantity: 2
-                      usages:
-                      - reference: SO-0201
-                        quantity: 2
+                    data:
+                      sales_order_number: SO-0158
+                      reason: consumed_returns
+                      message: 'Has return receipts with inventory already consumed
+                        by other transactions: Return Receipt RR-0021 - Product WB-32-BLU:
+                        2 of 2 units used by SO-0201 (2 units)'
+                      consumed_returns:
+                      - return_receipt_number: RR-0021
+                        product_sku: WB-32-BLU
+                        original_quantity: 2
+                        consumed_quantity: 2
+                        usages:
+                        - reference: SO-0201
+                          quantity: 2
+                example-1:
+                  summary: 422 Referenced by Another Order's Credit
+                  value:
+                    message: Sales order SO-0158 can't be deleted because credit SC-0042
+                      (on sales order SO-0201) has a line that refers to this order.
+                      Deleting the order would also delete that credit and its payments.
+                      Remove or change that credit line first, or cancel or archive
+                      this order instead.
+                    errors:
+                      sales_order:
+                      - Sales order SO-0158 can't be deleted because credit SC-0042
+                        (on sales order SO-0201) has a line that refers to this order.
+                        Deleting the order would also delete that credit and its payments.
+                        Remove or change that credit line first, or cancel or archive
+                        this order instead.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -739345,7 +739880,11 @@ paths:
         \ an explicit `ids` list.\n\nBehavior:\n- Returns the tracked job log ID immediately;\
         \ deletion runs asynchronously.\n- Sending `filters` as the grouped `filter_groups`\
         \ object is fully supported (previously returned a 500).\n\n**Requires permission:**\
-        \ `sales_orders.delete`"
+        \ `sales_orders.delete`\n\nOrders that can't be deleted are skipped and reported\
+        \ in the tracked job's results under `errors[]` (`sales_order_id`, `sales_order_number`,\
+        \ `reason`, `message`). `reason` is `consumed_returns`, `paypal_payments`,\
+        \ or `credit_on_other_order` (a sales credit on another order has a line referring\
+        \ to this order)."
       parameters: []
       responses:
         '200':
@@ -743703,7 +744242,12 @@ paths:
 
 
         The slice total must not exceed the line''s unfulfilled quantity (**422**
-        otherwise). Duplicate warehouses are merged. Returns the refreshed sales order.'
+        otherwise). A partial split — slices totalling less than the unfulfilled quantity
+        — keeps the remainder at the line''s own (home) warehouse: it is re-allocated
+        there (on hand first, then backorder) and stays on that warehouse''s fulfillment
+        order, merged with any slice you sent for that warehouse. No unit is left
+        unallocated. Duplicate warehouses are merged. Returns the refreshed sales
+        order.'
       requestBody:
         content:
           application/json:
@@ -746497,7 +747041,12 @@ paths:
         \ reference active FIFO layers of the line's product + warehouse with enough\
         \ available quantity, and respect the tenant lot override policy (under 'enforce',\
         \ consuming expired stock or a later-expiry lot for FEFO products is rejected).\
-        \ Omit it to consume by automatic FEFO/FIFO.\n- metadata.* (optional shipment-level\
+        \ Omit it to consume by automatic FEFO/FIFO.\n - pick_allocations (optional,\
+        \ array): the bins the units were picked from, each { warehouse_location_id,\
+        \ quantity (>0) }, summing to the line's quantity. Every bin must be in the\
+        \ warehouse the fulfillment ships from; a bin in another warehouse is a 422\
+        \ on fulfillment_lines.{index}.pick_allocations.{i}.warehouse_location_id\
+        \ (code PickBinInAnotherWarehouse).\n- metadata.* (optional shipment-level\
         \ flags: signature_required, saturday_delivery, shipping_speed, comments,\
         \ veracore_*).\n- submit_to_shipping_provider / submit_to_sales_channel (optional\
         \ bool).\n\nPer-line 422 lot validation errors are keyed fulfillment_lines.{index}.lot_allocation\
@@ -746955,6 +747504,17 @@ paths:
                     errors:
                       fulfillment_lines.0.id:
                       - The selected fulfillment_lines.0.id is invalid.
+                example-2:
+                  summary: 422 — Pick bin in another warehouse
+                  value:
+                    message: This pick bin belongs to a different warehouse than the
+                      one this line ships from. Choose a bin in the shipping warehouse.
+                    errors:
+                      fulfillment_lines.0.pick_allocations.0.warehouse_location_id:
+                      - message: This pick bin belongs to a different warehouse than
+                          the one this line ships from. Choose a bin in the shipping
+                          warehouse.
+                        code: PickBinInAnotherWarehouse
         '429': *id001
         '401': *id002
         '404': *id003
@@ -798221,6 +798781,8 @@ paths:
 
         Returns 400 with a message when the fulfillment cannot be created (e.g. the
         label does not belong to this purchase order, or has not been purchased).
+        A purchase order that was cancelled (by the supplier) or voided records no
+        shipment: the request returns 400 and nothing is created.
 
 
         Authentication: Requires Bearer token.
@@ -798299,6 +798861,27 @@ paths:
                     id: 700
                     tracking_number: DROPSHIP-TRACK-001
                     status: shipped
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  message: This purchase order was cancelled, so no shipment can be
+                    recorded against it. Shipments are recorded on an active dropship
+                    purchase order.
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -840738,8 +841321,12 @@ paths:
         - `requested_ship_date` (nullable, date) — requested dispatch date.
 
         - `requested_metadata` (nullable, object) — free-form, provider-varying values.
-        Only the keys the active provider owns are written; on submission they are
-        bridged onto the SalesOrderFulfillment metadata the carrier dispatchers read.
+        **Merged** onto the saved metadata: keys you leave out are kept, a key sent
+        as `null` is removed, and sending `requested_metadata: null` clears all of
+        it. So a request that only changes `comments` keeps an earlier explicit `feature_constraints`
+        choice (including an empty `[]`). Only the keys the active provider owns are
+        written; on submission they are bridged onto the SalesOrderFulfillment metadata
+        the carrier dispatchers read.
 
         - `requested_metadata.notes` (nullable, string, max 2000) — fulfillment notes
         for the provider.
@@ -842981,6 +843568,14 @@ paths:
         are returned in `skipped` with a `code` of `partial_dispatch_disabled`.
 
 
+        **Click & Collect (pickup) orders are all-or-nothing.** A pickup fulfillment
+        order whose pickup items are not all allocated is never marked ready for collection
+        by this endpoint, whatever the partial-dispatch setting — the customer collects
+        once. It is returned in `skipped` with `code` `partial_dispatch_disabled`
+        and stays held until every pickup item is allocated. Send `override_partial_dispatch:
+        true` to stage the in-stock items anyway.
+
+
         **Required permission:** `fulfillment_orders.submit` (Fulfillment Orders →
         Submit & sync) and `fulfillment_orders.index` (Fulfillment Orders → View).
         A token also needs its `orders` scope; the owner needs these role permissions.'
@@ -843014,33 +843609,32 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    data:
                       submitted:
-                        type: array
-                        items:
-                          type: integer
+                      - 6
                       skipped:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            id:
-                              type: integer
-                            reason:
-                              type: string
-                  message:
-                    type: string
-                example:
-                  data:
-                    submitted:
-                    - 6
-                    skipped:
-                    - id: 7
-                      reason: Fulfillment order is not submitted.
-                  message: 1 fulfillment order(s) submitted. 1 skipped.
+                      - id: 7
+                        reason: Fulfillment order is not submitted.
+                    message: 1 fulfillment order(s) submitted. 1 skipped.
+                example-1:
+                  summary: 200 Pickup Not Fully Allocated (skipped)
+                  value:
+                    data:
+                      submitted: []
+                      skipped:
+                      - id: 7
+                        reason: 'FulfillmentOrder #7 was not marked ready for collection:
+                          its Click & Collect items are not fully in stock, and the
+                          customer collects the order once. It stays held until every
+                          pickup item is allocated — or stage the in-stock items now
+                          with the partial-dispatch override, or Mark for Pickup on
+                          the order.'
+                        code: partial_dispatch_disabled
+                    message: 0 fulfillment order(s) submitted. 1 skipped.
         '403':
           description: Forbidden
           headers:
@@ -965352,6 +965946,12 @@ paths:
         on a splayed every-15-minutes cron (ScheduleSplay::offset(''walmart'') minutes
         past each quarter-hour, currently :04/:19/:34/:49), so its countdown targets
         those offset boundaries.
+
+
+        Each row in `integrations` includes `authorization_expired` (boolean): true
+        when Walmart has rejected the stored seller authorization (expired or revoked)
+        and sync is paused. The seller must reconnect through the OAuth authorize
+        flow (`GET /api/walmart/{integrationInstance}/oauth/authorization-url`).
 
 
         Route name: walmart.dashboard'
