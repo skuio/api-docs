@@ -663448,7 +663448,12 @@ paths:
         earliest_affected_period, resolved_at, trigger_document_date. Default: -created_at.
 
 
-        Pagination: `page` and `per_page` (default 10).'
+        Pagination: `page` and `per_page` (default 10).
+
+
+        `held_because`: for a change waiting for review, one plain-language line saying
+        why it was held (the document type''s rule, the significance threshold, or
+        which always-review guardrail applied). Null once the change is decided.'
       parameters: []
       responses:
         '200':
@@ -663527,6 +663532,8 @@ paths:
                           type: string
                           nullable: true
                         policy_rule_applied:
+                          type: string
+                        held_because:
                           type: string
                         totals:
                           type: object
@@ -663661,6 +663668,8 @@ paths:
                     prospective_anchor_date: null
                     applied_via: null
                     policy_rule_applied: landed_cost_bill:material
+                    held_because: 'Held because it''s significant: it reached the
+                      review threshold you set for landed cost bills.'
                     totals:
                       delta: 823.4
                       on_hand_delta: 512.75
@@ -663717,6 +663726,8 @@ paths:
                     prospective_anchor_date: null
                     applied_via: null
                     policy_rule_applied: guardrail:locked_period
+                    held_because: Held because it would affect a locked period, and
+                      you asked to review those changes.
                     totals:
                       delta: 240
                       on_hand_delta: 240
@@ -663896,7 +663907,12 @@ paths:
         side (`restate_*` or `prospective_*`), `preview_stale` is false and `downstream`
         is null (the cascade into stock made from these layers already ran on apply).
         Passing `prospective_date` on an applied change is a what-if and still returns
-        the live preview with `recorded` null.'
+        the live preview with `recorded` null.
+
+
+        `held_because`: for a change waiting for review, one plain-language line saying
+        why it was held (the document type''s rule, the significance threshold, or
+        which always-review guardrail applied). Null once the change is decided.'
       parameters:
       - name: costChange
         in: path
@@ -663977,6 +663993,8 @@ paths:
                         type: string
                         nullable: true
                       policy_rule_applied:
+                        type: string
+                      held_because:
                         type: string
                       totals:
                         type: object
@@ -664308,6 +664326,8 @@ paths:
                     prospective_anchor_date: null
                     applied_via: null
                     policy_rule_applied: landed_cost_bill:material
+                    held_because: 'Held because it''s significant: it reached the
+                      review threshold you set for landed cost bills.'
                     totals:
                       delta: 823.4
                       on_hand_delta: 512.75
@@ -764221,7 +764241,11 @@ paths:
         ordered and already-credited counts. Validation error key: `sales_credit_lines.{index}.quantity`.
         Lines of the same credit that point at the same sales order line (or the same
         fee line) are capped together: two lines of 8 on a 10-unit line are refused
-        with the same 422.'
+        with the same 422.
+
+
+        A credit can only credit lines of its own sales order. A line whose `sales_order_line_id`
+        belongs to another order is refused with a 422 naming the line and both orders.'
       requestBody:
         content:
           application/json:
@@ -764348,6 +764372,17 @@ paths:
                       - 'Cannot credit 5 units of ''Espresso Tamper'': only 2 can
                         still be credited (5 ordered, 3 already credited). Cancelled
                         and returned units are part of the ordered quantity, not extra.'
+                example-2:
+                  summary: 422 Line From Another Order
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      sales_credit_lines.0.sales_order_line_id:
+                      - '''Grinder Burr'' belongs to sales order SO-1042, not SO-1001.
+                        A sales credit can only credit lines of its own order, so
+                        its returns, refunds and creditable quantities stay with that
+                        order. Remove this line here and create a separate credit
+                        on SO-1042 for it.'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -764776,7 +764811,13 @@ paths:
 
 
         Line `nominal_code_id` and `tax_rate_id` may be null (the default nominal
-        code applies), as on create.'
+        code applies), as on create.
+
+
+        A credit can only credit lines of its own sales order. A line whose `sales_order_line_id`
+        belongs to another order is refused with a 422 naming the line and both orders.
+        On update this applies to new lines and to lines re-pointed at another order''s
+        line; a line already saved against another order can be re-sent unchanged.'
       requestBody:
         content:
           application/json:
@@ -764898,6 +764939,17 @@ paths:
                           ordered_quantity: 5
                           already_credited_quantity: 3
                     status: failure
+                example-2:
+                  summary: 422 Line From Another Order
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      sales_credit_lines.0.sales_order_line_id:
+                      - '''Grinder Burr'' belongs to sales order SO-1042, not SO-1001.
+                        A sales credit can only credit lines of its own order, so
+                        its returns, refunds and creditable quantities stay with that
+                        order. Remove this line here and create a separate credit
+                        on SO-1042 for it.'
         '429': *id001
         '401': *id002
         '403': *id005
