@@ -42941,9 +42941,9 @@ paths:
     get:
       tags:
       - Authentication
-      summary: Get My Display Preferences
-      description: 'Returns the authenticated user''s display preferences in the current
-        account. Users who have never saved a preference get the defaults.
+      summary: Get My Preferences
+      description: 'Returns the authenticated user''s preferences in the current account,
+        synced across devices. Users who have never saved a preference get the defaults.
 
 
         :::warning[Not yet available to API tokens]
@@ -42960,9 +42960,45 @@ paths:
 
         **Fields:**
 
-        - `show_internal_ids` (boolean, default `false`) — whether internal record
-        IDs are shown in lists and on detail pages. Exports always include IDs regardless
-        of this setting.'
+        - `show_internal_ids` (boolean, default `false`) — show internal record IDs
+        in lists and on detail pages. Exports always include IDs.
+
+        - `nav_rail_collapsed` (boolean, default `false`) — keep the side navigation
+        collapsed.
+
+        - `supplier_message_notifications` (boolean, default `true`) — notify when
+        a supplier replies on a purchase order.
+
+        - `density` (string, default `compact`) — `compact` (the standard look) or
+        `comfortable`, which gives table rows, lists and form fields more room.
+
+        - `pulse_enabled` (boolean, default `true`) — show the Pulse card stack on
+        the dashboard.
+
+        - `pulse_collapsed` (boolean, default `false`) — keep the Pulse card stack
+        collapsed.
+
+        - `landing_page` (string, default `dashboard`) — where to land after sign-in:
+        `dashboard`, `last_visited` or `path`.
+
+        - `landing_path` (string|null) — the app path to land on when `landing_page`
+        is `path`, e.g. `/orders/purchase-orders`.
+
+        - `default_warehouse_id` (integer|null) — warehouse pre-selected on new purchase
+        orders, transfers and adjustments. Cleared automatically if the warehouse
+        is deleted.
+
+        - `default_warehouse_archived` (boolean, read-only) — `true` when the saved
+        default warehouse has since been archived.
+
+        - `table_preferences` (object) — per-list settings keyed by list identifier:
+        `per_page` (1–500), `view_mode` (`table` or `grid`), `column_display` (column
+        → `absolute` or `relative` date display).
+
+        - `page_versions` (object) — page key → `v2` or `v3`.
+
+        - `recents` (object) — `destinations`, `searches` and `entities` lists, up
+        to 10 each, most recent first.'
       parameters: []
       responses:
         '200':
@@ -42982,9 +43018,126 @@ paths:
                     properties:
                       show_internal_ids:
                         type: boolean
+                      nav_rail_collapsed:
+                        type: boolean
+                      supplier_message_notifications:
+                        type: boolean
+                      pulse_enabled:
+                        type: boolean
+                      pulse_collapsed:
+                        type: boolean
+                      density:
+                        type: string
+                      landing_page:
+                        type: string
+                      landing_path:
+                        type: string
+                      default_warehouse_id:
+                        type: integer
+                      default_warehouse_archived:
+                        type: boolean
+                      table_preferences:
+                        type: object
+                        properties:
+                          /orders/sales-orders/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                              view_mode:
+                                type: string
+                              column_display:
+                                type: object
+                                properties:
+                                  created_at:
+                                    type: string
+                          /products/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                      page_versions:
+                        type: object
+                        properties:
+                          sales-orders:
+                            type: string
+                      recents:
+                        type: object
+                        properties:
+                          destinations:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                title:
+                                  type: string
+                                icon:
+                                  type: string
+                                path:
+                                  type: string
+                          searches:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                query:
+                                  type: string
+                                timestamp:
+                                  type: integer
+                          entities:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                type:
+                                  type: string
+                                name:
+                                  type: string
+                                detail:
+                                  type: string
+                                path:
+                                  type: string
+                                timestamp:
+                                  type: integer
                 example:
                   data:
                     show_internal_ids: false
+                    nav_rail_collapsed: true
+                    supplier_message_notifications: true
+                    pulse_enabled: true
+                    pulse_collapsed: false
+                    density: compact
+                    landing_page: path
+                    landing_path: /orders/purchase-orders
+                    default_warehouse_id: 3
+                    default_warehouse_archived: false
+                    table_preferences:
+                      /orders/sales-orders/:
+                        per_page: 50
+                        view_mode: grid
+                        column_display:
+                          created_at: relative
+                      /products/:
+                        per_page: 100
+                    page_versions:
+                      sales-orders: v3
+                    recents:
+                      destinations:
+                      - title: Purchase Orders
+                        icon: mdi-cart-arrow-down
+                        path: /orders/purchase-orders
+                      searches:
+                      - query: red tee
+                        timestamp: 1760700000000
+                      entities:
+                      - id: 1042
+                        type: purchase_order
+                        name: PO-1042
+                        detail: Acme Textiles
+                        path: /orders/purchase-orders/1042
+                        timestamp: 1760700001000
         '429': *id001
         '401': *id002
         '403': *id005
@@ -42993,10 +43146,11 @@ paths:
     put:
       tags:
       - Authentication
-      summary: Update My Display Preferences
-      description: 'Partially updates the authenticated user''s display preferences
-        in the current account. Omitted fields are left unchanged. Returns the full,
-        updated preferences.
+      summary: Update My Preferences
+      description: 'Updates the authenticated user''s preferences in the current account.
+        Only the fields sent are changed. Object fields (`table_preferences`, `page_versions`,
+        `recents`) are replaced as a whole — use Merge My Preferences to change one
+        entry. Returns the full, updated preferences.
 
 
         :::warning[Not yet available to API tokens]
@@ -43011,20 +43165,66 @@ paths:
         own preferences.
 
 
-        **Body fields:**
+        **Body fields (all optional):**
 
-        - `show_internal_ids` (boolean, optional) — show internal record IDs in lists
-        and on detail pages.'
+        - `show_internal_ids`, `nav_rail_collapsed`, `supplier_message_notifications`,
+        `pulse_enabled`, `pulse_collapsed` (boolean)
+
+        - `density` (string) — `compact` (default) or `comfortable`.
+
+        - `landing_page` (string) — `dashboard`, `last_visited` or `path`.
+
+        - `landing_path` (string|null) — required when `landing_page` is `path`. Must
+        start with `/` and contain only letters, digits, `-`, `_` and `/` (max 255).
+
+        - `default_warehouse_id` (integer|null) — an active (not archived) warehouse,
+        or `null` to clear.
+
+        - `table_preferences` (object|null) — up to 200 lists per request; each value
+        is an object with `per_page` (integer 1–500), `view_mode` (`table`|`grid`)
+        and `column_display` (column → `absolute`|`relative`), or `null`. Unknown
+        settings are ignored.
+
+        - `page_versions` (object|null) — page key → `v2`|`v3`.
+
+        - `recents.destinations[]` — `title` (required, max 120), `path` (required,
+        max 255), `icon`, `badgeKey` (max 10 items).
+
+        - `recents.searches[]` — `query` (required, max 200), `timestamp` (required,
+        integer ms) (max 10 items).
+
+        - `recents.entities[]` — `id` (required, integer), `type` (required), `name`
+        (required), `detail`, `path` (required), `timestamp` (required) (max 10 items).'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                show_internal_ids:
-                  type: boolean
+                density:
+                  type: string
+                landing_page:
+                  type: string
+                landing_path:
+                  type: string
+                default_warehouse_id:
+                  type: integer
+                table_preferences:
+                  type: object
+                  properties:
+                    /products/:
+                      type: object
+                      properties:
+                        per_page:
+                          type: integer
               example:
-                show_internal_ids: true
+                density: compact
+                landing_page: path
+                landing_path: /orders/purchase-orders
+                default_warehouse_id: 3
+                table_preferences:
+                  /products/:
+                    per_page: 100
       parameters: []
       responses:
         '200':
@@ -43044,9 +43244,126 @@ paths:
                     properties:
                       show_internal_ids:
                         type: boolean
+                      nav_rail_collapsed:
+                        type: boolean
+                      supplier_message_notifications:
+                        type: boolean
+                      pulse_enabled:
+                        type: boolean
+                      pulse_collapsed:
+                        type: boolean
+                      density:
+                        type: string
+                      landing_page:
+                        type: string
+                      landing_path:
+                        type: string
+                      default_warehouse_id:
+                        type: integer
+                      default_warehouse_archived:
+                        type: boolean
+                      table_preferences:
+                        type: object
+                        properties:
+                          /orders/sales-orders/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                              view_mode:
+                                type: string
+                              column_display:
+                                type: object
+                                properties:
+                                  created_at:
+                                    type: string
+                          /products/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                      page_versions:
+                        type: object
+                        properties:
+                          sales-orders:
+                            type: string
+                      recents:
+                        type: object
+                        properties:
+                          destinations:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                title:
+                                  type: string
+                                icon:
+                                  type: string
+                                path:
+                                  type: string
+                          searches:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                query:
+                                  type: string
+                                timestamp:
+                                  type: integer
+                          entities:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                type:
+                                  type: string
+                                name:
+                                  type: string
+                                detail:
+                                  type: string
+                                path:
+                                  type: string
+                                timestamp:
+                                  type: integer
                 example:
                   data:
-                    show_internal_ids: true
+                    show_internal_ids: false
+                    nav_rail_collapsed: true
+                    supplier_message_notifications: true
+                    pulse_enabled: true
+                    pulse_collapsed: false
+                    density: compact
+                    landing_page: path
+                    landing_path: /orders/purchase-orders
+                    default_warehouse_id: 3
+                    default_warehouse_archived: false
+                    table_preferences:
+                      /orders/sales-orders/:
+                        per_page: 50
+                        view_mode: grid
+                        column_display:
+                          created_at: relative
+                      /products/:
+                        per_page: 100
+                    page_versions:
+                      sales-orders: v3
+                    recents:
+                      destinations:
+                      - title: Purchase Orders
+                        icon: mdi-cart-arrow-down
+                        path: /orders/purchase-orders
+                      searches:
+                      - query: red tee
+                        timestamp: 1760700000000
+                      entities:
+                      - id: 1042
+                        type: purchase_order
+                        name: PO-1042
+                        detail: Acme Textiles
+                        path: /orders/purchase-orders/1042
+                        timestamp: 1760700001000
         '422':
           description: Unprocessable Content
           headers:
@@ -43078,6 +43395,286 @@ paths:
         '403': *id005
       x-session-only: true
       operationId: put-api-me-preferences
+    patch:
+      tags:
+      - Authentication
+      summary: Merge My Preferences
+      description: 'Updates the authenticated user''s preferences, merging object
+        fields into what is already saved instead of replacing them. Scalar fields
+        are written as sent.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Merge rules:**
+
+        - `table_preferences` — merged per list, then per setting. Sending `null`
+        for a list removes it; `null` for a setting removes that setting.
+
+        - `page_versions` — merged per page; `null` removes the page.
+
+        - `recents` — each list sent (`destinations`, `searches`, `entities`) replaces
+        that list; lists not sent are kept.
+
+        - Sending any object field itself as `null` clears it.
+
+
+        Authentication: Requires Bearer token. Any authenticated user can update their
+        own preferences.
+
+
+        **Body fields (all optional):**
+
+        - `show_internal_ids`, `nav_rail_collapsed`, `supplier_message_notifications`,
+        `pulse_enabled`, `pulse_collapsed` (boolean)
+
+        - `density` (string) — `compact` (default) or `comfortable`.
+
+        - `landing_page` (string) — `dashboard`, `last_visited` or `path`.
+
+        - `landing_path` (string|null) — required when `landing_page` is `path`. Must
+        start with `/` and contain only letters, digits, `-`, `_` and `/` (max 255).
+
+        - `default_warehouse_id` (integer|null) — an active (not archived) warehouse,
+        or `null` to clear.
+
+        - `table_preferences` (object|null) — up to 200 lists per request; each value
+        is an object with `per_page` (integer 1–500), `view_mode` (`table`|`grid`)
+        and `column_display` (column → `absolute`|`relative`), or `null`. Unknown
+        settings are ignored.
+
+        - `page_versions` (object|null) — page key → `v2`|`v3`.
+
+        - `recents.destinations[]` — `title` (required, max 120), `path` (required,
+        max 255), `icon`, `badgeKey` (max 10 items).
+
+        - `recents.searches[]` — `query` (required, max 200), `timestamp` (required,
+        integer ms) (max 10 items).
+
+        - `recents.entities[]` — `id` (required, integer), `type` (required), `name`
+        (required), `detail`, `path` (required), `timestamp` (required) (max 10 items).'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                table_preferences:
+                  type: object
+                  properties:
+                    /orders/sales-orders/:
+                      type: object
+                      properties:
+                        per_page:
+                          type: integer
+                        view_mode:
+                          type: string
+                          nullable: true
+                page_versions:
+                  type: object
+                  properties:
+                    fulfillments:
+                      type: string
+                      nullable: true
+                recents:
+                  type: object
+                  properties:
+                    searches:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          query:
+                            type: string
+                          timestamp:
+                            type: integer
+              example:
+                table_preferences:
+                  /orders/sales-orders/:
+                    per_page: 50
+                    view_mode: null
+                page_versions:
+                  fulfillments: null
+                recents:
+                  searches:
+                  - query: red tee
+                    timestamp: 1760700000000
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      show_internal_ids:
+                        type: boolean
+                      nav_rail_collapsed:
+                        type: boolean
+                      supplier_message_notifications:
+                        type: boolean
+                      pulse_enabled:
+                        type: boolean
+                      pulse_collapsed:
+                        type: boolean
+                      density:
+                        type: string
+                      landing_page:
+                        type: string
+                      landing_path:
+                        type: string
+                      default_warehouse_id:
+                        type: integer
+                      default_warehouse_archived:
+                        type: boolean
+                      table_preferences:
+                        type: object
+                        properties:
+                          /orders/sales-orders/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                              view_mode:
+                                type: string
+                              column_display:
+                                type: object
+                                properties:
+                                  created_at:
+                                    type: string
+                          /products/:
+                            type: object
+                            properties:
+                              per_page:
+                                type: integer
+                      page_versions:
+                        type: object
+                        properties:
+                          sales-orders:
+                            type: string
+                      recents:
+                        type: object
+                        properties:
+                          destinations:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                title:
+                                  type: string
+                                icon:
+                                  type: string
+                                path:
+                                  type: string
+                          searches:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                query:
+                                  type: string
+                                timestamp:
+                                  type: integer
+                          entities:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                type:
+                                  type: string
+                                name:
+                                  type: string
+                                detail:
+                                  type: string
+                                path:
+                                  type: string
+                                timestamp:
+                                  type: integer
+                example:
+                  data:
+                    show_internal_ids: false
+                    nav_rail_collapsed: true
+                    supplier_message_notifications: true
+                    pulse_enabled: true
+                    pulse_collapsed: false
+                    density: compact
+                    landing_page: path
+                    landing_path: /orders/purchase-orders
+                    default_warehouse_id: 3
+                    default_warehouse_archived: false
+                    table_preferences:
+                      /orders/sales-orders/:
+                        per_page: 50
+                        view_mode: grid
+                        column_display:
+                          created_at: relative
+                      /products/:
+                        per_page: 100
+                    page_versions:
+                      sales-orders: v3
+                    recents:
+                      destinations:
+                      - title: Purchase Orders
+                        icon: mdi-cart-arrow-down
+                        path: /orders/purchase-orders
+                      searches:
+                      - query: red tee
+                        timestamp: 1760700000000
+                      entities:
+                      - id: 1042
+                        type: purchase_order
+                        name: PO-1042
+                        detail: Acme Textiles
+                        path: /orders/purchase-orders/1042
+                        timestamp: 1760700001000
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      show_internal_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The show internal ids field must be true or false.
+                  errors:
+                    show_internal_ids:
+                    - The show internal ids field must be true or false.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: patch-api-me-preferences
   /api/auth/password:
     put:
       tags:

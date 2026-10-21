@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-21
-description: This release includes 2 additions, 4 changes, 1 removal. 2 breaking changes — action required.
+description: This release includes 3 additions, 4 changes, 1 removal. 2 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-10-21
 ---
 
-This release includes 2 additions, 4 changes, 1 removal. 2 breaking changes — action required.
+This release includes 3 additions, 4 changes, 1 removal. 2 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -32,6 +32,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
   - removed response code(s): `204`
 
 ## Added
+
+### Authentication
+- `PATCH /api/me/preferences` — Merge My Preferences
 
 ### Storefront
 - `GET /api/storefront/instances/{id}/customers` — List Customers
