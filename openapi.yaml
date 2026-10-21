@@ -739853,6 +739853,7 @@ paths:
 
 
         **Response shape - `delivery`.** By default an export of up to 1,000 rows
+        (orders for `content_mode=summary`, line items for `content_mode=line_items`)
         is returned directly in this response, and a larger one runs in the background
         and returns `{"tracked_job_log_id": ..., "queued": true}`. Pass `delivery=job`
         to get the job response every time: a small export still runs immediately
@@ -798370,7 +798371,12 @@ paths:
         order lines in proportion to each line''s estimated customs duty — the duty
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
-        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.'
+        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.'
       requestBody:
         content:
           application/json:
@@ -798513,7 +798519,12 @@ paths:
         order lines in proportion to each line''s estimated customs duty — the duty
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
-        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.'
+        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.'
       parameters:
       - name: purchase_order
         in: path
@@ -798588,7 +798599,12 @@ paths:
         order lines in proportion to each line''s estimated customs duty — the duty
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
-        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.'
+        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.'
       requestBody:
         content:
           application/json:
@@ -830405,6 +830421,11 @@ paths:
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
         and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.
 
 
         **Requires permission:** `purchase_orders.update`'
@@ -830611,7 +830632,12 @@ paths:
         order lines in proportion to each line''s estimated customs duty — the duty
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
-        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.'
+        and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.'
       parameters:
       - name: inbound_shipment
         in: path
@@ -830768,6 +830794,11 @@ paths:
         frozen at receipt, or the shipment-stage estimate for units not yet received.
         If every covered line''s estimated duty is zero it falls back to `cost_based`
         and the bill response carries an `allocation_warnings` entry with code `duty_estimates_zero_fallback`.
+        A `weight_based`, `volume_based` or `cost_based` bill whose basis is zero
+        on every line it covers (no weights, no dimensions, no cost) is split by cost
+        (or by quantity when cost is zero too); each allocation''s `proration_strategy`
+        records the basis actually used, and the bill carries an `allocation_warnings`
+        entry with code `proration_basis_fallback`.
 
 
         **Requires permission:** `purchase_orders.update`'
@@ -831011,8 +831042,9 @@ paths:
       - Inbound Shipments
       summary: Landed Cost Preview
       description: 'Returns, per purchase order line on this inbound shipment, every
-        landed-cost bill allocation (from bills on this shipment and on the line''s
-        purchase order), the per-unit uplift and the resulting unit cost. Bills that
+        landed-cost bill allocation (from bills on this shipment, on other shipments
+        carrying the line, and on the line''s purchase order), the per-unit uplift
+        each unit of THIS shipment carries and the resulting unit cost. Bills that
         produced no allocations are listed in `unallocated_bills`.
 
 
@@ -831024,8 +831056,20 @@ paths:
         :::
 
 
-        `warnings` lists bills split by estimated duty that fell back to a cost-based
-        split because none of their lines has an estimated duty (code `duty_estimates_zero_fallback`).
+        A bill entered on an inbound shipment lands only on the units received on
+        that shipment: its allocation is spread over the units the shipment carries
+        for the line. A bill entered on the purchase order is spread over the line''s
+        ordered quantity. So `landed_uplift_per_unit` = this shipment''s bills ÷ its
+        units + purchase order bills ÷ ordered quantity; a bill on another shipment
+        contributes 0. Each `bill_breakdown` entry gives `spread_over_units` (the
+        units its allocation is spread over, or `null` when it reaches none of this
+        shipment''s units) and the resulting `per_unit`.
+
+
+        `warnings` lists bills that could not split by their own basis: a bill split
+        by estimated duty that fell back to cost because none of its lines has an
+        estimated duty (code `duty_estimates_zero_fallback`), and a weight-, volume-
+        or cost-based bill whose basis was zero on every line (code `proration_basis_fallback`).
 
 
         Authentication: Requires Bearer token.'
@@ -831112,6 +831156,8 @@ paths:
                                     type: number
                                   per_unit:
                                     type: number
+                                  spread_over_units:
+                                    type: integer
                                   is_this_shipment:
                                     type: boolean
                                   source_label:
@@ -831145,22 +831191,32 @@ paths:
                         id: 901
                         sku: WIDGET-A
                         name: Widget A
-                      expected_quantity: 1000
+                      expected_quantity: 400
                       ordered_quantity: 1000
                       base_unit_cost: 10.0
                       total_base_cost: 10000.0
                       landed_uplift_total: 2620.0
-                      landed_uplift_per_unit: 2.62
-                      final_unit_cost: 12.62
+                      landed_uplift_per_unit: 6.55
+                      final_unit_cost: 16.55
                       bill_breakdown:
                       - bill_id: 311
                         invoice_number: BRK-7731
                         supplier_name: Pacific Customs Brokers
                         proration_strategy: duty_estimate_based
                         allocation_amount: 2620.0
-                        per_unit: 2.62
+                        per_unit: 6.55
+                        spread_over_units: 400
                         is_this_shipment: true
                         source_label: IS-000142
+                      - bill_id: 318
+                        invoice_number: FRT-9902
+                        supplier_name: Ocean Freight Co.
+                        proration_strategy: quantity_based
+                        allocation_amount: 1800.0
+                        per_unit: 0.0
+                        spread_over_units: null
+                        is_this_shipment: false
+                        source_label: IS-000150
                     unallocated_bills: []
                     warnings:
                     - bill_id: 312
@@ -831168,6 +831224,11 @@ paths:
                       code: duty_estimates_zero_fallback
                       message: None of the lines this bill covers has an estimated
                         duty, so it was split by cost instead.
+                    - bill_id: 319
+                      invoice_number: FRT-9910
+                      code: proration_basis_fallback
+                      message: None of the products this bill covers has a weight,
+                        so it was split by cost instead.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -836080,7 +836141,11 @@ paths:
         \ customs duty — the duty frozen at receipt, or the shipment-stage estimate\
         \ for units not yet received. If every covered line's estimated duty is zero\
         \ it falls back to `cost_based` and the bill response carries an `allocation_warnings`\
-        \ entry with code `duty_estimates_zero_fallback`."
+        \ entry with code `duty_estimates_zero_fallback`. A `weight_based`, `volume_based`\
+        \ or `cost_based` bill whose basis is zero on every line it covers (no weights,\
+        \ no dimensions, no cost) is split by cost (or by quantity when cost is zero\
+        \ too); each allocation's `proration_strategy` records the basis actually\
+        \ used, and the bill carries an `allocation_warnings` entry with code `proration_basis_fallback`."
       requestBody:
         content:
           application/json:
