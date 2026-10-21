@@ -166800,7 +166800,17 @@ paths:
 
         A request with supplier_ids and no warehouse_ids (and include_make not true)
         runs the per-supplier forecast exactly as before. Each line of that forecast
-        now carries has_active_bom (true when the product is made in-house).'
+        now carries has_active_bom (true when the product is made in-house).
+
+
+        FINAL QUANTITY AND DATED EVENTS
+
+        `final_quantity` on a line is a whole number for products ordered in whole
+        units, and a decimal (for example 2.7) when the configuration''s rounding
+        keeps decimals. `inputs.event_units` (number, present when dated events apply)
+        is the extra units dated events — a promo window''s next occurrence or a manual
+        event — add on the event days inside the order''s cover; they are added once
+        to the order instead of lifting the everyday daily average.'
       requestBody:
         content:
           application/json:
@@ -167118,6 +167128,9 @@ paths:
                                   promo_current_baseline:
                                     type: string
                                     nullable: true
+                                  event_units:
+                                    type: string
+                                    nullable: true
                                   formula:
                                     type: string
                               confidence:
@@ -167241,6 +167254,7 @@ paths:
                         promo_factor: null
                         promo_window_name: null
                         promo_current_baseline: null
+                        event_units: null
                         formula: (daily_average x effective_days) - available - inbound
                           + backordered
                       confidence:
@@ -168431,7 +168445,18 @@ paths:
         Path parameter: runId - the forecast run to read lines for.
 
 
-        Pagination: page (default 1), per_page (default 15).'
+        Pagination: page (default 1), per_page (default 15).
+
+
+        `final_quantity` is a whole number for products ordered in whole units. When
+        the configuration''s rounding keeps decimals (for example a product sold by
+        weight), it is a decimal such as 2.7.
+
+
+        `inputs.event_units` (number, present when dated events apply) is the extra
+        units that dated events — a promo window''s next occurrence or a manual event
+        — add on the event days that fall inside this order''s cover. They are added
+        once to the order rather than raising the everyday daily average.'
       parameters:
       - name: runId
         in: path
@@ -168497,6 +168522,8 @@ paths:
                               type: number
                             leadtime_days:
                               type: integer
+                            event_units:
+                              type: number
                         inventory_snapshot:
                           type: object
                           properties:
@@ -168561,6 +168588,7 @@ paths:
                       sales_history_days: 90
                       avg_daily_sales: 2.5
                       leadtime_days: 14
+                      event_units: 12.0
                     inventory_snapshot:
                       current_stock: 10
                       incoming: 0
@@ -168575,6 +168603,42 @@ paths:
                       id: 55
                       sku: PROD-001
                       name: Widget A
+                    created_at: '2024-10-15T09:00:00+00:00'
+                    updated_at: '2024-10-15T09:00:00+00:00'
+                  - id: 8802
+                    forecast_schedule_run_id: 512
+                    product_id: 61
+                    supplier_id: 1
+                    final_quantity: 2.7
+                    confidence_tier: medium
+                    confidence_drivers:
+                      history_days: 742
+                      selling_density: 0.86
+                      coefficient_of_variation: 0.22
+                      days_with_sales: 78
+                      from_fallback: false
+                      reason: Long, dense, stable sales history
+                    inputs:
+                      forecast_type: sales_history
+                      target_stock_days: 30
+                      sales_history_days: 90
+                      avg_daily_sales: 0.06
+                      leadtime_days: 14
+                      event_units: null
+                    inventory_snapshot:
+                      current_stock: 0.0
+                      incoming: 0
+                      allocated: 0
+                    sales_snapshot:
+                      total_sold: 5.4
+                      period_days: 90
+                      avg_daily_sales: 0.06
+                    forecast_method: sales_history
+                    baseline_method: moving_average
+                    product:
+                      id: 61
+                      sku: SAFFRON-KG
+                      name: Saffron (per kg)
                     created_at: '2024-10-15T09:00:00+00:00'
                     updated_at: '2024-10-15T09:00:00+00:00'
                   current_page: 1
@@ -168725,7 +168789,18 @@ paths:
         to read.
 
 
-        Returns 404 if no line exists for that run and product.'
+        Returns 404 if no line exists for that run and product.
+
+
+        `final_quantity` is a whole number for products ordered in whole units. When
+        the configuration''s rounding keeps decimals (for example a product sold by
+        weight), it is a decimal such as 2.7.
+
+
+        `inputs.event_units` (number, present when dated events apply) is the extra
+        units that dated events — a promo window''s next occurrence or a manual event
+        — add on the event days that fall inside this order''s cover. They are added
+        once to the order rather than raising the everyday daily average.'
       parameters:
       - name: runId
         in: path
@@ -168795,6 +168870,8 @@ paths:
                             type: number
                           leadtime_days:
                             type: integer
+                          event_units:
+                            type: number
                       inventory_snapshot:
                         type: object
                         properties:
@@ -168851,6 +168928,7 @@ paths:
                       sales_history_days: 90
                       avg_daily_sales: 2.5
                       leadtime_days: 14
+                      event_units: 12.0
                     inventory_snapshot:
                       current_stock: 10
                       incoming: 0
@@ -170063,8 +170141,16 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Returns 204 on success. Returns 422 if the configuration is in use by schedules
-        and force is not set.
+        Returns 200 on success. Returns 422 if the configuration is in use by schedules
+        and `force` is not `true`.
+
+
+        When the configuration is in use and `force=true` is sent, the configuration
+        is deleted and every schedule that used it is turned off, so none of them
+        fails on its next run. The 200 response lists those schedules in `data.disabled_schedules`
+        (each with `id` and `name`) and the `message` names them; edit each schedule
+        to choose another configuration, then turn it back on. When no schedule used
+        the configuration, `disabled_schedules` is empty.
 
 
         Make / buy / transfer plans: warehouse_ids (integer[]), horizon_days (integer
@@ -170075,12 +170161,6 @@ paths:
         purchase forecast. Schedules running a plan configuration build the plan and,
         when they auto-create, raise purchase orders only.'
       parameters:
-      - name: force
-        in: query
-        schema:
-          type: boolean
-        description: Optional. If true, force delete even if in use by schedules.
-        example: 'false'
       - name: configuration
         in: path
         schema:
@@ -170089,13 +170169,37 @@ paths:
         description: Configuration ID
         example: '1'
       responses:
-        '204':
-          description: No Content
-          content:
-            text/plain:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
               schema:
                 type: string
-                example: ''
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Deleted
+                  value:
+                    message: Configuration deleted.
+                    data:
+                      disabled_schedules: []
+                example-1:
+                  summary: 200 Force Deleted (schedules turned off)
+                  value:
+                    message: 'Configuration deleted. These schedules used it and have
+                      been turned off: Weekly Acme reorder, Monthly Globex top-up.
+                      Edit them to choose another configuration, then turn them back
+                      on.'
+                    data:
+                      disabled_schedules:
+                      - id: 14
+                        name: Weekly Acme reorder
+                      - id: 19
+                        name: Monthly Globex top-up
         '422':
           description: Unprocessable Entity
           headers:
@@ -170114,7 +170218,8 @@ paths:
                     type: string
                 example:
                   error: Cannot delete configuration
-                  message: This configuration is used by 2 active schedules.
+                  message: Cannot delete configuration 'Fast movers - 60 day cover'
+                    because it is used by one or more schedules.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -171313,6 +171418,13 @@ paths:
         Authentication: Requires Bearer token.
 
 
+        Only one run of a schedule can be in progress at a time, because two runs
+        at once could create a second set of purchase orders. While a run of the schedule
+        is still in progress, the request is refused with 409 Conflict and nothing
+        is queued; wait for that run to finish (check the schedule''s run history)
+        and try again.
+
+
         Returns 404 if the schedule does not exist.'
       requestBody:
         content: {}
@@ -171348,6 +171460,24 @@ paths:
                   data:
                     tracked_job_log_id: 48213
                   message: Schedule run started
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Schedule "Weekly Acme reorder" is already running. Wait
+                    for that run to finish before running it again — running it twice
+                    at once could create a second set of purchase orders.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -171539,77 +171669,6 @@ paths:
         '404': *id003
       x-required-scope: purchase-orders:read
       operationId: get-api-inventory-forecasting-schedules-schedule-activity-log
-  /api/inventory-forecasting/schedules/limits:
-    get:
-      tags:
-      - Inventory Intelligence
-      summary: Get Schedule Limits
-      description: 'Get supplier run limits status. Shows how many runs are scheduled
-        for each supplier on a given date.
-
-
-        :::info[Required scope: `purchase-orders:read`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::
-
-
-        Authentication: Requires Bearer token.'
-      parameters:
-      - name: supplier_ids[]
-        in: query
-        schema:
-          type: integer
-        description: Required. Array of supplier IDs to check limits for.
-        example: '1'
-      - name: date
-        in: query
-        schema:
-          type: string
-        description: Optional. Date to check limits for (defaults to today).
-        example: '2024-10-15'
-      responses:
-        '200':
-          description: OK
-          headers:
-            Content-Type:
-              schema:
-                type: string
-                example: application/json
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        supplier_id:
-                          type: integer
-                        supplier_name:
-                          type: string
-                        runs_today:
-                          type: integer
-                        limit:
-                          type: integer
-                        can_run:
-                          type: boolean
-                example:
-                  data:
-                  - supplier_id: 1
-                    supplier_name: Acme Supplier Co.
-                    runs_today: 1
-                    limit: 3
-                    can_run: true
-        '429': *id001
-        '401': *id002
-        '403': *id005
-      x-required-scope: purchase-orders:read
-      operationId: get-api-inventory-forecasting-schedules-limits
   /api/inventory-forecasting/schedules/statistics:
     get:
       tags:
@@ -172153,8 +172212,9 @@ paths:
       tags:
       - Inventory Intelligence
       summary: Create Manual Run
-      description: 'Create and persist a manual (ad-hoc) forecast run record. Called
-        when users run forecasts manually from the UI.
+      description: 'Create and persist a manual (ad-hoc) forecast run record, for
+        example right after calling the build endpoint, so the run appears in the
+        runs list.
 
 
         :::info[Required scope: `purchase-orders:write`]
@@ -172163,6 +172223,14 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        The run''s per-product lines are stored in the background, rebuilt from configuration_snapshot
+        (include supplier_ids and the same settings you sent to build, including baseline_method,
+        trend_damping_factor, trend_max_growth_pct, trend_half_life_days and exclude_detected_anomalies).
+        Read them with List Forecast Run Lines once the background job finishes; until
+        then that list is empty. Runs with stored lines are kept for at least 37 days
+        so forecast accuracy can be scored.
 
 
         Authentication: Requires Bearer token.
@@ -222010,9 +222078,10 @@ paths:
       summary: Submit Verification
       description: 'Finalize the verification: plan moves to `verified` (or `verified_with_adjustments`
         when any line was verified short). Fails with 400 `cant_submit_verification_unless_all_items_verified`
-        while any line is unverified. No bearer token — access is granted by the encrypted
-        `hashedDraftInboundPlanId` in the URL (single plan scope). Generated from
-        the plan''s `portal_access_hash`.
+        while any line is unverified. Fails with 409 `verification_closed` when the
+        plan is already submitted to Amazon, finalized or cancelled; the plan keeps
+        its status. No bearer token — access is granted by the encrypted `hashedDraftInboundPlanId`
+        in the URL (single plan scope). Generated from the plan''s `portal_access_hash`.
 
 
         :::warning[Not yet available to API tokens]
@@ -222058,6 +222127,28 @@ paths:
                   errors:
                     cant_submit_verification_unless_all_items_verified:
                     - message: Cannot submit verification unless all items are verified.
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      verification_closed:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                example:
+                  errors:
+                    verification_closed:
+                    - message: This inbound plan is already finalized, so its verification
+                        can no longer be changed. Nothing was updated.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -222076,10 +222167,12 @@ paths:
         lines (each line capped at its requested quantity). The plan moves to `verified`,
         or `verified_with_adjustments` when any product was verified short. Fails
         with 400 `cant_submit_verification_unless_all_items_verified` if any product
-        on the plan is omitted (every product must be included). Each item requires
-        a `product_id` and a non-negative integer `verified_quantity`. No bearer token
-        — access is granted by the encrypted `hashedDraftInboundPlanId` in the URL
-        (single plan scope).
+        on the plan is omitted (every product must be included). Fails with 409 `verification_closed`
+        when the plan is already submitted to Amazon, finalized or cancelled; the
+        plan keeps its status and no quantity is saved. Each item requires a `product_id`
+        and a non-negative integer `verified_quantity`. No bearer token — access is
+        granted by the encrypted `hashedDraftInboundPlanId` in the URL (single plan
+        scope).
 
 
         :::warning[Not yet available to API tokens]
@@ -222190,6 +222283,28 @@ paths:
                   errors:
                     cant_submit_verification_unless_all_items_verified:
                     - message: Cannot submit verification unless all items are verified.
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+                    properties:
+                      verification_closed:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                example:
+                  errors:
+                    verification_closed:
+                    - message: This inbound plan is already finalized, so its verification
+                        can no longer be changed. Nothing was updated.
         '422':
           description: Unprocessable Entity
           content:
@@ -388135,7 +388250,7 @@ paths:
       description: 'Push pending SKU fulfillments back to Square for the given instance.
         Omit `fulfillment_ids` to submit every pending fulfillment on the instance;
         provide them to submit a specific subset. Returns per-run counts (submitted,
-        skipped, failed) plus any per-fulfillment errors.
+        skipped, waiting, failed) plus any per-fulfillment errors.
 
 
         :::warning[Not yet available to API tokens]
@@ -388146,15 +388261,20 @@ paths:
         :::
 
 
+        Square accepts only one shipment per order, so an order''s shipment is marked
+        COMPLETED only once every unit on it has shipped (or the rest was cancelled,
+        returned or fulfilled outside SKU.io), using the last parcel''s tracking.
+        Earlier parcels of a partly shipped order are not pushed yet: they are counted
+        in `waiting` and are submitted together with the order''s last parcel. A waiting
+        parcel is not a failure and is not marked as submitted.
+
+
         Body fields:
 
         - integration_instance_id (integer, required) — the Square instance.
 
         - fulfillment_ids (array of integers, optional) — specific SKU fulfillment
         IDs; omit to submit all pending.
-
-
-        Route name: square.orders.submit-fulfillments
 
 
         Requires the `integrations.sync` permission.'
@@ -388195,6 +388315,7 @@ paths:
                     message: 2 fulfillment(s) submitted to Square.
                     submitted: 2
                     skipped: 0
+                    waiting: 0
                     failed: 0
                     errors: []
                 example-1:
@@ -388203,10 +388324,22 @@ paths:
                     message: 1 fulfillment(s) submitted to Square.
                     submitted: 1
                     skipped: 0
+                    waiting: 0
                     failed: 1
                     errors:
                     - fulfillment_id: 1202
                       error: Square order not found for fulfillment.
+                example-2:
+                  summary: 200 Some Parcels Waiting
+                  value:
+                    message: 1 fulfillment(s) submitted to Square. 2 waiting for the
+                      rest of their order to ship — Square takes one shipment per
+                      order, so it is marked shipped when the last parcel ships.
+                    submitted: 1
+                    skipped: 0
+                    waiting: 2
+                    failed: 0
+                    errors: []
         '403':
           description: Forbidden
           headers:
@@ -397449,8 +397582,11 @@ paths:
 
         Body:
 
-        - `store_url` (required, string, max 255, must be a valid URL). Stored with
-        any trailing slash removed.
+        - `store_url` (required, string, max 255). The store''s bare address only,
+        e.g. `https://shop.example.com`: it must start with https:// and carry no
+        path, query or fragment (plain http is accepted only for local development
+        hosts). It is stored normalized, with a lower-cased host and no trailing slash.
+        An address with a path is rejected with 422.
 
         - `api_key` (optional/nullable, string, min 8, max 255). Omit it to change
         only the address and keep the stored key.
@@ -397461,10 +397597,10 @@ paths:
         is no longer one the store issued. Any standing connection error is cleared.
 
 
-        **This endpoint always returns 200 and always saves.** `connection_ok` tells
-        you whether the store accepted the new credentials; when it is false the credentials
-        are still stored and `message` carries the store''s reason, so a merchant
-        can fix a typo without losing what they typed.
+        **Once the body validates, this endpoint always returns 200 and always saves.**
+        `connection_ok` tells you whether the store accepted the new credentials;
+        when it is false the credentials are still stored and `message` carries the
+        store''s reason, so a merchant can fix a typo without losing what they typed.
 
 
         Permission: integrations.update.
@@ -397709,10 +397845,12 @@ paths:
                         items:
                           type: string
                 example:
-                  message: The store url field must be a valid URL.
+                  message: Enter the store's address only, e.g. https://shop.example.com
+                    — no path or query, and it must start with https://.
                   errors:
                     store_url:
-                    - The store url field must be a valid URL.
+                    - Enter the store's address only, e.g. https://shop.example.com
+                      — no path or query, and it must start with https://.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -407304,6 +407442,199 @@ paths:
         '403': *id005
       x-session-only: true
       operationId: delete-api-storefront-instances-id-orders-id2-sku-order
+  /api/storefront/instances/{id}/customers:
+    get:
+      tags:
+      - Storefront
+      summary: List Customers
+      description: 'List the store''s buyers. The Store API has no customers endpoint,
+        so customers are mirrored from the `customer` block of every imported order:
+        one row per store customer id (or per email for a guest checkout), with contact
+        details and address taken from the buyer''s most recent order.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Each row carries the buyer''s order count, total spent (cancelled and refunded
+        orders excluded), first and last order dates, and their SKU.io customer (`sku_customer_id`):
+        the one on their latest SKU.io sales order, or, before any exists, the SKU.io
+        customer with the same email (null when there is none yet).
+
+
+        Authentication: Bearer token.
+
+
+        Paginated (default 10 per page, max 200). Default sort: most recent order
+        first.'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The id identifier
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        external_id:
+                          type: string
+                        is_guest:
+                          type: boolean
+                        name:
+                          type: string
+                        email:
+                          type: string
+                        phone:
+                          type: string
+                        default_address:
+                          type: object
+                          properties:
+                            name:
+                              type: string
+                            line1:
+                              type: string
+                            line2:
+                              type: string
+                              nullable: true
+                            city:
+                              type: string
+                            state:
+                              type: string
+                            postal_code:
+                              type: string
+                            country:
+                              type: string
+                        location:
+                          type: string
+                        orders_count:
+                          type: integer
+                        total_spent:
+                          type: number
+                        currency_code:
+                          type: string
+                        sku_customer_id:
+                          type: integer
+                        sku_customer_name:
+                          type: string
+                        sku_customer_route:
+                          type: string
+                        first_order_at:
+                          type: string
+                        last_order_at:
+                          type: string
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                  first_page_url:
+                    type: string
+                  last_page_url:
+                    type: string
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  links:
+                    type: array
+                example:
+                  data:
+                  - id: 12
+                    external_id: cus_9f2KQ81
+                    is_guest: false
+                    name: Jane Doe
+                    email: jane@example.com
+                    phone: +1 555 0100
+                    default_address:
+                      name: Jane Doe
+                      line1: 500 Congress Ave
+                      line2: null
+                      city: Austin
+                      state: TX
+                      postal_code: '78701'
+                      country: US
+                    location: Austin, TX, US
+                    orders_count: 3
+                    total_spent: 284.5
+                    currency_code: USD
+                    sku_customer_id: 481
+                    sku_customer_name: Jane Doe
+                    sku_customer_route: /crm/customers/481
+                    first_order_at: '2026-10-02T15:04:11+00:00'
+                    last_order_at: '2026-10-19T09:12:40+00:00'
+                    created_at: '2026-10-02T15:10:02+00:00'
+                    updated_at: '2026-10-19T09:15:00+00:00'
+                  current_page: 1
+                  last_page: 1
+                  per_page: 10
+                  total: 1
+                  from: 1
+                  to: 1
+                  first_page_url: https://sku.test/api/storefront/instances/1/customers?page=1
+                  last_page_url: https://sku.test/api/storefront/instances/1/customers?page=1
+                  next_page_url: null
+                  prev_page_url: null
+                  path: https://sku.test/api/storefront/instances/1/customers
+                  links: []
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-storefront-instances-id-customers
   /api/storefront/instances/{id}/products:
     get:
       tags:
@@ -412171,6 +412502,8 @@ paths:
                           type: integer
                         sales_order_id:
                           type: integer
+                        sales_order_number:
+                          type: string
                         sales_order_route:
                           type: string
                         storefront_order_id:
@@ -412217,6 +412550,7 @@ paths:
                       is not on order ord_7x2k'
                     sales_order_fulfillment_id: 814
                     sales_order_id: 23
+                    sales_order_number: SO-1042
                     sales_order_route: /orders/sales-orders/23
                     storefront_order_id: 3
                     storefront_order_route: /integrations/storefront/orders/3
@@ -412240,6 +412574,7 @@ paths:
                     error: null
                     sales_order_fulfillment_id: 812
                     sales_order_id: 21
+                    sales_order_number: SO-1042
                     sales_order_route: /orders/sales-orders/21
                     storefront_order_id: 1
                     storefront_order_route: /integrations/storefront/orders/1
@@ -412441,6 +412776,8 @@ paths:
                         type: integer
                       sales_order_id:
                         type: integer
+                      sales_order_number:
+                        type: string
                       sales_order_route:
                         type: string
                       storefront_order_id:
@@ -412476,6 +412813,7 @@ paths:
                     error: null
                     sales_order_fulfillment_id: 812
                     sales_order_id: 21
+                    sales_order_number: SO-1042
                     sales_order_route: /orders/sales-orders/21
                     storefront_order_id: 1
                     storefront_order_route: /integrations/storefront/orders/1
@@ -412544,6 +412882,7 @@ paths:
                         is not on order ord_7x2k'
                       sales_order_fulfillment_id: 814
                       sales_order_id: 23
+                      sales_order_number: SO-1042
                       sales_order_route: /orders/sales-orders/23
                       storefront_order_id: 3
                       storefront_order_route: /integrations/storefront/orders/3
@@ -454032,6 +454371,18 @@ paths:
         the values from GET asn/inbound-types. null = the warehouse system''s default
         receipt type. Longer or non-text values return 422.
 
+        - asn_uom (optional, string|null, max 50): the unit of measure (pack type)
+        every ASN line is sent in, as set up in the warehouse system (for example
+        EACH). null = Trackstar''s default (Unit). Longer or non-text values return
+        422.
+
+        - asn_supplier_id (optional, string|null, max 100): the warehouse-system supplier
+        id ASNs are sent under when a purchase order''s vendor is not a supplier the
+        warehouse system knows (some warehouse systems, such as Logiwa, refuse unknown
+        supplier names). One of the ids from GET asn/suppliers. A vendor the warehouse
+        system already knows is always sent as itself. null = send the vendor''s name.
+        Longer values return 422.
+
 
         When the effective cost-line type changes, a reconcile tracked job is dispatched
         (rewires existing Trackstar cost lines old→new and backfills missing from
@@ -454064,10 +454415,16 @@ paths:
                       type: integer
                     asn_inbound_type:
                       type: string
+                    asn_supplier_id:
+                      type: string
+                    asn_uom:
+                      type: string
               example:
                 integration_settings:
                   fulfillment_cost_financial_line_type_id: 10
                   asn_inbound_type: Purchase Order
+                  asn_supplier_id: '46196'
+                  asn_uom: EACH
       parameters:
       - name: integration_instance
         in: path
@@ -454401,6 +454758,75 @@ paths:
         '404': *id003
       x-session-only: true
       operationId: get-api-trackstar-integration-instances-integration-instance-asn-inbound-types
+  /api/trackstar/integration-instances/{integration_instance}/asn/suppliers:
+    get:
+      tags:
+      - Trackstar
+      summary: List ASN Suppliers
+      description: 'Lists the suppliers the connection''s warehouse system already
+        knows, read from the inbound shipments synced from it, sorted by name, plus
+        the supplier id ASNs fall back to when a purchase order''s vendor is not one
+        of them (selected; null = the vendor''s name is sent). When the vendor''s
+        name matches a listed supplier (case-insensitive), the ASN is sent under the
+        warehouse system''s own spelling of that supplier''s name. Requires Bearer
+        token and the `integrations.show` permission.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::'
+      parameters:
+      - name: integration_instance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Integration instance ID
+        example: '10'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Suppliers
+                  value:
+                    status: success
+                    data:
+                      suppliers:
+                      - id: '300'
+                        name: Acme Freight
+                      - id: '46196'
+                        name: Fleur Studios
+                      selected: '46196'
+                example-1:
+                  summary: 200 Suppliers
+                  value:
+                    status: success
+                    data:
+                      suppliers:
+                      - id: '300'
+                        name: Acme Freight
+                      - id: '46196'
+                        name: Fleur Studios
+                      selected: '46196'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: get-api-trackstar-integration-instances-integration-instance-asn-suppliers
   /api/trackstar/integration-instances/{integrationInstance}/cost-line-type/preview:
     post:
       tags:
@@ -575915,7 +576341,17 @@ paths:
         `sku` cannot be cleared (an empty or `null` SKU returns 422). `is_dropshippable`
         and `is_lot_tracked` may be omitted but cannot be `null`. Sending `brand_name:
         null` (or an empty string) removes the product''s brand; omitting `brand_name`
-        leaves it unchanged.'
+        leaves it unchanged.
+
+
+        **Pricing tier must be one the supplier uses:** each `suppliers[].pricing[].supplier_pricing_tier_id`
+        must be a tier attached to that supplier (or, when the supplier has no tiers
+        attached, the account''s default tier). Otherwise the request fails with 422
+        on `suppliers.{i}.pricing.{j}.supplier_pricing_tier_id`, because the price
+        would never show on the supplier. Attach the tier to the supplier first, or
+        choose one of the supplier''s tiers. Entries sent with `operation: "delete"`
+        are always accepted, so a price saved on such a tier earlier can still be
+        removed.'
       requestBody:
         content:
           application/json:
@@ -576145,9 +576581,9 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
-                type: object
+                type: string
               examples:
                 example-0:
                   summary: 422 Type Change Error
@@ -576165,6 +576601,30 @@ paths:
                     message: 'OB-WU-SHAKER-GO cannot become a bundle while open orders
                       hold stock or shipments for it as a single item: SO-0477. Unallocate,
                       ship or cancel those lines first.'
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      suppliers.0.pricing.1.supplier_pricing_tier_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                    Ltd, so a price on it would never show on the supplier. Attach
+                    the tier to the supplier first (Supplier → Pricing Tiers), or
+                    choose one of the supplier's tiers.
+                  errors:
+                    suppliers.0.pricing.1.supplier_pricing_tier_id:
+                    - Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                      Ltd, so a price on it would never show on the supplier. Attach
+                      the tier to the supplier first (Supplier → Pricing Tiers), or
+                      choose one of the supplier's tiers.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -576452,7 +576912,17 @@ paths:
 
         - `portal_exclude_from_order_discount` (boolean) — net price: the product
         still counts toward an account''s order-value discount threshold ("spend $X,
-        take Y% off") but never takes the discount. Default `false`.'
+        take Y% off") but never takes the discount. Default `false`.
+
+
+        **Pricing tier must be one the supplier uses:** each `suppliers[].pricing[].supplier_pricing_tier_id`
+        must be a tier attached to that supplier (or, when the supplier has no tiers
+        attached, the account''s default tier). Otherwise the request fails with 422
+        on `suppliers.{i}.pricing.{j}.supplier_pricing_tier_id`, because the price
+        would never show on the supplier. Attach the tier to the supplier first, or
+        choose one of the supplier''s tiers. Entries sent with `operation: "delete"`
+        are always accepted, so a price saved on such a tier earlier can still be
+        removed.'
       requestBody:
         content:
           application/json:
@@ -576799,7 +577269,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -576823,6 +577293,30 @@ paths:
                     - The sku has already been taken.
                     type:
                     - The product type field is required.
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      suppliers.0.pricing.1.supplier_pricing_tier_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                    Ltd, so a price on it would never show on the supplier. Attach
+                    the tier to the supplier first (Supplier → Pricing Tiers), or
+                    choose one of the supplier's tiers.
+                  errors:
+                    suppliers.0.pricing.1.supplier_pricing_tier_id:
+                    - Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                      Ltd, so a price on it would never show on the supplier. Attach
+                      the tier to the supplier first (Supplier → Pricing Tiers), or
+                      choose one of the supplier's tiers.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -648919,6 +649413,15 @@ paths:
         reference_number, currency_id, currency_rate and nominal_code_id.
 
 
+        **Changing `amount`:** a cost entry''s allocations can never add up to more
+        than its amount, so lowering `amount` below what is already allocated (or
+        reserved for allocation) returns 422 on `amount`; remove or reduce allocations
+        first. The amount of an entry with an amortization schedule can''t change
+        at all (422 on `amount`), because the schedule''s periods were worked out
+        from the current amount; delete the schedule first. Sending the current amount
+        unchanged is always accepted.
+
+
         Authentication: Requires Bearer token.'
       requestBody:
         content:
@@ -649071,11 +649574,45 @@ paths:
                       allocated: 1000.0
                       unallocated: 1500.0
                       is_fully_allocated: false
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Amount Below Allocated
+                  value:
+                    message: The amount can't be lowered to 800.00 because 1000.00
+                      of this cost entry is already allocated. Remove or reduce its
+                      allocations first, then change the amount.
+                    errors:
+                      amount:
+                      - The amount can't be lowered to 800.00 because 1000.00 of this
+                        cost entry is already allocated. Remove or reduce its allocations
+                        first, then change the amount.
+                example-1:
+                  summary: 422 Amortized Entry Amount Locked
+                  value:
+                    message: The amount can't change because this cost entry has an
+                      amortization schedule, and its periods were worked out from
+                      the current amount. Delete the schedule first, then change the
+                      amount.
+                    errors:
+                      amount:
+                      - The amount can't change because this cost entry has an amortization
+                        schedule, and its periods were worked out from the current
+                        amount. Delete the schedule first, then change the amount.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: purchase-orders:write
       operationId: put-api-cost-entries-costentry
     delete:
@@ -783123,9 +783660,14 @@ paths:
         \ Requires Bearer token.\n\n:::info[Required scope: `suppliers:write`]\nGrant\
         \ this scope to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\nFields:\n- pricing (required, array): Array of pricing tier entries\n\
-        \  - pricing.*.supplier_pricing_tier_id (required, integer): Must exist in\
-        \ supplier_pricing_tiers table\n  - pricing.*.price (required, numeric, min:0):\
-        \ Price for this tier\n\n**Requires permission:** `suppliers.update`"
+        \  - pricing.*.supplier_pricing_tier_id (required, integer): An existing supplier\
+        \ pricing tier that the product's supplier uses — one of the tiers attached\
+        \ to the supplier, or, when the supplier has no tiers attached, the account's\
+        \ default tier.\n  - pricing.*.price (required, numeric, min:0): Price for\
+        \ this tier\n\nA price on a tier the supplier doesn't use is refused with\
+        \ 422 on `pricing.{i}.supplier_pricing_tier_id`, because it would never show\
+        \ on the supplier. Attach the tier to the supplier first, or choose one of\
+        \ the supplier's tiers.\n\n**Requires permission:** `suppliers.update`"
       requestBody:
         content:
           application/json:
@@ -783232,10 +783774,41 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - suppliers.update
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      pricing.1.supplier_pricing_tier_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                    Ltd, so a price on it would never show on the supplier. Attach
+                    the tier to the supplier first (Supplier → Pricing Tiers), or
+                    choose one of the supplier's tiers.
+                  errors:
+                    pricing.1.supplier_pricing_tier_id:
+                    - Pricing tier 'Wholesale' isn't used by supplier Acme Components
+                      Ltd, so a price on it would never show on the supplier. Attach
+                      the tier to the supplier first (Supplier → Pricing Tiers), or
+                      choose one of the supplier's tiers.
         '429': *id001
         '401': *id002
         '404': *id003
-        '422': *id004
       x-required-scope: suppliers:write
       operationId: put-api-supplier-products-supplier-product-pricing
   /api/supplier-pricing-tiers:
@@ -801424,6 +801997,13 @@ paths:
         Each expected payment row is built from the best available source, reported
         as `forecast_source`:
 
+        - `invoiced` — an actual outstanding supplier invoice or landed-cost bill.
+        When an invoice is linked to an inbound shipment on a per-shipment payment
+        term, it is listed as one row per installment it settles (e.g. "40% on Shipment"
+        and "40% net 30 on Receipt"), each on its payment-term due date, with `purchase_invoice_id`
+        set and `milestone_label` reading `Invoice <number> · <milestone>`. Payments
+        already made on the invoice are taken off its earliest-due installments first.
+
         - `scheduled` — the PO''s own payment-term deposit schedule (high confidence)
 
         - `inferred` — the supplier''s default payment-term schedule or default deposit
@@ -801433,6 +802013,11 @@ paths:
 
         - `unscheduled` — no schedule and no usable date; rows with a null `due_date`
         are always included regardless of the date window
+
+
+        Goods on a per-shipment term that are not on any inbound shipment yet appear
+        as `Unplanned shipment remainder` rows dated from the purchase order''s ETD
+        / Available ETA; with neither set, their `due_date` and `basis_date` are null.
 
 
         If a milestone already has a linked vendor deposit, the row amount reflects
@@ -807200,6 +807785,9 @@ paths:
 
         When financial_lines are provided, each entry requires: id (an existing financial_lines.id),
         quantity (numeric), and amount (numeric). A 422 is returned if any are missing.
+        On a purchase order with no product lines (charges only), changing `financial_lines`
+        recalculates the order''s `invoice_status`: it becomes `invoiced` once every
+        charge is on a bill.
 
 
         Returns `422` when the invoice is a committed-spend (provisional) bill — those
@@ -809442,11 +810030,10 @@ paths:
         :::
 
 
-        Use this from the 3-Way Match view when a price variance is confirmed legitimate
-        (e.g. supplier raised the price). The PO line is updated, an activity log
-        entry is recorded on the PO line, and the invoice is re-evaluated — typically
-        returning it to auto_approved once the price matches. Works on both open and
-        closed POs.
+        Use this when a price variance is confirmed legitimate (e.g. supplier raised
+        the price). The PO line is updated, an activity log entry is recorded on the
+        PO line, and the invoice is re-evaluated — typically returning it to auto_approved
+        once the price matches. Works on both open and closed POs.
 
 
         Authentication: Requires Bearer token.
@@ -809469,7 +810056,15 @@ paths:
         ''invoice line not linked to a PO line'', ''invoice line has no unit price''.
 
 
-        Returns 404 if the invoice line does not belong to the purchase invoice.'
+        Returns 404 if the invoice line does not belong to the purchase invoice.
+
+
+        A sync re-evaluates the bill''s approval, so it is refused with 422 when a
+        person has already approved or rejected the bill (`approval_status` `approved`
+        or `rejected`); the sync would otherwise replace that decision. For an approved
+        bill, change the price on the purchase order itself; for a rejected bill,
+        resubmit it for approval first. Bills that were approved automatically can
+        still be synced.'
       requestBody:
         content:
           application/json:
@@ -809542,10 +810137,36 @@ paths:
                     type: string
                 example:
                   message: Invoice line does not belong to this invoice.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Bill Already Approved
+                  value:
+                    message: This bill has already been approved, so its prices can't
+                      be synced to the purchase order — the sync would replace the
+                      approver's decision. Change the price on the purchase order
+                      itself instead.
+                    status: failure
+                example-1:
+                  summary: 422 Bill Rejected
+                  value:
+                    message: This bill was rejected, so its prices can't be synced
+                      to the purchase order — the sync would silently approve it.
+                      Resubmit the bill for approval first, then update the PO price.
+                    status: failure
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-required-scope: purchase-orders:write
       operationId: post-api-purchase-invoices-purchaseinvoice-lines-purchaseinvoiceline-sync-po-price
   /api/purchase-invoices/{purchaseInvoice}/sync-po-prices:
@@ -809566,9 +810187,8 @@ paths:
         :::
 
 
-        Use this from the 3-Way Match view when several lines have confirmed price
-        variances. Each invoice line is processed individually using the same logic
-        as POST /api/purchase-invoices/:purchaseInvoice/lines/:purchaseInvoiceLine/sync-po-price,
+        Use this when several lines have confirmed price variances. Each invoice line
+        is processed individually using the same logic as POST /api/purchase-invoices/:purchaseInvoice/lines/:purchaseInvoiceLine/sync-po-price,
         and the final results are returned keyed by purchase_invoice_line_id. Works
         on both open and closed POs.
 
@@ -809579,8 +810199,7 @@ paths:
         Request body fields:
 
         - purchase_invoice_line_ids (integer[], required, min 1): IDs of invoice lines
-        to sync. Each must belong to this purchase invoice (validated via Rule::exists
-        with where purchase_invoice_id).
+        to sync. Each must belong to this purchase invoice.
 
         - notes (string, optional, max 1000): free-text justification stored on each
         activity log entry.
@@ -809598,7 +810217,15 @@ paths:
 
 
         The top-level message summarises counts (e.g. ''Synced 2 line(s); 1 unchanged;
-        0 skipped.'').'
+        0 skipped.'').
+
+
+        A sync re-evaluates the bill''s approval, so it is refused with 422 when a
+        person has already approved or rejected the bill (`approval_status` `approved`
+        or `rejected`); the sync would otherwise replace that decision. For an approved
+        bill, change the price on the purchase order itself; for a rejected bill,
+        resubmit it for approval first. Bills that were approved automatically can
+        still be synced.'
       requestBody:
         content:
           application/json:
@@ -809706,21 +810333,29 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Unprocessable Entity - Missing line IDs
+                  value:
+                    message: The purchase invoice line ids field is required.
+                    errors:
                       purchase_invoice_line_ids:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The purchase invoice line ids field is required.
-                  errors:
-                    purchase_invoice_line_ids:
-                    - The purchase invoice line ids field is required.
+                      - The purchase invoice line ids field is required.
+                example-1:
+                  summary: 422 Bill Already Approved
+                  value:
+                    message: This bill has already been approved, so its prices can't
+                      be synced to the purchase order — the sync would replace the
+                      approver's decision. Change the price on the purchase order
+                      itself instead.
+                    status: failure
+                example-2:
+                  summary: 422 Bill Rejected
+                  value:
+                    message: This bill was rejected, so its prices can't be synced
+                      to the purchase order — the sync would silently approve it.
+                      Resubmit the bill for approval first, then update the PO price.
+                    status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -810033,8 +810668,8 @@ paths:
       tags:
       - Purchase Invoices
       summary: Variance Resolution Preview
-      description: 'Preview over-billed quantities per PO line so the UI can prefill
-        a ''Resolve with vendor credit'' dialog.
+      description: 'Preview the over-billed quantities per purchase order line on
+        a bill, to fill in a ''resolve with vendor credit'' request.
 
 
         :::info[Required scope: `purchase-orders:read`]
@@ -810048,16 +810683,21 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        A line is considered over-billed when its effective invoiced quantity (quantity_invoiced
-        minus quantity already credited on this bill via existing vendor credit allocations)
-        exceeds the PO line''s effective received quantity. Receipt sources match
-        `PurchaseOrderLine::getEffectiveReceivedQuantity` (standard warehouse receipts,
-        FBA/AWD ledgers, accounting for any active short-close event).
+        A PO line is over-billed when the quantity billed on it across all of its
+        bills, less every quantity already credited against it, is more than its effective
+        ordered quantity (the ordered quantity, or the short-closed quantity when
+        the line was short-closed). The over-billed quantity reported for this bill
+        is capped at what this bill still bills on the line (its lines for that PO
+        line less credits already allocated to this bill), because a credit resolving
+        this bill can only take back units this bill charged. For example, a line
+        ordered at 40 and billed 16 + 30 on two bills is 6 over on either bill. When
+        a bill carries several lines for the same PO line they are combined into one
+        entry.
 
 
-        The suggested credit quantity is exactly the over-bill delta. The suggested
-        credit amount is `over_billed * unit_price` (invoice unit price, falling back
-        to PO amount).
+        The suggested credit quantity is exactly the over-billed quantity. The suggested
+        credit amount is `over_billed_quantity * unit_price` (invoice unit price,
+        falling back to the PO line price).
 
 
         Response fields:
@@ -810071,8 +810711,10 @@ paths:
 
         - `lines[]`: only includes lines with over-billed quantity. Each line has
         `purchase_invoice_line_id`, `purchase_order_line_id`, `product_id`, `sku`,
-        `product_name`, `quantity_invoiced`, `received_quantity`, `already_credited`,
-        `over_billed_quantity`, `suggested_credit_quantity`, `unit_price`, `suggested_credit_amount`.'
+        `product_name`, `quantity_invoiced` (billed on this bill), `quantity_invoiced_on_purchase_order_line`
+        (billed on the PO line across all of its bills), `effective_ordered_quantity`,
+        `received_quantity`, `already_credited`, `over_billed_quantity`, `suggested_credit_quantity`,
+        `unit_price`, `suggested_credit_amount`.'
       parameters:
       - name: purchaseInvoice
         in: path
@@ -810123,6 +810765,10 @@ paths:
                               type: string
                             quantity_invoiced:
                               type: integer
+                            quantity_invoiced_on_purchase_order_line:
+                              type: integer
+                            effective_ordered_quantity:
+                              type: integer
                             received_quantity:
                               type: integer
                             already_credited:
@@ -810143,20 +810789,22 @@ paths:
                     currency_id: 1
                     currency_code: USD
                     has_over_bills: true
-                    total_suggested_credit: 39.5
+                    total_suggested_credit: 118.5
                     lines:
                     - purchase_invoice_line_id: 301
                       purchase_order_line_id: 101
                       product_id: 55
                       sku: T-NS02-OAK-CV
                       product_name: Oak Canvas
-                      quantity_invoiced: 91
-                      received_quantity: 89
+                      quantity_invoiced: 30
+                      quantity_invoiced_on_purchase_order_line: 46
+                      effective_ordered_quantity: 40
+                      received_quantity: 40
                       already_credited: 0
-                      over_billed_quantity: 2
-                      suggested_credit_quantity: 2
+                      over_billed_quantity: 6
+                      suggested_credit_quantity: 6
                       unit_price: 19.75
-                      suggested_credit_amount: 39.5
+                      suggested_credit_amount: 118.5
         '429': *id001
         '401': *id002
         '403': *id005
@@ -833542,9 +834190,13 @@ paths:
         :::
 
 
-        When save_sku_mappings is true, any resolved customer SKU-to-product mappings
-        from the extraction lines are persisted to the customer''s SKU mapping table
-        for future use.
+        **lines[].raw_sku (optional, nullable string, max 255):** the customer''s
+        SKU exactly as it was read from the PO. When `save_sku_mappings` is true,
+        each line that carries a `raw_sku` and a `product_id` is remembered as a customer
+        SKU mapping to that confirmed product, so the next PO from this customer matches
+        it automatically. This includes lines where you corrected the suggested product
+        and lines you matched by hand. A mapping that already points at the same product
+        is left as is.
 
 
         **ship_to_address (optional, nullable object):** the per-PO shipping destination
@@ -833618,6 +834270,8 @@ paths:
                       warehouse_id:
                         type: string
                         nullable: true
+                      raw_sku:
+                        type: string
               example:
                 customer_id: 1
                 customer_po_number: PO-12345
@@ -833642,6 +834296,7 @@ paths:
                   amount: 25
                   description: Widget
                   warehouse_id: null
+                  raw_sku: CUST-WDG-10
       parameters:
       - name: extraction_id
         in: path
@@ -936597,6 +937252,15 @@ paths:
         a non-product line is still missing its nominal code.
 
 
+        Planned allocations are checked again at authorization, because a bill may
+        have been paid since the allocation was planned, or the credit may plan several
+        amounts for the same bill. If the total this credit plans for a bill is more
+        than the bill still owes (its total with tax, less payments, deposits and
+        credits already applied), authorization is refused with 422 under `errors.credit_status`,
+        naming the bill and the amounts. Lower or remove the planned allocation, then
+        authorize again — a vendor credit can''t take a bill below zero.
+
+
         Lines whose `cost_impact` is `reduce_cost` push the credit back into the cost
         of the credited purchase order line''s receipt layers when the credit is authorized
         — quantity is untouched; units still in stock get cheaper and units already
@@ -937114,6 +937778,40 @@ paths:
                         code: VendorCredit422
                         data:
                           id: 17
+                example-2:
+                  summary: 422 Planned Allocation Exceeds Bill Balance
+                  value:
+                    errors:
+                      credit_status:
+                      - message: This credit plans 20.00 for bill ACME-30, but the
+                          bill only owes 5.00. Lower the planned allocation to 5.00
+                          or less, then authorize again — a vendor credit can't take
+                          a bill below zero.
+                        code: VendorCredit422
+                        data:
+                          id: 17
+                    status: failure
+                    message: This credit plans 20.00 for bill ACME-30, but the bill
+                      only owes 5.00. Lower the planned allocation to 5.00 or less,
+                      then authorize again — a vendor credit can't take a bill below
+                      zero.
+                example-3:
+                  summary: 422 Planned Allocation on Settled Bill
+                  value:
+                    errors:
+                      credit_status:
+                      - message: This credit plans 150.00 in total for bill ACME-31
+                          (2 planned allocations), but the bill is already fully settled.
+                          Remove the planned allocation, then authorize again — a
+                          vendor credit can't take a bill below zero.
+                        code: VendorCredit422
+                        data:
+                          id: 17
+                    status: failure
+                    message: This credit plans 150.00 in total for bill ACME-31 (2
+                      planned allocations), but the bill is already fully settled.
+                      Remove the planned allocation, then authorize again — a vendor
+                      credit can't take a bill below zero.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -938866,7 +939564,9 @@ paths:
         - `purchase_invoice_id` (int) — Must exist.
 
         - `amount` (float, >= 0.01) — Amount to allocate. Cannot exceed the credit''s
-        remaining balance or the bill''s outstanding balance.
+        remaining balance or what the bill still owes (its total with tax, less payments,
+        deposits and credits already applied) — a vendor credit can''t take a bill
+        below zero. A bill that is already fully settled takes no more credit.
 
 
         **Optional fields:**
@@ -938876,9 +939576,13 @@ paths:
         - `notes` (string)
 
 
-        The allocation is recorded on `vendor_credit_allocations` and reduces the
-        bill''s outstanding amount. The response includes the new allocation with
-        its purchase invoice and allocator user.'
+        The allocation reduces the bill''s outstanding amount. The response includes
+        the new allocation with its purchase invoice and allocator user.
+
+
+        Validation errors return 422 with the field errors under `errors`: a bill
+        of another supplier or another currency (`purchase_invoice_id`), or an amount
+        above the credit''s remaining balance or the bill''s outstanding balance (`amount`).'
       requestBody:
         content:
           application/json:
@@ -938908,14 +939612,129 @@ paths:
         example: '1'
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      vendor_credit_id:
+                        type: integer
+                      purchase_invoice_id:
+                        type: integer
+                      amount:
+                        type: number
+                      currency_rate:
+                        type: integer
+                      fx_gain_loss:
+                        type: integer
+                      allocated_at:
+                        type: string
+                      applied_at:
+                        type: string
+                      is_planned:
+                        type: boolean
+                      notes:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      purchase_invoice:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          supplier_invoice_number:
+                            type: string
+                          purchase_invoice_date:
+                            type: string
+                          purchase_order_id:
+                            type: integer
+                      allocated_by:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                          email:
+                            type: string
+                  status:
+                    type: string
+                example:
+                  message: The vendor credit allocation created successfully
+                  data:
+                    id: 131
+                    vendor_credit_id: 17
+                    purchase_invoice_id: 17
+                    amount: 75.5
+                    currency_rate: 1
+                    fx_gain_loss: 0
+                    allocated_at: '2026-04-11 00:00:00'
+                    applied_at: '2026-04-11 00:00:00'
+                    is_planned: false
+                    notes: Applied against bill BILL-2026-0017
+                    created_at: '2026-04-11T14:02:10.000000Z'
+                    updated_at: '2026-04-11T14:02:10.000000Z'
+                    purchase_invoice:
+                      id: 17
+                      supplier_invoice_number: BILL-2026-0017
+                      purchase_invoice_date: '2026-04-02'
+                      purchase_order_id: 310
+                    allocated_by:
+                      id: 3
+                      name: Dana Whitfield
+                      email: dana@example.com
+                  status: success
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Bill Already Settled
+                  value:
+                    message: Bill BILL-2026-0017 is already fully settled, so no more
+                      credit can be applied to it — a vendor credit can't take a bill
+                      below zero.
+                    errors:
+                      amount:
+                      - Bill BILL-2026-0017 is already fully settled, so no more credit
+                        can be applied to it — a vendor credit can't take a bill below
+                        zero.
+                example-1:
+                  summary: 422 Amount Above Bill Outstanding
+                  value:
+                    message: Allocation amount (75.5) exceeds the invoice outstanding
+                      balance (40).
+                    errors:
+                      amount:
+                      - Allocation amount (75.5) exceeds the invoice outstanding balance
+                        (40).
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: accounting:write
       operationId: post-api-vendor-credits-vendor-credit-allocate
   /api/vendor-credits/allocate-batch:
@@ -950246,16 +951065,23 @@ paths:
       tags:
       - Vendor Deposits
       summary: Apply To Purchase Invoices
-      description: 'Apply deposit balance to one or more purchase invoices. Validated
-        by ApplyVendorDepositRequest.
-
-
-        :::info[Required scope: `accounting:write`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::'
+      description: "Apply a paid deposit's unapplied balance to one or more purchase\
+        \ invoices (bills) of the same supplier.\n\n:::info[Required scope: `accounting:write`]\n\
+        Grant this scope to your token under [Settings → Developer → Personal Access\
+        \ Tokens](https://app.sku.io/settings/api).\n:::\n\nAuthentication: Requires\
+        \ Bearer token.\n\nBody fields:\n- `applications` (array, required, min 1)\n\
+        \  - `applications.*.purchase_invoice_id` (integer, required) — an existing\
+        \ bill.\n  - `applications.*.amount_in_deposit_currency` (number, required,\
+        \ > 0) — the amount to apply, in the deposit's currency.\n\nThe request is\
+        \ all-or-nothing: if any application is refused, none of them is saved, so\
+        \ a 422 always means nothing changed. An application is refused when the deposit\
+        \ can't be applied, the bill belongs to another supplier, the amount is more\
+        \ than the deposit's unapplied balance, or the amount is more than the bill\
+        \ still owes (its total with tax, less payments, deposits and vendor credits\
+        \ already applied). The 422 body carries an `error` message that ends with\
+        \ \"Nothing was applied — correct the amount and try again.\" Use the preview\
+        \ endpoint to check an amount first.\n\nReturns the updated deposit, with\
+        \ its new `amount_applied` and `available_balance`."
       requestBody:
         content:
           application/json:
@@ -950273,9 +951099,9 @@ paths:
                         type: integer
               example:
                 applications:
-                - purchase_invoice_id: 1
+                - purchase_invoice_id: 88
                   amount_in_deposit_currency: 150
-                - purchase_invoice_id: 2
+                - purchase_invoice_id: 91
                   amount_in_deposit_currency: 75.5
       parameters:
       - name: vendorDepositId
@@ -950286,14 +951112,205 @@ paths:
         description: The vendor deposit ID.
       responses:
         '200':
-          description: Successful response
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
           content:
-            application/json: {}
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  deposit_number:
+                    type: string
+                  status:
+                    type: string
+                  status_label:
+                    type: string
+                  created_via:
+                    type: string
+                  created_via_label:
+                    type: string
+                  amount_overridden_at:
+                    type: string
+                    nullable: true
+                  supplier_id:
+                    type: integer
+                  purchase_order_id:
+                    type: integer
+                  payment_term_schedule_line_index:
+                    type: integer
+                  inbound_shipment_id:
+                    type: string
+                    nullable: true
+                  is_ownership_transfer:
+                    type: boolean
+                  related_purchase_order_id:
+                    type: string
+                    nullable: true
+                  currency_id:
+                    type: integer
+                  currency_rate:
+                    type: integer
+                  amount:
+                    type: number
+                  amount_in_tenant_currency:
+                    type: number
+                  amount_paid:
+                    type: number
+                  amount_applied:
+                    type: number
+                  amount_refunded:
+                    type: integer
+                  amount_written_off:
+                    type: integer
+                  available_balance:
+                    type: number
+                  tax_amount:
+                    type: integer
+                  deposit_date:
+                    type: string
+                  due_date:
+                    type: string
+                  paid_at:
+                    type: string
+                  external_reference:
+                    type: string
+                  vendor_invoice_number:
+                    type: string
+                  vendor_invoice_date:
+                    type: string
+                  notes:
+                    type: string
+                  attachments_count:
+                    type: integer
+                  proportional_apply_enabled:
+                    type: string
+                    nullable: true
+                  proportional_apply_effective:
+                    type: boolean
+                  proportional_apply_source:
+                    type: string
+                  auto_apply_enabled:
+                    type: string
+                    nullable: true
+                  auto_apply_effective:
+                    type: boolean
+                  approved_by:
+                    type: integer
+                  approved_at:
+                    type: string
+                  approval:
+                    type: object
+                    properties:
+                      policy_enabled:
+                        type: boolean
+                      request_id:
+                        type: integer
+                      status:
+                        type: string
+                      reason:
+                        type: string
+                      tier_name:
+                        type: string
+                      waiting_on:
+                        type: array
+                      can_approve_directly:
+                        type: string
+                        nullable: true
+                      blocked_reason:
+                        type: string
+                        nullable: true
+                  created_by:
+                    type: integer
+                  created_at:
+                    type: string
+                  updated_at:
+                    type: string
+                example:
+                  id: 23
+                  deposit_number: VD-00019
+                  status: paid
+                  status_label: Paid
+                  created_via: auto_schedule
+                  created_via_label: Auto-created from schedule
+                  amount_overridden_at: null
+                  supplier_id: 14
+                  purchase_order_id: 5
+                  payment_term_schedule_line_index: 1
+                  inbound_shipment_id: null
+                  is_ownership_transfer: false
+                  related_purchase_order_id: null
+                  currency_id: 1
+                  currency_rate: 1
+                  amount: 7810.6
+                  amount_in_tenant_currency: 7810.6
+                  amount_paid: 7810.6
+                  amount_applied: 3349.74
+                  amount_refunded: 0
+                  amount_written_off: 0
+                  available_balance: 4460.86
+                  tax_amount: 0
+                  deposit_date: '2026-04-12'
+                  due_date: '2026-05-30'
+                  paid_at: '2026-08-10T16:16:55+00:00'
+                  external_reference: WIRE-2026-0001-REV
+                  vendor_invoice_number: VN-INV-2026-0114
+                  vendor_invoice_date: '2026-06-28'
+                  notes: Revised deposit amount
+                  attachments_count: 1
+                  proportional_apply_enabled: null
+                  proportional_apply_effective: true
+                  proportional_apply_source: term
+                  auto_apply_enabled: null
+                  auto_apply_effective: true
+                  approved_by: 3
+                  approved_at: '2026-04-12T09:02:11+00:00'
+                  approval:
+                    policy_enabled: true
+                    request_id: 290
+                    status: approved
+                    reason: initial
+                    tier_name: Up to $25,000
+                    waiting_on: []
+                    can_approve_directly: null
+                    blocked_reason: null
+                  created_by: 3
+                  created_at: '2026-04-03T12:35:06+00:00'
+                  updated_at: '2026-08-19T10:12:40+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Amount Above Bill Outstanding
+                  value:
+                    error: Application amount 500.00 is more than bill INV-7781 still
+                      owes (300.00). A deposit can only settle the outstanding amount
+                      of a bill — apply 300.00 or less here and apply the rest of
+                      the deposit to another bill. Nothing was applied — correct the
+                      amount and try again.
+                example-1:
+                  summary: 422 Amount Above Deposit Balance
+                  value:
+                    error: Application amount exceeds unapplied deposit balance of
+                      120.5. Nothing was applied — correct the amount and try again.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: accounting:write
       operationId: post-api-vendor-deposits-vendordepositid-applications
   /api/vendor-deposit-applications/{applicationId}:
@@ -950349,8 +951366,13 @@ paths:
 
 
         Validation problems (deposit not applicable, supplier mismatch, amount exceeding
-        the unapplied balance) are returned in the errors and warnings arrays rather
-        than as an HTTP error.'
+        the deposit''s unapplied balance, amount exceeding what the bill still owes)
+        are returned in the errors and warnings arrays rather than as an HTTP error.
+
+
+        A deposit can only settle what the bill still owes (its total with tax, less
+        payments, deposits and vendor credits already applied). An amount above that
+        is reported in `errors`, and applying it would be refused with 422.'
       requestBody:
         content:
           application/json:
@@ -950383,82 +951405,63 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      deposit_id:
-                        type: integer
-                      purchase_invoice_id:
-                        type: integer
-                      amount_in_deposit_currency:
-                        type: integer
-                      amount_in_tenant_currency:
-                        type: integer
-                      amount_at_bill_rate:
-                        type: integer
-                      fx_gain_loss:
-                        type: integer
+              examples:
+                example-0:
+                  summary: Preview
+                  value:
+                    data:
+                      deposit_id: 42
+                      purchase_invoice_id: 88
+                      amount_in_deposit_currency: 500
+                      amount_in_tenant_currency: 500
+                      amount_at_bill_rate: 500
+                      fx_gain_loss: 0
                       deposit_balance_before:
-                        type: object
-                        properties:
-                          available:
-                            type: integer
-                          applied:
-                            type: integer
+                        available: 1500
+                        applied: 0
                       deposit_balance_after:
-                        type: object
-                        properties:
-                          available:
-                            type: integer
-                          applied:
-                            type: integer
+                        available: 1000
+                        applied: 500
                       bill_balance_before:
-                        type: object
-                        properties:
-                          outstanding:
-                            type: integer
-                          total:
-                            type: integer
-                          total_deposits_applied:
-                            type: integer
+                        outstanding: 5000
+                        total: 5000
+                        total_deposits_applied: 0
                       bill_balance_after:
-                        type: object
-                        properties:
-                          outstanding:
-                            type: integer
-                          total:
-                            type: integer
-                          total_deposits_applied:
-                            type: integer
-                      warnings:
-                        type: array
+                        outstanding: 4500
+                        total: 5000
+                        total_deposits_applied: 500
+                      warnings: []
+                      errors: []
+                example-1:
+                  summary: 200 Preview - Amount Above Bill Outstanding
+                  value:
+                    data:
+                      deposit_id: 42
+                      purchase_invoice_id: 88
+                      amount_in_deposit_currency: 500
+                      amount_in_tenant_currency: 500
+                      amount_at_bill_rate: 500
+                      fx_gain_loss: 0
+                      deposit_balance_before:
+                        available: 1500
+                        applied: 0
+                      deposit_balance_after:
+                        available: 1000
+                        applied: 500
+                      bill_balance_before:
+                        outstanding: 300
+                        total: 5000
+                        total_deposits_applied: 4700
+                      bill_balance_after:
+                        outstanding: -200
+                        total: 5000
+                        total_deposits_applied: 5200
+                      warnings: []
                       errors:
-                        type: array
-                example:
-                  data:
-                    deposit_id: 42
-                    purchase_invoice_id: 88
-                    amount_in_deposit_currency: 500
-                    amount_in_tenant_currency: 500
-                    amount_at_bill_rate: 500
-                    fx_gain_loss: 0
-                    deposit_balance_before:
-                      available: 1500
-                      applied: 0
-                    deposit_balance_after:
-                      available: 1000
-                      applied: 500
-                    bill_balance_before:
-                      outstanding: 5000
-                      total: 5000
-                      total_deposits_applied: 0
-                    bill_balance_after:
-                      outstanding: 4500
-                      total: 5000
-                      total_deposits_applied: 500
-                    warnings: []
-                    errors: []
+                      - Application amount 500.00 is more than bill INV-7781 still
+                        owes (300.00). A deposit can only settle the outstanding amount
+                        of a bill — apply 300.00 or less here and apply the rest of
+                        the deposit to another bill.
         '429': *id001
         '401': *id002
         '403': *id005
