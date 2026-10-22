@@ -49651,6 +49651,12 @@ paths:
         :::
 
 
+        For a sales-channel connection, every SKU.io sales order on its channel is
+        kept as a manual order (local channel, no channel link) with its invoices,
+        stock, shipments and accounting unchanged; an order number a manual order
+        already uses gets a channel suffix.
+
+
         Authentication: Requires Bearer token + Power User access.
 
 
@@ -58524,9 +58530,13 @@ paths:
         shipping_city, shipping_province, shipping_zip, shipping_country, shipping_phone)
         and the default billing address (billing_name, billing_company, billing_address1,
         billing_address2, billing_address3, billing_city, billing_province, billing_zip,
-        billing_country, billing_phone). Address columns are blank when the customer
-        has no default address of that type. Rows are ordered by customer ID ascending
-        and the export is not paginated - every matching customer is included.
+        billing_country, billing_phone). then the customer''s default settings (default_warehouse,
+        default_warehouse_id, default_pricing_tier, default_sales_rep, default_store,
+        default_shipping_method_domestic, default_shipping_method_international —
+        names, except the warehouse id; blank when not set). Address columns are blank
+        when the customer has no default address of that type. Rows are ordered by
+        customer ID ascending and the export is not paginated - every matching customer
+        is included.
 
 
         :::info[Required scope: `customers:read`]
@@ -86048,7 +86058,13 @@ paths:
         true when this store is the tenant default sender.
 
 
-        Authentication: Requires Bearer token (PAT).'
+        Authentication: Requires Bearer token (PAT).
+
+
+        `orders.count_90d` and `orders.revenue_90d` cover the store''s orders dated
+        in the last 90 days, leaving out draft and cancelled orders. `revenue_90d`
+        is the sum of those orders'' line revenue in the account''s base currency
+        (the same figure the sales reports use), rounded to 2 decimals.'
       parameters:
       - name: store
         in: path
@@ -98123,7 +98139,11 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.'
+        Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.
+
+
+        Customers that cannot be deleted (linked sales orders, quotes or other records)
+        are skipped; call Check Deletable Customers first to see why.'
       parameters: []
       responses:
         '200':
@@ -98428,7 +98448,11 @@ paths:
 
 
         When the customer is still referenced by other records the delete is refused
-        with 400 and nothing is deleted.'
+        with 400 and nothing is deleted.
+
+
+        A customer with quotes is also refused: archive it instead, so quote history
+        keeps its customer. Check Deletable Customers reports this under `quotes`.'
       parameters:
       - name: customer
         in: path
@@ -99086,7 +99110,11 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.'
+        Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.
+
+
+        A customer with quotes is not deletable; its `reason` carries a `quotes` entry
+        telling you to archive the customer instead.'
       requestBody:
         content:
           application/json:
@@ -99115,7 +99143,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -99142,6 +99170,33 @@ paths:
                     name: Jane Smith
                     deletable: true
                     reason: null
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        deletable:
+                          type: boolean
+                        reason:
+                          type: object
+                          properties:
+                            quotes:
+                              type: string
+                example:
+                  data:
+                  - id: 3
+                    name: Northwind Retail
+                    deletable: false
+                    reason:
+                      quotes: This customer has 3 quotes — archive it instead of deleting.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -110180,8 +110235,11 @@ paths:
       - eBay
       summary: Delete eBay Integration
       description: 'Delete an eBay integration instance. The deletion runs as a background
-        job that removes the connection and its channel data. Returns 204 immediately
-        after the job is queued.
+        job that removes the connection and its channel data. The connection''s SKU.io
+        sales orders are kept: they become manual orders (local channel, no channel
+        link) with their invoices, stock, shipments and accounting unchanged, and
+        an order number a manual order already uses gets a channel suffix (e.g. `-WOOCOMMERCE`).
+        Returns 204 immediately after the job is queued.
 
 
         :::warning[Not yet available to API tokens]
@@ -122349,7 +122407,12 @@ paths:
 
         **Important:**
 
-        - This action permanently deletes the instance and all associated data
+        - This action permanently deletes the instance and its synced Faire data
+
+        - The connection''s SKU.io sales orders are kept: they become manual orders
+        (local channel, no channel link) with their invoices, stock, shipments and
+        accounting unchanged, and an order number a manual order already uses gets
+        a channel suffix (e.g. `-WOOCOMMERCE`).
 
         - Cannot be undone
 
@@ -230341,13 +230404,16 @@ paths:
         :::
 
 
-        `AMZN,PO:<shipment reference>,MSKU:<msku>,QTY:<qty>[,EXP:<YYYY-MM-DD>],MSKU:...`
+        `AMZN,PO:<shipment reference>,<CODE>:<item id>,QTY:<qty>[,EXP:<YYMMDD>],<CODE>:...`
 
 
         The `PO:` reference is the shipment confirmation ID (FBA…) when available,
         falling back to the Amazon shipment ID, then `PLAN-{id}`. Each box item contributes
-        an `MSKU:`/`QTY:` pair; `EXP:` follows the pair it applies to when the item
-        has an expiration date.
+        an item-code/`QTY:` pair using a code Amazon''s 2D barcode sheet accepts:
+        `FNSKU:` with the listing''s FNSKU, or — when no FNSKU is known — `UPC:` /
+        `EAN:` with the product''s 12-digit UPC or 13-digit EAN barcode (the merchant
+        SKU is never encoded). `EXP:` follows the pair it applies to when the item
+        has an expiration date. All data is uppercase with no spaces.
 
 
         **Note:** this endpoint returns content STRINGS only — PDF417 graphic rendering
@@ -230360,8 +230426,10 @@ paths:
         to this draft inbound plan (404 otherwise)
 
 
-        **422 condition:** the packing group was not submitted with the `BARCODE_2D`
-        content information source.
+        **422 conditions:** the packing group was not submitted with the `BARCODE_2D`
+        content information source; or a box item has no FNSKU and no 12-digit UPC
+        / 13-digit EAN barcode (the message names the SKUs and says to sync the inbound
+        plan from Amazon or add a UPC/EAN barcode to the product).
 
 
         Returns 404 when the inbound plan (or a shipment, box, option or item nested
@@ -230421,10 +230489,10 @@ paths:
                     groups:
                     - box_id: 101
                       box_number: 1
-                      content_string: AMZN,PO:FBA15K7Q8XYZ,MSKU:WIDGET-BLUE-L,QTY:12,MSKU:WIDGET-RED-M,QTY:6,EXP:2027-01-31
+                      content_string: AMZN,PO:FBA15K7Q8XYZ,FNSKU:X0012ABCDE,QTY:12,UPC:847603044631,QTY:6,EXP:270131
                     - box_id: 102
                       box_number: 2
-                      content_string: AMZN,PO:FBA15K7Q8XYZ,MSKU:WIDGET-BLUE-L,QTY:24
+                      content_string: AMZN,PO:FBA15K7Q8XYZ,FNSKU:X0012ABCDE,QTY:24
         '404':
           description: Not Found
           headers:
@@ -241955,7 +242023,13 @@ paths:
 
 
         Returns 404 when the MCF order belongs to a different Amazon account than
-        the one in the URL.'
+        the one in the URL.
+
+
+        Returns 422 with an explanatory `message` when the MCF order cannot be reconciled
+        against the chosen sales order — an FNSKU not mapped to a product, a product
+        that is not a line on the order, a quantity mismatch, or stock that cannot
+        be reserved or deducted (not enough On Hand).'
       requestBody:
         content: {}
       parameters:
@@ -242045,10 +242119,31 @@ paths:
                 example:
                   message: MCF order S01-6837006-1120884 was mapped by someone else
                     moments ago. Refresh to see its sales order.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: failure
+                  message: 'Cannot link Amazon fulfillment order S01-6837006-1120884
+                    to sales order #5422LB: it ships HG-114 (Amazon FNSKU B08K2M1PQ4),
+                    which is not a line on this order. Link the MCF order to a sales
+                    order that contains HG-114, or add that product to this order.'
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-session-only: true
       operationId: post-api-amazon-integrationinstance-outbound-create-fulfillment-amazonfulfillmentorder-salesorder
   /api/amazon-inbound-discrepancies:
@@ -288554,7 +288649,11 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        The same 422 is returned when the stock the MCF order ships cannot be reserved
+        or deducted against the sales order (not enough On Hand).'
       requestBody:
         content:
           application/json:
@@ -289906,7 +290005,12 @@ paths:
         **Idempotent:** repeating the request for an MCF order that already produced
         a sales order returns 200 with `already_existed: true` and the same `sales_order`;
         no second order is created. A 409 is returned only when the MCF order is mapped
-        to a *different* sales order.'
+        to a *different* sales order.
+
+
+        Returns 422 with an explanatory `message` when the sales order cannot be created
+        or linked — an FNSKU not mapped to a product, or the stock it ships cannot
+        be reserved or deducted (not enough On Hand).'
       requestBody:
         content:
           application/json:
@@ -306996,7 +307100,12 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Default sort: newest Shopify creation date first (`-shopify_created_at`),
+        then `-id`. Allowed sorts: id, name, status, tracking_company, shopify_created_at,
+        shopify_updated_at (prefix with - for descending).'
       parameters:
       - name: page
         in: query
@@ -307372,7 +307481,13 @@ paths:
 
         Query parameters:
 
-        - force_submit: boolean (bypass non-production check)'
+        - force_submit: boolean (bypass non-production check)
+
+
+        Returns 422 with `success: false` and the reason when the shipment is not
+        eligible, and nothing is sent to Shopify: it was already submitted, it is
+        not fulfilled yet, it is a Click & Collect pickup, its sales order is cancelled,
+        or the order does not belong to this Shopify store.'
       requestBody:
         content:
           application/json:
@@ -307426,7 +307541,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -307437,6 +307552,18 @@ paths:
                 example:
                   success: false
                   message: Fulfillment submission failed
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                example:
+                  success: false
+                  message: 'This shipment isn''t eligible to submit: it has already
+                    been submitted to Shopify. Nothing was sent to Shopify.'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -318780,8 +318907,13 @@ paths:
 
         - process_all (boolean): process every eligible product on the instance.
 
-        - filters (object): server-side selection, e.g. {"unmapped_only": true, "created_after":
-        "2024-01-01"}.
+        - filters (object): server-side selection using the same filter names as List
+        Shopify Products, e.g. {"mapped.is": false, "vendor": "Acme"}. Products are
+        created only for the Shopify products those filters match. Allowed names:
+        id, integration_instance_id, shopify_variant_id, shopify_product_id, inventory_item_id,
+        sku, barcode, shopify_product_title, shopify_variant_title, search, vendor,
+        product_type, mapped.is, has_sku.is, in_orders.is, archived (plus the advanced
+        `filter_groups` tree).
 
 
         Response field tracked_job_log_id is the identifier of the background progress
@@ -318791,7 +318923,13 @@ paths:
 
 
         Returns 400 if no strategy is given, if more than 1000 ids are sent, or if
-        no field mappings are configured yet.'
+        no field mappings are configured yet.
+
+
+        Returns 422 when `filters` names a filter that is not supported (the message
+        lists the unknown and the allowed names) or matches no Shopify products. When
+        filters are used, the response message and `selection_summary.matching_count`
+        give the number of matching products.'
       requestBody:
         content:
           application/json:
@@ -318801,14 +318939,14 @@ paths:
                 filters:
                   type: object
                   properties:
-                    unmapped_only:
+                    mapped.is:
                       type: boolean
-                    created_after:
+                    vendor:
                       type: string
               example:
                 filters:
-                  unmapped_only: true
-                  created_after: '2024-01-01'
+                  mapped.is: false
+                  vendor: Acme
       parameters:
       - name: integrationInstance
         in: path
@@ -318847,23 +318985,26 @@ paths:
                           filters:
                             type: object
                             properties:
-                              unmapped_only:
+                              mapped.is:
                                 type: boolean
-                              created_after:
+                              vendor:
                                 type: string
+                          matching_count:
+                            type: integer
                       tracked_job_log_id:
                         type: integer
                 example:
                   data:
                     integration_instance_id: 1
-                    message: Processing filtered products - check queue status for
-                      progress
+                    message: Creating SKU products from 42 Shopify products matching
+                      the filters - check queue status for progress
                     status: queued
                     selection_summary:
                       selection_type: filtered_products
                       filters:
-                        unmapped_only: true
-                        created_after: '2024-01-01'
+                        mapped.is: false
+                        vendor: Acme
+                      matching_count: 42
                     tracked_job_log_id: 41287
         '400':
           description: Bad Request
@@ -318885,11 +319026,38 @@ paths:
                   error: No field mappings found for this integration instance
                   message: Please configure field mappings before attempting to create
                     products
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Unsupported Filters
+                  value:
+                    error: Unsupported filters
+                    message: 'These filters are not supported: unmapped_only, created_after.
+                      Use the same filter names as the Shopify products grid: id,
+                      integration_instance_id, shopify_variant_id, shopify_product_id,
+                      inventory_item_id, sku, barcode, shopify_product_title, shopify_variant_title,
+                      search, vendor, product_type, mapped.is, archived, has_sku.is,
+                      in_orders.is.'
+                example-1:
+                  summary: 422 No Matching Products
+                  value:
+                    error: No matching products
+                    message: No Shopify products match these filters, so there is
+                      nothing to create. Check the filters on the products grid first.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-shopify-integrationinstance-create-products-from-mappings
   /api/shopify/{integrationInstance}/product-mappings/csv/download:
@@ -319123,7 +319291,13 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        When Shopify refuses the request (for example the connection lost the `read_locations`
+        permission), the endpoint returns 422 with Shopify''s reason in `message`
+        and an empty `locations` list with `success: false` — never an empty success.
+        Reconnect the store, then retry.'
       parameters:
       - name: integrationInstance
         in: path
@@ -319200,6 +319374,38 @@ paths:
                         countryCode: US
                         zip: '94105'
                     success: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      locations:
+                        type: array
+                      success:
+                        type: boolean
+                example:
+                  status: failure
+                  message: 'Shopify refused the locations request: Access denied for
+                    locations field. Required access: `read_locations` access scope.
+                    (ACCESS_DENIED). Reconnect the store so SKU.io has permission
+                    to read its locations, then refresh.'
+                  data:
+                    locations: []
+                    success: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -319223,7 +319429,13 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        When Shopify refuses the request (for example the connection lost the `read_locations`
+        permission), the endpoint returns 422 with Shopify''s reason in `message`
+        and an empty `locations` list with `success: false` — never an empty success.
+        Reconnect the store, then retry.'
       requestBody:
         content: {}
       parameters:
@@ -319302,11 +319514,42 @@ paths:
                         countryCode: US
                         zip: '94105'
                     success: true
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      locations:
+                        type: array
+                      success:
+                        type: boolean
+                example:
+                  status: failure
+                  message: 'Shopify refused the locations request: Access denied for
+                    locations field. Required access: `read_locations` access scope.
+                    (ACCESS_DENIED). Reconnect the store so SKU.io has permission
+                    to read its locations, then refresh.'
+                  data:
+                    locations: []
+                    success: false
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-shopify-integrationinstance-locations
   /api/shopify/{integrationInstance}/warehouse-location-mappings:
@@ -408432,7 +408675,10 @@ paths:
       summary: Delete Instance
       description: 'Permanently delete the IntegrationInstance and its linked SalesChannel,
         data-import mapping, and API logs. Subsequent phases will extend this to also
-        clean up Magento2Order / Magento2Product rows.
+        clean up Magento2Order / Magento2Product rows. The connection''s SKU.io sales
+        orders are kept: they become manual orders (local channel, no channel link)
+        with their invoices, stock, shipments and accounting unchanged, and an order
+        number a manual order already uses gets a channel suffix (e.g. `-MAGENTO-2`).
 
 
         :::warning[Not yet available to API tokens]
@@ -586532,12 +586778,18 @@ paths:
 
 
         Filters: filter[search] (PO number or buyer name, partial), filter[processing_status]
-        (exact), filter[sales_order_id] (exact).
+        (exact), filter[sales_order_id] (exact), filter[archived] (`without` — default,
+        archived purchase orders hidden; `only`; `with`).
 
         Allowed sorts: id, po_number, po_date, buyer_name, total_amount, processing_status,
         created_at (default -id).
 
-        Pagination: page, per_page (default 10).'
+        Pagination: page, per_page (default 10).
+
+
+        Each purchase order carries `archived_at` (null unless archived). Archiving
+        is separate from deleting: an archived purchase order keeps its row and comes
+        back with Unarchive Purchase Orders.'
       parameters:
       - name: integrationInstance
         in: path
@@ -586614,6 +586866,9 @@ paths:
                         processing_errors:
                           type: string
                           nullable: true
+                        archived_at:
+                          type: string
+                          nullable: true
                         created_at:
                           type: string
                         updated_at:
@@ -586678,6 +586933,7 @@ paths:
                     currency_code: USD
                     processing_status: sales_order_created
                     processing_errors: null
+                    archived_at: null
                     created_at: '2026-09-28T14:05:11.000000Z'
                     updated_at: '2026-09-28T14:05:19.000000Z'
                     deleted_at: null
@@ -586718,7 +586974,11 @@ paths:
 
         **Request Body:**
 
-        - `ids` - Array of purchase order IDs to delete'
+        - `ids` - Array of purchase order IDs to delete
+
+
+        Deleting is separate from archiving: a deleted purchase order cannot be brought
+        back with Unarchive Purchase Orders.'
       parameters:
       - name: integrationInstance
         in: path
@@ -587274,7 +587534,13 @@ paths:
 
         **Request Body:**
 
-        - `ids` - Array of purchase order IDs to archive'
+        - `ids` - Array of purchase order IDs to archive
+
+
+        Archiving stamps `archived_at`; it does not delete. Archived purchase orders
+        are hidden from the list (unless `filter[archived]` asks for them), from the
+        statistics and from acknowledgment processing, and come back with Unarchive
+        Purchase Orders. Already-archived ids are ignored.'
       requestBody:
         content:
           application/json:
@@ -587327,7 +587593,11 @@ paths:
 
         **Request Body:**
 
-        - `ids` - Array of purchase order IDs to unarchive'
+        - `ids` - Array of purchase order IDs to unarchive
+
+
+        Clears `archived_at` on archived purchase orders. A deleted purchase order
+        is never brought back by this endpoint.'
       requestBody:
         content:
           application/json:
@@ -587392,7 +587662,10 @@ paths:
 
         - `total_amount` - Total value of orders
 
-        - `avg_line_items` - Average line items per order'
+        - `avg_line_items` - Average line items per order
+
+
+        Archived purchase orders are left out of every count.'
       parameters:
       - name: integrationInstance
         in: path
@@ -598524,8 +598797,8 @@ paths:
       tags:
       - Products
       summary: Get Bundle Potential
-      description: 'Get bundle assembly potential — how many units can be assembled
-        from current component inventory.
+      description: 'Get bundle assembly potential — how many units of a bundle or
+        kit can be assembled from current component availability.
 
 
         :::info[Required scope: `products:read`]
@@ -598539,8 +598812,26 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Returns per-warehouse breakdown and bottleneck identification. Returns empty
-        result for non-bundle/kit products.'
+        Only stock that sits together counts: each warehouse is assessed on its own
+        (`warehouses[]`, sorted by `max_assemblable` descending, each with its per-component
+        detail and bottleneck flags), and the overall `max_assemblable` is the **sum
+        of the warehouse figures** — never the minimum of company-wide component totals,
+        which would count units split across warehouses.
+
+
+        Per component in `components[]`:
+
+        - `available_inventory` — total available stock across all warehouses (shown
+        as stock, not as buildable sets).
+
+        - `max_assemblable` — how many sets this component alone could cover, summed
+        over the warehouses that hold it.
+
+        - `is_bottleneck` — true when the component limits assembly in at least one
+        warehouse (or no warehouse holds it).
+
+
+        Returns an empty result for products that are not bundles or kits.'
       parameters:
       - name: product
         in: path
@@ -598599,6 +598890,23 @@ paths:
                               type: integer
                             components:
                               type: array
+                              items:
+                                type: object
+                                properties:
+                                  product_id:
+                                    type: integer
+                                  sku:
+                                    type: string
+                                  name:
+                                    type: string
+                                  required_quantity:
+                                    type: integer
+                                  available_inventory:
+                                    type: integer
+                                  max_assemblable:
+                                    type: integer
+                                  is_bottleneck:
+                                    type: boolean
                 example:
                   data:
                     components:
@@ -598613,15 +598921,47 @@ paths:
                       sku: COMP-B
                       name: Component B
                       required_quantity: 1
-                      available_inventory: 100
-                      max_assemblable: 100
+                      available_inventory: 85
+                      max_assemblable: 85
                       is_bottleneck: true
-                    max_assemblable: 100
+                    max_assemblable: 85
                     warehouses:
                     - warehouse_id: 1
                       warehouse_name: Main Warehouse
-                      max_assemblable: 100
-                      components: []
+                      max_assemblable: 60
+                      components:
+                      - product_id: 10
+                        sku: COMP-A
+                        name: Component A
+                        required_quantity: 2
+                        available_inventory: 300
+                        max_assemblable: 150
+                        is_bottleneck: false
+                      - product_id: 11
+                        sku: COMP-B
+                        name: Component B
+                        required_quantity: 1
+                        available_inventory: 60
+                        max_assemblable: 60
+                        is_bottleneck: true
+                    - warehouse_id: 2
+                      warehouse_name: East Warehouse
+                      max_assemblable: 25
+                      components:
+                      - product_id: 10
+                        sku: COMP-A
+                        name: Component A
+                        required_quantity: 2
+                        available_inventory: 150
+                        max_assemblable: 75
+                        is_bottleneck: false
+                      - product_id: 11
+                        sku: COMP-B
+                        name: Component B
+                        required_quantity: 1
+                        available_inventory: 25
+                        max_assemblable: 25
+                        is_bottleneck: true
         '429': *id001
         '401': *id002
         '403': *id005
@@ -603732,7 +604072,17 @@ paths:
         \ total_errors, total_warnings.\n\n**Stock UoM (added 2026-05-30):** `stock_uom_code`\
         \ is now a supported field. Provide a value matching an existing UoM code\
         \ (e.g. EACH, KG, BOX). On create, it sets the product's initial stock UoM;\
-        \ on update, it flips the stock UoM to the matching uom_id."
+        \ on update, it flips the stock UoM to the matching uom_id.\n\nValidation\
+        \ also checks the kit/bundle component columns (`component_skus`, `component_ids`,\
+        \ `component_of_sku`, `component_of_id`, `recipe_component_skus`): every referenced\
+        \ product must exist or be created by the same file, and every quantity must\
+        \ be a number greater than 0 — otherwise the row gets an error such as `Component\
+        \ SKU 'WIDGET-9' not found — check the SKU, or add that product to this file.`\n\
+        \nA row whose SKU matches an existing product is an update; when the file\
+        \ maps a Type that differs from that product's current type the row carries\
+        \ the warning `Type will change from 'standard' to 'kit'.` and `_type_provided:\
+        \ true` — pass that flag through to Import Products so the type change is\
+        \ applied."
       requestBody:
         content:
           application/json:
@@ -603858,7 +604208,25 @@ paths:
         Rows may include `product_type` — the product type''s full path (e.g. `Diapering
         > Cloth diapers`), or just its leaf name when that name is unique among leaf
         types. A value that matches no type fails the row''s validation. The import
-        template includes this column.'
+        template includes this column.
+
+
+        **Upsert by SKU:** a row without a product `id` / `existing_product_id` updates
+        the existing product with the same SKU (matched case-insensitively, keeping
+        the stored spelling) instead of failing on the duplicate SKU; rows with a
+        new SKU create products.
+
+
+        **Product type on update:** send `_type_provided: true` (as returned by Validate
+        Import when the file maps a Type column) to change an existing product''s
+        `type`; without it an update keeps the product''s current type, so a file
+        with no Type column never turns a bundle or kit back into a standard product.
+
+
+        **Components:** `component_skus` / `component_ids` / `component_of_sku` /
+        `component_of_id` use `SKU->QTY, SKU2->QTY2`; quantities may be decimals (default
+        1) and SKUs match case-insensitively. Linking replaces the product''s whole
+        component list.'
       requestBody:
         content:
           application/json:
@@ -626922,7 +627290,11 @@ paths:
         Body fields: product_id (required), sales_channel_id (required), sales_channel_category_id,
         fields[], source_material[] of {label,text}, description_format, description_max_length,
         include_product_attributes, tone, target_keywords[] (max 25), additional_instructions
-        (max 500), optimize_for_rufus.'
+        (max 500), optimize_for_rufus.
+
+
+        Returns 422 when AI is turned off for the workspace (no API key for the active
+        provider); an admin turns it on in the AI Assistant settings.'
       requestBody:
         content:
           application/json:
@@ -627025,7 +627397,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -627033,6 +627405,16 @@ paths:
                     type: string
                 example:
                   message: AI Listing Content is disabled.
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: AI is turned off for this workspace. An admin can turn
+                    it on in Settings → AI Assistant by adding an API key for the
+                    active provider.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -627071,7 +627453,11 @@ paths:
         - `product_ids` (integer[], required, 1–500) — the products to enrich.
 
 
-        **Requires permission:** `products.update`'
+        **Requires permission:** `products.update`
+
+
+        Returns 422 when AI is turned off for the workspace (no API key for the active
+        provider); an admin turns it on in the AI Assistant settings.'
       requestBody:
         content:
           application/json:
@@ -627153,13 +627539,20 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                example:
-                  message: This channel has no content fields bound to a product attribute,
-                    so there is nothing to enrich. Map a content field (e.g. Short
-                    Description) to a product attribute in its template first.
+              examples:
+                example-0:
+                  summary: 422 Nothing to enrich
+                  value:
+                    message: This channel has no content fields bound to a product
+                      attribute, so there is nothing to enrich. Map a content field
+                      (e.g. Short Description) to a product attribute in its template
+                      first.
+                example-1:
+                  summary: 422 AI Turned Off
+                  value:
+                    message: AI is turned off for this workspace. An admin can turn
+                      it on in Settings → AI Assistant by adding an API key for the
+                      active provider.
         '429': *id001
         '401': *id002
       x-required-scope: products:write
@@ -705605,10 +705998,11 @@ paths:
       tags:
       - Customers
       summary: Refresh Customers
-      description: 'Dispatch the tracked job that refreshes Magento 2 customers. Returns
-        the `tracked_job_log_id` so the frontend can pivot the global JobProgressTray
-        to it. Job name prefix is `Sync Magento 2 Customers: ` — the page''s `lastCompletedJob`
-        watcher matches on this prefix.
+      description: 'Start a tracked background job that pulls Magento 2 customers
+        and their addresses (`GET /V1/customers/search`) into SKU.io. Incremental:
+        only customers updated since the newest one already stored are fetched. Returns
+        the `tracked_job_log_id`; the job reports an `error` when Magento 2 refuses
+        the request.
 
 
         :::warning[Not yet available to API tokens]
@@ -705616,12 +706010,7 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::
-
-
-        Phase 2C scope: the dispatch + tracked-job harness only. The actual `/V1/customers/search`
-        walking + upsert lands in Phase 2D — until then the job acknowledges the dispatch
-        and completes immediately with zero-counter results.'
+        :::'
       requestBody:
         content: {}
       parameters:
@@ -705668,9 +706057,9 @@ paths:
       tags:
       - Customers
       summary: Refresh Single Customer
-      description: 'Dispatch the tracked job to re-fetch a single customer. Shares
-        the `Sync Magento 2 Customers: ` job-name prefix with the bulk refresh so
-        the page''s `lastCompletedJob` watcher reacts to either run.
+      description: 'Start a tracked background job that re-fetches this one customer
+        (and its addresses) from Magento 2. The job name shares the `Sync Magento
+        2 Customers: ` prefix with the bulk refresh.
 
 
         :::warning[Not yet available to API tokens]
@@ -706391,10 +706780,14 @@ paths:
       tags:
       - Transactions
       summary: Refresh Transactions
-      description: 'Dispatch the tracked job that refreshes invoices + credit memos
-        for the instance. Returns the `tracked_job_log_id` so the frontend can pivot
-        the global JobProgressTray to it. Job name prefix is `Refresh Magento 2 Transactions:
-        ` — the page''s `lastCompletedJob` watcher matches on this prefix.
+      description: 'Start a tracked background job that pulls invoices (`GET /V1/invoices`)
+        and credit memos (`GET /V1/creditmemos`) from Magento 2 into SKU.io. The sync
+        is incremental by Magento''s `updated_at`. A document whose Magento order
+        has not been downloaded yet is skipped and counted (`skipped_no_order`); it
+        is picked up once the order sync brings the order in. Returns the `tracked_job_log_id`;
+        the job''s results report `invoices_fetched`, `invoices_saved`, `credit_memos_fetched`,
+        `credit_memos_saved` and `skipped_no_order`, or an `error` when Magento 2
+        refuses the request.
 
 
         :::warning[Not yet available to API tokens]
@@ -706402,11 +706795,7 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::
-
-
-        Phase 2C scope: dispatch harness only — the actual `/V1/invoices` + `/V1/creditmemo`
-        walking lands in Phase 2D.'
+        :::'
       requestBody:
         content: {}
       parameters:
@@ -706453,9 +706842,9 @@ paths:
       tags:
       - Transactions
       summary: Refresh Single Transaction
-      description: 'Re-fetch a single transaction from Magento — typically used when
-        the merchant reconciled / captured / refunded the row in Magento admin and
-        wants SKU.io to pick up the change without a full refresh.
+      description: 'Re-fetch a single invoice or credit memo from Magento 2 and return
+        the refreshed row — typically after it was captured or refunded in Magento
+        admin. Synchronous.
 
 
         :::warning[Not yet available to API tokens]
@@ -706466,8 +706855,8 @@ paths:
         :::
 
 
-        Currently a no-op stub (Phase 2C) — the row''s `updated_at` is touched so
-        downstream watchers see activity. Real refresh lands in Phase 2D.'
+        Returns 404 when the row does not exist on this instance, and 422 with Magento''s
+        reason when Magento 2 refuses or cannot be reached.'
       requestBody:
         content: {}
       parameters:
@@ -706613,12 +707002,28 @@ paths:
                       entity_id: 5034
                       increment_id: '1000005034'
                       grand_total: 198.45
-                  message: Transaction refresh queued.
+                  message: Transaction refreshed from Magento 2.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: 'Couldn''t refresh this transaction from Magento 2: The
+                    requested invoice doesn''t exist.'
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-magento2-integration-instances-magento2integrationinstance-transactions-txn-refresh
   /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}/push-to-accounting:
@@ -706626,10 +707031,8 @@ paths:
       tags:
       - Transactions
       summary: Push Transaction to Accounting
-      description: 'Push the transaction to the configured accounting integration
-        (QuickBooks Online / Xero / etc.). Synchronous — returns the updated row inline.
-        Repeated calls overwrite `pushed_to_accounting_at` so the UI can show ''pushed
-        N minutes ago'' deterministically.
+      description: 'Push the transaction to the connected accounting system (QuickBooks
+        Online / Xero). Synchronous — returns the updated row inline.
 
 
         :::warning[Not yet available to API tokens]
@@ -706640,8 +707043,25 @@ paths:
         :::
 
 
-        Phase 2C scope: timestamps the row only. Phase 2D will wire the real accounting-connector
-        dispatch.'
+        A Magento 2 invoice is accounted for in SKU.io by the sales order made from
+        its Magento order (or by the SKU.io sales invoice linked to that Magento invoice),
+        and a credit memo by its SKU.io sales credit — so the push syncs **that document''s
+        journal** to the accounting system rather than posting the Magento document
+        a second time. `pushed_to_accounting_at` is set only once the journal synced
+        or is queued to sync.
+
+
+        Refused with 422 on `transaction`, naming the reason, when:
+
+        - the invoice''s Magento order has no SKU.io sales order, or the credit memo
+        has no SKU.io sales credit;
+
+        - SKU.io has not posted a journal for that document yet;
+
+        - no connected accounting integration syncs that journal (connect QuickBooks
+        Online or Xero, or turn on sales sync);
+
+        - the accounting system rejected the journal (its error is included).'
       requestBody:
         content: {}
       parameters:
@@ -706786,14 +707206,495 @@ paths:
                       entity_id: 5034
                       increment_id: '1000005034'
                       grand_total: 198.45
-                  message: Transaction pushed to accounting.
+                  message: Pushed to your accounting system.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      transaction:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'This invoice can''t be pushed yet: its Magento 2 order
+                    has no SKU.io sales order. Create the sales order from the order
+                    first — its journal is what syncs to your accounting system.'
+                  errors:
+                    transaction:
+                    - 'This invoice can''t be pushed yet: its Magento 2 order has
+                      no SKU.io sales order. Create the sales order from the order
+                      first — its journal is what syncs to your accounting system.'
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-session-only: true
       operationId: post-api-magento2-integration-instances-magento2integrationinstance-transactions-txn-push-to-accounting
+  /api/magento2/integration-instances/{magento2IntegrationInstance}/invoices/{invoiceId}/push-to-accounting:
+    post:
+      tags:
+      - Transactions
+      summary: Push Invoice to Accounting
+      description: 'Push one Magento 2 invoice to the connected accounting system
+        — the same action as Push Transaction to Accounting with `type=invoice`, without
+        the `type` query string. Requires the `integrations.sync` permission.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        A Magento 2 invoice is accounted for in SKU.io by the sales order made from
+        its Magento order (or by the SKU.io sales invoice linked to that Magento invoice),
+        and a credit memo by its SKU.io sales credit — so the push syncs **that document''s
+        journal** to the accounting system rather than posting the Magento document
+        a second time. `pushed_to_accounting_at` is set only once the journal synced
+        or is queued to sync.
+
+
+        Refused with 422 on `transaction`, naming the reason, when:
+
+        - the invoice''s Magento order has no SKU.io sales order, or the credit memo
+        has no SKU.io sales credit;
+
+        - SKU.io has not posted a journal for that document yet;
+
+        - no connected accounting integration syncs that journal (connect QuickBooks
+        Online or Xero, or turn on sales sync);
+
+        - the accounting system rejected the journal (its error is included).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: magento2IntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal IntegrationInstance ID
+        example: '42'
+      - name: invoiceId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal magento2_invoices.id
+        example: '803'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      magento_entity_id:
+                        type: integer
+                      magento_increment_id:
+                        type: string
+                      type:
+                        type: string
+                      state:
+                        type: string
+                      grand_total:
+                        type: number
+                      currency:
+                        type: string
+                      payment_method:
+                        type: string
+                      order_id:
+                        type: integer
+                      order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          magento_entity_id:
+                            type: integer
+                          magento_increment_id:
+                            type: string
+                          customer_email:
+                            type: string
+                      is_pushed_to_accounting:
+                        type: boolean
+                      pushed_to_accounting_at:
+                        type: string
+                      is_reconciled:
+                        type: boolean
+                      reconciled_at:
+                        type: string
+                        nullable: true
+                      accounting_sync_enabled:
+                        type: boolean
+                      magento_admin_url:
+                        type: string
+                      magento_created_at:
+                        type: string
+                      magento_updated_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      fees:
+                        type: array
+                      total_fees:
+                        type: integer
+                      total_fee_tax:
+                        type: integer
+                      raw_magento_payload:
+                        type: object
+                        properties:
+                          entity_id:
+                            type: integer
+                          increment_id:
+                            type: string
+                          grand_total:
+                            type: number
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 803
+                    integration_instance_id: 42
+                    magento_entity_id: 5034
+                    magento_increment_id: '1000005034'
+                    type: invoice
+                    state: paid
+                    grand_total: 198.45
+                    currency: USD
+                    payment_method: stripe_payments
+                    order_id: 921
+                    order:
+                      id: 921
+                      magento_entity_id: 700912
+                      magento_increment_id: '100000921'
+                      customer_email: buyer@example.com
+                    is_pushed_to_accounting: true
+                    pushed_to_accounting_at: '2026-06-16T07:30:00+00:00'
+                    is_reconciled: false
+                    reconciled_at: null
+                    accounting_sync_enabled: true
+                    magento_admin_url: https://shop.example.com/admin/sales/invoice/view/invoice_id/5034
+                    magento_created_at: '2026-06-10T18:01:11+00:00'
+                    magento_updated_at: null
+                    created_at: '2026-06-10T18:02:01+00:00'
+                    updated_at: '2026-06-10T18:02:01+00:00'
+                    fees: []
+                    total_fees: 0
+                    total_fee_tax: 0
+                    raw_magento_payload:
+                      entity_id: 5034
+                      increment_id: '1000005034'
+                      grand_total: 198.45
+                  message: Invoice pushed to your accounting system.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      transaction:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'This invoice can''t be pushed yet: its Magento 2 order
+                    has no SKU.io sales order. Create the sales order from the order
+                    first — its journal is what syncs to your accounting system.'
+                  errors:
+                    transaction:
+                    - 'This invoice can''t be pushed yet: its Magento 2 order has
+                      no SKU.io sales order. Create the sales order from the order
+                      first — its journal is what syncs to your accounting system.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: post-api-magento2-integration-instances-magento2integrationinstance-invoices-invoiceid-push-to-accounting
+  /api/magento2/integration-instances/{magento2IntegrationInstance}/credit-memos/{memoId}/push-to-accounting:
+    post:
+      tags:
+      - Transactions
+      summary: Push Credit Memo to Accounting
+      description: 'Push one Magento 2 credit memo to the connected accounting system
+        — the same action as Push Transaction to Accounting with `type=credit_memo`,
+        without the `type` query string. Requires the `integrations.sync` permission.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        A Magento 2 invoice is accounted for in SKU.io by the sales order made from
+        its Magento order (or by the SKU.io sales invoice linked to that Magento invoice),
+        and a credit memo by its SKU.io sales credit — so the push syncs **that document''s
+        journal** to the accounting system rather than posting the Magento document
+        a second time. `pushed_to_accounting_at` is set only once the journal synced
+        or is queued to sync.
+
+
+        Refused with 422 on `transaction`, naming the reason, when:
+
+        - the invoice''s Magento order has no SKU.io sales order, or the credit memo
+        has no SKU.io sales credit;
+
+        - SKU.io has not posted a journal for that document yet;
+
+        - no connected accounting integration syncs that journal (connect QuickBooks
+        Online or Xero, or turn on sales sync);
+
+        - the accounting system rejected the journal (its error is included).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: magento2IntegrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal IntegrationInstance ID
+        example: '42'
+      - name: memoId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Internal magento2_credit_memos.id
+        example: '803'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      magento_entity_id:
+                        type: integer
+                      magento_increment_id:
+                        type: string
+                      type:
+                        type: string
+                      state:
+                        type: string
+                      grand_total:
+                        type: number
+                      currency:
+                        type: string
+                      payment_method:
+                        type: string
+                      order_id:
+                        type: integer
+                      order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          magento_entity_id:
+                            type: integer
+                          magento_increment_id:
+                            type: string
+                          customer_email:
+                            type: string
+                      is_pushed_to_accounting:
+                        type: boolean
+                      pushed_to_accounting_at:
+                        type: string
+                      is_reconciled:
+                        type: boolean
+                      reconciled_at:
+                        type: string
+                        nullable: true
+                      accounting_sync_enabled:
+                        type: boolean
+                      magento_admin_url:
+                        type: string
+                      magento_created_at:
+                        type: string
+                      magento_updated_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      fees:
+                        type: array
+                      total_fees:
+                        type: integer
+                      total_fee_tax:
+                        type: integer
+                      raw_magento_payload:
+                        type: object
+                        properties:
+                          entity_id:
+                            type: integer
+                          increment_id:
+                            type: string
+                          grand_total:
+                            type: number
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 803
+                    integration_instance_id: 42
+                    magento_entity_id: 5034
+                    magento_increment_id: '1000005034'
+                    type: credit_memo
+                    state: paid
+                    grand_total: 198.45
+                    currency: USD
+                    payment_method: stripe_payments
+                    order_id: 921
+                    order:
+                      id: 921
+                      magento_entity_id: 700912
+                      magento_increment_id: '100000921'
+                      customer_email: buyer@example.com
+                    is_pushed_to_accounting: true
+                    pushed_to_accounting_at: '2026-06-16T07:30:00+00:00'
+                    is_reconciled: false
+                    reconciled_at: null
+                    accounting_sync_enabled: true
+                    magento_admin_url: https://shop.example.com/admin/sales/invoice/view/invoice_id/5034
+                    magento_created_at: '2026-06-10T18:01:11+00:00'
+                    magento_updated_at: null
+                    created_at: '2026-06-10T18:02:01+00:00'
+                    updated_at: '2026-06-10T18:02:01+00:00'
+                    fees: []
+                    total_fees: 0
+                    total_fee_tax: 0
+                    raw_magento_payload:
+                      entity_id: 5034
+                      increment_id: '1000005034'
+                      grand_total: 198.45
+                  message: Credit memo pushed to your accounting system.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      transaction:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'This credit memo can''t be pushed yet: it has no SKU.io
+                    sales credit. Create the sales credit for the refund first — its
+                    journal is what syncs to your accounting system.'
+                  errors:
+                    transaction:
+                    - 'This credit memo can''t be pushed yet: it has no SKU.io sales
+                      credit. Create the sales credit for the refund first — its journal
+                      is what syncs to your accounting system.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: post-api-magento2-integration-instances-magento2integrationinstance-credit-memos-memoid-push-to-accounting
   /api/magento2/integration-instances/{magento2IntegrationInstance}/transactions/{txn}/reconcile:
     post:
       tags:
@@ -713416,7 +714317,16 @@ paths:
 
         `name` and `effective_from` are optional on update; omitted values keep the
         stored ones. Line ids in `output_lines`, `component_lines` and `operations`
-        must belong to this BOM; an id from another BOM is a 422.'
+        must belong to this BOM; an id from another BOM is a 422.
+
+
+        **Locked recipes:** once a manufacturing order at Confirmed or later (cancelled
+        orders excluded) has been made from this BOM, its recipe can no longer change
+        in place. A payload that touches `component_lines`, `output_lines`, `operations`,
+        `expected_yield_percent`, `cost_allocation_method`, `default_consumption_method`
+        or `is_phantom` is refused with 422 on `bom`, naming the order that locks
+        it; use Save BOM as New Version instead (the order keeps the version it was
+        made from). Header fields (`name`, notes, dates) stay editable.'
       requestBody:
         content:
           application/json:
@@ -713651,21 +714561,29 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The selected component_lines.0.id is invalid.
+                    errors:
                       component_lines.0.id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The selected component_lines.0.id is invalid.
-                  errors:
-                    component_lines.0.id:
-                    - The selected component_lines.0.id is invalid.
+                      - The selected component_lines.0.id is invalid.
+                example-1:
+                  summary: 422 Recipe Locked by Manufacturing Order
+                  value:
+                    message: This recipe is locked by manufacturing order MO-00042
+                      (in progress), which was made from it, so its lines, outputs,
+                      routing and costing can't be changed in place. Use Save as New
+                      Version to change the recipe; the order keeps the version it
+                      was made from.
+                    errors:
+                      bom:
+                      - This recipe is locked by manufacturing order MO-00042 (in
+                        progress), which was made from it, so its lines, outputs,
+                        routing and costing can't be changed in place. Use Save as
+                        New Version to change the recipe; the order keeps the version
+                        it was made from.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -714438,8 +715356,7 @@ paths:
       summary: Set BOM as Default
       description: 'Promotes the given BOM to be the default for its product/variant.
         Any other BOM currently marked default for the same product (and variant,
-        if scoped) is automatically demoted to `is_default = false`. This is the single-record
-        endpoint backing the kebab "Set as Default" action; for status transitions
+        if scoped) is automatically demoted to `is_default = false`. For status transitions
         use `activate`/`archive` instead. Returns the refreshed BOM object (200).
         No request body is required.
 
@@ -714449,7 +715366,12 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        Only an **Active** BOM can be the default: a Draft or archived BOM is refused
+        with 422 on `bom`. A Draft becomes the default when it is activated with the
+        set-as-default option.'
       requestBody:
         content:
           application/json:
@@ -714534,11 +715456,40 @@ paths:
                   archived_at: null
                   created_at: '2026-05-28T09:14:11.000000Z'
                   updated_at: '2026-05-28T11:02:48.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      bom:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Only an Active recipe can be the default. Activate this
+                    Draft recipe first — if it should be the default, activating it
+                    with "Set as Default" ticked makes it one.
+                  errors:
+                    bom:
+                    - Only an Active recipe can be the default. Activate this Draft
+                      recipe first — if it should be the default, activating it with
+                      "Set as Default" ticked makes it one.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: manufacturing:write
       operationId: post-api-manufacturing-boms-id-set-default
   /api/manufacturing/boms/{id}/current-default:
@@ -736068,7 +737019,7 @@ paths:
                       mapped_shipping_method: USPS Priority Mail
                       fulfillment_channel: null
                       customer_name:
-                        id: null
+                        id: 4821
                         name: Jane Cooper
                       customer_email: jane.cooper@example.com
                       customer_company: null
@@ -736189,7 +737140,7 @@ paths:
                       mapped_shipping_method: USPS Priority Mail
                       fulfillment_channel: null
                       customer_name:
-                        id: null
+                        id: 4821
                         name: Jane Cooper
                       customer_email: jane.cooper@example.com
                       customer_company: null
@@ -737087,8 +738038,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -737589,7 +738539,7 @@ paths:
                     fulfillment: []
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -738099,8 +739049,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -738601,7 +739550,7 @@ paths:
                     fulfillment: []
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -739102,8 +740051,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -739633,7 +740581,7 @@ paths:
                     fulfillment: []
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -740215,8 +741163,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -740717,7 +741664,7 @@ paths:
                     fulfillment: []
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -748623,7 +749570,9 @@ paths:
 
         - `customer_name`, `customer_email`, `customer_company`, `customer_phone`
         render the order''s buyer snapshot; channel orders without a stored customer
-        record still populate these.
+        record still populate these. `customer_name` is an object: `name` is the snapshot
+        name and `id` is the linked customer''s id (null only when the order has no
+        customer record, as with Amazon orders).
 
         - Monetary totals (`total`, `product_total`, `tax_total`, `discount_total`,
         etc.) are in the order currency.
@@ -749050,8 +749999,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -749821,7 +750769,7 @@ paths:
                       sales_channel_fulfillment_link: null
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -752103,7 +753051,12 @@ paths:
 
 
         Per-payout Shopify stores: filter[payout_settlement] narrows to orders settled
-        by a payout, outside payouts, or still pending.'
+        by a payout, outside payouts, or still pending.
+
+
+        Yes/no filters `has_unallocated_lines`, `past_ship_by_date`, `has_dropship`
+        and `has_unmapped_lines` honour the operator: `filter[has_dropship.is_not]=true`
+        returns the orders without dropship lines, the same as `filter[has_dropship]=false`.'
       parameters: []
       responses:
         '200':
@@ -753127,7 +754080,13 @@ paths:
         \ a PayPal payment recorded or still clearing are never deleted; they are\
         \ skipped and the response message says how many were kept. When every selected\
         \ order holds PayPal money, nothing is dispatched and the message says none\
-        \ were deleted."
+        \ were deleted.\n\nOrders whose returned stock has already been used elsewhere\
+        \ (a return receipt's units were consumed by later movements) are also kept,\
+        \ whether the ids came from `ids` or `filters`; the response message always\
+        \ reminds you that such orders are kept and should be cancelled or archived\
+        \ instead.\n\nWhen `filters` selects the orders, archived orders are left\
+        \ out unless the filters set `archived` (bare `archived` or an `archived.<operator>`\
+        \ key) — the same rows the list shows for those filters."
       parameters: []
       responses:
         '200':
@@ -753145,7 +754104,9 @@ paths:
                   message:
                     type: string
                 example:
-                  message: Sales orders are being deleted in the background.
+                  message: 'Sales orders are being deleted in the background. Orders
+                    whose returned stock has already been used elsewhere are kept:
+                    cancel or archive them instead.'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -753712,8 +754673,7 @@ paths:
                         type: object
                         properties:
                           id:
-                            type: string
-                            nullable: true
+                            type: integer
                           name:
                             type: string
                       customer_email:
@@ -754281,7 +755241,7 @@ paths:
                     fulfillment: []
                     fulfillment_channel: null
                     customer_name:
-                      id: null
+                      id: 4821
                       name: Jane Cooper
                     customer_email: jane.cooper@example.com
                     customer_company: null
@@ -757052,7 +758012,13 @@ paths:
         422 on `sales_order_lines`, carrying the reason.
 
 
-        **Requires permission:** `sales_orders.update`'
+        **Requires permission:** `sales_orders.update`
+
+
+        A `reverse_reservation` on a line that belongs to a fulfillment order already
+        submitted to a fulfillment provider is refused with 422 and an `error` message:
+        recall (cancel) that fulfillment order from the provider first, then unallocate
+        the line.'
       requestBody:
         content:
           application/json:
@@ -757165,7 +758131,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -757186,6 +758152,17 @@ paths:
                       because the sales channel fulfillment is out of sync. Stock
                       will be automatically allocated when sufficient inventory is
                       available.'
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Can't unallocate SKU WIDGET-BLUE-L — it's part of a fulfillment
+                    order that's already been submitted to a provider. Recall (cancel)
+                    that fulfillment order from the provider first, then unallocate
+                    the line.
         '429': *id001
         '401': *id002
       x-required-scope: orders:write
@@ -760237,7 +761214,10 @@ paths:
         \n:::info[Required scope: `orders:write`]\nGrant this scope to your token\
         \ under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
         :::\n\n**Requires permission:** `fulfillment_orders.ship`\n\nOn update, `fulfillment_lines.*.id`\
-        \ must be a line of this fulfillment; another fulfillment's line id is a 422."
+        \ must be a line of this fulfillment; another fulfillment's line id is a 422.\n\
+        \nWhen the new quantities cannot be reserved or deducted because there is\
+        \ not enough stock On Hand, the update is refused with 422 and a `message`\
+        \ explaining why; nothing is changed."
       requestBody:
         content:
           application/json:
@@ -760696,6 +761676,11 @@ paths:
                           the one this line ships from. Choose a bin in the shipping
                           warehouse.
                         code: PickBinInAnotherWarehouse
+                example-3:
+                  summary: 422 Not Enough Stock On Hand
+                  value:
+                    status: failure
+                    message: Review the items On Hand, current quantity can't be fulfilled
         '429': *id001
         '401': *id002
         '404': *id003
@@ -762715,6 +763700,9 @@ paths:
         - insufficient allocation to restore a shipped fulfillment (the error names
         the SKU and quantities)
 
+        - restoring a shipped fulfillment re-deducts its stock, and there is not enough
+        On Hand to do so
+
 
         Requires the `orders:write` token scope.
 
@@ -762794,35 +763782,30 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Not Restorable
+                  value:
+                    status: failure
+                    message: Shipment SO-10412.1 is not voided, so there is nothing
+                      to restore.
+                    errors:
                       id:
-                        type: array
-                        items:
-                          type: object
-                          properties:
-                            message:
-                              type: string
-                            code:
-                              type: string
-                            data:
-                              type: array
-                example:
-                  status: failure
-                  message: Shipment SO-10412.1 is not voided, so there is nothing
-                    to restore.
-                  errors:
-                    id:
-                    - message: Shipment SO-10412.1 is not voided, so there is nothing
-                        to restore.
-                      code: RestoreShipmentIsUnacceptable
-                      data: []
+                      - message: Shipment SO-10412.1 is not voided, so there is nothing
+                          to restore.
+                        code: RestoreShipmentIsUnacceptable
+                        data: []
+                example-1:
+                  summary: 422 Not Enough Stock On Hand
+                  value:
+                    status: failure
+                    message: Review the items On Hand, current quantity can't be fulfilled
+                    errors:
+                      id:
+                      - message: Review the items On Hand, current quantity can't
+                          be fulfilled
+                        code: RestoreShipmentIsUnacceptable
+                        data: []
         '429': *id001
         '401': *id002
         '404': *id003
@@ -790630,7 +791613,12 @@ paths:
         Authentication: Requires Bearer token. Requires IsPowerUserAccess middleware.
 
 
-        **Requires permission:** `suppliers.delete`'
+        **Requires permission:** `suppliers.delete`
+
+
+        Suppliers that cannot be deleted (linked bills, purchase orders, or a contractor
+        warehouse they run as a contract manufacturer) are skipped; call Check Suppliers
+        Deletable first to see why.'
       parameters: []
       responses:
         '200':
@@ -791385,7 +792373,13 @@ paths:
 
         When the supplier is still referenced by other records, or its warehouse is
         the default returns warehouse, the delete is refused with 400 and nothing
-        is deleted.'
+        is deleted.
+
+
+        A supplier that runs a contractor warehouse as a contract manufacturer is
+        not deleted: archive it instead, so the warehouse and its stock keep their
+        contractor. The refusal is reported per blocking relation (`contractorWarehouses`)
+        by Check Suppliers Deletable.'
       parameters:
       - name: supplier
         in: path
@@ -795101,7 +796095,11 @@ paths:
         per blocking relation), `reason_counts` (how many records each relation holds)
         and `reason_details` (a preview of the linked records, available for some
         relations only). Use `reason_counts` for the number of blocking records; `reason_details`
-        does not cover every relation.'
+        does not cover every relation.
+
+
+        Blocking relations include `bills` and, for a contract manufacturer, `contractorWarehouses`
+        (the warehouses it runs); both messages tell you to archive the supplier instead.'
       requestBody:
         content:
           application/json:
@@ -795129,7 +796127,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -795206,6 +796204,47 @@ paths:
                     deletable: true
                     reason: null
                     reason_counts: null
+                    reason_details: null
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        deletable:
+                          type: boolean
+                        reason:
+                          type: object
+                          properties:
+                            contractorWarehouses:
+                              type: string
+                        reason_counts:
+                          type: object
+                          properties:
+                            contractorWarehouses:
+                              type: integer
+                        reason_details:
+                          type: string
+                          nullable: true
+                example:
+                  data:
+                  - id: 14
+                    name: Acme Contract Mfg
+                    deletable: false
+                    reason:
+                      contractorWarehouses: Acme Contract Mfg is a contract manufacturer
+                        with 1 contractor warehouse — archive the supplier instead
+                        of deleting it, so the warehouse and its stock keep their
+                        contractor.
+                    reason_counts:
+                      contractorWarehouses: 1
                     reason_details: null
         '429': *id001
         '401': *id002
@@ -852448,7 +853487,8 @@ paths:
 
         **Gate.** 422 unless the FO is a Click & Collect order (`is_pickup`) currently
         at `request_status=awaiting_pickup`. 422 with `shortfalls` if `inventory_allocations`
-        don''t cover the FO''s line quantities.
+        don''t cover the FO''s line quantities. 422 with an `error` message when the
+        collected stock cannot be deducted (not enough On Hand); nothing is recorded.
 
 
         **Body fields:**
@@ -852573,10 +853613,29 @@ paths:
                   error: insufficient_permission
                   required_permissions:
                   - fulfillment_orders.ship
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Not Awaiting Pickup
+                  value:
+                    error: This fulfillment order is not awaiting pickup.
+                example-1:
+                  summary: 422 Not Enough Stock On Hand
+                  value:
+                    error: Review the items On Hand, current quantity can't be fulfilled
         '429': *id001
         '401': *id002
         '404': *id003
-        '422': *id004
       x-required-scope: orders:write
       operationId: put-api-fulfillment-orders-fulfillmentorder-mark-picked-up
   /api/fulfillment-orders/{fulfillmentOrder}/unmark-picked-up:
@@ -861269,7 +862328,16 @@ paths:
         Requires permission: `sales_orders.update`.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Digitization state:** a change of `digitization_state` must be one step
+        of the workflow: `submitted` → `digitizing` or `rejected`; `digitizing` →
+        `digitized` or `rejected`; `digitized` → `approved` or `rejected`; `rejected`
+        → `digitizing`. `approved` is final. Sending the current state is always allowed.
+        Any other change (for example `submitted` straight to `approved`) is refused
+        with 422 on `digitization_state`, naming the states the artwork can move to
+        next.'
       requestBody:
         content:
           application/json:
@@ -861349,11 +862417,38 @@ paths:
                     preview_url: https://cdn.example.com/tenant/images/artworks/acme-logo-preview.png
                     production_file_url: https://cdn.example.com/tenant/images/artworks/acme-logo.emb
                     created_at: '2026-06-13T10:00:00.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      digitization_state:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'An artwork moves one digitization step at a time: from
+                    Submitted it can go to Digitizing or Rejected, not Approved.'
+                  errors:
+                    digitization_state:
+                    - 'An artwork moves one digitization step at a time: from Submitted
+                      it can go to Digitizing or Rejected, not Approved.'
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: orders:write
       operationId: put-api-artworks-artwork
     delete:
@@ -881790,7 +882885,14 @@ paths:
         `view_as` is null for the buyer''s own session. During a merchant staff view
         it holds session_id, staff_user_id, staff_name, expires_at and can_view_margins
         (whether the staff user may see the staff-only margin overlay — a flag, never
-        a cost) — the portal shows a read-only staff-view banner from it.'
+        a cost) — the portal shows a read-only staff-view banner from it.
+
+
+        `read_only` is true when the buyer has the Viewer role. A Viewer can browse
+        the catalog, prices, orders and invoices, but every write is refused with
+        403 and `reason: "viewer_read_only"` (see the collection overview). Use the
+        flag to hide ordering, cart, list, quote, return, payment, address and feed-key
+        actions up front.'
       parameters: []
       responses:
         '200':
@@ -881816,6 +882918,8 @@ paths:
                   status:
                     type: string
                   can_order:
+                    type: boolean
+                  read_only:
                     type: boolean
                   can_approve:
                     type: boolean
@@ -881851,6 +882955,7 @@ paths:
                   role: buyer
                   status: active
                   can_order: true
+                  read_only: false
                   can_approve: false
                   can_manage_company: false
                   customer_id: 101
