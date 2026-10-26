@@ -1,18 +1,46 @@
 ---
 title: API changes — 2026-10-26
-description: This release includes 22 additions.
+description: This release includes 48 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-26
 ---
 
-This release includes 22 additions.
+This release includes 48 additions.
 
 <!-- truncate -->
 
 > 📖 Full endpoint details are in the [API reference](/docs/api/introduction).
 
 ## Added
+
+### Account Rules
+- `GET /api/product-account-map` — Get Account Map
+- `GET /api/product-account-map/anomalies` — List Account Anomalies
+- `POST /api/product-account-map/anomalies/dismiss` — Dismiss Account Anomaly
+- `POST /api/product-account-map/anomalies/use-rule` — Use Rule For All Flagged Products
+- `GET /api/product-account-rules` — List Account Rules
+- `POST /api/product-account-rules` — Create Account Rule
+- `GET /api/product-account-rules/export` — Export Account Rules
+- `POST /api/product-account-rules/import` — Import Account Rules
+- `GET /api/product-account-rules/import-template` — Get Account Rules Import Template
+- `POST /api/product-account-rules/preview` — Preview Account Rule
+- `POST /api/product-account-rules/reapply` — Re-apply Account Rules
+- `POST /api/product-account-rules/remap` — Re-map Unsynced Journal Entries
+- `POST /api/product-account-rules/reorder` — Reorder Account Rules
+- `POST /api/product-account-rules/setup/apply` — Apply Guided Setup
+- `GET /api/product-account-rules/setup/dimensions` — Get Guided Setup Dimensions
+- `POST /api/product-account-rules/setup/preview` — Preview Guided Setup
+- `DELETE /api/product-account-rules/{rule}` — Delete Account Rule
+- `GET /api/product-account-rules/{rule}` — Get Account Rule
+- `PUT /api/product-account-rules/{rule}` — Update Account Rule
+- `POST /api/product-account-rules/{rule}/activate` — Activate Account Rule
+- `POST /api/product-account-rules/{rule}/archive` — Archive Account Rule
+- `POST /api/product-account-rules/{rule}/deactivate` — Deactivate Account Rule
+- `POST /api/product-account-rules/{rule}/duplicate` — Duplicate Account Rule
+- `POST /api/product-account-rules/{rule}/unarchive` — Unarchive Account Rule
+- `GET /api/products/accounts` — Get Accounts for Products
+- `GET /api/products/{product}/accounts` — Get Product Accounts
 
 ### BILL.com
 - `GET /api/billcom/bills` — List BILL Bills
