@@ -164579,8 +164579,14 @@ paths:
         presence (a primary or any product image). `products_with_broken_image` counts
         products whose primary image was checked and found unresolvable by the on-demand
         image-health check (see POST /api/product-data-health/check-image-health).
-        `image_health_last_checked_at` is the most recent time any product image was
-        validated (UTC, ISO-8601), or null if no check has ever run.
+        `products_with_duplicate_images` counts products with an image that shows
+        the same picture as another of their images (the List Products filter `has_duplicate_images.is`
+        lists them) — only images confirmed to be the same picture count. `products_with_possible_duplicate_images`
+        counts products with an image that only looks like another of their images
+        (possibly a different shot of the same item), left for review and never removed
+        automatically (List Products filter `has_possible_duplicate_images.is`). `image_health_last_checked_at`
+        is the most recent time any product image was validated (UTC, ISO-8601), or
+        null if no check has ever run.
 
 
         Authentication: Requires Bearer token (scope: products read-write).
@@ -164780,6 +164786,10 @@ paths:
                         type: integer
                   products_with_broken_image:
                     type: integer
+                  products_with_duplicate_images:
+                    type: integer
+                  products_with_possible_duplicate_images:
+                    type: integer
                   image_health_last_checked_at:
                     type: string
                   mapped_product_listings:
@@ -164888,6 +164898,8 @@ paths:
                     bundle: 9
                     variation_child: 10
                   products_with_broken_image: 12
+                  products_with_duplicate_images: 12
+                  products_with_possible_duplicate_images: 3
                   image_health_last_checked_at: '2026-06-09T14:32:00.000000Z'
                   mapped_product_listings: 2104
                   unmapped_sales_channel_products: 96
@@ -608004,6 +608016,356 @@ paths:
         '403': *id005
       x-required-scope: products:write
       operationId: delete-api-delete-image
+  /api/products/duplicate-images/preview:
+    post:
+      tags:
+      - Products
+      summary: Preview Remove Duplicate Product Images
+      description: 'Show what removing duplicate images from a set of products would
+        do, without changing anything.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields:
+
+        - ids (array of integers, required unless apply_to_all): the products to include
+
+        - apply_to_all (boolean, optional): true to include every product matching
+        `filters` instead of `ids`
+
+        - filters (object, optional): the same filters List Products accepts, without
+        the `filter[...]` wrapper (e.g. {"has_duplicate_images.is": true})
+
+
+        Response: `products_selected`, `products_affected` (products with duplicates),
+        `images_to_remove` (only images confirmed to show the same picture — the same
+        image at another size, or a pixel-level match), `images_kept` (one per duplicate
+        group), `images_pending_fingerprint` (images not compared yet — the removal
+        reads and compares them first, so it can remove more than the preview shows)
+        `images_possible` and `products_with_possible` (images that only look like
+        another image of their product — possibly a different shot of the same item
+        — on how many products; never removed in bulk, review them per product) and
+        `samples` (up to four products with the images kept and removed).
+
+
+        **Requires permission:** `products.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                ids:
+                - 7213
+                - 7214
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  products_selected:
+                    type: integer
+                  products_affected:
+                    type: integer
+                  images_to_remove:
+                    type: integer
+                  images_kept:
+                    type: integer
+                  images_pending_fingerprint:
+                    type: integer
+                  images_possible:
+                    type: integer
+                  products_with_possible:
+                    type: integer
+                  samples:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        name:
+                          type: string
+                        keep:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              url:
+                                type: string
+                        remove:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              url:
+                                type: string
+                              duplicate_of_image_id:
+                                type: integer
+                example:
+                  products_selected: 2
+                  products_affected: 1
+                  images_to_remove: 15
+                  images_kept: 8
+                  images_pending_fingerprint: 0
+                  images_possible: 1
+                  products_with_possible: 1
+                  samples:
+                  - product_id: 7213
+                    sku: TM-522-D1CK
+                    name: Tire Mount Kit
+                    keep:
+                    - id: 8720
+                      url: https://m.media-amazon.com/images/I/81wHELrcBrL.jpg
+                    remove:
+                    - id: 8721
+                      url: https://m.media-amazon.com/images/I/51GzvZF2BBL.jpg
+                      duplicate_of_image_id: 8720
+                    - id: 8722
+                      url: https://m.media-amazon.com/images/I/51GzvZF2BBL._SL75_.jpg
+                      duplicate_of_image_id: 8720
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Select at least one product, or apply to all filtered products.
+                  errors:
+                    ids:
+                    - Select at least one product, or apply to all filtered products.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: products:write
+      operationId: post-api-products-duplicate-images-preview
+  /api/products/duplicate-images/remove:
+    post:
+      tags:
+      - Products
+      summary: Remove Duplicate Product Images
+      description: 'Remove duplicate images from a set of products in the background.
+        Returns the id of the background job; poll it under Jobs to follow progress.
+        For each product with two or more images, images not yet compared are read
+        first, then each group of images showing the same picture keeps one image:
+        the product''s primary when it is in the group, otherwise the largest original.
+        Images tagged as a variant swatch are never removed. Each product is changed
+        on its own, so a cancelled job keeps what it finished.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Every removed image is backed up; when the job completes, its results carry
+        an `undo` entry for Restore Duplicate Product Images.
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields:
+
+        - ids (array of integers, required unless apply_to_all): the products to include
+
+        - apply_to_all (boolean, optional): true to include every product matching
+        `filters` instead of `ids`
+
+        - filters (object, optional): the same filters List Products accepts, without
+        the `filter[...]` wrapper (e.g. {"has_duplicate_images.is": true})
+
+
+        **Requires permission:** `products.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apply_to_all:
+                  type: boolean
+                filters:
+                  type: object
+                  properties:
+                    has_duplicate_images.is:
+                      type: boolean
+              example:
+                apply_to_all: true
+                filters:
+                  has_duplicate_images.is: true
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 5123
+                  message: Removing duplicate images
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '422': *id004
+      x-required-scope: products:write
+      operationId: post-api-products-duplicate-images-remove
+  /api/products/duplicate-images/restore:
+    post:
+      tags:
+      - Products
+      summary: Restore Duplicate Product Images
+      description: 'Undo a Remove Duplicate Product Images run: put back every image
+        it removed, with its original id, order and flags. Only the user who started
+        the run can undo it, and only once. An image is skipped when its product was
+        deleted or the product already has that image again.
+
+
+        :::info[Required scope: `products:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields:
+
+        - tracked_job_log_id (integer, required): the job id returned by Remove Duplicate
+        Product Images
+
+
+        Errors (422): unknown job or not a duplicate-image removal; started by another
+        user; already undone; nothing was removed.
+
+
+        **Requires permission:** `products.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tracked_job_log_id:
+                  type: integer
+              example:
+                tracked_job_log_id: 5123
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      restored:
+                        type: integer
+                      skipped:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    restored: 15
+                    skipped: 0
+                  message: Restored 15 images
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This removal was already undone.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: products:write
+      operationId: post-api-products-duplicate-images-restore
   /api/products/blemished:
     post:
       tags:
@@ -612410,7 +612772,25 @@ paths:
         means the image is confirmed broken (a missing hosted file, or an external
         link that returned 404/410 on two separate checks); `resolvable: false` with
         a null `image_checked_at` is an unverified flag recorded when the image was
-        added.'
+        added.
+
+
+        Duplicates: images that show, or possibly show, the same picture form a group.
+        `duplicate_group` is the id of the image the group keeps (null when the image
+        has no duplicate). `duplicate_confidence` is `confirmed` on a copy of another
+        image — the same URL once size modifiers such as `._SL75_` or `?width=` are
+        stripped, or a pixel-level match of the same picture at another size or compression
+        — and `possible` on an image that only looks like another (a near-identical
+        perceptual hash, which a different shot of the same item can also have); null
+        on kept images. `duplicate_of_image_id` is set on confirmed copies (what a
+        dedupe removes) and `possible_duplicate_of_image_id` on possible ones (left
+        for review, never removed automatically), each pointing at the image it duplicates;
+        `duplicate_matched_by` lists how the group matched (`url`, `hash` = confirmed
+        by look, `similar` = only looks alike). The kept image is the primary when
+        it is in the group, else the largest original. `width` / `height` are the
+        pixel size read from the image (null until read), and `fingerprint_pending`
+        is true while the image has not been compared yet — it is read in the background
+        shortly after this call, so poll again to pick up hash matches.'
       parameters:
       - name: product
         in: path
@@ -612459,6 +612839,27 @@ paths:
                           type: string
                         updated_at:
                           type: string
+                        width:
+                          type: integer
+                        height:
+                          type: integer
+                        fingerprint_pending:
+                          type: boolean
+                        duplicate_group:
+                          type: integer
+                        duplicate_confidence:
+                          type: string
+                          nullable: true
+                        duplicate_of_image_id:
+                          type: string
+                          nullable: true
+                        possible_duplicate_of_image_id:
+                          type: string
+                          nullable: true
+                        duplicate_matched_by:
+                          type: array
+                          items:
+                            type: string
                 example:
                   data:
                   - id: 5
@@ -612472,6 +612873,15 @@ paths:
                     image_checked_at: '2026-10-25T14:30:00+00:00'
                     created_at: '2024-01-15T10:30:00.000000Z'
                     updated_at: '2024-01-15T10:30:00.000000Z'
+                    width: 1500
+                    height: 1500
+                    fingerprint_pending: false
+                    duplicate_group: 5
+                    duplicate_confidence: null
+                    duplicate_of_image_id: null
+                    possible_duplicate_of_image_id: null
+                    duplicate_matched_by:
+                    - hash
                   - id: 6
                     url: https://acme.sku.io/storage/images/products/widget-alt.jpg?t=acme
                     stored_url: products/widget-alt.jpg
@@ -612483,6 +612893,15 @@ paths:
                     image_checked_at: '2026-10-25T14:30:00+00:00'
                     created_at: '2024-01-15T10:31:00.000000Z'
                     updated_at: '2024-01-15T10:31:00.000000Z'
+                    width: 500
+                    height: 500
+                    fingerprint_pending: false
+                    duplicate_group: 5
+                    duplicate_confidence: confirmed
+                    duplicate_of_image_id: 5
+                    possible_duplicate_of_image_id: null
+                    duplicate_matched_by:
+                    - hash
         '429': *id001
         '401': *id002
         '403': *id005

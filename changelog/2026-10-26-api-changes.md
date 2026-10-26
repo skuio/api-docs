@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-26
-description: This release includes 48 additions.
+description: This release includes 51 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-10-26
 ---
 
-This release includes 48 additions.
+This release includes 51 additions.
 
 <!-- truncate -->
 
@@ -65,5 +65,10 @@ This release includes 48 additions.
 - `GET /api/billcom/webhook-events` — List BILL Webhook Events
 - `GET /api/billcom/webhook-events/{id}` — Get BILL Webhook Event
 - `POST /api/billcom/webhook-events/{id}/replay` — Replay BILL Webhook Event
+
+### Products
+- `POST /api/products/duplicate-images/preview` — Preview Remove Duplicate Product Images
+- `POST /api/products/duplicate-images/remove` — Remove Duplicate Product Images
+- `POST /api/products/duplicate-images/restore` — Restore Duplicate Product Images
 
 _Spec version 1.0.0 → 1.0.0._
