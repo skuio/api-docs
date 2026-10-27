@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-27
-description: This release includes 38 additions, 4 changes. 1 breaking change — action required.
+description: This release includes 47 additions, 4 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-10-27
 ---
 
-This release includes 38 additions, 4 changes. 1 breaking change — action required.
+This release includes 47 additions, 4 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -30,6 +30,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Authentication
 - `POST /api/portal/view-as/keep-alive` — Keep Staff View Alive
 
+### Branding
+- `GET /api/admin/portal/branding` — Get Portal Branding
+- `PUT /api/admin/portal/branding` — Update Portal Branding
+- `POST /api/admin/portal/branding/assets` — Upload Branding Image
+- `DELETE /api/admin/portal/branding/assets/{type}` — Remove Branding Image
+- `GET /api/portal/branding` — Get Portal Branding
+- `GET /api/portal/branding/{type}` — Get Portal Branding Image
+
 ### EasyPost
 - `GET /api/easypost/carrier-accounts` — List EasyPost Carrier Accounts
 - `GET /api/shipping-estimates/status` — Get Shipping Estimate Status
@@ -43,6 +51,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/portal/guest/quote-form` — Get Guest Quote Form
 - `POST /api/portal/quotes/guest` — Request a Quote Without an Account
 
+### Home Page
+- `GET /api/admin/portal/home` — Get Portal Home Page
+- `PUT /api/admin/portal/home` — Update Portal Home Page
+
 ### Quotes
 - `GET /api/quotes/{quote}/email-preview` — Get Quote Email Preview
 - `GET /api/quotes/{quote}/shipping-estimates` — List Quote Shipping Estimates
@@ -54,6 +66,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/sales-orders/{salesOrder}/shipping-estimates` — Estimate Sales Order Shipping
 - `POST /api/sales-orders/{salesOrder}/shipping-estimates/{shippingEstimate}/apply` — Apply Sales Order Shipping Estimate
 - `PATCH /api/sales-orders/{salesOrder}/shipping-pending-review` — Set Sales Order Shipping Pending Review
+
+### Session
+- `GET /api/portal/home` — Get Home Page
 
 ### Shipping
 - `GET /api/admin/portal/shipping` — Get Portal Shipping Settings

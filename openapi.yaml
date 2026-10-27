@@ -247,6 +247,8 @@ tags:
 - name: Inventory Feed Links
 - name: Back-in-Stock Requests
 - name: Catalogs
+- name: Branding
+- name: Home Page
 - name: Analytics
 - name: Special Order List
 - name: Shipping
@@ -904017,7 +904019,10 @@ paths:
       tags:
       - Settings
       summary: Update Portal Settings
-      description: 'Update the tenant-wide customer portal settings.
+      description: 'Update the tenant-wide customer portal settings. Every field is
+        optional: only the keys you send are changed and an omitted setting keeps
+        its stored value, so a client can save one section without resending (or reverting)
+        the others.
 
 
         :::warning[Not yet available to API tokens]
@@ -904030,12 +904035,12 @@ paths:
 
         Body fields:
 
-        - allow_backorder (required, boolean): the portal-wide default for whether
+        - allow_backorder (optional, boolean): the portal-wide default for whether
         buyers can order more than is in stock. Every account inherits it unless that
         account sets its own `allow_backorder`, and an individual product overrides
         both. Ships enabled.
 
-        - min_order_value_enabled (required, boolean): master switch for a tenant-wide
+        - min_order_value_enabled (optional, boolean): master switch for a tenant-wide
         minimum order value. When false there is no default minimum (an account may
         still set its own).
 
@@ -904059,7 +904064,17 @@ paths:
         only; channel sync is unaffected.
 
         - branding_json (optional, object or null): the merchant branding shown to
-        buyers (`logo_url`). Omit to leave unchanged.
+        buyers. Prefer the dedicated Branding endpoints (`PUT /api/admin/portal/branding`,
+        `POST /api/admin/portal/branding/assets`). Keys sent here are MERGED into
+        the stored branding — keys you omit are kept, so sending only `primary_color`
+        never wipes the logo; a key set to null resets it to the default; an explicit
+        `branding_json: null` clears all branding (and deletes uploaded images). Omit
+        to leave unchanged. Validated keys: `primary_color`, `nav_color` (6-digit
+        hex, e.g. `#1F3A2E`), `logo_url`, `mark_url` (URL, max 2048 — a hand-hosted
+        image; replacing an uploaded one deletes the uploaded file), `display_name`
+        (max 80), `support_email` (email, max 255). Unknown keys pass through unchanged;
+        `version`, `logo_path` and `mark_path` are server-managed and ignored. Colours
+        are normalised to uppercase and `version` is bumped on every branding change.
 
         - approval_default_pricing_tier_id, approval_default_payment_term_id (optional,
         id or null): what approving an application sets when the reviewer leaves the
@@ -904144,6 +904159,13 @@ paths:
                 holdback_reserve_qty:
                   type: string
                   nullable: true
+                branding_json:
+                  type: object
+                  properties:
+                    primary_color:
+                      type: string
+                    nav_color:
+                      type: string
                 approval_default_pricing_tier_id:
                   type: integer
                 approval_default_payment_term_id:
@@ -904198,6 +904220,9 @@ paths:
                 holdback_mode: percent
                 holdback_percent: 80
                 holdback_reserve_qty: null
+                branding_json:
+                  primary_color: '#1F3A2E'
+                  nav_color: '#0B0F0C'
                 approval_default_pricing_tier_id: 17
                 approval_default_payment_term_id: 6
                 approval_default_credit_limit: null
@@ -904256,6 +904281,23 @@ paths:
                       holdback_reserve_qty:
                         type: string
                         nullable: true
+                      branding_json:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          logo_path:
+                            type: string
+                          display_name:
+                            type: string
+                          support_email:
+                            type: string
+                          primary_color:
+                            type: string
+                          nav_color:
+                            type: string
+                          version:
+                            type: integer
                       approval_default_pricing_tier_id:
                         type: integer
                       approval_default_payment_term_id:
@@ -904311,6 +904353,14 @@ paths:
                     holdback_mode: percent
                     holdback_percent: null
                     holdback_reserve_qty: null
+                    branding_json:
+                      logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                      logo_path: portal-branding/logo-01jbd4w7k2m9q3r5t8v0x2z4b6.png
+                      display_name: GoDark Bags
+                      support_email: wholesale@godarkbags.com
+                      primary_color: '#1F3A2E'
+                      nav_color: '#0B0F0C'
+                      version: 8
                     approval_default_pricing_tier_id: 17
                     approval_default_payment_term_id: 6
                     approval_default_credit_limit: null
@@ -904343,21 +904393,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: Set a minimum order value, or turn the minimum off.
+                    errors:
                       min_order_value:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: Set a minimum order value, or turn the minimum off.
-                  errors:
-                    min_order_value:
-                    - Set a minimum order value, or turn the minimum off.
+                      - Set a minimum order value, or turn the minimum off.
+                example-1:
+                  summary: 422 Invalid branding colour
+                  value:
+                    message: 'Enter the brand colour as a 6-digit hex code, e.g. #1F3A2E.'
+                    errors:
+                      branding_json.primary_color:
+                      - 'Enter the brand colour as a 6-digit hex code, e.g. #1F3A2E.'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -904977,6 +905027,978 @@ paths:
         '422': *id004
       x-session-only: true
       operationId: put-api-admin-portal-accounts-customer-settings
+  /api/admin/portal/branding:
+    get:
+      tags:
+      - Branding
+      summary: Get Portal Branding
+      description: 'Get the merchant''s resolved portal branding: the stored colours,
+        display name, support email and uploaded logo / mark, with every unset value
+        filled in from the SKU defaults and the derived text colours, contrast ratios
+        and warnings computed.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Response (`data`): `logo_url`, `mark_url` (null when none uploaded), `display_name`
+        (the merchant''s chosen name, else the default store''s company name / store
+        name, else the app name), `display_name_is_default` (true when no name was
+        set), `primary_color`, `nav_color` (uppercase `#RRGGBB`; SKU defaults `#0096DD`
+        / `#1F2937` when unset), `on_primary_color`, `on_nav_color` (the readable
+        text colour for each: `#FFFFFF` or `#111827`, whichever contrasts more; the
+        unbranded defaults keep white text), `primary_contrast`, `nav_contrast` (WCAG
+        2.x contrast ratio of that text colour, one decimal, rounded down), `support_email`,
+        `version` (bumped on every branding write; append it to image URLs to bust
+        caches) and `warnings` (array of `{field, code, ratio, message}`). Warning
+        codes: `low_contrast` (a merchant-chosen colour where even the better text
+        colour is under 4.5:1) and `low_contrast_on_page` (a primary colour under
+        3:1 against the white page, since links, chips and focus rings use it). Warnings
+        never block a save.
+
+
+        Requires a staff bearer token with the `portal.manage` permission.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                      mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                      display_name: GoDark Bags
+                      display_name_is_default: false
+                      primary_color: '#1F3A2E'
+                      nav_color: '#0B0F0C'
+                      on_primary_color: '#FFFFFF'
+                      on_nav_color: '#FFFFFF'
+                      primary_contrast: 12.3
+                      nav_contrast: 19.3
+                      support_email: wholesale@godarkbags.com
+                      version: 7
+                      warnings: []
+                example-1:
+                  summary: 200 OK (unbranded defaults)
+                  value:
+                    data:
+                      logo_url: null
+                      mark_url: null
+                      display_name: GoDark Bags
+                      display_name_is_default: true
+                      primary_color: '#0096DD'
+                      nav_color: '#1F2937'
+                      on_primary_color: '#FFFFFF'
+                      on_nav_color: '#FFFFFF'
+                      primary_contrast: 3.2
+                      nav_contrast: 14.6
+                      support_email: null
+                      version: 0
+                      warnings: []
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-admin-portal-branding
+    put:
+      tags:
+      - Branding
+      summary: Update Portal Branding
+      description: 'Update the portal''s brand colours, display name and support email.
+        The logo and mark are uploaded separately (Upload Branding Image).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Body fields (all optional; an omitted key is left unchanged, `null` or a blank
+        string resets it to the SKU default):
+
+        - primary_color (string or null): brand colour as a 6-digit hex code, e.g.
+        `#1F3A2E`. Used for buttons, links, chips and focus rings. Stored uppercase.
+
+        - nav_color (string or null): navigation bar colour as a 6-digit hex code,
+        e.g. `#0B0F0C`.
+
+        - display_name (string or null, max 80): the name shown in the portal header,
+        emails and sign-in pages. Null falls back to the default store''s company
+        name.
+
+        - support_email (string or null, valid email, max 255): the contact address
+        shown to buyers. Stored lowercase.
+
+
+        The save MERGES into the stored branding (the logo and mark are never touched)
+        and bumps `version`. A low-contrast colour is saved and reported in `warnings`
+        rather than refused.
+
+
+        Response (`data`): `logo_url`, `mark_url` (null when none uploaded), `display_name`
+        (the merchant''s chosen name, else the default store''s company name / store
+        name, else the app name), `display_name_is_default` (true when no name was
+        set), `primary_color`, `nav_color` (uppercase `#RRGGBB`; SKU defaults `#0096DD`
+        / `#1F2937` when unset), `on_primary_color`, `on_nav_color` (the readable
+        text colour for each: `#FFFFFF` or `#111827`, whichever contrasts more; the
+        unbranded defaults keep white text), `primary_contrast`, `nav_contrast` (WCAG
+        2.x contrast ratio of that text colour, one decimal, rounded down), `support_email`,
+        `version` (bumped on every branding write; append it to image URLs to bust
+        caches) and `warnings` (array of `{field, code, ratio, message}`). Warning
+        codes: `low_contrast` (a merchant-chosen colour where even the better text
+        colour is under 4.5:1) and `low_contrast_on_page` (a primary colour under
+        3:1 against the white page, since links, chips and focus rings use it). Warnings
+        never block a save.
+
+
+        Requires a staff bearer token with the `portal.manage` permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                primary_color:
+                  type: string
+                nav_color:
+                  type: string
+                display_name:
+                  type: string
+                support_email:
+                  type: string
+              example:
+                primary_color: '#1F3A2E'
+                nav_color: '#0B0F0C'
+                display_name: GoDark Bags
+                support_email: wholesale@godarkbags.com
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                      mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                      display_name: GoDark Bags
+                      display_name_is_default: false
+                      primary_color: '#1F3A2E'
+                      nav_color: '#0B0F0C'
+                      on_primary_color: '#FFFFFF'
+                      on_nav_color: '#FFFFFF'
+                      primary_contrast: 12.3
+                      nav_contrast: 19.3
+                      support_email: wholesale@godarkbags.com
+                      version: 7
+                      warnings: []
+                example-1:
+                  summary: 200 OK (saved with a contrast warning)
+                  value:
+                    data:
+                      logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                      mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                      display_name: GoDark Bags
+                      display_name_is_default: false
+                      primary_color: '#C9E265'
+                      nav_color: '#0B0F0C'
+                      on_primary_color: '#111827'
+                      on_nav_color: '#FFFFFF'
+                      primary_contrast: 12.2
+                      nav_contrast: 19.3
+                      support_email: wholesale@godarkbags.com
+                      version: 8
+                      warnings:
+                      - field: primary_color
+                        code: low_contrast_on_page
+                        ratio: 1.4
+                        message: Links and outlines in this colour are hard to see
+                          on a white page (1.4:1). Try a darker shade.
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      primary_color:
+                        type: array
+                        items:
+                          type: string
+                      nav_color:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'Enter the brand colour as a 6-digit hex code, e.g. #1F3A2E.
+                    (and 1 more error)'
+                  errors:
+                    primary_color:
+                    - 'Enter the brand colour as a 6-digit hex code, e.g. #1F3A2E.'
+                    nav_color:
+                    - 'Enter the navigation colour as a 6-digit hex code, e.g. #0B0F0C.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: put-api-admin-portal-branding
+  /api/admin/portal/branding/assets:
+    post:
+      tags:
+      - Branding
+      summary: Upload Branding Image
+      description: 'Upload the portal logo or square mark (multipart/form-data). Replaces
+        the current image of that type; the old uploaded file is deleted once the
+        new one is saved.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Form fields:
+
+        - type (required): `logo` (the wide wordmark shown in the header and emails)
+        or `mark` (the square icon used where space is tight).
+
+        - file (required): PNG, JPG, WebP or SVG, at most 2 MB. A logo must be at
+        least 200 px wide; a mark at least 64 × 64 px and roughly square (at most
+        1.25:1). Pixel sizes are not checked for SVGs.
+
+
+        Raster images are re-encoded (metadata stripped) and scaled down to 1200 px
+        wide when larger. SVGs are sanitised: scripts, event handlers, external references
+        and animated hrefs are removed, and an SVG with a DOCTYPE is refused. An image
+        that cannot be read or an SVG that cannot be made safe returns 422 with the
+        reason under `errors.file`.
+
+
+        Returns the resolved branding with the new `logo_url` / `mark_url` and a bumped
+        `version`.
+
+
+        Requires a staff bearer token with the `portal.manage` permission.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  description: Required. `logo` or `mark`.
+                  example: logo
+                file:
+                  type: string
+                  description: Required. PNG, JPG, WebP or SVG, max 2 MB. Logo >=
+                    200 px wide; mark >= 64x64 and roughly square.
+                  format: binary
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      logo_url:
+                        type: string
+                      mark_url:
+                        type: string
+                      display_name:
+                        type: string
+                      display_name_is_default:
+                        type: boolean
+                      primary_color:
+                        type: string
+                      nav_color:
+                        type: string
+                      on_primary_color:
+                        type: string
+                      on_nav_color:
+                        type: string
+                      primary_contrast:
+                        type: number
+                      nav_contrast:
+                        type: number
+                      support_email:
+                        type: string
+                      version:
+                        type: integer
+                      warnings:
+                        type: array
+                example:
+                  data:
+                    logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                    mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                    display_name: GoDark Bags
+                    display_name_is_default: false
+                    primary_color: '#1F3A2E'
+                    nav_color: '#0B0F0C'
+                    on_primary_color: '#FFFFFF'
+                    on_nav_color: '#FFFFFF'
+                    primary_contrast: 12.3
+                    nav_contrast: 19.3
+                    support_email: wholesale@godarkbags.com
+                    version: 7
+                    warnings: []
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Image too large
+                  value:
+                    message: Images must be 2 MB or smaller.
+                    errors:
+                      file:
+                      - Images must be 2 MB or smaller.
+                example-1:
+                  summary: 422 Logo too narrow
+                  value:
+                    message: Logo must be at least 200 px wide.
+                    errors:
+                      file:
+                      - Logo must be at least 200 px wide.
+                example-2:
+                  summary: 422 Mark not square
+                  value:
+                    message: The mark must be square (or close to it) — it is shown
+                      in a square.
+                    errors:
+                      file:
+                      - The mark must be square (or close to it) — it is shown in
+                        a square.
+                example-3:
+                  summary: 422 Unsafe SVG
+                  value:
+                    error: That SVG could not be used. Export it again without a DOCTYPE,
+                      or upload a PNG.
+                    message: That SVG could not be used. Export it again without a
+                      DOCTYPE, or upload a PNG.
+                    errors:
+                      file:
+                      - That SVG could not be used. Export it again without a DOCTYPE,
+                        or upload a PNG.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: post-api-admin-portal-branding-assets
+  /api/admin/portal/branding/assets/{type}:
+    delete:
+      tags:
+      - Branding
+      summary: Remove Branding Image
+      description: 'Remove the uploaded logo or mark. The portal falls back to the
+        display name (logo) or its initial (mark). The stored file is deleted and
+        `version` is bumped.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Path parameter `type`: `logo` or `mark` (any other value is 404).
+
+
+        Returns the resolved branding.
+
+
+        Requires a staff bearer token with the `portal.manage` permission.'
+      parameters:
+      - name: type
+        in: path
+        schema:
+          type: string
+        required: true
+        description: '`logo` or `mark`.'
+        example: logo
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      logo_url:
+                        type: string
+                        nullable: true
+                      mark_url:
+                        type: string
+                      display_name:
+                        type: string
+                      display_name_is_default:
+                        type: boolean
+                      primary_color:
+                        type: string
+                      nav_color:
+                        type: string
+                      on_primary_color:
+                        type: string
+                      on_nav_color:
+                        type: string
+                      primary_contrast:
+                        type: number
+                      nav_contrast:
+                        type: number
+                      support_email:
+                        type: string
+                      version:
+                        type: integer
+                      warnings:
+                        type: array
+                example:
+                  data:
+                    logo_url: null
+                    mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                    display_name: GoDark Bags
+                    display_name_is_default: false
+                    primary_color: '#1F3A2E'
+                    nav_color: '#0B0F0C'
+                    on_primary_color: '#FFFFFF'
+                    on_nav_color: '#FFFFFF'
+                    primary_contrast: 12.3
+                    nav_contrast: 19.3
+                    support_email: wholesale@godarkbags.com
+                    version: 8
+                    warnings: []
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: delete-api-admin-portal-branding-assets-type
+  /api/admin/portal/home:
+    get:
+      tags:
+      - Home Page
+      summary: Get Portal Home Page
+      description: 'Get the merchant''s portal Home page configuration: where buyers
+        land after sign-in (`landing_page`: `catalog` or `home`), every stored announcement
+        (including scheduled and expired ones) and the featured products.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Each announcement carries a computed `status` — `scheduled` (starts in the
+        future), `live` (`starts_at <= now < ends_at`; a null start is live immediately,
+        a null end never expires) or `expired` — and `live_but_hidden`, true for a
+        live announcement beyond the first 3 live ones (buyers see at most 3 at once,
+        in list order). All dates are UTC ISO-8601.
+
+
+        `featured_products` lists each featured product that still exists, in display
+        order, with `sku`, `name`, `image_url` and a visibility `warning`: `archived`
+        (archived products are never shown), `not_in_catalog` (no portal catalog resolves
+        it, or it is hidden from the portal) or null. Deleted products are left out.
+        Each buyer only sees the featured products their own catalogs include, at
+        their own price.
+
+
+        Requires a staff bearer token with portal management permission.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      landing_page:
+                        type: string
+                      featured_title:
+                        type: string
+                      featured_product_ids:
+                        type: array
+                        items:
+                          type: integer
+                      featured_products:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            image_url:
+                              type: string
+                            archived:
+                              type: boolean
+                            visible:
+                              type: boolean
+                            warning:
+                              type: string
+                              nullable: true
+                      announcements:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            tone:
+                              type: string
+                            title:
+                              type: string
+                            body:
+                              type: string
+                            cta_label:
+                              type: string
+                            cta_url:
+                              type: string
+                            starts_at:
+                              type: string
+                            ends_at:
+                              type: string
+                              nullable: true
+                            pinned:
+                              type: boolean
+                            updated_at:
+                              type: string
+                            status:
+                              type: string
+                            live_but_hidden:
+                              type: boolean
+                      limits:
+                        type: object
+                        properties:
+                          announcements:
+                            type: integer
+                          announcements_shown:
+                            type: integer
+                          featured_products:
+                            type: integer
+                example:
+                  data:
+                    landing_page: home
+                    featured_title: New this month
+                    featured_product_ids:
+                    - 1204
+                    - 987
+                    featured_products:
+                    - id: 1204
+                      sku: FP-340-E85
+                      name: 340 LPH E85 Fuel Pump
+                      image_url: https://cdn.example.com/products/fp-340.jpg
+                      archived: false
+                      visible: true
+                      warning: null
+                    - id: 987
+                      sku: WH-KIT-01
+                      name: Universal Wiring Harness
+                      image_url: null
+                      archived: true
+                      visible: false
+                      warning: archived
+                    announcements:
+                    - id: 01JB8Z4Q2W5R7T9Y1U3I5O7P9A
+                      tone: promotion
+                      title: New EU warehouse
+                      body: Order EU stock with **2-day delivery** across the EU.
+                      cta_label: Shop EU stock
+                      cta_url: /catalog?warehouse=eu
+                      starts_at: '2026-10-26T18:00:00Z'
+                      ends_at: null
+                      pinned: false
+                      updated_at: '2026-10-26T18:00:00Z'
+                      status: live
+                      live_but_hidden: false
+                    - id: 01JB8Z9K3M6N8B2V4C6X8Z0L1K
+                      tone: important
+                      title: Closed for the holiday on Nov 27
+                      body: null
+                      cta_label: null
+                      cta_url: null
+                      starts_at: '2026-11-20T00:00:00Z'
+                      ends_at: '2026-11-28T00:00:00Z'
+                      pinned: true
+                      updated_at: '2026-10-27T09:12:44Z'
+                      status: scheduled
+                      live_but_hidden: false
+                    limits:
+                      announcements: 10
+                      announcements_shown: 3
+                      featured_products: 12
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-admin-portal-home
+    put:
+      tags:
+      - Home Page
+      summary: Update Portal Home Page
+      description: "Replace the portal Home page configuration. The whole configuration\
+        \ is replaced: send every announcement and featured product to keep. Branding\
+        \ is a separate setting and is never touched.\n\n:::warning[Not yet available\
+        \ to API tokens]\nThis endpoint currently requires session authentication;\
+        \ Personal Access Token scope support is in progress.\n:::\n\nBody fields:\n\
+        - landing_page (required, `catalog` or `home`): where buyers land after sign-in.\
+        \ A deep link always wins.\n- featured_title (optional, string up to 60 characters,\
+        \ or null): heading over the featured products. Null shows \"Featured\".\n\
+        - featured_product_ids (required, array, may be empty, at most 12): product\
+        \ ids in display order. Each must be a distinct, existing product.\n- announcements\
+        \ (required, array, may be empty, at most 10), in display order. Each item:\n\
+        \  - id (optional, string or null): the announcement's id from a previous\
+        \ response. Null (or an unknown id) creates a new announcement with a new\
+        \ id.\n  - tone (required): `info`, `promotion` or `important`.\n  - title\
+        \ (required, string up to 120 characters).\n  - body (optional, Markdown up\
+        \ to 2,000 characters). Raw HTML is stripped when shown to buyers.\n  - cta_label\
+        \ (string up to 30 characters; required when cta_url is set).\n  - cta_url\
+        \ (required when cta_label is set): an `https://` URL or a portal path starting\
+        \ with `/` (for example `/catalog`). `http:`, `javascript:`, `data:` and `//host`\
+        \ links are rejected.\n  - starts_at (optional, ISO-8601 date-time or null):\
+        \ when it goes live; null = now. A value without an offset is read as UTC.\n\
+        \  - ends_at (optional, ISO-8601 date-time or null): must be after starts_at;\
+        \ null = never expires.\n  - pinned (optional, boolean, default false): pinned\
+        \ announcements cannot be dismissed by buyers.\n\nAn existing announcement\
+        \ keeps its `updated_at` unless its content changed, so buyers who dismissed\
+        \ it don't see it again after an unrelated save. Dates are stored in UTC.\n\
+        \nReturns the same shape as Get Portal Home Page."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                landing_page:
+                  type: string
+                featured_title:
+                  type: string
+                featured_product_ids:
+                  type: array
+                  items:
+                    type: integer
+                announcements:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      tone:
+                        type: string
+                      title:
+                        type: string
+                      body:
+                        type: string
+                      cta_label:
+                        type: string
+                      cta_url:
+                        type: string
+                      starts_at:
+                        type: string
+                      ends_at:
+                        type: string
+                        nullable: true
+                      pinned:
+                        type: boolean
+              example:
+                landing_page: home
+                featured_title: New this month
+                featured_product_ids:
+                - 1204
+                - 987
+                announcements:
+                - id: 01JB8Z4Q2W5R7T9Y1U3I5O7P9A
+                  tone: promotion
+                  title: New EU warehouse
+                  body: Order EU stock with **2-day delivery** across the EU.
+                  cta_label: Shop EU stock
+                  cta_url: /catalog?warehouse=eu
+                  starts_at: '2026-10-26T18:00:00Z'
+                  ends_at: null
+                  pinned: false
+                - id: null
+                  tone: important
+                  title: Closed for the holiday on Nov 27
+                  body: null
+                  cta_label: null
+                  cta_url: null
+                  starts_at: '2026-11-20T00:00:00Z'
+                  ends_at: '2026-11-28T00:00:00Z'
+                  pinned: true
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      landing_page:
+                        type: string
+                      featured_title:
+                        type: string
+                      featured_product_ids:
+                        type: array
+                        items:
+                          type: integer
+                      featured_products:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            sku:
+                              type: string
+                            name:
+                              type: string
+                            image_url:
+                              type: string
+                            archived:
+                              type: boolean
+                            visible:
+                              type: boolean
+                            warning:
+                              type: string
+                              nullable: true
+                      announcements:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            tone:
+                              type: string
+                            title:
+                              type: string
+                            body:
+                              type: string
+                            cta_label:
+                              type: string
+                            cta_url:
+                              type: string
+                            starts_at:
+                              type: string
+                            ends_at:
+                              type: string
+                              nullable: true
+                            pinned:
+                              type: boolean
+                            updated_at:
+                              type: string
+                            status:
+                              type: string
+                            live_but_hidden:
+                              type: boolean
+                      limits:
+                        type: object
+                        properties:
+                          announcements:
+                            type: integer
+                          announcements_shown:
+                            type: integer
+                          featured_products:
+                            type: integer
+                example:
+                  data:
+                    landing_page: home
+                    featured_title: New this month
+                    featured_product_ids:
+                    - 1204
+                    - 987
+                    featured_products:
+                    - id: 1204
+                      sku: FP-340-E85
+                      name: 340 LPH E85 Fuel Pump
+                      image_url: https://cdn.example.com/products/fp-340.jpg
+                      archived: false
+                      visible: true
+                      warning: null
+                    - id: 987
+                      sku: WH-KIT-01
+                      name: Universal Wiring Harness
+                      image_url: null
+                      archived: true
+                      visible: false
+                      warning: archived
+                    announcements:
+                    - id: 01JB8Z4Q2W5R7T9Y1U3I5O7P9A
+                      tone: promotion
+                      title: New EU warehouse
+                      body: Order EU stock with **2-day delivery** across the EU.
+                      cta_label: Shop EU stock
+                      cta_url: /catalog?warehouse=eu
+                      starts_at: '2026-10-26T18:00:00Z'
+                      ends_at: null
+                      pinned: false
+                      updated_at: '2026-10-26T18:00:00Z'
+                      status: live
+                      live_but_hidden: false
+                    - id: 01JB8Z9K3M6N8B2V4C6X8Z0L1K
+                      tone: important
+                      title: Closed for the holiday on Nov 27
+                      body: null
+                      cta_label: null
+                      cta_url: null
+                      starts_at: '2026-11-20T00:00:00Z'
+                      ends_at: '2026-11-28T00:00:00Z'
+                      pinned: true
+                      updated_at: '2026-10-27T09:12:44Z'
+                      status: scheduled
+                      live_but_hidden: false
+                    limits:
+                      announcements: 10
+                      announcements_shown: 3
+                      featured_products: 12
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      announcements.0.cta_url:
+                        type: array
+                        items:
+                          type: string
+                      announcements.1.ends_at:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The button link must start with https:// or be a portal
+                    path starting with / (for example /catalog). (and 1 more error)
+                  errors:
+                    announcements.0.cta_url:
+                    - The button link must start with https:// or be a portal path
+                      starting with / (for example /catalog).
+                    announcements.1.ends_at:
+                    - The end date must be after the start date.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: put-api-admin-portal-home
   /api/admin/portal/analytics:
     get:
       tags:
@@ -908798,6 +909820,161 @@ paths:
         '404': *id003
       x-session-only: true
       operationId: get-api-portal-register-token-status
+  /api/portal/branding:
+    get:
+      tags:
+      - Branding
+      summary: Get Portal Branding
+      description: 'Get the merchant''s portal branding for the pages a buyer sees
+        before signing in (sign-in, register, accept-invite). No authentication: the
+        tenant is resolved from the portal host.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Returns the buyer-safe subset only (`data`): `logo_url`, `mark_url` (null
+        when none uploaded), `display_name` (falls back to the merchant''s store name),
+        `primary_color`, `nav_color` (uppercase `#RRGGBB`; SKU defaults `#0096DD`
+        / `#1F2937` when unset), `on_primary_color`, `on_nav_color` (the readable
+        text colour on each: `#FFFFFF` or `#111827`), `support_email` and `version`
+        (bumped on every branding change; append it to image URLs to bust caches).
+        Contrast ratios, warnings and whether the name was defaulted are staff-only
+        and never returned here.
+
+
+        Cacheable: the response carries `Cache-Control: public, max-age=300`. Rate
+        limited to 60 requests per minute. Signed-in buyers get the same object as
+        `branding` on Get Current Buyer.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+            Cache-Control:
+              schema:
+                type: string
+                example: max-age=300, public
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      logo_url:
+                        type: string
+                      mark_url:
+                        type: string
+                      display_name:
+                        type: string
+                      primary_color:
+                        type: string
+                      nav_color:
+                        type: string
+                      on_primary_color:
+                        type: string
+                      on_nav_color:
+                        type: string
+                      support_email:
+                        type: string
+                      version:
+                        type: integer
+                example:
+                  data:
+                    logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                    mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                    display_name: GoDark Bags
+                    primary_color: '#1F3A2E'
+                    nav_color: '#0B0F0C'
+                    on_primary_color: '#FFFFFF'
+                    on_nav_color: '#FFFFFF'
+                    support_email: wholesale@godarkbags.com
+                    version: 7
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-portal-branding
+  /api/portal/branding/{type}:
+    get:
+      tags:
+      - Branding
+      summary: Get Portal Branding Image
+      description: 'The merchant''s uploaded portal logo or square mark, as the image
+        file itself. Public — no token needed; the tenant comes from the host — so
+        sign-in pages and email clients can load it. This is the URL that `logo_url`
+        / `mark_url` point to for uploaded images.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Responds with the image (`image/png`, `image/jpeg`, `image/webp` or a sanitised
+        `image/svg+xml`) and `Cache-Control: public, max-age=86400`. Returns 404 when
+        no image of that type has been uploaded. Rate limited to 240 requests per
+        minute.'
+      parameters:
+      - name: type
+        in: path
+        schema:
+          type: string
+        required: true
+        description: '`logo` (the wide logo) or `mark` (the square mark).'
+        example: logo
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: image/png
+            Cache-Control:
+              schema:
+                type: string
+                example: max-age=86400, public
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: (binary image data)
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-portal-branding-type
   /api/portal/me:
     get:
       tags:
@@ -908806,10 +909983,16 @@ paths:
       description: 'Return the authenticated buyer and the customer account they order
         for. A buyer belongs to exactly one account, so there is nothing to switch
         between — ship-to is chosen from the account''s address book at checkout.
-        `branding` carries the merchant''s tenant-wide portal branding. `account.allow_backorder`
-        is the resolved answer for this account — the account''s own override if it
-        has one, otherwise the merchant''s portal-wide default. An individual product
-        can still differ; read `availability.backorderable` per catalog line.
+        `branding` is the merchant''s resolved, buyer-safe portal branding — the same
+        object as Get Portal Branding (`logo_url`, `mark_url`, `display_name`, `primary_color`,
+        `nav_color`, `on_primary_color`, `on_nav_color`, `support_email`, `version`),
+        with SKU defaults filled in. `landing_page` is where the portal sends the
+        buyer after sign-in: `catalog` or `home`. `special_order_list.available` says
+        whether the merchant''s Special order list is on (and non-empty), so the nav
+        entry can show without another request. `account.allow_backorder` is the resolved
+        answer for this account — the account''s own override if it has one, otherwise
+        the merchant''s portal-wide default. An individual product can still differ;
+        read `availability.backorderable` per catalog line.
 
 
         :::warning[Not yet available to API tokens]
@@ -908890,6 +910073,29 @@ paths:
                     properties:
                       logo_url:
                         type: string
+                      mark_url:
+                        type: string
+                      display_name:
+                        type: string
+                      primary_color:
+                        type: string
+                      nav_color:
+                        type: string
+                      on_primary_color:
+                        type: string
+                      on_nav_color:
+                        type: string
+                      support_email:
+                        type: string
+                      version:
+                        type: integer
+                  landing_page:
+                    type: string
+                  special_order_list:
+                    type: object
+                    properties:
+                      available:
+                        type: boolean
                   view_as:
                     type: string
                     nullable: true
@@ -908911,7 +910117,18 @@ paths:
                     currency_code: USD
                     availability_display: exact
                   branding:
-                    logo_url: https://cdn.example.com/merchant/logo.png
+                    logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                    mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                    display_name: GoDark Bags
+                    primary_color: '#1F3A2E'
+                    nav_color: '#0B0F0C'
+                    on_primary_color: '#FFFFFF'
+                    on_nav_color: '#FFFFFF'
+                    support_email: wholesale@godarkbags.com
+                    version: 7
+                  landing_page: home
+                  special_order_list:
+                    available: false
                   view_as: null
         '429': *id001
         '401': *id002
@@ -908999,6 +910216,29 @@ paths:
                     properties:
                       logo_url:
                         type: string
+                      mark_url:
+                        type: string
+                      display_name:
+                        type: string
+                      primary_color:
+                        type: string
+                      nav_color:
+                        type: string
+                      on_primary_color:
+                        type: string
+                      on_nav_color:
+                        type: string
+                      support_email:
+                        type: string
+                      version:
+                        type: integer
+                  landing_page:
+                    type: string
+                  special_order_list:
+                    type: object
+                    properties:
+                      available:
+                        type: boolean
                   view_as:
                     type: string
                     nullable: true
@@ -909024,13 +910264,311 @@ paths:
                     min_order_value: '250.00'
                     allow_backorder: true
                   branding:
-                    logo_url: https://cdn.example.com/merchant/logo.png
+                    logo_url: https://godark.sku.io/api/portal/branding/logo?v=7
+                    mark_url: https://godark.sku.io/api/portal/branding/mark?v=7
+                    display_name: GoDark Bags
+                    primary_color: '#1F3A2E'
+                    nav_color: '#0B0F0C'
+                    on_primary_color: '#FFFFFF'
+                    on_nav_color: '#FFFFFF'
+                    support_email: wholesale@godarkbags.com
+                    version: 7
+                  landing_page: home
+                  special_order_list:
+                    available: false
                   view_as: null
         '429': *id001
         '401': *id002
         '403': *id005
       x-session-only: true
       operationId: get-api-portal-auth-profile
+  /api/portal/home:
+    get:
+      tags:
+      - Session
+      summary: Get Home Page
+      description: 'Get the signed-in buyer''s Home page.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        - announcements: the merchant''s live announcements (at most 3, in the merchant''s
+        order). `body_html` is the Markdown body rendered to sanitised HTML. Use `id`
+        + `updated_at` to remember a dismissal; `pinned` ones cannot be dismissed.
+
+        - stats: `open_orders` (not shipped, complete or cancelled), `quotes_awaiting`
+        (sent and not yet accepted, declined or expired), `approvals_waiting` (orders
+        waiting on this buyer''s approval) and `outstanding_balance` (`amount`, `currency`,
+        `overdue_count`). A null stat does not apply to this buyer — for example `approvals_waiting`
+        when the buyer cannot approve, or `outstanding_balance` when the account has
+        never been invoiced. 0 means it applies and is empty.
+
+        - featured: the section `title` and the featured products this buyer''s catalogs
+        include, in the merchant''s order, each in the same shape and at the same
+        price as List Catalog Products. Products outside the buyer''s catalogs or
+        archived are left out.
+
+        - recent_orders: the last 3 orders with buyer-facing `status`; `can_reorder`
+        is false for read-only buyers.
+
+        - saved_lists: the 3 most recently updated saved lists with their `line_count`.
+
+
+        Each section is loaded independently: if one fails it is returned as null
+        and the rest still load. An account in preview gets announcements, featured
+        products and quotes only — `recent_orders` and `saved_lists` are empty and
+        the other stats are null.
+
+
+        Requires a portal buyer bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      announcements:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            tone:
+                              type: string
+                            title:
+                              type: string
+                            body_html:
+                              type: string
+                            cta_label:
+                              type: string
+                            cta_url:
+                              type: string
+                            pinned:
+                              type: boolean
+                            updated_at:
+                              type: string
+                      stats:
+                        type: object
+                        properties:
+                          open_orders:
+                            type: integer
+                          quotes_awaiting:
+                            type: integer
+                          approvals_waiting:
+                            type: string
+                            nullable: true
+                          outstanding_balance:
+                            type: object
+                            properties:
+                              amount:
+                                type: number
+                              currency:
+                                type: string
+                              overdue_count:
+                                type: integer
+                      featured:
+                        type: object
+                        properties:
+                          title:
+                            type: string
+                          products:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                name:
+                                  type: string
+                                description:
+                                  type: string
+                                  nullable: true
+                                type:
+                                  type: string
+                                is_variation:
+                                  type: boolean
+                                is_parent:
+                                  type: boolean
+                                brand:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: integer
+                                    name:
+                                      type: string
+                                category:
+                                  type: string
+                                  nullable: true
+                                image_url:
+                                  type: string
+                                unit_price:
+                                  type: integer
+                                currency_code:
+                                  type: string
+                                price_source:
+                                  type: string
+                                breaks:
+                                  type: array
+                                net_price:
+                                  type: boolean
+                                availability:
+                                  type: object
+                                  properties:
+                                    mode:
+                                      type: string
+                                    status:
+                                      type: string
+                                    available_qty:
+                                      type: string
+                                      nullable: true
+                                    lead_time_days:
+                                      type: string
+                                      nullable: true
+                                    restock_date:
+                                      type: string
+                                      nullable: true
+                                    backorderable:
+                                      type: boolean
+                                    special_order:
+                                      type: boolean
+                                    lead_time_max_days:
+                                      type: string
+                                      nullable: true
+                                    lead_time_label:
+                                      type: string
+                                      nullable: true
+                                moq:
+                                  type: integer
+                                order_increment:
+                                  type: integer
+                                back_in_stock_subscribed:
+                                  type: boolean
+                      recent_orders:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            number:
+                              type: string
+                            placed_at:
+                              type: string
+                            total:
+                              type: integer
+                            currency:
+                              type: string
+                            status:
+                              type: string
+                            status_label:
+                              type: string
+                            item_count:
+                              type: integer
+                            can_reorder:
+                              type: boolean
+                      saved_lists:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            line_count:
+                              type: integer
+                example:
+                  data:
+                    announcements:
+                    - id: 01JB8Z4Q2W5R7T9Y1U3I5O7P9A
+                      tone: promotion
+                      title: New EU warehouse
+                      body_html: <p>Order EU stock with <strong>2-day delivery</strong>
+                        across the EU.</p>
+                      cta_label: Shop EU stock
+                      cta_url: /catalog?warehouse=eu
+                      pinned: false
+                      updated_at: '2026-10-26T18:00:00Z'
+                    stats:
+                      open_orders: 2
+                      quotes_awaiting: 1
+                      approvals_waiting: null
+                      outstanding_balance:
+                        amount: 1840.5
+                        currency: USD
+                        overdue_count: 0
+                    featured:
+                      title: New this month
+                      products:
+                      - id: 1204
+                        sku: FP-340-E85
+                        name: 340 LPH E85 Fuel Pump
+                        description: null
+                        type: standard
+                        is_variation: false
+                        is_parent: false
+                        brand:
+                          id: 12
+                          name: Walbro
+                        category: null
+                        image_url: https://cdn.example.com/products/fp-340.jpg
+                        unit_price: 189
+                        currency_code: USD
+                        price_source: tier
+                        breaks: []
+                        net_price: false
+                        availability:
+                          mode: status
+                          status: in_stock
+                          available_qty: null
+                          lead_time_days: null
+                          restock_date: null
+                          backorderable: false
+                          special_order: false
+                          lead_time_max_days: null
+                          lead_time_label: null
+                        moq: 1
+                        order_increment: 1
+                        back_in_stock_subscribed: false
+                    recent_orders:
+                    - id: 991
+                      number: SO-10234
+                      placed_at: '2026-10-20'
+                      total: 1200
+                      currency: USD
+                      status: shipped
+                      status_label: Shipped
+                      item_count: 4
+                      can_reorder: true
+                    saved_lists:
+                    - id: 4
+                      name: Monthly restock
+                      line_count: 12
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-portal-home
   /api/portal/catalog/products:
     get:
       tags:
@@ -1018983,6 +1020521,8 @@ x-tagGroups:
   - Inventory Feed Links
   - Back-in-Stock Requests
   - Catalogs
+  - Branding
+  - Home Page
   - Analytics
   - Special Order List
   - Shipping
