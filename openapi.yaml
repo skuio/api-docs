@@ -106,6 +106,8 @@ tags:
 - name: Sales Channels
 - name: Channel Partners
 - name: Store Email Templates
+- name: Store Email Layouts
+- name: Email Assets
 - name: Sales Channel Product Templates
 - name: Sales Channel Listing Profiles
 - name: Sub Sales Channels
@@ -106119,7 +106121,7 @@ paths:
       tags:
       - Store Email Templates
       summary: List Store Email Templates
-      description: 'Returns a paginated listing of store email templates.
+      description: 'Lists store email templates.
 
 
         :::info[Required scope: `settings:read`]
@@ -106133,37 +106135,47 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        Sort fields: subject, type, store_id, enabled, sent_type, is_system_template,
-        created_at, updated_at, archived_at
+        With `page` and/or `per_page` the response is a Laravel paginator (`data`,
+        `current_page`, `last_page`, `per_page`, `total`, …) filtered and sorted server-side:
+        top-level `search` and `archived`, quick filters `filter[context]`, `filter[store_id]`
+        (comma lists), `filter[sent_type]` (automatic|manual), `filter[enabled]` (1|0),
+        `filter[source]` (default|customised), the advanced filters over id, subject,
+        updated_at and created_at (`filter[subject.contains]=…`, or a base64 `filter_groups`
+        tree) and `sort` (id, subject, updated_at, created_at; `-` = descending).
 
 
-        `filter[store_id]` narrows the list to one store''s templates. When an email
-        is sent, the order''s store''s own template of that type is used; stores without
-        one use the account default (the default store''s template).'
+        Without `page`/`per_page` it returns every matching row wrapped as `{status,
+        data: [...]}` (filters: `filter[type]`, `filter[id]`, `filter[store_id]`,
+        `archived`, and the legacy `filters` filterSet) — the shape the send dialogs
+        rely on.'
       parameters:
       - name: page
         in: query
         schema:
           type: integer
-        description: Page number
+        description: 'Page number. Sending `page` or `per_page` returns a paginator;
+          omit both for the legacy unpaginated `{status, data: [...]}` list the send
+          dialogs use'
         example: '1'
-      - name: limit
+      - name: per_page
         in: query
         schema:
           type: integer
-        description: Records per page
-        example: '15'
+        description: Rows per page (default 10, max 500)
+        example: '10'
       - name: sort
         in: query
         schema:
           type: string
-        description: Sort field (prefix with - for descending)
-        example: subject
+        description: id | subject | updated_at | created_at; prefix with - for descending
+          (default id)
+        example: -updated_at
       - name: search
         in: query
         schema:
           type: string
-        description: Search by subject or type
+        description: Matches id (numeric), subject, name, type, context or event
+        example: order
       responses:
         '200':
           description: OK
@@ -106176,72 +106188,51 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                  data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        store_id:
-                          type: integer
-                        type:
-                          type: string
-                        subject:
-                          type: string
-                        title:
-                          type: string
-                        enabled:
-                          type: boolean
-                        attach_pdf:
-                          type: boolean
-                        sent_type:
-                          type: string
-                        is_system_template:
-                          type: boolean
-                        cc:
-                          type: array
-                          items:
-                            type: string
-                        archived_at:
-                          type: string
-                          nullable: true
-                        updated_at:
-                          type: string
-                        created_at:
-                          type: string
-                  current_page:
-                    type: integer
-                  last_page:
-                    type: integer
-                  per_page:
-                    type: integer
-                  total:
-                    type: integer
-                example:
-                  status: success
-                  data:
-                  - id: 1
-                    store_id: 3
-                    type: purchase_order
-                    subject: 'Your Purchase Order #{{order_number}}'
-                    title: 'Your Purchase Order #{{order_number}}'
-                    enabled: true
-                    attach_pdf: true
-                    sent_type: automatically
-                    is_system_template: true
-                    cc:
-                    - purchasing@company.com
-                    archived_at: null
-                    updated_at: '2024-05-15T09:00:00.000000Z'
-                    created_at: '2024-01-01T00:00:00.000000Z'
-                  current_page: 1
-                  last_page: 1
-                  per_page: 15
-                  total: 5
+              examples:
+                example-0:
+                  summary: 200 Success (paginated)
+                  value:
+                    current_page: 1
+                    data:
+                    - id: 12
+                      store_id: 3
+                      store:
+                        id: 3
+                        name: Siber Outdoor
+                      type: sales_order_confirmation
+                      context: sales_order
+                      event: confirmation
+                      subject: Your order {{sales_order_number}} is confirmed
+                      preheader: Thanks {{customer_name}}
+                      enabled: true
+                      sent_type: automatically
+                      is_system_template: true
+                      cc: []
+                      attachments:
+                      - invoice_pdf
+                      updated_by: Alex Kim
+                      archived_at: null
+                      updated_at: '2026-10-26T14:02:11+00:00'
+                      created_at: '2026-01-04T09:00:00+00:00'
+                    first_page_url: https://acme.sku.io/api/store-email-templates?page=1
+                    from: 1
+                    last_page: 3
+                    last_page_url: https://acme.sku.io/api/store-email-templates?page=3
+                    links: []
+                    next_page_url: https://acme.sku.io/api/store-email-templates?page=2
+                    path: https://acme.sku.io/api/store-email-templates
+                    per_page: 10
+                    prev_page_url: null
+                    to: 10
+                    total: 23
+                example-1:
+                  summary: 200 Success (unpaginated, legacy)
+                  value:
+                    status: success
+                    data:
+                    - id: 12
+                      type: sales_order_confirmation
+                      subject: Your order {{sales_order_number}} is confirmed
         '429': *id001
         '401': *id002
         '403': *id005
@@ -106294,7 +106285,10 @@ paths:
         po_pdf, po_csv, po_xlsx, invoice_pdf, credit_note_pdf, vendor_credit_pdf)
 
 
-        **Requires permission:** `email_templates.create`'
+        **Requires permission:** `email_templates.create`
+
+
+        `cc`: array of email addresses or a comma-separated string.'
       requestBody:
         content:
           application/json:
@@ -106439,6 +106433,15 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        **Request body** — send either `ids` (array of template ids) or `apply_to_all:
+        true` with `filters` to act on every template the list returns for those filters.
+        `filters` accepts: `search` (subject, name, type, context, event or id), `archived`
+        (0 active · 1 archived · 2 all; default 0), `context` and `store_id` (comma
+        lists), `sent_type` (automatic | manual), `enabled` (1 | 0), `source` (default
+        | customised), and `filter_groups` (advanced conditions over id, subject,
+        updated_at, created_at).
 
 
         Authentication: Requires Bearer token.
@@ -106740,7 +106743,8 @@ paths:
       tags:
       - Store Email Templates
       summary: Get Store Email Template
-      description: 'Returns a single store email template with its HTML body.
+      description: 'Returns a single store email template with its HTML body, preheader,
+        variables for its context and reset / new-default flags.
 
 
         :::info[Required scope: `settings:read`]
@@ -106751,14 +106755,42 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        `:id` is a numeric id, or a built-in template''s type (e.g. `sales_order_confirmation`);
+        with a type, `store_id` picks that store''s own copy, else the account default.
+
+
+        Response fields:
+
+        - `preheader` — inbox preview text shown after the subject
+
+        - `variables_tree` — the context''s variables grouped for a picker (each leaf
+        has `token`, `label`, `is_table`, `is_html`)
+
+        - `sample_records_supported` — whether real records can be picked for previews
+        of this context
+
+        - `reset_available` — SKU ships a built-in default for this template type
+
+        - `new_default_available` — the body is still an older built-in default that
+        the new default can replace
+
+        - `updated_by` — who last saved the template''s content, when known
+
+        - `layout` — the brand layout that wraps this template: `{id, store_id, is_default}`
+        (the store''s own layout, else the tenant default; null when the tenant has
+        none yet and the built-in layout is used)'
       parameters:
       - name: id
         in: path
-        required: true
         schema:
-          type: string
-        description: The id identifier
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
       responses:
         '200':
           description: OK
@@ -106783,7 +106815,16 @@ paths:
                         type: integer
                       type:
                         type: string
+                      context:
+                        type: string
+                      event:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
                       subject:
+                        type: string
+                      preheader:
                         type: string
                       title:
                         type: string
@@ -106791,6 +106832,10 @@ paths:
                         type: boolean
                       attach_pdf:
                         type: boolean
+                      attachments:
+                        type: array
+                        items:
+                          type: string
                       sent_type:
                         type: string
                       html_body:
@@ -106799,8 +106844,68 @@ paths:
                         type: boolean
                       cc:
                         type: array
-                        items:
-                          type: string
+                      variables_tree:
+                        type: object
+                        properties:
+                          details:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_number:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          line_items:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_lines:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                      sample_records_supported:
+                        type: boolean
+                      reset_available:
+                        type: boolean
+                      new_default_available:
+                        type: boolean
+                      updated_by:
+                        type: string
                       archived_at:
                         type: string
                         nullable: true
@@ -106808,24 +106913,71 @@ paths:
                         type: string
                       created_at:
                         type: string
+                      layout:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          store_id:
+                            type: string
+                            nullable: true
+                          is_default:
+                            type: boolean
                 example:
                   status: success
                   data:
-                    id: 1
+                    id: 12
                     store_id: 3
-                    type: purchase_order
-                    subject: 'Your Purchase Order #{{order_number}}'
-                    title: 'Your Purchase Order #{{order_number}}'
+                    type: sales_order_confirmation
+                    context: sales_order
+                    event: confirmation
+                    name: null
+                    subject: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    preheader: Thanks {{customer_name}} — here is what is on the way.
+                    title: Your {{store_name}} order {{sales_order_number}} is confirmed
                     enabled: true
                     attach_pdf: true
+                    attachments:
+                    - invoice_pdf
                     sent_type: automatically
-                    html_body: <html><body><h1>Purchase Order</h1><p>Dear {{supplier_name}},</p></body></html>
+                    html_body: <h1>Thanks for your order, {{customer_name}}!</h1><p>We've
+                      received order <strong>{{sales_order_number}}</strong>.</p>{{sales_order_lines}}
                     is_system_template: true
-                    cc:
-                    - purchasing@company.com
+                    cc: []
+                    variables_tree:
+                      details:
+                        label: Details
+                        flat: true
+                        children:
+                          sales_order_number:
+                            type: string
+                            label: 'Sales Order #'
+                            token: '{{sales_order_number}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      line_items:
+                        label: Line Items
+                        flat: true
+                        children:
+                          sales_order_lines:
+                            type: string
+                            label: Order Item List
+                            token: '{{sales_order_lines}}'
+                            is_table: true
+                            is_html: true
+                            description: Inserts a table
+                    sample_records_supported: true
+                    reset_available: true
+                    new_default_available: false
+                    updated_by: Alex Kim
                     archived_at: null
-                    updated_at: '2024-05-15T09:00:00.000000Z'
-                    created_at: '2024-01-01T00:00:00.000000Z'
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-01-04T09:00:00+00:00'
+                    layout:
+                      id: 4
+                      store_id: null
+                      is_default: true
         '404':
           description: Not Found
           headers:
@@ -106865,51 +107017,81 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.
+        Authentication: Requires Bearer token and the email_templates.update permission.
 
 
-        Accepts the same fields as create (context, event, name, subject, html_body,
-        enabled, sent_type, cc, attachments). Enabling an automatic-event template
-        disables any other enabled template in the same (store, context, event) slot.'
+        Accepts the same fields as create (store_id, context, event, name, subject,
+        preheader, html_body, enabled, sent_type, cc, attachments) plus:
+
+        - `preheader` (string|null, max 255)
+
+        - `updated_at` (ISO-8601, optional) — the value you last read; if the template
+        was saved since, the request is rejected with 409
+
+        - `version_source` (`manual` | `ai` | `restore`, default `manual`) — how the
+        saved version is labelled
+
+        - `version_summary` (string|null, max 500)
+
+
+        When the subject, preheader or body change, the content is validated (unknown
+        variables, unsafe content, etc. return 422) and a version is recorded (the
+        newest 50 are kept). Enabling an automatic-event template disables any other
+        enabled template in the same (store, context, event) slot.
+
+
+        `cc` accepts an array of email addresses or a comma-separated string (`"ops@acme.com,
+        finance@acme.com"`); null or "" clears it. Each address must be a valid email
+        (max 20). Also accepted on create.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                context:
-                  type: string
-                event:
-                  type: string
-                name:
-                  type: string
                 subject:
+                  type: string
+                preheader:
                   type: string
                 html_body:
                   type: string
                 enabled:
                   type: boolean
+                cc:
+                  type: array
+                  items:
+                    type: string
                 attachments:
                   type: array
                   items:
                     type: string
+                updated_at:
+                  type: string
+                version_source:
+                  type: string
+                version_summary:
+                  type: string
               example:
-                context: purchase_order
-                event: manual
-                name: Standard supplier PO email
-                subject: Updated subject {{purchase_order_number}}
-                html_body: <html><body><p>Updated body.</p></body></html>
+                subject: Your order {{sales_order_number}}
+                preheader: Thanks {{customer_name}}
+                html_body: <p>Thanks {{customer_name}}</p>{{sales_order_lines}}
                 enabled: true
+                cc:
+                - ops@siber.example
                 attachments:
-                - po_pdf
-                - po_csv
+                - invoice_pdf
+                updated_at: '2026-10-26T14:02:11+00:00'
+                version_source: ai
+                version_summary: Friendlier intro and a Track your order button
       parameters:
       - name: id
         in: path
-        required: true
         schema:
-          type: string
-        description: The id identifier
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
       responses:
         '200':
           description: OK
@@ -106925,32 +107107,220 @@ paths:
                 properties:
                   status:
                     type: string
+                  message:
+                    type: string
                   data:
                     type: object
                     properties:
                       id:
                         type: integer
+                      store_id:
+                        type: integer
+                      type:
+                        type: string
+                      context:
+                        type: string
+                      event:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
                       subject:
+                        type: string
+                      preheader:
+                        type: string
+                      title:
                         type: string
                       enabled:
                         type: boolean
+                      attach_pdf:
+                        type: boolean
+                      attachments:
+                        type: array
+                        items:
+                          type: string
                       sent_type:
                         type: string
+                      html_body:
+                        type: string
+                      is_system_template:
+                        type: boolean
+                      cc:
+                        type: array
+                      variables_tree:
+                        type: object
+                        properties:
+                          details:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_number:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          line_items:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_lines:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                      sample_records_supported:
+                        type: boolean
+                      reset_available:
+                        type: boolean
+                      new_default_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                      archived_at:
+                        type: string
+                        nullable: true
                       updated_at:
+                        type: string
+                      created_at:
                         type: string
                 example:
                   status: success
+                  message: StoreEmailTemplate updated successfully
                   data:
-                    id: 1
-                    subject: 'Updated: Your PO #{{order_number}}'
-                    enabled: false
-                    sent_type: manually
-                    updated_at: '2024-06-15T14:00:00.000000Z'
+                    id: 12
+                    store_id: 3
+                    type: sales_order_confirmation
+                    context: sales_order
+                    event: confirmation
+                    name: null
+                    subject: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    preheader: Thanks {{customer_name}} — here is what is on the way.
+                    title: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    enabled: true
+                    attach_pdf: true
+                    attachments:
+                    - invoice_pdf
+                    sent_type: automatically
+                    html_body: <h1>Thanks for your order, {{customer_name}}!</h1><p>We've
+                      received order <strong>{{sales_order_number}}</strong>.</p>{{sales_order_lines}}
+                    is_system_template: true
+                    cc: []
+                    variables_tree:
+                      details:
+                        label: Details
+                        flat: true
+                        children:
+                          sales_order_number:
+                            type: string
+                            label: 'Sales Order #'
+                            token: '{{sales_order_number}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      line_items:
+                        label: Line Items
+                        flat: true
+                        children:
+                          sales_order_lines:
+                            type: string
+                            label: Order Item List
+                            token: '{{sales_order_lines}}'
+                            is_table: true
+                            is_html: true
+                            description: Inserts a table
+                    sample_records_supported: true
+                    reset_available: true
+                    new_default_available: false
+                    updated_by: Alex Kim
+                    archived_at: null
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-01-04T09:00:00+00:00'
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  current_updated_at:
+                    type: string
+                  updated_by:
+                    type: string
+                example:
+                  message: This template was changed by Alex Kim at 14:02. Reload
+                    to see their changes, or save again to overwrite.
+                  current_updated_at: '2026-10-26T14:02:11+00:00'
+                  updated_by: Alex Kim
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      html_body:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Unknown variable {{tracking_link}} — did you mean {{tracking_number}}?
+                  errors:
+                    html_body:
+                    - Unknown variable {{tracking_link}} — did you mean {{tracking_number}}?
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: settings:write
       operationId: put-api-store-email-templates-id
     delete:
@@ -107198,6 +107568,15 @@ paths:
         :::
 
 
+        **Request body** — send either `ids` (array of template ids) or `apply_to_all:
+        true` with `filters` to act on every template the list returns for those filters.
+        `filters` accepts: `search` (subject, name, type, context, event or id), `archived`
+        (0 active · 1 archived · 2 all; default 0), `context` and `store_id` (comma
+        lists), `sent_type` (automatic | manual), `enabled` (1 | 0), `source` (default
+        | customised), and `filter_groups` (advanced conditions over id, subject,
+        updated_at, created_at).
+
+
         Authentication: Requires Bearer token.
 
 
@@ -107259,6 +107638,15 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        **Request body** — send either `ids` (array of template ids) or `apply_to_all:
+        true` with `filters` to act on every template the list returns for those filters.
+        `filters` accepts: `search` (subject, name, type, context, event or id), `archived`
+        (0 active · 1 archived · 2 all; default 0), `context` and `store_id` (comma
+        lists), `sent_type` (automatic | manual), `enabled` (1 | 0), `source` (default
+        | customised), and `filter_groups` (advanced conditions over id, subject,
+        updated_at, created_at).
 
 
         Authentication: Requires Bearer token.
@@ -107511,7 +107899,15 @@ paths:
 
         - store_id (optional): ID of the store whose email address is used as the
         sender ("from"). When omitted, falls back to the record''s own store, then
-        the tenant''s default (oldest active) store.
+        the tenant''s default (oldest active) store. The email is also wrapped in
+        that store''s brand layout.
+
+        - template_id (optional): ID of the store email template the body started
+        from (must exist). While html_body is still that template''s body — as saved,
+        or with its variables filled for this record, ignoring whitespace/formatting
+        — the template''s preheader (inbox preview text) is sent with the email, its
+        variables filled for the record. When the body has been rewritten, or no template_id
+        is passed, no preheader is sent.
 
 
         Errors:
@@ -107543,6 +107939,8 @@ paths:
                     type: string
                 store_id:
                   type: integer
+                template_id:
+                  type: integer
               example:
                 order_type: VendorCredit
                 order_id: 11
@@ -107553,6 +107951,7 @@ paths:
                 attachments:
                 - vendor_credit_pdf
                 store_id: 1
+                template_id: 42
       parameters: []
       responses:
         '200':
@@ -107665,6 +108064,3558 @@ paths:
         '403': *id005
       x-required-scope: settings:write
       operationId: post-api-store-email-templates-send
+  /api/store-email-templates/render-preview:
+    post:
+      tags:
+      - Store Email Templates
+      summary: Render Email Template Preview
+      description: 'Renders unsaved email content exactly as it would be sent: tokens
+        filled from a sample record (or sample data), wrapped in the store''s brand
+        layout, sanitized and CSS-inlined, with a plain-text alternative.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token. Limited to 120 requests per minute.
+
+
+        Body fields:
+
+        - `template_id` (int|string|null) — existing template; its saved subject/preheader/body
+        are used for any field you omit
+
+        - `context` (string) — required when template_id is null (e.g. sales_order)
+
+        - `event` (string|null)
+
+        - `store_id` (int|null) — whose layout and sender to use
+
+        - `subject` (string|null, max 255), `preheader` (string|null, max 255), `html_body`
+        (string|null, max 200000)
+
+        - `sample_record_id` (int|null) — a record from List Email Template Sample
+        Records; null uses sample data
+
+        - `layout_html` (string|null) — unsaved brand layout to preview with
+
+
+        `unresolved_tokens` lists variables the context does not know (they render
+        empty); `warnings` are non-blocking checks (subject length, Gmail clipping,
+        missing sender, own page wrapper, invalid layout).
+
+        - `layout_settings` (object|null) — unsaved brand quick settings (`logo_url`,
+        `primary_color`, `accent_color`, `footer_text`, `support_email`, `show_social`)
+        that replace the saved layout''s settings for this render, so the layout editor
+        previews them live
+
+
+        Scopes: API tokens need `settings:write`; when `sample_record_id` is set,
+        also the read scope of that context''s records (sales_order / bulk_sales_order
+        / sales_credit → `orders:read`; purchase_order → `purchase-orders:read`; vendor_credit
+        → `accounting:read`; bulk_purchase_order → `suppliers:read`; warehouse_transfer
+        → `warehouses:read`), else 403 `insufficient_scope`. Mock-data previews need
+        no extra scope.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                template_id:
+                  type: integer
+                context:
+                  type: string
+                event:
+                  type: string
+                store_id:
+                  type: integer
+                subject:
+                  type: string
+                preheader:
+                  type: string
+                html_body:
+                  type: string
+                sample_record_id:
+                  type: string
+                  nullable: true
+                layout_html:
+                  type: string
+                  nullable: true
+                layout_settings:
+                  type: string
+                  nullable: true
+              example:
+                template_id: 12
+                context: sales_order
+                event: confirmation
+                store_id: 3
+                subject: Your order {{sales_order_number}}
+                preheader: Thanks {{customer_name}}
+                html_body: <p>Hi {{customer_name}}</p>{{sales_order_lines}}
+                sample_record_id: null
+                layout_html: null
+                layout_settings: null
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      html:
+                        type: string
+                      text:
+                        type: string
+                      subject:
+                        type: string
+                      preheader:
+                        type: string
+                      from:
+                        type: string
+                      unresolved_tokens:
+                        type: array
+                        items:
+                          type: string
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            message:
+                              type: string
+                      layout_applied:
+                        type: boolean
+                example:
+                  status: success
+                  data:
+                    html: '<!DOCTYPE html>
+
+                      <html lang="en">...</html>'
+                    text: 'Thanks for your order, Jane Cooper!
+
+
+                      We''ve received order SO-10482.'
+                    subject: Your Siber Outdoor order SO-10482 is confirmed
+                    preheader: Thanks Jane Cooper — here is what is on the way.
+                    from: Siber Outdoor <orders@siber.example>
+                    unresolved_tokens:
+                    - tracking_link
+                    warnings:
+                    - code: subject_too_long
+                      message: Subject is 74 characters; inboxes cut off around 60.
+                    layout_applied: true
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      context:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The context field is required when template id is not present.
+                  errors:
+                    context:
+                    - The context field is required when template id is not present.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:write
+      operationId: post-api-store-email-templates-render-preview
+  /api/store-email-templates/sample-records:
+    get:
+      tags:
+      - Store Email Templates
+      summary: List Email Template Sample Records
+      description: 'Lists recent real records (newest first, 10 per page) of a template
+        context that a preview or test send can be rendered against.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Supported contexts: sales_order, bulk_sales_order, purchase_order, sales_credit,
+        vendor_credit, bulk_purchase_order (suppliers), warehouse_transfer. Other
+        contexts return an empty page — they preview with sample data only.
+
+
+        Each row carries `reference` (the record''s number) and `label` — the customer
+        or supplier name when the record has one, otherwise the reference. `label`
+        is never null.
+
+
+        Scopes: API tokens need `settings:read` plus the read scope of the context''s
+        own records, since the rows expose them (sales_order / bulk_sales_order /
+        sales_credit → `orders:read`; purchase_order → `purchase-orders:read`; vendor_credit
+        → `accounting:read`; bulk_purchase_order → `suppliers:read`; warehouse_transfer
+        → `warehouses:read`). A token without it gets 403 `insufficient_scope` naming
+        the missing scope. Contexts without real records need no extra scope.'
+      parameters:
+      - name: context
+        in: query
+        schema:
+          type: string
+        description: Template context (required)
+        example: sales_order
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        reference:
+                          type: string
+                        label:
+                          type: string
+                        created_at:
+                          type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 10482
+                    reference: SO-10482
+                    label: Jane Cooper
+                    created_at: '2026-10-24T16:20:00+00:00'
+                  first_page_url: https://acme.sku.io/api/store-email-templates/sample-records?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://acme.sku.io/api/store-email-templates/sample-records?page=1
+                  links: []
+                  next_page_url: null
+                  path: https://acme.sku.io/api/store-email-templates/sample-records
+                  per_page: 10
+                  prev_page_url: null
+                  to: 1
+                  total: 1
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  error:
+                    type: string
+                  required_scope:
+                    type: string
+                example:
+                  message: 'Token is missing the required scope: orders:read'
+                  error: insufficient_scope
+                  required_scope: orders:read
+        '429': *id001
+        '401': *id002
+      x-required-scope: settings:read
+      operationId: get-api-store-email-templates-sample-records
+  /api/store-email-templates/validate:
+    post:
+      tags:
+      - Store Email Templates
+      summary: Validate Email Template Content
+      description: 'Checks unsaved subject, preheader and body (or a brand layout)
+        without saving.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body fields: `template_id` (optional, supplies the context), `context`, `mode`
+        (`template` default, or `layout`), `subject`, `preheader`, `html_body`.
+
+
+        Errors (block a save): unknown_token (with `suggestion` and `available_in`),
+        unbalanced_braces, unsafe_element, unsafe_attribute, unsafe_url, content_token_in_template,
+        layout_content_token, body_too_long, subject_too_long, preheader_too_long.
+
+
+        Warnings (never block): subject_long, missing_preheader, own_page_wrapper,
+        image_missing_alt, image_missing_width, button_without_fallback, unsupported_layout_css,
+        unsupported_position_css, css_variables, external_stylesheet, insecure_link,
+        gmail_clipping, low_contrast, single_brace_token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: string
+                mode:
+                  type: string
+                subject:
+                  type: string
+                preheader:
+                  type: string
+                  nullable: true
+                html_body:
+                  type: string
+              example:
+                context: sales_order
+                mode: template
+                subject: Your order {{sales_order_number}}
+                preheader: null
+                html_body: <p>{{tracking_numbr}}</p>
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      ok:
+                        type: boolean
+                      errors:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            message:
+                              type: string
+                            token:
+                              type: string
+                            suggestion:
+                              type: string
+                      warnings:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            code:
+                              type: string
+                            message:
+                              type: string
+                example:
+                  status: success
+                  data:
+                    ok: false
+                    errors:
+                    - code: unknown_token
+                      message: Unknown variable {{tracking_numbr}} — did you mean
+                        {{tracking_number}}?
+                      token: tracking_numbr
+                      suggestion: tracking_number
+                    warnings:
+                    - code: missing_preheader
+                      message: 'No preheader: inboxes will show the first line of
+                        the email instead.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '422': *id004
+      x-required-scope: settings:write
+      operationId: post-api-store-email-templates-validate
+  /api/store-email-templates/{id}/reset:
+    post:
+      tags:
+      - Store Email Templates
+      summary: Reset Email Template to Default
+      description: 'Replaces the template''s subject, preheader and body with SKU''s
+        built-in default and records a `reset` version. Sending settings (enabled,
+        CC, attachments, store) are kept.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+
+
+        Returns 422 `reset_unavailable` for a custom template type that has no built-in
+        default.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+              example: {}
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_id:
+                        type: integer
+                      type:
+                        type: string
+                      context:
+                        type: string
+                      event:
+                        type: string
+                      name:
+                        type: string
+                        nullable: true
+                      subject:
+                        type: string
+                      preheader:
+                        type: string
+                      title:
+                        type: string
+                      enabled:
+                        type: boolean
+                      attach_pdf:
+                        type: boolean
+                      attachments:
+                        type: array
+                        items:
+                          type: string
+                      sent_type:
+                        type: string
+                      html_body:
+                        type: string
+                      is_system_template:
+                        type: boolean
+                      cc:
+                        type: array
+                      variables_tree:
+                        type: object
+                        properties:
+                          details:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_number:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          line_items:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  sales_order_lines:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                      sample_records_supported:
+                        type: boolean
+                      reset_available:
+                        type: boolean
+                      new_default_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                      archived_at:
+                        type: string
+                        nullable: true
+                      updated_at:
+                        type: string
+                      created_at:
+                        type: string
+                example:
+                  status: success
+                  message: Template reset to the built-in default.
+                  data:
+                    id: 12
+                    store_id: 3
+                    type: sales_order_confirmation
+                    context: sales_order
+                    event: confirmation
+                    name: null
+                    subject: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    preheader: Thanks {{customer_name}} — here is what is on the way.
+                    title: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    enabled: true
+                    attach_pdf: true
+                    attachments:
+                    - invoice_pdf
+                    sent_type: automatically
+                    html_body: <h1>Thanks for your order, {{customer_name}}!</h1><p>We've
+                      received order <strong>{{sales_order_number}}</strong>.</p>{{sales_order_lines}}
+                    is_system_template: true
+                    cc: []
+                    variables_tree:
+                      details:
+                        label: Details
+                        flat: true
+                        children:
+                          sales_order_number:
+                            type: string
+                            label: 'Sales Order #'
+                            token: '{{sales_order_number}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      line_items:
+                        label: Line Items
+                        flat: true
+                        children:
+                          sales_order_lines:
+                            type: string
+                            label: Order Item List
+                            token: '{{sales_order_lines}}'
+                            is_table: true
+                            is_html: true
+                            description: Inserts a table
+                    sample_records_supported: true
+                    reset_available: true
+                    new_default_available: false
+                    updated_by: Alex Kim
+                    archived_at: null
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-01-04T09:00:00+00:00'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: failure
+                  message: This template has no built-in default to reset to.
+                  errors:
+                    id:
+                    - message: This template has no built-in default to reset to.
+                      code: reset_unavailable
+                      data: []
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: settings:write
+      operationId: post-api-store-email-templates-id-reset
+  /api/store-email-templates/{id}/test-send:
+    post:
+      tags:
+      - Store Email Templates
+      summary: Send Test Email Template
+      description: 'Sends the (possibly unsaved) template to up to 3 addresses through
+        the store''s real sender identity, with the subject prefixed "[Test] " and
+        no CC or BCC.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+        Limited to 10 per user per hour (429).
+
+
+        Body fields:
+
+        - `to` (array of emails, max 3) — defaults to your own email
+
+        - `sample_record_id` (int|null) — record to fill the email from; null uses
+        sample data
+
+        - `store_id` (int|null) — sender store; defaults to the template''s store
+
+        - `subject`, `preheader`, `html_body` — unsaved content; the saved values
+        are used when omitted. An explicit `"preheader": null` (a cleared field) sends
+        no preheader instead of the saved one
+
+        - `include_attachments` (bool) — attach the template''s documents generated
+        for the sample record
+
+
+        Returns 422 `store_sender_missing` when the store has no sender email address.
+
+
+        Scopes: API tokens need `settings:write`; when `sample_record_id` is set,
+        also the read scope of the template context''s records (sales_order / bulk_sales_order
+        / sales_credit → `orders:read`; purchase_order → `purchase-orders:read`; vendor_credit
+        → `accounting:read`; bulk_purchase_order → `suppliers:read`; warehouse_transfer
+        → `warehouses:read`), else 403 `insufficient_scope`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: array
+                  items:
+                    type: string
+                sample_record_id:
+                  type: integer
+                store_id:
+                  type: integer
+                subject:
+                  type: string
+                preheader:
+                  type: string
+                html_body:
+                  type: string
+                include_attachments:
+                  type: boolean
+              example:
+                to:
+                - you@siber.example
+                sample_record_id: 10482
+                store_id: 3
+                subject: Your order {{sales_order_number}}
+                preheader: Thanks {{customer_name}}
+                html_body: <p>Hi {{customer_name}}</p>
+                include_attachments: false
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      sent_to:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  status: success
+                  message: Test sent to you@siber.example
+                  data:
+                    sent_to:
+                    - you@siber.example
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      store:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                configure_route:
+                                  type: string
+                example:
+                  status: failure
+                  message: This email can't be sent because the store has no sender
+                    email address. Add an email address to the store, then try again.
+                  errors:
+                    store:
+                    - message: This email can't be sent because the store has no sender
+                        email address. Add an email address to the store, then try
+                        again.
+                      code: store_sender_missing
+                      data:
+                        configure_route: /settings/general/stores
+        '429':
+          description: Too Many Requests
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      to:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                retry_after:
+                                  type: integer
+                example:
+                  status: failure
+                  message: You've hit the hourly test-send limit; try again in 42
+                    minute(s).
+                  errors:
+                    to:
+                    - message: You've hit the hourly test-send limit; try again in
+                        42 minute(s).
+                      code: rate_limited
+                      data:
+                        retry_after: 2520
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: settings:write
+      operationId: post-api-store-email-templates-id-test-send
+  /api/store-email-templates/{id}/versions:
+    get:
+      tags:
+      - Store Email Templates
+      summary: List Email Template Versions
+      description: 'Lists the template''s saved versions, newest first. A version
+        is recorded on every content save, reset and restore; the newest 50 are kept.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        `source` is one of manual, ai, reset, restore, migration, import.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        store_email_template_id:
+                          type: integer
+                        subject:
+                          type: string
+                        preheader:
+                          type: string
+                        html_body:
+                          type: string
+                        source:
+                          type: string
+                        source_label:
+                          type: string
+                        summary:
+                          type: string
+                        created_by:
+                          type: integer
+                        created_by_name:
+                          type: string
+                        created_at:
+                          type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 881
+                    store_email_template_id: 12
+                    subject: Your order {{sales_order_number}}
+                    preheader: Thanks {{customer_name}}
+                    html_body: <p>Thanks {{customer_name}}</p>
+                    source: ai
+                    source_label: AI
+                    summary: Friendlier intro and a Track your order button
+                    created_by: 7
+                    created_by_name: Alex Kim
+                    created_at: '2026-10-26T14:02:11+00:00'
+                  first_page_url: https://acme.sku.io/api/store-email-templates/12/versions?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://acme.sku.io/api/store-email-templates/12/versions?page=1
+                  links: []
+                  next_page_url: null
+                  path: https://acme.sku.io/api/store-email-templates/12/versions
+                  per_page: 10
+                  prev_page_url: null
+                  to: 1
+                  total: 1
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: settings:read
+      operationId: get-api-store-email-templates-id-versions
+  /api/store-email-templates/{id}/versions/{versionId}:
+    get:
+      tags:
+      - Store Email Templates
+      summary: Get Email Template Version
+      description: 'Returns one saved version of a template (subject, preheader and
+        body).
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
+      - name: versionId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Version id
+        example: '881'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_email_template_id:
+                        type: integer
+                      subject:
+                        type: string
+                      preheader:
+                        type: string
+                      html_body:
+                        type: string
+                      source:
+                        type: string
+                      source_label:
+                        type: string
+                      summary:
+                        type: string
+                      created_by:
+                        type: integer
+                      created_by_name:
+                        type: string
+                      created_at:
+                        type: string
+                example:
+                  status: success
+                  data:
+                    id: 881
+                    store_email_template_id: 12
+                    subject: Your order {{sales_order_number}}
+                    preheader: Thanks {{customer_name}}
+                    html_body: <p>Thanks {{customer_name}}</p>
+                    source: ai
+                    source_label: AI
+                    summary: Friendlier intro and a Track your order button
+                    created_by: 7
+                    created_by_name: Alex Kim
+                    created_at: '2026-10-26T14:02:11+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      version_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: failure
+                  message: Version not found.
+                  errors:
+                    version_id:
+                    - message: Version not found.
+                      code: NotFound
+                      data: []
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-store-email-templates-id-versions-versionid
+  /api/store-email-templates/{id}/default:
+    get:
+      tags:
+      - Store Email Templates
+      summary: Get Email Template Default
+      description: 'Returns the built-in default a Reset would write — `subject`,
+        `preheader`, `html_body` — plus how it renders (`preview_html`, `preview_subject`:
+        mock data inside the template''s store brand layout), for the Reset confirmation
+        dialog. Nothing is changed.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Returns 422 `reset_unavailable` for a custom template type that has no built-in
+        default.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Template id, or a built-in template's type (e.g. sales_order_confirmation)
+          together with ?store_id=
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      subject:
+                        type: string
+                      preheader:
+                        type: string
+                      html_body:
+                        type: string
+                      preview_html:
+                        type: string
+                      preview_subject:
+                        type: string
+                example:
+                  status: success
+                  data:
+                    subject: Your {{store_name}} order {{sales_order_number}} is confirmed
+                    preheader: Thanks {{customer_name}} — here is what is on the way.
+                    html_body: <h1>Thanks for your order, {{customer_name}}!</h1>{{sales_order_lines}}
+                    preview_html: '<!DOCTYPE html>
+
+                      <html lang="en">...</html>'
+                    preview_subject: Your Siber Outdoor order SO-10482 is confirmed
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: error
+                  message: This template has no built-in default to reset to.
+                  errors:
+                    id:
+                    - message: This template has no built-in default to reset to.
+                      code: reset_unavailable
+                      data: []
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: settings:read
+      operationId: get-api-store-email-templates-id-default
+  /api/store-email-templates/defaults:
+    get:
+      tags:
+      - Store Email Templates
+      summary: Get Email Template Default for Context and Event
+      description: 'Returns the built-in default a NEW template for this context +
+        event starts from — `subject`, `preheader`, `html_body` — plus how it renders
+        (`preview_html`, `preview_subject`: mock data inside the store''s brand layout).
+        Used by the template editor when creating a template so it opens on SKU''s
+        default instead of a blank page. Nothing is changed.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        `data` is `null` when SKU ships no built-in default for the pair (the editor
+        then starts blank). An unknown `context`, or a missing `context`/`event`,
+        is a 422 validation error.'
+      parameters:
+      - name: context
+        in: query
+        schema:
+          type: string
+        description: Template context (required), e.g. sales_order, purchase_order,
+          vendor_credit
+        example: sales_order
+      - name: event
+        in: query
+        schema:
+          type: string
+        description: Template event (required), e.g. confirmation, manual, submitted
+        example: confirmation
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    status: success
+                    data:
+                      subject: Your {{store_name}} order {{sales_order_number}} is
+                        confirmed
+                      preheader: Thanks {{customer_name}} — here is what is on the
+                        way.
+                      html_body: <h1>Thanks for your order, {{customer_name}}!</h1>{{sales_order_lines}}
+                      preview_html: '<!DOCTYPE html>
+
+                        <html lang="en">...</html>'
+                      preview_subject: Your Siber Outdoor order SO-10482 is confirmed
+                example-1:
+                  summary: 200 No Built-in Default
+                  value:
+                    status: success
+                    data: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      context:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected context is invalid.
+                  errors:
+                    context:
+                    - The selected context is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-store-email-templates-defaults
+  /api/store-email-templates/ai-edit/stream:
+    post:
+      tags:
+      - Store Email Templates
+      summary: AI Edit Email Template (stream)
+      description: 'Server-Sent Events: one AI assistant turn on an email template''s
+        subject, preheader and body (or a first draft when `template_id` is null —
+        an empty `current_html` then starts from SKU''s built-in default for the context
+        + event).
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+
+
+        Body: `template_id` (int|type string|null), `context` + `event` (required
+        when template_id is null), `store_id` (int|null — whose brand layout and sample
+        data), `instruction` (required, max 5000), `current_subject` (max 255), `current_preheader`
+        (max 255), `current_html` (max 200000), `history` (max 10 × `{instruction,
+        summary}`; the last 6 are replayed), `target` (`{label ≤120, html ≤2000}`
+        — the preview element the user pointed at; changes are confined to it), `reference_images`,
+        `provider` (anthropic|openai|google|deepseek|null), `model`.
+
+
+        Events: `status` {message} — Reading template → Writing changes → Checking
+        variables → (Fixing problems the checks found) → Rendering preview; `complete`
+        {success, proposal {subject|null, preheader|null, html, summary, unresolved[]},
+        validation {ok, errors[], warnings[], error_details[], warning_details[]},
+        usage {input_tokens, output_tokens}, rendered_preview_html, provider, model,
+        error}; `error` {message, status?}. `subject` / `preheader` are null when
+        the model kept the current value.
+
+
+        Errors arrive as an `error` event `{type: "error", message, status?}` on a
+        200 stream: the template editor switched off in AI settings (503), no API
+        key for the provider (503), the hourly limit (`AiSettings::max_requests_per_user_per_hour`,
+        default 60, per user per tenant; 429 — "You''ve hit the hourly AI limit; try
+        again at 15:40."), provider failures mapped to friendly copy (quota, rate
+        limit, bad key, timeout). Request validation failures are a normal 422 JSON
+        response.
+
+
+        Nothing is saved: the editor applies the proposal to its buffer and the user
+        saves (with `version_source: ai`). A proposal that fails the content checks
+        is retried once with the errors fed back; still invalid → `success: false`,
+        `validation.ok: false`, no `rendered_preview_html`.
+
+
+        `reference_images` (max 3; `{mime_type, data (base64, no prefix), name}` objects
+        or `data:image/...;base64,` URIs; png/jpeg/webp/gif) are sent as vision input
+        and stored as email assets so the proposal can embed them by URL; images the
+        proposal does not embed are deleted again.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                template_id:
+                  type: integer
+                context:
+                  type: string
+                event:
+                  type: string
+                store_id:
+                  type: integer
+                instruction:
+                  type: string
+                current_subject:
+                  type: string
+                current_preheader:
+                  type: string
+                current_html:
+                  type: string
+                history:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      instruction:
+                        type: string
+                      summary:
+                        type: string
+                target:
+                  type: object
+                  properties:
+                    label:
+                      type: string
+                    html:
+                      type: string
+                reference_images:
+                  type: array
+                provider:
+                  type: string
+                  nullable: true
+                model:
+                  type: string
+                  nullable: true
+              example:
+                template_id: 12
+                context: sales_order
+                event: confirmation
+                store_id: 3
+                instruction: Add a Track your order button and make it friendlier
+                current_subject: Order {{sales_order_number}}
+                current_preheader: ''
+                current_html: <p>Hi {{customer_name}}</p>{{sales_order_lines}}
+                history:
+                - instruction: Match our brand colours
+                  summary: Green header accents.
+                target:
+                  label: Button "Shop now"
+                  html: <a class="et-button" href="https://siber.example">Shop now</a>
+                reference_images: []
+                provider: null
+                model: null
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/event-stream; charset=utf-8
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 Stream
+                  value: 'data: {"type":"status","message":"Reading template"}
+
+
+                    data: {"type":"status","message":"Writing changes"}
+
+
+                    data: {"type":"status","message":"Checking variables"}
+
+
+                    data: {"type":"status","message":"Rendering preview"}
+
+
+                    data: {"type": "complete", "success": true, "proposal": {"subject":
+                    "Your Siber Outdoor order {{sales_order_number}} is confirmed",
+                    "preheader": null, "html": "<table role=\"presentation\" width=\"100%\">\u2026</table>",
+                    "summary": "Added a Track your order button and a friendlier intro.",
+                    "unresolved": []}, "validation": {"ok": true, "errors": [], "warnings":
+                    [], "error_details": [], "warning_details": []}, "usage": {"input_tokens":
+                    6120, "output_tokens": 1840}, "rendered_preview_html": "<!DOCTYPE
+                    html>\u2026", "provider": "anthropic", "model": "claude-sonnet-4-5",
+                    "error": null}
+
+
+                    '
+                example-1:
+                  summary: 200 Stream (error event)
+                  value: 'data: {"type":"error","message":"You''ve hit the hourly
+                    AI limit; try again at 15:40.","status":429}
+
+
+                    '
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '429': *id001
+        '401': *id002
+        '422': *id004
+      x-required-scope: settings:write
+      operationId: post-api-store-email-templates-ai-edit-stream
+  /api/store-email-layouts:
+    get:
+      tags:
+      - Store Email Layouts
+      summary: List Brand Layouts
+      description: 'Lists the tenant default layout first, then each store override
+        (summary only: id, store_id, store_name, store, is_default, updated_at, created_at).
+        Creates the default from SKU''s built-in layout when the tenant has none yet.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        store_id:
+                          type: string
+                          nullable: true
+                        store_name:
+                          type: string
+                          nullable: true
+                        store:
+                          type: string
+                          nullable: true
+                        is_default:
+                          type: boolean
+                        updated_at:
+                          type: string
+                        created_at:
+                          type: string
+                example:
+                  status: success
+                  data:
+                  - id: 4
+                    store_id: null
+                    store_name: null
+                    store: null
+                    is_default: true
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+                  - id: 9
+                    store_id: 3
+                    store_name: Siber Outdoor
+                    store:
+                      id: 3
+                      name: Siber Outdoor
+                    is_default: false
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-store-email-layouts
+    post:
+      tags:
+      - Store Email Layouts
+      summary: Create Store Brand Layout
+      description: 'Gives a store its own layout, copied from `copy_from_id` (default:
+        the tenant default). Records a version.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+
+
+        Body: `store_id` (required, existing store), `copy_from_id` (int|null, existing
+        layout).
+
+
+        422 `store_layout_exists` when the store already has one.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                store_id:
+                  type: integer
+                copy_from_id:
+                  type: integer
+              example:
+                store_id: 3
+                copy_from_id: 4
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_id:
+                        type: integer
+                      store_name:
+                        type: string
+                      store:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      is_default:
+                        type: boolean
+                      updated_at:
+                        type: string
+                      created_at:
+                        type: string
+                      html:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          footer_text:
+                            type: string
+                          support_email:
+                            type: string
+                          show_social:
+                            type: boolean
+                      variables_tree:
+                        type: object
+                        properties:
+                          layout:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  content:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                  preheader:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          brand:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  brand.primary_color:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                      affected_templates_count:
+                        type: integer
+                      reset_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                example:
+                  status: success
+                  message: Created a brand layout for this store.
+                  data:
+                    id: 9
+                    store_id: 3
+                    store_name: Siber Outdoor
+                    store:
+                      id: 3
+                      name: Siber Outdoor
+                    is_default: false
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+                    html: '<!DOCTYPE html>
+
+                      <html lang="en">…{{brand.logo}}…{{content}}…{{brand.footer_text}}…</html>'
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    variables_tree:
+                      layout:
+                        label: Layout
+                        flat: true
+                        children:
+                          content:
+                            type: string
+                            label: Email content (required, exactly once)
+                            token: '{{content}}'
+                            is_table: false
+                            is_html: true
+                            description: Required, exactly once
+                          preheader:
+                            type: string
+                            label: Preheader text
+                            token: '{{preheader}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      brand:
+                        label: Brand
+                        flat: true
+                        children:
+                          brand.primary_color:
+                            type: string
+                            label: Brand colour
+                            token: '{{brand.primary_color}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                    affected_templates_count: 23
+                    reset_available: true
+                    updated_by: Alex Kim
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      store_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: error
+                  message: This store already has its own brand layout.
+                  errors:
+                    store_id:
+                    - message: This store already has its own brand layout.
+                      code: store_layout_exists
+                      data: []
+        '429': *id001
+        '401': *id002
+      x-required-scope: settings:write
+      operationId: post-api-store-email-layouts
+  /api/store-email-layouts/{id}:
+    get:
+      tags:
+      - Store Email Layouts
+      summary: Get Brand Layout
+      description: 'Returns a layout for the editor: `html`, `settings` (every quick-setting
+        key, built-in values filling the gaps), `variables_tree` (the `{{content}}`,
+        `{{preheader}}` and `{{brand.*}}` tokens), `affected_templates_count` (templates
+        it wraps — a store override wraps that store''s templates; the default wraps
+        every template whose store has no override), `reset_available`, `updated_by`.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand layout id
+        example: '4'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_id:
+                        type: string
+                        nullable: true
+                      store_name:
+                        type: string
+                        nullable: true
+                      store:
+                        type: string
+                        nullable: true
+                      is_default:
+                        type: boolean
+                      updated_at:
+                        type: string
+                      created_at:
+                        type: string
+                      html:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          footer_text:
+                            type: string
+                          support_email:
+                            type: string
+                          show_social:
+                            type: boolean
+                      variables_tree:
+                        type: object
+                        properties:
+                          layout:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  content:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                  preheader:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          brand:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  brand.primary_color:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                      affected_templates_count:
+                        type: integer
+                      reset_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                example:
+                  status: success
+                  data:
+                    id: 4
+                    store_id: null
+                    store_name: null
+                    store: null
+                    is_default: true
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+                    html: '<!DOCTYPE html>
+
+                      <html lang="en">…{{brand.logo}}…{{content}}…{{brand.footer_text}}…</html>'
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    variables_tree:
+                      layout:
+                        label: Layout
+                        flat: true
+                        children:
+                          content:
+                            type: string
+                            label: Email content (required, exactly once)
+                            token: '{{content}}'
+                            is_table: false
+                            is_html: true
+                            description: Required, exactly once
+                          preheader:
+                            type: string
+                            label: Preheader text
+                            token: '{{preheader}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      brand:
+                        label: Brand
+                        flat: true
+                        children:
+                          brand.primary_color:
+                            type: string
+                            label: Brand colour
+                            token: '{{brand.primary_color}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                    affected_templates_count: 23
+                    reset_available: true
+                    updated_by: Alex Kim
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: error
+                  message: Not Found
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-store-email-layouts-id
+    put:
+      tags:
+      - Store Email Layouts
+      summary: Update Brand Layout
+      description: 'Saves the layout''s HTML and quick settings.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+
+
+        Body: `html` (required, max 200000; must contain `{{content}}` exactly once
+        and no scripts/forms/iframes/handlers — otherwise 422 on `html`), `settings`
+        (object|null: `logo_url`, `primary_color`, `accent_color`, `footer_text`,
+        `support_email` (email), `show_social` (bool); unknown keys are dropped; omit/null
+        to keep the saved settings), `updated_at` (ISO-8601 last seen — 409 when someone
+        saved since), `version_source` (manual|ai|restore, default manual), `version_summary`
+        (max 500). A version is recorded when the HTML or settings change (newest
+        50 kept).
+
+
+        The 409 body is flat JSON: `{message, current_updated_at, updated_by}`.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                html:
+                  type: string
+                settings:
+                  type: object
+                  properties:
+                    logo_url:
+                      type: string
+                    primary_color:
+                      type: string
+                    accent_color:
+                      type: string
+                    footer_text:
+                      type: string
+                    support_email:
+                      type: string
+                    show_social:
+                      type: boolean
+                updated_at:
+                  type: string
+                version_source:
+                  type: string
+                version_summary:
+                  type: string
+                  nullable: true
+              example:
+                html: <!DOCTYPE html><html><head>…</head><body>…{{content}}…</body></html>
+                settings:
+                  logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                  primary_color: '#1F4D3A'
+                  accent_color: '#2563EB'
+                  footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                  support_email: help@siber.example
+                  show_social: false
+                updated_at: '2026-10-26T14:02:11+00:00'
+                version_source: manual
+                version_summary: null
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand layout id
+        example: '4'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_id:
+                        type: string
+                        nullable: true
+                      store_name:
+                        type: string
+                        nullable: true
+                      store:
+                        type: string
+                        nullable: true
+                      is_default:
+                        type: boolean
+                      updated_at:
+                        type: string
+                      created_at:
+                        type: string
+                      html:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          footer_text:
+                            type: string
+                          support_email:
+                            type: string
+                          show_social:
+                            type: boolean
+                      variables_tree:
+                        type: object
+                        properties:
+                          layout:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  content:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                  preheader:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          brand:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  brand.primary_color:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                      affected_templates_count:
+                        type: integer
+                      reset_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                example:
+                  status: success
+                  message: Brand layout saved.
+                  data:
+                    id: 4
+                    store_id: null
+                    store_name: null
+                    store: null
+                    is_default: true
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+                    html: '<!DOCTYPE html>
+
+                      <html lang="en">…{{brand.logo}}…{{content}}…{{brand.footer_text}}…</html>'
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    variables_tree:
+                      layout:
+                        label: Layout
+                        flat: true
+                        children:
+                          content:
+                            type: string
+                            label: Email content (required, exactly once)
+                            token: '{{content}}'
+                            is_table: false
+                            is_html: true
+                            description: Required, exactly once
+                          preheader:
+                            type: string
+                            label: Preheader text
+                            token: '{{preheader}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      brand:
+                        label: Brand
+                        flat: true
+                        children:
+                          brand.primary_color:
+                            type: string
+                            label: Brand colour
+                            token: '{{brand.primary_color}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                    affected_templates_count: 23
+                    reset_available: true
+                    updated_by: Alex Kim
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  current_updated_at:
+                    type: string
+                  updated_by:
+                    type: string
+                example:
+                  message: This layout was changed by Alex Kim at 14:02. Reload to
+                    see their changes, or save again to overwrite.
+                  current_updated_at: '2026-10-26T14:02:11+00:00'
+                  updated_by: Alex Kim
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      html:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The layout must contain {{content}} exactly once — that's
+                    where each email goes.
+                  errors:
+                    html:
+                    - The layout must contain {{content}} exactly once — that's where
+                      each email goes.
+        '429': *id001
+        '401': *id002
+        '404': *id003
+      x-required-scope: settings:write
+      operationId: put-api-store-email-layouts-id
+    delete:
+      tags:
+      - Store Email Layouts
+      summary: Delete Store Brand Layout
+      description: 'Removes a store override; that store''s emails fall back to the
+        default layout. The tenant default can''t be deleted (422 `default_layout_undeletable`).
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Store override layout id
+        example: '9'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: success
+                  message: Store layout removed — this store now uses the default
+                    layout.
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: error
+                  message: The default brand layout can't be deleted — it wraps every
+                    store without its own layout.
+                  errors:
+                    id:
+                    - message: The default brand layout can't be deleted — it wraps
+                        every store without its own layout.
+                      code: default_layout_undeletable
+                      data: []
+        '429': *id001
+        '401': *id002
+        '404': *id003
+      x-required-scope: settings:write
+      operationId: delete-api-store-email-layouts-id
+  /api/store-email-layouts/{id}/reset:
+    post:
+      tags:
+      - Store Email Layouts
+      summary: Reset Brand Layout
+      description: 'Replaces the layout''s HTML and quick settings with SKU''s built-in
+        layout and records a `reset` version (the previous one stays in Versions).
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+              example: {}
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand layout id
+        example: '4'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_id:
+                        type: string
+                        nullable: true
+                      store_name:
+                        type: string
+                        nullable: true
+                      store:
+                        type: string
+                        nullable: true
+                      is_default:
+                        type: boolean
+                      updated_at:
+                        type: string
+                      created_at:
+                        type: string
+                      html:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          footer_text:
+                            type: string
+                          support_email:
+                            type: string
+                          show_social:
+                            type: boolean
+                      variables_tree:
+                        type: object
+                        properties:
+                          layout:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  content:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                  preheader:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                          brand:
+                            type: object
+                            properties:
+                              label:
+                                type: string
+                              flat:
+                                type: boolean
+                              children:
+                                type: object
+                                properties:
+                                  brand.primary_color:
+                                    type: object
+                                    properties:
+                                      type:
+                                        type: string
+                                      label:
+                                        type: string
+                                      token:
+                                        type: string
+                                      is_table:
+                                        type: boolean
+                                      is_html:
+                                        type: boolean
+                                      description:
+                                        type: string
+                                        nullable: true
+                      affected_templates_count:
+                        type: integer
+                      reset_available:
+                        type: boolean
+                      updated_by:
+                        type: string
+                example:
+                  status: success
+                  message: Layout reset to the built-in default.
+                  data:
+                    id: 4
+                    store_id: null
+                    store_name: null
+                    store: null
+                    is_default: true
+                    updated_at: '2026-10-26T14:02:11+00:00'
+                    created_at: '2026-10-01T09:00:00+00:00'
+                    html: '<!DOCTYPE html>
+
+                      <html lang="en">…{{brand.logo}}…{{content}}…{{brand.footer_text}}…</html>'
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    variables_tree:
+                      layout:
+                        label: Layout
+                        flat: true
+                        children:
+                          content:
+                            type: string
+                            label: Email content (required, exactly once)
+                            token: '{{content}}'
+                            is_table: false
+                            is_html: true
+                            description: Required, exactly once
+                          preheader:
+                            type: string
+                            label: Preheader text
+                            token: '{{preheader}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                      brand:
+                        label: Brand
+                        flat: true
+                        children:
+                          brand.primary_color:
+                            type: string
+                            label: Brand colour
+                            token: '{{brand.primary_color}}'
+                            is_table: false
+                            is_html: false
+                            description: null
+                    affected_templates_count: 23
+                    reset_available: false
+                    updated_by: Alex Kim
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '429': *id001
+        '401': *id002
+        '404': *id003
+        '422': *id004
+      x-required-scope: settings:write
+      operationId: post-api-store-email-layouts-id-reset
+  /api/store-email-layouts/{id}/versions:
+    get:
+      tags:
+      - Store Email Layouts
+      summary: List Brand Layout Versions
+      description: 'Lists the layout''s saved versions, newest first (paginator).
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        `source` is one of manual, ai, reset, restore, migration, import.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand layout id
+        example: '4'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        store_email_layout_id:
+                          type: integer
+                        html:
+                          type: string
+                        settings:
+                          type: object
+                          properties:
+                            logo_url:
+                              type: string
+                            primary_color:
+                              type: string
+                            accent_color:
+                              type: string
+                            footer_text:
+                              type: string
+                            support_email:
+                              type: string
+                            show_social:
+                              type: boolean
+                        source:
+                          type: string
+                        source_label:
+                          type: string
+                        summary:
+                          type: string
+                          nullable: true
+                        created_by:
+                          type: integer
+                        created_by_name:
+                          type: string
+                        created_at:
+                          type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 51
+                    store_email_layout_id: 4
+                    html: <!DOCTYPE html>…{{content}}…
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    source: manual
+                    source_label: Manual
+                    summary: null
+                    created_by: 7
+                    created_by_name: Alex Kim
+                    created_at: '2026-10-26T14:02:11+00:00'
+                  from: 1
+                  last_page: 1
+                  per_page: 10
+                  to: 1
+                  total: 1
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: settings:read
+      operationId: get-api-store-email-layouts-id-versions
+  /api/store-email-layouts/{id}/versions/{versionId}:
+    get:
+      tags:
+      - Store Email Layouts
+      summary: Get Brand Layout Version
+      description: 'Returns one saved layout version (HTML + settings).
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Brand layout id
+        example: '4'
+      - name: versionId
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Version id
+        example: '51'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      store_email_layout_id:
+                        type: integer
+                      html:
+                        type: string
+                      settings:
+                        type: object
+                        properties:
+                          logo_url:
+                            type: string
+                          primary_color:
+                            type: string
+                          accent_color:
+                            type: string
+                          footer_text:
+                            type: string
+                          support_email:
+                            type: string
+                          show_social:
+                            type: boolean
+                      source:
+                        type: string
+                      source_label:
+                        type: string
+                      summary:
+                        type: string
+                        nullable: true
+                      created_by:
+                        type: integer
+                      created_by_name:
+                        type: string
+                      created_at:
+                        type: string
+                example:
+                  status: success
+                  data:
+                    id: 51
+                    store_email_layout_id: 4
+                    html: <!DOCTYPE html>…{{content}}…
+                    settings:
+                      logo_url: https://acme.sku.io/storage/email-assets/acme/3f0c….png
+                      primary_color: '#1F4D3A'
+                      accent_color: '#2563EB'
+                      footer_text: Siber Outdoor Ltd · 12 Trail Rd, Wanaka
+                      support_email: help@siber.example
+                      show_social: false
+                    source: manual
+                    source_label: Manual
+                    summary: null
+                    created_by: 7
+                    created_by_name: Alex Kim
+                    created_at: '2026-10-26T14:02:11+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      version_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: array
+                example:
+                  status: error
+                  message: Version not found.
+                  errors:
+                    version_id:
+                    - message: Version not found.
+                      code: NotFound
+                      data: []
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-store-email-layouts-id-versions-versionid
+  /api/store-email-layouts/{storeId}/ai-edit/stream:
+    post:
+      tags:
+      - Store Email Layouts
+      summary: AI Edit Brand Layout (stream)
+      description: 'Server-Sent Events: one AI assistant turn on a brand layout document.
+        `:storeId` is a store id, or `default` for the tenant default layout; `layout_id`
+        in the body names the layout explicitly. An empty `current_html` uses the
+        saved layout HTML.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.
+
+
+        Body: `layout_id` (int|null), `store_id` (int|null), `instruction` (required,
+        max 5000), `current_html` (max 200000), `history`, `target`, `reference_images`,
+        `provider`, `model` (as for AI Edit Email Template).
+
+
+        The proposal is checked in layout mode (`{{content}}` exactly once, only layout
+        tokens, no unsafe content) and trial-rendered around the order confirmation
+        with sample data. `complete` has the same shape as the template stream with
+        `proposal.subject` / `proposal.preheader` always null; status steps start
+        with "Reading layout".
+
+
+        Errors arrive as an `error` event `{type: "error", message, status?}` on a
+        200 stream: the template editor switched off in AI settings (503), no API
+        key for the provider (503), the hourly limit (`AiSettings::max_requests_per_user_per_hour`,
+        default 60, per user per tenant; 429 — "You''ve hit the hourly AI limit; try
+        again at 15:40."), provider failures mapped to friendly copy (quota, rate
+        limit, bad key, timeout). Request validation failures are a normal 422 JSON
+        response.
+
+
+        Nothing is saved: the editor applies the proposal to its buffer and the user
+        saves (with `version_source: ai`). A proposal that fails the content checks
+        is retried once with the errors fed back; still invalid → `success: false`,
+        `validation.ok: false`, no `rendered_preview_html`.
+
+
+        `reference_images` (max 3; `{mime_type, data (base64, no prefix), name}` objects
+        or `data:image/...;base64,` URIs; png/jpeg/webp/gif) are sent as vision input
+        and stored as email assets so the proposal can embed them by URL; images the
+        proposal does not embed are deleted again.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                layout_id:
+                  type: integer
+                instruction:
+                  type: string
+                current_html:
+                  type: string
+                history:
+                  type: array
+                reference_images:
+                  type: array
+                provider:
+                  type: string
+                  nullable: true
+                model:
+                  type: string
+                  nullable: true
+              example:
+                layout_id: 4
+                instruction: Make the header band taller and centre the logo
+                current_html: <!DOCTYPE html>…{{content}}…
+                history: []
+                reference_images: []
+                provider: null
+                model: null
+      parameters:
+      - name: storeId
+        in: path
+        schema:
+          type: string
+        required: true
+        description: Store id, or `default` for the tenant default layout
+        example: default
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/event-stream; charset=utf-8
+          content:
+            text/plain:
+              schema:
+                type: string
+              examples:
+                example-0:
+                  summary: 200 Stream
+                  value: 'data: {"type":"status","message":"Reading layout"}
+
+
+                    data: {"type":"status","message":"Writing changes"}
+
+
+                    data: {"type":"status","message":"Checking variables"}
+
+
+                    data: {"type":"status","message":"Rendering preview"}
+
+
+                    data: {"type": "complete", "success": true, "proposal": {"subject":
+                    null, "preheader": null, "html": "<table role=\"presentation\"
+                    width=\"100%\">\u2026</table>", "summary": "Added a Track your
+                    order button and a friendlier intro.", "unresolved": []}, "validation":
+                    {"ok": true, "errors": [], "warnings": [], "error_details": [],
+                    "warning_details": []}, "usage": {"input_tokens": 6120, "output_tokens":
+                    1840}, "rendered_preview_html": "<!DOCTYPE html>\u2026", "provider":
+                    "anthropic", "model": "claude-sonnet-4-5", "error": null}
+
+
+                    '
+                example-1:
+                  summary: 200 Stream (error event)
+                  value: 'data: {"type":"error","message":"You''ve hit the hourly
+                    AI limit; try again at 15:40.","status":429}
+
+
+                    '
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '429': *id001
+        '401': *id002
+        '404': *id003
+        '422': *id004
+      x-required-scope: settings:write
+      operationId: post-api-store-email-layouts-storeid-ai-edit-stream
+  /api/email-assets:
+    post:
+      tags:
+      - Email Assets
+      summary: Upload Email Asset
+      description: 'Uploads an image (multipart field `file`: PNG, JPG, GIF or WEBP,
+        max 2 MB) and returns its public URL to use in a template body or as the layout
+        logo.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: PNG, JPG, GIF or WEBP, max 2 MB
+                  format: binary
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      slug:
+                        type: string
+                      name:
+                        type: string
+                      url:
+                        type: string
+                      mime_type:
+                        type: string
+                      size_bytes:
+                        type: integer
+                      width:
+                        type: integer
+                      height:
+                        type: integer
+                      created_at:
+                        type: string
+                example:
+                  status: success
+                  message: Image uploaded.
+                  data:
+                    id: 31
+                    slug: logo-k3x9q2ma
+                    name: logo.png
+                    url: https://acme.sku.io/storage/email-assets/acme/3f0c2d0e-8f7a-4c1e-9b7e-2a1d5c9f0b11.png
+                    mime_type: image/png
+                    size_bytes: 48211
+                    width: 320
+                    height: 80
+                    created_at: '2026-10-26T14:02:11+00:00'
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      file:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Images must be PNG, JPG, GIF or WEBP.
+                  errors:
+                    file:
+                    - Images must be PNG, JPG, GIF or WEBP.
+        '429': *id001
+        '401': *id002
+      x-required-scope: settings:write
+      operationId: post-api-email-assets
+  /api/email-assets/{id}:
+    delete:
+      tags:
+      - Email Assets
+      summary: Delete Email Asset
+      description: 'Deletes an image and its file. Blocked with 422 `asset_in_use`
+        ("Used in 3 templates and 1 brand layout — remove it there first.") while
+        any template body or brand layout (HTML or quick settings) still shows it.
+
+
+        :::info[Required scope: `settings:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the email_templates.update permission.'
+      parameters:
+      - name: id
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Email asset id
+        example: '31'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: success
+                  message: Image deleted.
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This action is unauthorized.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: error
+                  message: Image not found.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                templates:
+                                  type: integer
+                                layouts:
+                                  type: integer
+                example:
+                  status: error
+                  message: Used in 3 templates and 1 brand layout — remove it there
+                    first.
+                  errors:
+                    id:
+                    - message: Used in 3 templates and 1 brand layout — remove it
+                        there first.
+                      code: asset_in_use
+                      data:
+                        templates: 3
+                        layouts: 1
+        '429': *id001
+        '401': *id002
+      x-required-scope: settings:write
+      operationId: delete-api-email-assets-id
   /api/v2/sales-channel-product-templates:
     get:
       tags:
@@ -1011454,6 +1015405,8 @@ x-tagGroups:
   - Thresholds
   - Refresh
   - Channel Partners
+  - Store Email Layouts
+  - Email Assets
   - Sales Channel Listing Profiles
   - Sub Sales Channels
   - Sales Reps
