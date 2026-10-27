@@ -256,6 +256,7 @@ tags:
 - name: Lists & Reorder
 - name: Checkout & Orders
 - name: Quotes & RFQ
+- name: Guest Quote Requests
 - name: Billing & Invoices
 - name: Returns
 - name: Notifications
@@ -8761,7 +8762,8 @@ paths:
 
         - payment_type_id (required, an existing payment type)
 
-        - amount (required, numeric, must be greater than 0)
+        - amount (required, numeric, must be greater than 0 and no more than the bill''s
+        remaining balance, compared to the cent)
 
         - external_reference (optional, string, max 255)
 
@@ -8877,10 +8879,12 @@ paths:
                         items:
                           type: string
                 example:
-                  message: The amount is more than the remaining balance.
+                  message: The payment amount is more than the remaining balance on
+                    this bill.
                   errors:
                     amount:
-                    - The amount is more than the remaining balance.
+                    - The payment amount is more than the remaining balance on this
+                      bill.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -314003,6 +314007,15 @@ paths:
         - `actionLabel` / `actionRoute` — the single step that resolves it
 
 
+        Steps are returned in the order a merchant should do them: `authorize`, `products`,
+        `bundles`, `locations`, `order_history`, `orders`, `stock_source`. The catalog
+        and its bundles come before `locations` because mapping a location is what
+        starts the order download, and an order imported against a multi-pack that
+        is still a standard product records it as one standard item. `bundles` is
+        optional: it counts standard products whose name or SKU reads as a bundle
+        or kit ("2-pack", "pack of 3", "bundle", "kit") and links to the Bundle Workshop.
+
+
         `complete` is true when every REQUIRED step is done. `deferred` records that
         the merchant chose to finish later — it is never the same as `complete`, and
         a deferred connection still reports its outstanding steps.'
@@ -314072,6 +314085,8 @@ paths:
                         type: string
                       deferred:
                         type: boolean
+                      shouldGate:
+                        type: boolean
                 example:
                   data:
                     integrationInstanceId: 12
@@ -314087,14 +314102,42 @@ paths:
                       blocking: null
                       actionLabel: null
                       actionRoute: null
+                    - key: products
+                      title: Import your Shopify catalog into SKU
+                      description: Downloaded listings only appear in products, inventory
+                        and reports once they are imported as SKU products.
+                      completed: true
+                      required: true
+                      detail: 42 of 42 listings imported.
+                      blocking: null
+                      actionLabel: null
+                      actionRoute: /integrations/shopify/products?filter[integration_instance_ids]=12&filter[mapped]=false
+                    - key: bundles
+                      title: Set up your bundles and kits before orders arrive
+                      description: Make multi-packs and sets bundles (or kits) before
+                        you map a location. An order imported against a standard "2-pack"
+                        records it as one standard item, so its stock and cost are
+                        wrong until the product is converted.
+                      completed: false
+                      required: false
+                      detail: 3 standard products look like a bundle or kit (WW-CANDLE-3-PACK,
+                        WW-GIFT-BUNDLE, WW-SOAP-2-PACK). Convert the ones that are,
+                        in the Bundle Workshop — the rest can stay standard.
+                      blocking: 3
+                      actionLabel: Open the Bundle Workshop
+                      actionRoute: /products/bundle-workshop
                     - key: locations
                       title: Map your Shopify locations to SKU warehouses
-                      description: SKU will not download orders until at least one
-                        location points at a warehouse, and fulfillments cannot be
-                        written back without it.
+                      description: Mapping a location starts the order download —
+                        SKU will not download orders until at least one location points
+                        at a warehouse, and fulfillments cannot be written back without
+                        it.
                       completed: false
                       required: true
-                      detail: None of your 2 Shopify locations are mapped yet.
+                      detail: 'None of your 2 Shopify locations are mapped yet. Set
+                        up your bundles first: 3 products still look like a bundle
+                        or kit, and orders downloaded once a location is mapped would
+                        record them as standard items.'
                       blocking: 2
                       actionLabel: Map locations
                       actionRoute: /integrations/shopify/settings?tab=warehouse-mappings
@@ -314102,29 +314145,46 @@ paths:
                       title: Choose how much order history to import
                       description: Orders placed from now on arrive automatically.
                         This controls the one-time import of past orders.
-                      completed: false
+                      completed: true
                       required: true
-                      detail: No horizon chosen yet, so SKU would fall back to a bounded
-                        default you never saw.
+                      detail: Importing orders placed on or after Mar 4, 2026, matching
+                        your inventory start date. Set a different date below to override
+                        it.
                       blocking: null
-                      actionLabel: Choose a date
+                      actionLabel: null
                       actionRoute: null
-                    - key: products
-                      title: Import your Shopify catalog into SKU
-                      description: Downloaded listings only appear in products, inventory
-                        and reports once they are imported as SKU products.
+                      currentValue: '2026-03-04'
+                    - key: orders
+                      title: Get your Shopify orders into SKU
+                      description: Downloaded orders become SKU sales orders automatically
+                        — this is how many actually made it.
                       completed: false
-                      required: true
-                      detail: 7 listings downloaded but not imported.
-                      blocking: 7
-                      actionLabel: Review & import 7 products
-                      actionRoute: /integrations/shopify/products?filter[integration_instance_ids]=6&filter[mapped]=false
+                      required: false
+                      detail: The first order import has not finished yet.
+                      blocking: null
+                      actionLabel: null
+                      actionRoute: null
+                    - key: stock_source
+                      title: Choose who manages your stock levels
+                      description: Hand a Shopify location to SKU and pick the warehouses
+                        it counts, and SKU keeps its quantity current as you receive
+                        and ship. Until then Shopify keeps its own numbers — connecting
+                        never overwrites them.
+                      completed: false
+                      required: false
+                      detail: Shopify still manages stock at all 2 locations. Stock
+                        you receive in SKU will not reach your storefront until a
+                        location is handed to SKU.
+                      blocking: null
+                      actionLabel: Choose stock source
+                      actionRoute: /integrations/shopify/settings?tab=inventory
                     complete: false
-                    completedCount: 1
-                    totalCount: 4
-                    percentComplete: 25
+                    completedCount: 3
+                    totalCount: 7
+                    percentComplete: 43
                     nextStepKey: locations
                     deferred: false
+                    shouldGate: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -601904,10 +601964,13 @@ paths:
 
         **Converting a product to a bundle:** order lines that already sell the product
         as a single item are split into the bundle''s components in the same request,
-        as long as they hold nothing yet. If an open line already holds a reservation,
-        a fulfillment or a stock movement for the product, the conversion is refused
-        with a 422 that names those orders. Unallocate, ship or cancel those lines
-        first.
+        as long as they hold no stock yet. A line whose only allocation is `planned`
+        (demand with no stock or incoming receipt behind it, for example an order
+        taken before any stock exists) is split too. If an open line already holds
+        allocated or incoming stock, a fulfillment or a stock movement for the product,
+        the conversion is refused with a 422 that names those orders in `message`
+        and lists them in `data.blocking_sales_orders` (`id`, `sales_order_number`).
+        Unallocate, ship or cancel those lines first.
 
 
         `sku` cannot be cleared (an empty or `null` SKU returns 422). `is_dropshippable`
@@ -602178,9 +602241,14 @@ paths:
                 example-2:
                   summary: 422 Bundle Conversion Blocked by Open Orders
                   value:
-                    message: 'OB-WU-SHAKER-GO cannot become a bundle while open orders
-                      hold stock or shipments for it as a single item: SO-0477. Unallocate,
-                      ship or cancel those lines first.'
+                    status: failure
+                    message: 'OB-WU-SHAKER-GO cannot become a bundle while 1 open
+                      order holds stock or shipments for it as a single item: SO-0477.
+                      Unallocate, ship or cancel those lines first.'
+                    data:
+                      blocking_sales_orders:
+                      - id: 477
+                        sales_order_number: SO-0477
             application/json:
               schema:
                 type: object
@@ -617635,10 +617703,13 @@ paths:
 
         **Converting a product to a bundle:** order lines that already sell the product
         as a single item are split into the bundle''s components in the same request,
-        as long as they hold nothing yet. If an open line already holds a reservation,
-        a fulfillment or a stock movement for the product, the conversion is refused
-        with a 422 that names those orders. Unallocate, ship or cancel those lines
-        first.
+        as long as they hold no stock yet. A line whose only allocation is `planned`
+        (demand with no stock or incoming receipt behind it, for example an order
+        taken before any stock exists) is split too. If an open line already holds
+        allocated or incoming stock, a fulfillment or a stock movement for the product,
+        the conversion is refused with a 422 that names those orders in `message`
+        and lists them in `data.blocking_sales_orders` (`id`, `sales_order_number`).
+        Unallocate, ship or cancel those lines first.
 
 
         **Requires permission:** `products.update`'
@@ -617730,9 +617801,14 @@ paths:
                 example-1:
                   summary: 422 Bundle Conversion Blocked by Open Orders
                   value:
-                    message: 'OB-WU-SHAKER-GO cannot become a bundle while open orders
-                      hold stock or shipments for it as a single item: SO-0477. Unallocate,
-                      ship or cancel those lines first.'
+                    status: failure
+                    message: 'OB-WU-SHAKER-GO cannot become a bundle while 1 open
+                      order holds stock or shipments for it as a single item: SO-0477.
+                      Unallocate, ship or cancel those lines first.'
+                    data:
+                      blocking_sales_orders:
+                      - id: 477
+                        sales_order_number: SO-0477
         '429': *id001
         '401': *id002
         '404': *id003
@@ -897377,7 +897453,25 @@ paths:
         `holdback_enabled` is true, the availability shown to portal buyers (catalog,
         product pages, inventory feed) is reduced — `holdback_mode` `percent` exposes
         `holdback_percent` % of available-to-sell, `reserve` subtracts `holdback_reserve_qty`
-        units. Display-layer only; channel sync is unaffected.'
+        units. Display-layer only; channel sync is unaffected.
+
+
+        Order history & quotes:
+
+        - order_history_scope: `all_channels` (default — buyers see every order the
+        customer has, minus another channel''s drafts) or `portal` (only orders placed
+        in the portal).
+
+        - guest_rfq_enabled: open the public Request a quote page (no account needed).
+        Default false.
+
+        - guest_rfq_note: optional plain-text intro above that form, max 2000; blank
+        clears it.
+
+        - rfq_pricing_hidden_until_sent: hide a requested quote''s prices from the
+        buyer until staff send it. Default false.
+
+        All four are optional on update; an omitted key keeps its value.'
       parameters: []
       responses:
         '200':
@@ -897451,6 +897545,14 @@ paths:
                         type: integer
                       margin_replacement_cost_adjustment_label:
                         type: string
+                      order_history_scope:
+                        type: string
+                      guest_rfq_enabled:
+                        type: boolean
+                      guest_rfq_note:
+                        type: string
+                      rfq_pricing_hidden_until_sent:
+                        type: boolean
                 example:
                   data:
                     allow_backorder: true
@@ -897478,6 +897580,11 @@ paths:
                     preview_access_business_domains_only: true
                     margin_replacement_cost_adjustment_percent: -15
                     margin_replacement_cost_adjustment_label: at special
+                    order_history_scope: all_channels
+                    guest_rfq_enabled: true
+                    guest_rfq_note: 'Government and agency buyers: we quote within
+                      one business day.'
+                    rfq_pricing_hidden_until_sent: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -897570,7 +897677,25 @@ paths:
         40, e.g. "at special"): an adjustment to the staff "View as buyer" margin
         overlay''s replacement cost (the default supplier''s price) — e.g. −15 for
         a merchant that only buys at the supplier''s specials. Staff-only; never shown
-        to buyers.'
+        to buyers.
+
+
+        Order history & quotes:
+
+        - order_history_scope: `all_channels` (default — buyers see every order the
+        customer has, minus another channel''s drafts) or `portal` (only orders placed
+        in the portal).
+
+        - guest_rfq_enabled: open the public Request a quote page (no account needed).
+        Default false.
+
+        - guest_rfq_note: optional plain-text intro above that form, max 2000; blank
+        clears it.
+
+        - rfq_pricing_hidden_until_sent: hide a requested quote''s prices from the
+        buyer until staff send it. Default false.
+
+        All four are optional on update; an omitted key keeps its value.'
       requestBody:
         content:
           application/json:
@@ -897632,6 +897757,14 @@ paths:
                   type: integer
                 margin_replacement_cost_adjustment_label:
                   type: string
+                order_history_scope:
+                  type: string
+                guest_rfq_enabled:
+                  type: boolean
+                guest_rfq_note:
+                  type: string
+                rfq_pricing_hidden_until_sent:
+                  type: boolean
               example:
                 allow_backorder: false
                 min_order_value_enabled: true
@@ -897658,6 +897791,11 @@ paths:
                 preview_access_business_domains_only: true
                 margin_replacement_cost_adjustment_percent: -15
                 margin_replacement_cost_adjustment_label: at special
+                order_history_scope: all_channels
+                guest_rfq_enabled: true
+                guest_rfq_note: 'Government and agency buyers: we quote within one
+                  business day.'
+                rfq_pricing_hidden_until_sent: false
       parameters: []
       responses:
         '200':
@@ -897731,6 +897869,14 @@ paths:
                         type: integer
                       margin_replacement_cost_adjustment_label:
                         type: string
+                      order_history_scope:
+                        type: string
+                      guest_rfq_enabled:
+                        type: boolean
+                      guest_rfq_note:
+                        type: string
+                      rfq_pricing_hidden_until_sent:
+                        type: boolean
                 example:
                   data:
                     allow_backorder: false
@@ -897758,6 +897904,11 @@ paths:
                     preview_access_business_domains_only: true
                     margin_replacement_cost_adjustment_percent: -15
                     margin_replacement_cost_adjustment_label: at special
+                    order_history_scope: all_channels
+                    guest_rfq_enabled: true
+                    guest_rfq_note: 'Government and agency buyers: we quote within
+                      one business day.'
+                    rfq_pricing_hidden_until_sent: false
         '422':
           description: Unprocessable Content
           headers:
@@ -900721,6 +900872,92 @@ paths:
         '422': *id004
       x-session-only: true
       operationId: post-api-portal-auth-view-as-end
+  /api/portal/view-as/keep-alive:
+    post:
+      tags:
+      - Authentication
+      summary: Keep Staff View Alive
+      description: 'Extends a staff "View as buyer" session. A staff view is an idle
+        window: every authenticated request already pushes its expiry out to 60 minutes
+        from now, and this endpoint does so explicitly (the "Keep viewing" action
+        shown before the view expires). It never extends past `ends_by`, 8 hours after
+        the view opened. Allowed on a read-only staff view; it changes nothing of
+        the buyer''s.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authenticate with the staff view''s own bearer token. A buyer''s own login
+        has no staff view to extend and gets 404. Throttled 30/min.'
+      requestBody:
+        content: {}
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expires_at:
+                    type: string
+                  ends_by:
+                    type: string
+                example:
+                  expires_at: '2026-10-26T16:42:10+00:00'
+                  ends_by: '2026-10-26T23:41:55+00:00'
+        '401':
+          description: Unauthorized
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+                example:
+                  error: This staff view has ended.
+                  reason: staff_view_ended
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Not a staff view.
+        '429': *id001
+        '403': *id005
+        '422': *id004
+      x-session-only: true
+      operationId: post-api-portal-view-as-keep-alive
   /api/portal/auth/sso/{company}/redirect:
     get:
       tags:
@@ -901076,7 +901313,14 @@ paths:
         the catalog, prices, orders and invoices, but every write is refused with
         403 and `reason: "viewer_read_only"` (see the collection overview). Use the
         flag to hide ordering, cart, list, quote, return, payment, address and feed-key
-        actions up front.'
+        actions up front.
+
+
+        During a staff "View as buyer" session, `view_as` is an object: `session_id`,
+        `staff_user_id`, `staff_name`, `expires_at` (slides forward with activity),
+        `idle_minutes` (the idle window, 60), `ends_by` (the hard cap the view can
+        never be extended past) and `can_view_margins`. It is `null` on a buyer''s
+        own login.'
       parameters: []
       responses:
         '200':
@@ -905742,7 +905986,13 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       requestBody:
         content:
           application/json:
@@ -906119,7 +906369,13 @@ paths:
         order_status, payment_status, sales_order_number, created_at.
 
 
-        Pagination: page (default 1), per_page (default 10, max 100).'
+        Pagination: page (default 1), per_page (default 10, max 100).
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters:
       - name: filter[stage]
         in: query
@@ -906209,7 +906465,13 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters:
       - name: order
         in: path
@@ -907126,7 +907388,14 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Pricing pending: when the merchant hides requested-quote pricing until sending
+        (Portal Settings → Quote requests), a quote still being worked on (draft or
+        revised) has `pricing_pending: true` and every money field — subtotal, discount_total,
+        tax_total, total, deposit, and each line''s unit_price / line_total — is null.
+        Quantities, products and the thread are still returned.'
       requestBody:
         content:
           application/json:
@@ -907191,6 +907460,8 @@ paths:
                         type: string
                         nullable: true
                       is_tax_included:
+                        type: boolean
+                      pricing_pending:
                         type: boolean
                       subtotal:
                         type: integer
@@ -907287,6 +907558,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -907361,7 +907633,14 @@ paths:
         status, origin, total, valid_until, created_at.
 
 
-        Pagination: page (default 1), per_page (default 10, max 100).'
+        Pagination: page (default 1), per_page (default 10, max 100).
+
+
+        Pricing pending: when the merchant hides requested-quote pricing until sending
+        (Portal Settings → Quote requests), a quote still being worked on (draft or
+        revised) has `pricing_pending: true` and every money field — subtotal, discount_total,
+        tax_total, total, deposit, and each line''s unit_price / line_total — is null.
+        Quantities, products and the thread are still returned.'
       parameters: []
       responses:
         '200':
@@ -907391,6 +907670,8 @@ paths:
                           type: string
                         currency_code:
                           type: string
+                        pricing_pending:
+                          type: boolean
                         subtotal:
                           type: integer
                         discount_total:
@@ -907414,6 +907695,7 @@ paths:
                     status: sent
                     origin: rfq
                     currency_code: USD
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -907441,7 +907723,14 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Pricing pending: when the merchant hides requested-quote pricing until sending
+        (Portal Settings → Quote requests), a quote still being worked on (draft or
+        revised) has `pricing_pending: true` and every money field — subtotal, discount_total,
+        tax_total, total, deposit, and each line''s unit_price / line_total — is null.
+        Quantities, products and the thread are still returned.'
       parameters:
       - name: quote
         in: path
@@ -907488,6 +907777,8 @@ paths:
                         type: string
                         nullable: true
                       is_tax_included:
+                        type: boolean
+                      pricing_pending:
                         type: boolean
                       subtotal:
                         type: integer
@@ -907584,6 +907875,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -907702,6 +907994,8 @@ paths:
                         nullable: true
                       is_tax_included:
                         type: boolean
+                      pricing_pending:
+                        type: boolean
                       subtotal:
                         type: integer
                       discount_total:
@@ -907797,6 +908091,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -907932,6 +908227,8 @@ paths:
                         nullable: true
                       is_tax_included:
                         type: boolean
+                      pricing_pending:
+                        type: boolean
                       subtotal:
                         type: integer
                       discount_total:
@@ -908029,6 +908326,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -908168,6 +908466,8 @@ paths:
                         nullable: true
                       is_tax_included:
                         type: boolean
+                      pricing_pending:
+                        type: boolean
                       subtotal:
                         type: integer
                       discount_total:
@@ -908263,6 +908563,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -908382,6 +908683,8 @@ paths:
                         nullable: true
                       is_tax_included:
                         type: boolean
+                      pricing_pending:
+                        type: boolean
                       subtotal:
                         type: integer
                       discount_total:
@@ -908477,6 +908780,7 @@ paths:
                     cover_letter: null
                     terms: null
                     is_tax_included: false
+                    pricing_pending: false
                     subtotal: 640
                     discount_total: 0
                     tax_total: 48
@@ -908524,6 +908828,410 @@ paths:
         '422': *id004
       x-session-only: true
       operationId: post-api-portal-quotes-quote-counter
+  /api/portal/guest/quote-form:
+    get:
+      tags:
+      - Guest Quote Requests
+      summary: Get Guest Quote Form
+      description: 'Get the settings of the public Request a quote page: whether guest
+        quote requests are switched on, the merchant''s intro note and logo, and the
+        brands and categories to filter the guest catalog by.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: none (public). The tenant is resolved from the portal subdomain.
+
+
+        Always returns 200; `enabled` is false while the merchant has guest quote
+        requests switched off (Portal Settings → Quote requests), and then `note`,
+        `brands` and `categories` are empty. Throttled to 60 requests a minute.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      note:
+                        type: string
+                      logo_url:
+                        type: string
+                      brands:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                      categories:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                example:
+                  data:
+                    enabled: true
+                    note: 'Government and agency buyers: we quote within one business
+                      day.'
+                    logo_url: https://cdn.example.com/logo.png
+                    brands:
+                    - id: 3
+                      name: GoDark
+                    categories:
+                    - id: 9
+                      name: Faraday bags
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-portal-guest-quote-form
+  /api/portal/guest/catalog/products:
+    get:
+      tags:
+      - Guest Quote Requests
+      summary: List Guest Catalog Products
+      description: 'List the products a guest can request a quote for: the merchant''s
+        Default catalog (or every portal-visible product when there is no Default
+        catalog).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: none (public).
+
+
+        The payload never carries a price, a price ladder or a stock level.
+
+
+        Filters: search, brand_ids, category_ids. Sorting: sort=name|sku|brand with
+        direction=asc|desc. Pagination: page (default 1), per_page (default 24, max
+        100). Returns 404 while guest quote requests are switched off. Throttled to
+        60 requests a minute.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        sku:
+                          type: string
+                        name:
+                          type: string
+                        brand:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                        image_url:
+                          type: string
+                        moq:
+                          type: integer
+                        order_increment:
+                          type: string
+                          nullable: true
+                  current_page:
+                    type: integer
+                  last_page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  from:
+                    type: integer
+                  to:
+                    type: integer
+                example:
+                  data:
+                  - id: 101
+                    sku: GD-FB-LG
+                    name: Faraday Bag — Large
+                    brand:
+                      id: 3
+                      name: GoDark
+                    image_url: https://cdn.example.com/products/gd-fb-lg.jpg
+                    moq: 1
+                    order_increment: null
+                  current_page: 1
+                  last_page: 1
+                  per_page: 24
+                  total: 1
+                  from: 1
+                  to: 1
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Quote requests without an account are not available.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-portal-guest-catalog-products
+  /api/portal/quotes/guest:
+    post:
+      tags:
+      - Guest Quote Requests
+      summary: Request a Quote Without an Account
+      description: 'Request a quote without a portal account. The request becomes
+        a draft quote (origin `rfq`) for staff to review, already priced from the
+        merchant''s pricing; the requester is never shown a price until staff send
+        the quote, which is then emailed to them as a PDF. Staff are alerted (alert
+        type `portal_guest_quote_requested`) and the requester gets an email confirmation
+        listing the items.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Authentication: none (public). Send multipart/form-data (or JSON without the
+        attachment).
+
+
+        The requester is filed under a customer that is never enrolled in the portal;
+        a portal account''s email is never matched.
+
+
+        Responses: 201 with the quote number only; 404 while guest quote requests
+        are switched off; 422 `no_valid_items` when nothing requested is in the guest
+        catalog; 422 validation errors. Throttled to 5 requests a minute.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                organization:
+                  type: string
+                  description: Required, max 255. The requesting organization or department.
+                  example: RCMP E Division
+                contact_name:
+                  type: string
+                  description: Required, max 255.
+                  example: Pat Officer
+                email:
+                  type: string
+                  description: Required. The confirmation and the quote are emailed
+                    here. A previous guest request from the same email (a customer
+                    not enrolled in the portal) is filed under the same customer.
+                  example: pat.officer@example.gov
+                phone:
+                  type: string
+                  description: Optional, max 50.
+                  example: 555-0100
+                reference:
+                  type: string
+                  description: Optional, max 100. The requester's own reference or
+                    RFQ number; stored as the quote's customer PO number.
+                  example: RFQ-2026-118
+                note:
+                  type: string
+                  description: Optional, max 5000. Other items, deadlines, delivery
+                    notes. Opens the quote's message thread.
+                  example: Need these before 30 Nov.
+                billing_address[address1]:
+                  type: string
+                  description: Required.
+                  example: 14200 Green Timbers Way
+                billing_address[address2]:
+                  type: string
+                  description: Optional.
+                billing_address[city]:
+                  type: string
+                  description: Required.
+                  example: Surrey
+                billing_address[province]:
+                  type: string
+                  description: Optional.
+                  example: BC
+                billing_address[province_code]:
+                  type: string
+                  description: Optional, max 16.
+                billing_address[zip]:
+                  type: string
+                  description: Optional.
+                  example: V3T 6P3
+                billing_address[country]:
+                  type: string
+                  description: Optional.
+                billing_address[country_code]:
+                  type: string
+                  description: Optional, max 5.
+                  example: CA
+                billing_address[name]:
+                  type: string
+                  description: Optional. Defaults to contact_name.
+                billing_address[company]:
+                  type: string
+                  description: Optional. Defaults to organization.
+                billing_address[phone]:
+                  type: string
+                  description: Optional. Defaults to phone.
+                shipping_address[address1]:
+                  type: string
+                  description: Optional. Omit the whole shipping_address to ship to
+                    the billing address; when given, address1 and city are required.
+                    Takes the same keys as billing_address.
+                shipping_address[city]:
+                  type: string
+                  description: Required with shipping_address.
+                items[0][product_id]:
+                  type: integer
+                  description: Required unless items[0][sku] is given. Must be a product
+                    in the guest catalog; others are dropped.
+                  example: '101'
+                items[0][sku]:
+                  type: string
+                  description: Required unless items[0][product_id] is given.
+                items[0][quantity]:
+                  type: integer
+                  description: Required, integer 1–1,000,000. Repeats of one product
+                    are summed. 1–200 items.
+                  example: '3'
+                attachment:
+                  type: string
+                  description: Optional. The requester's own RFQ document (PDF/PNG/JPG,
+                    max 20 MB). Attached to the quote's opening message.
+                  format: binary
+                hp_url:
+                  type: string
+                  description: Honeypot. Must be empty or omitted.
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  quote_number:
+                    type: string
+                example:
+                  message: Your quote request has been received. We will review it
+                    and email you the quote.
+                  quote_number: Q-0418
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: Quote requests without an account are not available.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 No Valid Items
+                  value:
+                    error: None of the requested items could be matched to a product
+                      in the catalog.
+                    reason: no_valid_items
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: The organization field is required. (and 2 more errors)
+                    errors:
+                      organization:
+                      - The organization field is required.
+                      billing_address:
+                      - The billing address field is required.
+                      items:
+                      - Add at least one product to your quote request.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: post-api-portal-quotes-guest
   /api/portal/account/statement:
     get:
       tags:
@@ -908538,7 +909246,13 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters: []
       responses:
         '200':
@@ -908616,7 +909330,13 @@ paths:
         payment_status, sales_order_number, created_at.
 
 
-        Pagination: page (default 1), per_page (default 10, max 100).'
+        Pagination: page (default 1), per_page (default 10, max 100).
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters: []
       responses:
         '200':
@@ -909052,7 +909772,13 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters: []
       responses:
         '200':
@@ -909116,7 +909842,13 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters:
       - name: order
         in: path
@@ -909427,7 +910159,13 @@ paths:
         status, created_at.
 
 
-        Pagination: page (default 1), per_page (default 10, max 100).'
+        Pagination: page (default 1), per_page (default 10, max 100).
+
+
+        Which orders: by default every order the account has, whatever channel it
+        came through (the portal, the merchant''s store, phone or email orders entered
+        by staff) — another channel''s draft orders are never shown. A merchant can
+        limit this to orders placed in the portal (Portal Settings → Order history).'
       parameters: []
       responses:
         '200':
@@ -1010495,6 +1011233,7 @@ x-tagGroups:
   - Lists & Reorder
   - Checkout & Orders
   - Quotes & RFQ
+  - Guest Quote Requests
   - Billing & Invoices
   - Returns
   - Notifications
