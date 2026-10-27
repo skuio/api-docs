@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-27
-description: This release includes 26 additions, 2 changes. 1 breaking change — action required.
+description: This release includes 38 additions, 4 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-10-27
 ---
 
-This release includes 26 additions, 2 changes. 1 breaking change — action required.
+This release includes 38 additions, 4 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -30,6 +30,10 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Authentication
 - `POST /api/portal/view-as/keep-alive` — Keep Staff View Alive
 
+### EasyPost
+- `GET /api/easypost/carrier-accounts` — List EasyPost Carrier Accounts
+- `GET /api/shipping-estimates/status` — Get Shipping Estimate Status
+
 ### Email Assets
 - `POST /api/email-assets` — Upload Email Asset
 - `DELETE /api/email-assets/{id}` — Delete Email Asset
@@ -41,6 +45,20 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Quotes
 - `GET /api/quotes/{quote}/email-preview` — Get Quote Email Preview
+- `GET /api/quotes/{quote}/shipping-estimates` — List Quote Shipping Estimates
+- `POST /api/quotes/{quote}/shipping-estimates` — Estimate Quote Shipping
+- `POST /api/quotes/{quote}/shipping-estimates/{shippingEstimate}/apply` — Apply Quote Shipping Estimate
+
+### Sales Orders
+- `GET /api/sales-orders/{salesOrder}/shipping-estimates` — List Sales Order Shipping Estimates
+- `POST /api/sales-orders/{salesOrder}/shipping-estimates` — Estimate Sales Order Shipping
+- `POST /api/sales-orders/{salesOrder}/shipping-estimates/{shippingEstimate}/apply` — Apply Sales Order Shipping Estimate
+- `PATCH /api/sales-orders/{salesOrder}/shipping-pending-review` — Set Sales Order Shipping Pending Review
+
+### Shipping
+- `GET /api/admin/portal/shipping` — Get Portal Shipping Settings
+- `PUT /api/admin/portal/shipping` — Update Portal Shipping Settings
+- `POST /api/admin/portal/shipping/preview` — Preview Portal Shipping
 
 ### Store Email Layouts
 - `GET /api/store-email-layouts` — List Brand Layouts
@@ -66,6 +84,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/store-email-templates/{id}/versions/{versionId}` — Get Email Template Version
 
 ## Changed
+
+### Checkout & Orders
+- `POST /api/portal/checkout` — Submit Checkout
+  - new response code(s): `409`
+
+### Rep-Assisted Ordering
+- `POST /api/admin/portal/accounts/{customer}/place-order` — Place Order on Behalf
+  - new response code(s): `409`
 
 ### Store Email Templates
 - `PUT /api/store-email-templates/{id}` — Update Store Email Template

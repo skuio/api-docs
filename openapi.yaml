@@ -249,6 +249,7 @@ tags:
 - name: Catalogs
 - name: Analytics
 - name: Special Order List
+- name: Shipping
 - name: Registration
 - name: Session
 - name: Catalog
@@ -244648,7 +244649,17 @@ paths:
 
         Returns 404 when the inbound plan (or a shipment, box, option or item nested
         under it) in the path belongs to a different Amazon account than the one in
-        the URL.'
+        the URL.
+
+
+        Rating key: each estimate also carries `source` — `tenant` when it was rated
+        with the account''s own EasyPost connection, `shared` when SKU.io''s shared
+        reference key was used because the account has none (estimates stored before
+        this field existed report `shared`) — plus `mode` (`production`|`test`|null,
+        the key''s mode) and `tenant_key_rejected` (true when the account''s own key
+        was refused mid-run and the shared key rated the rest). A shipment that could
+        not be rated for lack of any key reports `skipped_reason` `easypost_unavailable`;
+        a refused key reports `key_rejected`.'
       parameters:
       - name: integrationInstance
         in: path
@@ -244771,6 +244782,12 @@ paths:
                                     nullable: true
                                   missing_dims_mskus:
                                     type: array
+                            source:
+                              type: string
+                            mode:
+                              type: string
+                            tenant_key_rejected:
+                              type: boolean
                       origin_zip:
                         type: string
                       estimated_at:
@@ -244873,6 +244890,9 @@ paths:
                           missing_data_mskus: []
                         skipped_reason: null
                         missing_dims_mskus: []
+                      source: tenant
+                      mode: production
+                      tenant_key_rejected: false
                     - placement_option_id: 13
                       total: null
                       currency: USD
@@ -244897,6 +244917,9 @@ paths:
                         skipped_reason: missing_dims
                         missing_dims_mskus:
                         - MSKU-ABC-123
+                      source: shared
+                      mode: null
+                      tenant_key_rejected: false
                     origin_zip: '95206'
                     estimated_at: '2026-07-03T18:00:00+00:00'
         '404':
@@ -246540,7 +246563,12 @@ paths:
 
         Returns 404 when the inbound plan (or a shipment, box, option or item nested
         under it) in the path belongs to a different Amazon account than the one in
-        the URL.'
+        the URL.
+
+
+        Shipments are rated with the account''s own EasyPost connection, else SKU.io''s
+        shared reference key. When neither is available the request is refused up
+        front with 422 `easypost_unavailable` and no job is queued.'
       requestBody:
         content: {}
       parameters:
@@ -246598,10 +246626,37 @@ paths:
                 example:
                   message: No query results for model [Modules\Amazon\Entities\DraftAmazonFbaInboundPlan]
                     999
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      easypost_unavailable:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'Transport estimates are unavailable: connect your EasyPost
+                    account in Integrations → EasyPost.'
+                  errors:
+                    easypost_unavailable:
+                    - 'Transport estimates are unavailable: connect your EasyPost
+                      account in Integrations → EasyPost.'
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-session-only: true
       operationId: post-api-amazon-integrationinstance-draft-inbound-plans-draft-inbound-plan-placement-transport-estimates-estimate
   /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/labels/item-labels:
@@ -552117,6 +552172,167 @@ paths:
         '422': *id004
       x-required-scope: integrations:write
       operationId: post-api-easypost-instances-integrationinstance-test-connection
+  /api/shipping-estimates/status:
+    get:
+      tags:
+      - EasyPost
+      summary: Get Shipping Estimate Status
+      description: 'Whether shipping cost estimates are available on this account.
+        Shipping estimates on sales orders, quotes and the B2B portal are rated with
+        the account''s own EasyPost connection; Amazon FBA inbound transport estimates
+        use it when present.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Response (`data`):
+
+        - `connected` (boolean): an EasyPost connection exists.
+
+        - `mode` (`production`|`test`|null): the connected key''s mode. Test keys
+        return list rates, and EasyPost lists carrier accounts only for production
+        keys.
+
+        - `instance_id` (integer|null): the EasyPost connection id.
+
+        - `key_last4` (string|null): last four characters of the API key.
+
+        - `error` (string|null): the last authentication failure, if any.
+
+        - `carrier_accounts[]`: `id`, `carrier`, `description` of each carrier account
+        on the EasyPost account (cached for an hour).
+
+        - `carrier_accounts_error` (string|null): why carrier accounts could not be
+        listed.
+
+
+        All fields are null/empty when EasyPost is not connected.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      connected: true
+                      mode: production
+                      instance_id: 22
+                      key_last4: 9f3K
+                      error: null
+                      carrier_accounts:
+                      - id: ca_5d1e2f3a4b
+                        carrier: UPS
+                        description: UPS account 1A2B3C
+                      - id: ca_9a8b7c6d5e
+                        carrier: USPS
+                        description: null
+                      - id: ca_1f2e3d4c5b
+                        carrier: FedEx
+                        description: FedEx Reno
+                      carrier_accounts_error: null
+                example-1:
+                  summary: 200 Not Connected
+                  value:
+                    data:
+                      connected: false
+                      mode: null
+                      instance_id: null
+                      key_last4: null
+                      error: null
+                      carrier_accounts: []
+                      carrier_accounts_error: null
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-shipping-estimates-status
+  /api/easypost/carrier-accounts:
+    get:
+      tags:
+      - EasyPost
+      summary: List EasyPost Carrier Accounts
+      description: 'Lists the carrier accounts on the connected EasyPost account —
+        the carriers whose services can be offered as live-rate portal shipping methods.
+
+
+        :::info[Required scope: `integrations:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Response: `data[]` (`id`, `carrier`, `description`), `error` (string|null
+        — why the accounts could not be listed, e.g. a test key: "EasyPost only lists
+        carrier accounts for production keys.") and `connected` (boolean). Results
+        are cached for an hour.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `integrations.show`'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                    - id: ca_5d1e2f3a4b
+                      carrier: UPS
+                      description: UPS account 1A2B3C
+                    - id: ca_9a8b7c6d5e
+                      carrier: USPS
+                      description: null
+                    - id: ca_1f2e3d4c5b
+                      carrier: FedEx
+                      description: FedEx Reno
+                    error: null
+                    connected: true
+                example-1:
+                  summary: 200 Test Key
+                  value:
+                    data: []
+                    error: EasyPost only lists carrier accounts for production keys.
+                    connected: true
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: integrations:read
+      operationId: get-api-easypost-carrier-accounts
   /api/shipmyorders/integration-instances/{integration_instance}:
     get:
       tags:
@@ -766700,7 +766916,15 @@ paths:
         **Requires permission:** `sales_orders.update`
 
 
-        `description` is limited to 255 characters.'
+        `description` is limited to 255 characters.
+
+
+        **Pricing shipping from your own calculator.** An integration that works out
+        shipping itself can charge it by creating a REVENUE "Shipping" financial line
+        here (the `financial_line_type_id` of the line type named "Shipping" with
+        classification revenue, `quantity` 1, `amount` = the charge). That prices
+        the order''s shipping: adding the line clears the order''s `shipping_pending_review`
+        flag, exactly as applying a shipping estimate does.'
       requestBody:
         content:
           application/json:
@@ -767682,7 +767906,26 @@ paths:
         - `revenue_booked_by`: payout (the Shopify Payments payout books its revenue,
         also while pending), order_invoice (invoiced per order because it was paid
         outside Shopify Payments) or left_out (paid outside Shopify Payments while
-        the store left those out of the books); null for per-order channels.'
+        the store left those out of the books); null for per-order channels.
+
+
+        Shipping quote fields:
+
+        - `shipping_pending_review` (boolean): true while shipping has not been priced
+        (a portal buyer chose "calculated on review").
+
+        - `shipping_quote_available` (boolean): whether shipping can be quoted on
+        this order at all — false for orders from other sales channels, whose shipping
+        comes from the channel.
+
+        - `can_quote_shipping` (boolean) / `quote_shipping_blocked_reason` (string|null):
+        whether Estimate Sales Order Shipping can run now, and why not (cancelled,
+        closed, invoiced, no shipping address, no products).
+
+        - `shipping_estimate` (object|null): the latest applied estimate — `estimate_id`,
+        `option_key`, `charged_amount`, `quoted_at`, and `is_stale` (true when the
+        order''s products or quantities changed since it was quoted). Null when none
+        was applied or quoting is unavailable.'
       parameters:
       - name: salesOrder
         in: path
@@ -768014,6 +768257,28 @@ paths:
                         type: string
                       revenue_booked_by:
                         type: string
+                      shipping_pending_review:
+                        type: boolean
+                      shipping_quote_available:
+                        type: boolean
+                      can_quote_shipping:
+                        type: boolean
+                      quote_shipping_blocked_reason:
+                        type: string
+                        nullable: true
+                      shipping_estimate:
+                        type: object
+                        properties:
+                          estimate_id:
+                            type: integer
+                          option_key:
+                            type: string
+                          charged_amount:
+                            type: number
+                          quoted_at:
+                            type: string
+                          is_stale:
+                            type: boolean
                   use_sales_order_line_nominal_codes:
                     type: boolean
                 example:
@@ -768205,6 +768470,16 @@ paths:
                     revert_to_draft_unavailable_reason: null
                     payout_settlement: outside_payout
                     revenue_booked_by: order_invoice
+                    shipping_pending_review: false
+                    shipping_quote_available: true
+                    can_quote_shipping: true
+                    quote_shipping_blocked_reason: null
+                    shipping_estimate:
+                      estimate_id: 418
+                      option_key: UPS|Ground
+                      charged_amount: 20.26
+                      quoted_at: '2026-10-26T15:42:10+00:00'
+                      is_stale: false
                   use_sales_order_line_nominal_codes: false
         '429': *id001
         '401': *id002
@@ -772092,7 +772367,14 @@ paths:
         `billing_held_at`, `billing_hold_released_at`, `billing_hold_release_reason`,
         `is_billing_held`, and `holds` — every hold currently parking the order as
         `[{type: billing | credit | payment_pending | tag, message}]`. `hold_reason`
-        is `billing_hold` for an order held by its payment term''s release gate.'
+        is `billing_hold` for an order held by its payment term''s release gate.
+
+
+        `filter[shipping_pending_review]=true` lists orders whose shipping still needs
+        pricing — a B2B portal buyer chose a method priced "calculated on review".
+        Price it with Estimate Sales Order Shipping + Apply Sales Order Shipping Estimate,
+        by adding a REVENUE "Shipping" financial line, or clear it with Set Sales
+        Order Shipping Pending Review.'
       parameters: []
       responses:
         '200':
@@ -776085,6 +776367,897 @@ paths:
         '422': *id004
       x-required-scope: orders:write
       operationId: post-api-sales-orders-bulk-swap
+  /api/sales-orders/{salesOrder}/shipping-estimates:
+    get:
+      tags:
+      - Sales Orders
+      summary: List Sales Order Shipping Estimates
+      description: 'Lists the latest 10 shipping estimates run on the sales order,
+        newest first.
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Each row: `id`, `context` (`sales_order`, or `portal` for a rate priced at
+        portal checkout), `status` (see Estimate Sales Order Shipping), `mode` (`production`
+        or `test` key), `currency_code`, `options_count`, `selected_option_key` (null
+        when no rate was applied), `service_label` and `cost` (the applied rate, else
+        the cheapest one), `charged_amount`, `applied`, `outcome` (`line_added`, `cost_only`
+        when it was recorded as cost only, or `not_applied`), `applied_financial_line_id`,
+        `quote_line_id` (always null here), `adjustments` (how the charge was worked
+        out: `cost`, `markup_type`, `markup_value`, `charge`, `overridden`, `replaced_financial_line_id`,
+        `shipping_method_id`; `record_only` when cost only) and `created_at`.
+
+
+        Authentication: Requires Bearer token. Scope: orders (read).'
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '500'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        context:
+                          type: string
+                        status:
+                          type: string
+                        mode:
+                          type: string
+                        currency_code:
+                          type: string
+                        options_count:
+                          type: integer
+                        selected_option_key:
+                          type: string
+                        service_label:
+                          type: string
+                        cost:
+                          type: number
+                        charged_amount:
+                          type: number
+                        applied:
+                          type: boolean
+                        outcome:
+                          type: string
+                        applied_financial_line_id:
+                          type: integer
+                        quote_line_id:
+                          type: string
+                          nullable: true
+                        adjustments:
+                          type: object
+                          properties:
+                            cost:
+                              type: number
+                            markup_type:
+                              type: string
+                            markup_value:
+                              type: integer
+                            charge:
+                              type: number
+                            overridden:
+                              type: boolean
+                            replaced_financial_line_id:
+                              type: string
+                              nullable: true
+                            shipping_method_id:
+                              type: integer
+                        created_at:
+                          type: string
+                example:
+                  data:
+                  - id: 418
+                    context: sales_order
+                    status: ok
+                    mode: production
+                    currency_code: USD
+                    options_count: 3
+                    selected_option_key: UPS|Ground
+                    service_label: UPS Ground
+                    cost: 18.42
+                    charged_amount: 20.26
+                    applied: true
+                    outcome: line_added
+                    applied_financial_line_id: 9921
+                    quote_line_id: null
+                    adjustments:
+                      cost: 18.42
+                      markup_type: percent
+                      markup_value: 10
+                      charge: 20.26
+                      overridden: false
+                      replaced_financial_line_id: null
+                      shipping_method_id: 4
+                    created_at: '2026-10-26T15:42:10+00:00'
+                  - id: 417
+                    context: sales_order
+                    status: ok
+                    mode: production
+                    currency_code: USD
+                    options_count: 3
+                    selected_option_key: null
+                    service_label: USPS Ground Advantage
+                    cost: 15.87
+                    charged_amount: null
+                    applied: false
+                    outcome: not_applied
+                    applied_financial_line_id: null
+                    quote_line_id: null
+                    adjustments: null
+                    created_at: '2026-10-26T15:30:02+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:read
+      operationId: get-api-sales-orders-salesorder-shipping-estimates
+    post:
+      tags:
+      - Sales Orders
+      summary: Estimate Sales Order Shipping
+      description: 'Rates the sales order''s product lines with the account''s own
+        EasyPost connection and records the run as an estimate. Parcels are built
+        from product weights and dimensions (case packs first, then loose units),
+        from each line''s warehouse to the order''s shipping address. Nothing on the
+        order changes until a rate is applied.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Request body (all optional — send `{}` to rate the order as it stands):
+
+        - `origin_warehouse_id` (integer, nullable): rate every item from this warehouse
+        instead of each line''s own warehouse.
+
+        - `parcels` (array, max 50, nullable): override the parcels built from product
+        weights and dimensions. Each parcel: `weight_oz` (number, required, > 0, max
+        2400 = 150 lb), `length_in` / `width_in` / `height_in` (number, optional,
+        > 0, max 108).
+
+        - `refresh` (boolean): bypass the 15-minute rate cache.
+
+
+        Response (`data`):
+
+        - `status`: `ok`, `not_connected` (no EasyPost connection), `key_rejected`
+        (the EasyPost API key was refused), `missing_package_data` (some products
+        have no weight — listed in `missing_weight_products`), `no_origin_address`
+        (the shipping warehouse has no complete address), `no_destination` (no ship-to
+        address), `no_items` (no product lines), `no_rates` (no carrier returned a
+        rate) or `rating_failed` (EasyPost could not rate the shipment; try again).
+        Only `ok` carries `options`; every status comes back as 200 with a human-readable
+        `message`.
+
+        - `mode`: `production` or `test` — the mode of the EasyPost key that rated
+        the shipment (test keys return list rates).
+
+        - `currency`: the order''s currency; every `amount` is converted to it. `original_amount`
+        / `original_currency` are what the carrier quoted.
+
+        - `options[]`: one per carrier service, cheapest first — `key` (`<carrier>|<service>`,
+        pass it as `option_key` when applying), `carrier`, `service`, `carrier_account_id`,
+        `amount`, `currency`, `original_amount`, `original_currency`, `delivery_days`,
+        and `origins[]` (the per-warehouse share when the order ships from several
+        warehouses: `warehouse_id`, `warehouse_name`, `amount`, `currency`, `parcels`).
+        A service is offered only when every origin warehouse can use it.
+
+        - `warnings[]`: notes such as products rated on a default weight or a missing
+        exchange rate.
+
+        - `missing_weight_products[]`: `{id, sku, name}` of products with no weight.
+
+        - `shipments[]`: what was rated per origin warehouse — `warehouse_id`, `warehouse_name`,
+        `from` address, `parcels[]` (`weight_oz`, `length_in`, `width_in`, `height_in`)
+        and `total_weight_oz`.
+
+        - `quoted_at`, `request_hash`, `estimate_id`: when it was rated, a fingerprint
+        of the rated request, and the recorded estimate''s id (use it in the apply
+        endpoint).
+
+        - `defaults`: the account''s default markup (`markup_type` `percent` or `flat`,
+        `markup_value`) used when applying without an explicit markup.
+
+        - `subject`: the current Shipping lines that a rate would replace (`existing_shipping_lines[]`:
+        `id`, `description`, `quantity`, `amount`, `tax_rate`), the current `total`,
+        `currency`, the `new_line_tax_rate` a new Shipping line would carry and `is_tax_included`.
+
+
+        Identical requests within 15 minutes reuse the cached rates; send `refresh:
+        true` to re-rate.
+
+
+        Only orders on the local channel or the B2B portal channel can be quoted.
+        A channel order, or one that is cancelled, closed or invoiced, is refused
+        with 422.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `sales_orders.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin_warehouse_id:
+                  type: integer
+                parcels:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      weight_oz:
+                        type: integer
+                      length_in:
+                        type: integer
+                      width_in:
+                        type: integer
+                      height_in:
+                        type: integer
+                refresh:
+                  type: boolean
+              example:
+                origin_warehouse_id: 1
+                parcels:
+                - weight_oz: 64
+                  length_in: 14
+                  width_in: 10
+                  height_in: 8
+                - weight_oz: 38.5
+                  length_in: 12
+                  width_in: 9
+                  height_in: 6
+                refresh: false
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '500'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      status: ok
+                      message: Rates found.
+                      mode: production
+                      currency: USD
+                      options:
+                      - key: USPS|GroundAdvantage
+                        carrier: USPS
+                        service: GroundAdvantage
+                        carrier_account_id: ca_9a8b7c6d5e
+                        amount: 15.87
+                        currency: USD
+                        original_amount: 15.87
+                        original_currency: USD
+                        delivery_days: 4
+                        origins:
+                        - warehouse_id: 1
+                          warehouse_name: Main Warehouse
+                          amount: 15.87
+                          currency: USD
+                          parcels: 2
+                      - key: UPS|Ground
+                        carrier: UPS
+                        service: Ground
+                        carrier_account_id: ca_5d1e2f3a4b
+                        amount: 18.42
+                        currency: USD
+                        original_amount: 18.42
+                        original_currency: USD
+                        delivery_days: 3
+                        origins:
+                        - warehouse_id: 1
+                          warehouse_name: Main Warehouse
+                          amount: 18.42
+                          currency: USD
+                          parcels: 2
+                      - key: FedEx|FEDEX_2_DAY
+                        carrier: FedEx
+                        service: FEDEX_2_DAY
+                        carrier_account_id: ca_1f2e3d4c5b
+                        amount: 41.06
+                        currency: USD
+                        original_amount: 41.06
+                        original_currency: USD
+                        delivery_days: 2
+                        origins:
+                        - warehouse_id: 1
+                          warehouse_name: Main Warehouse
+                          amount: 41.06
+                          currency: USD
+                          parcels: 2
+                      warnings: []
+                      missing_weight_products: []
+                      shipments:
+                      - warehouse_id: 1
+                        warehouse_name: Main Warehouse
+                        from:
+                          name: Main Warehouse
+                          street1: 1200 Industrial Way
+                          city: Reno
+                          state: NV
+                          zip: '89502'
+                          country: US
+                        parcels:
+                        - weight_oz: 64
+                          length_in: 14
+                          width_in: 10
+                          height_in: 8
+                        - weight_oz: 38.5
+                          length_in: 12
+                          width_in: 9
+                          height_in: 6
+                        total_weight_oz: 102.5
+                      quoted_at: '2026-10-26T15:42:10+00:00'
+                      request_hash: 9c1f0a6e4b2d7c35
+                      estimate_id: 418
+                      defaults:
+                        markup_type: percent
+                        markup_value: 10
+                      subject:
+                        existing_shipping_lines:
+                        - id: 9915
+                          description: Shipping
+                          quantity: 1
+                          amount: 12
+                          tax_rate: 8.25
+                        total: 284.65
+                        currency: USD
+                        new_line_tax_rate: 8.25
+                        is_tax_included: false
+                example-1:
+                  summary: 200 Missing Product Weights
+                  value:
+                    data:
+                      status: missing_package_data
+                      message: Some products have no weight, so shipping can't be
+                        rated.
+                      mode: production
+                      currency: USD
+                      options: []
+                      warnings: []
+                      missing_weight_products:
+                      - id: 5044
+                        sku: GLUE-500
+                        name: Industrial Glue 500ml
+                      shipments: []
+                      quoted_at: null
+                      request_hash: null
+                      estimate_id: null
+                      defaults:
+                        markup_type: percent
+                        markup_value: 10
+                      subject:
+                        existing_shipping_lines:
+                        - id: 9915
+                          description: Shipping
+                          quantity: 1
+                          amount: 12
+                          tax_rate: 8.25
+                        total: 284.65
+                        currency: USD
+                        new_line_tax_rate: 8.25
+                        is_tax_included: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Order Cannot Be Quoted
+                  value:
+                    message: This order has been invoiced. Shipping can't be quoted
+                      on it.
+                    errors:
+                      sales_order:
+                      - This order has been invoiced. Shipping can't be quoted on
+                        it.
+                example-1:
+                  summary: 422 Validation Error
+                  value:
+                    message: A parcel can weigh at most 150 lb (2,400 oz).
+                    errors:
+                      parcels.0.weight_oz:
+                      - A parcel can weigh at most 150 lb (2,400 oz).
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:write
+      operationId: post-api-sales-orders-salesorder-shipping-estimates
+  /api/sales-orders/{salesOrder}/shipping-estimates/{shippingEstimate}/apply:
+    post:
+      tags:
+      - Sales Orders
+      summary: Apply Sales Order Shipping Estimate
+      description: 'Applies one rate from a recorded estimate to the sales order:
+        creates or replaces the order''s REVENUE "Shipping" financial line (described
+        as "&lt;Carrier> &lt;Service> (est.)", quantity 1, taxed at the order''s tax
+        rate), optionally sets the shipping method, marks the estimate applied and
+        clears `shipping_pending_review`. With `record_only` it records the cost only
+        and writes no line.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Request body:
+
+        - `option_key` (string, required, max 120): the `key` of one of the estimate''s
+        options, e.g. `UPS|Ground`.
+
+        - `markup_type` (string, nullable): `percent` or `flat`. Defaults to the account''s
+        default markup.
+
+        - `markup_value` (number, nullable, 0–100000): percent of the rate, or a flat
+        amount added to it.
+
+        - `charge_amount` (number, nullable, 0–1000000): charge exactly this amount;
+        wins over any markup.
+
+        - `replace_financial_line_id` (integer, nullable): the existing Shipping line
+        to replace. When omitted, a order with no Shipping line gets a new one, one
+        with a single Shipping line has it replaced, and one with several is refused
+        with 422 until you name one or send `add_new`.
+
+        - `add_new` (boolean): add a new Shipping line even when one exists.
+
+        - `set_shipping_method` (boolean): also set the shipping method to the account''s
+        method that matches this carrier and service, when one clearly does.
+
+        - `record_only` (boolean): record the rate as the shipping cost only, without
+        adding a charge.
+
+
+        Response (`data`): `financial_line` (the line written, with its `financial_line_type`;
+        null for `record_only`), `estimate` (the updated estimate row, as in List
+        Sales Order Shipping Estimates) and `shipping_pending_review`.
+
+
+        Errors: 404 when the estimate does not belong to this order; 422 when the
+        order cannot be quoted (channel order, cancelled, closed, invoiced), the `option_key`
+        is not part of the estimate, the named line is not one of the order''s Shipping
+        lines, several Shipping lines exist and none was chosen, or an issued invoice
+        already bills the line being replaced.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `sales_orders.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                option_key:
+                  type: string
+                markup_type:
+                  type: string
+                markup_value:
+                  type: integer
+                charge_amount:
+                  type: string
+                  nullable: true
+                replace_financial_line_id:
+                  type: string
+                  nullable: true
+                add_new:
+                  type: boolean
+                set_shipping_method:
+                  type: boolean
+                record_only:
+                  type: boolean
+              example:
+                option_key: UPS|Ground
+                markup_type: percent
+                markup_value: 10
+                charge_amount: null
+                replace_financial_line_id: null
+                add_new: false
+                set_shipping_method: true
+                record_only: false
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '500'
+      - name: shippingEstimate
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shipping estimate ID (`estimate_id` from Estimate Sales Order
+          Shipping)
+        example: '418'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      financial_line:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          link_type:
+                            type: string
+                          link_id:
+                            type: integer
+                          financial_line_type_id:
+                            type: integer
+                          description:
+                            type: string
+                          quantity:
+                            type: integer
+                          amount:
+                            type: number
+                          tax_rate_id:
+                            type: integer
+                          tax_rate:
+                            type: number
+                          allocate_to_products:
+                            type: boolean
+                          proration_strategy:
+                            type: string
+                          nominal_code_id:
+                            type: integer
+                          created_at:
+                            type: string
+                          updated_at:
+                            type: string
+                          financial_line_type:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                              classification:
+                                type: string
+                              nominal_code_id:
+                                type: integer
+                              proration_strategy:
+                                type: string
+                              allocate_to_products:
+                                type: boolean
+                      estimate:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          context:
+                            type: string
+                          status:
+                            type: string
+                          mode:
+                            type: string
+                          currency_code:
+                            type: string
+                          options_count:
+                            type: integer
+                          selected_option_key:
+                            type: string
+                          service_label:
+                            type: string
+                          cost:
+                            type: number
+                          charged_amount:
+                            type: number
+                          applied:
+                            type: boolean
+                          outcome:
+                            type: string
+                          applied_financial_line_id:
+                            type: integer
+                          quote_line_id:
+                            type: string
+                            nullable: true
+                          adjustments:
+                            type: object
+                            properties:
+                              cost:
+                                type: number
+                              markup_type:
+                                type: string
+                              markup_value:
+                                type: integer
+                              charge:
+                                type: number
+                              overridden:
+                                type: boolean
+                              replaced_financial_line_id:
+                                type: string
+                                nullable: true
+                              shipping_method_id:
+                                type: integer
+                          created_at:
+                            type: string
+                      shipping_pending_review:
+                        type: boolean
+                example:
+                  data:
+                    financial_line:
+                      id: 9921
+                      link_type: sales_order
+                      link_id: 500
+                      financial_line_type_id: 3
+                      description: UPS Ground (est.)
+                      quantity: 1
+                      amount: 20.26
+                      tax_rate_id: 2
+                      tax_rate: 8.25
+                      allocate_to_products: true
+                      proration_strategy: revenue_based
+                      nominal_code_id: 41
+                      created_at: '2026-10-26T15:43:01.000000Z'
+                      updated_at: '2026-10-26T15:43:01.000000Z'
+                      financial_line_type:
+                        id: 3
+                        name: Shipping
+                        classification: revenue
+                        nominal_code_id: 41
+                        proration_strategy: revenue_based
+                        allocate_to_products: true
+                    estimate:
+                      id: 418
+                      context: sales_order
+                      status: ok
+                      mode: production
+                      currency_code: USD
+                      options_count: 3
+                      selected_option_key: UPS|Ground
+                      service_label: UPS Ground
+                      cost: 18.42
+                      charged_amount: 20.26
+                      applied: true
+                      outcome: line_added
+                      applied_financial_line_id: 9921
+                      quote_line_id: null
+                      adjustments:
+                        cost: 18.42
+                        markup_type: percent
+                        markup_value: 10
+                        charge: 20.26
+                        overridden: false
+                        replaced_financial_line_id: null
+                        shipping_method_id: 4
+                      created_at: '2026-10-26T15:42:10+00:00'
+                    shipping_pending_review: false
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Choose a Shipping Line
+                  value:
+                    message: There are 2 Shipping lines. Choose which one to replace,
+                      or add a new line.
+                    errors:
+                      replace_financial_line_id:
+                      - There are 2 Shipping lines. Choose which one to replace, or
+                        add a new line.
+                example-1:
+                  summary: 422 Unknown Rate
+                  value:
+                    message: That rate is not part of this estimate. Refresh the rates
+                      and pick again.
+                    errors:
+                      option_key:
+                      - That rate is not part of this estimate. Refresh the rates
+                        and pick again.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: orders:write
+      operationId: post-api-sales-orders-salesorder-shipping-estimates-shippingestimate-apply
+  /api/sales-orders/{salesOrder}/shipping-pending-review:
+    patch:
+      tags:
+      - Sales Orders
+      summary: Set Sales Order Shipping Pending Review
+      description: 'Sets or clears the order''s `shipping_pending_review` flag. A
+        B2B portal order whose buyer chose a method priced "calculated on review"
+        is placed with the flag set, meaning shipping has not been priced yet. Applying
+        a shipping estimate, or adding a REVENUE "Shipping" financial line, clears
+        it automatically; send `pending: false` to clear it without charging shipping
+        (no charge), or `pending: true` to flag the order again.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Request body:
+
+        - `pending` (boolean, required).
+
+
+        Response (`data`): `shipping_pending_review`.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `sales_orders.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pending:
+                  type: boolean
+              example:
+                pending: false
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '500'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      shipping_pending_review:
+                        type: boolean
+                example:
+                  data:
+                    shipping_pending_review: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      pending:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The pending field is required.
+                  errors:
+                    pending:
+                    - The pending field is required.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:write
+      operationId: patch-api-sales-orders-salesorder-shipping-pending-review
   /api/sales-order-lines/{salesOrderLineId}:
     get:
       tags:
@@ -886595,7 +887768,17 @@ paths:
         the delivery `error`), oldest first.
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Shipping:
+
+        - `shipping_address_id` (integer|null): the address shipping is quoted to.
+
+        - `shipping_quote` (present when lines are loaded): `can_quote` (boolean)
+        and `blocked_reason` (string|null) — whether Estimate Quote Shipping can run
+        now, and why not (the quote is no longer editable, has no shipping address,
+        or has no products).'
       parameters:
       - name: quote
         in: path
@@ -886712,6 +887895,8 @@ paths:
                       converted_at:
                         type: string
                         nullable: true
+                      shipping_address_id:
+                        type: integer
                       lines:
                         type: array
                         items:
@@ -886748,6 +887933,14 @@ paths:
                               type: integer
                             sort:
                               type: integer
+                      shipping_quote:
+                        type: object
+                        properties:
+                          can_quote:
+                            type: boolean
+                          blocked_reason:
+                            type: string
+                            nullable: true
                       discount_approval:
                         type: object
                         properties:
@@ -886824,6 +888017,7 @@ paths:
                     declined_reason: null
                     expired_at: null
                     converted_at: null
+                    shipping_address_id: 2214
                     lines:
                     - id: 1
                       product_id: 501
@@ -886840,6 +888034,9 @@ paths:
                       is_selected: true
                       subtotal: 200
                       sort: 0
+                    shipping_quote:
+                      can_quote: true
+                      blocked_reason: null
                     discount_approval:
                       status: pending
                       discount_percent: 12.5
@@ -890917,7 +892114,12 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Each message carries `author_name`: the staff member, the portal buyer, or
+        — for a quote someone requested without a portal account — the customer. System
+        messages read "SKU.io".'
       parameters:
       - name: quote
         in: path
@@ -890950,6 +892152,8 @@ paths:
                           type: string
                         author_id:
                           type: integer
+                        author_name:
+                          type: string
                         body:
                           type: string
                         attachment_path:
@@ -890964,6 +892168,7 @@ paths:
                   - id: 41
                     author_type: staff
                     author_id: 5
+                    author_name: Alex Morgan
                     body: Updated the pricing on line 2 per our call.
                     attachment_path: null
                     is_system: false
@@ -890971,6 +892176,7 @@ paths:
                   - id: 42
                     author_type: customer
                     author_id: null
+                    author_name: Lakeside County Parks
                     body: Looks good — can you extend the validity to end of month?
                     attachment_path: null
                     is_system: false
@@ -891053,6 +892259,8 @@ paths:
                         type: string
                       author_id:
                         type: integer
+                      author_name:
+                        type: string
                       body:
                         type: string
                       attachment_path:
@@ -891067,6 +892275,7 @@ paths:
                     id: 43
                     author_type: staff
                     author_id: 5
+                    author_name: Alex Morgan
                     body: Updated the pricing on line 2 per our call.
                     attachment_path: null
                     is_system: false
@@ -892232,6 +893441,868 @@ paths:
         '422': *id004
       x-required-scope: orders:write
       operationId: post-api-quotes-quote-reject-discount
+  /api/quotes/{quote}/shipping-estimates:
+    get:
+      tags:
+      - Quotes
+      summary: List Quote Shipping Estimates
+      description: 'Lists the latest 10 shipping estimates run on the quote, newest
+        first. Same row shape as List Sales Order Shipping Estimates, with `context`
+        `quote`, `quote_line_id` set to the Shipping quote line a rate was applied
+        as, and `applied_financial_line_id` always null.
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `quotes.show`'
+      parameters:
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        context:
+                          type: string
+                        status:
+                          type: string
+                        mode:
+                          type: string
+                        currency_code:
+                          type: string
+                        options_count:
+                          type: integer
+                        selected_option_key:
+                          type: string
+                        service_label:
+                          type: string
+                        cost:
+                          type: number
+                        charged_amount:
+                          type: number
+                        applied:
+                          type: boolean
+                        outcome:
+                          type: string
+                        applied_financial_line_id:
+                          type: string
+                          nullable: true
+                        quote_line_id:
+                          type: integer
+                        adjustments:
+                          type: object
+                          properties:
+                            cost:
+                              type: number
+                            markup_type:
+                              type: string
+                            markup_value:
+                              type: integer
+                            charge:
+                              type: number
+                            overridden:
+                              type: boolean
+                            replaced_quote_line_id:
+                              type: string
+                              nullable: true
+                            shipping_method_id:
+                              type: integer
+                            quote_line_id:
+                              type: integer
+                        created_at:
+                          type: string
+                example:
+                  data:
+                  - id: 418
+                    context: quote
+                    status: ok
+                    mode: production
+                    currency_code: USD
+                    options_count: 3
+                    selected_option_key: UPS|Ground
+                    service_label: UPS Ground
+                    cost: 18.42
+                    charged_amount: 20.26
+                    applied: true
+                    outcome: line_added
+                    applied_financial_line_id: null
+                    quote_line_id: 77
+                    adjustments:
+                      cost: 18.42
+                      markup_type: percent
+                      markup_value: 10
+                      charge: 20.26
+                      overridden: false
+                      replaced_quote_line_id: null
+                      shipping_method_id: 4
+                      quote_line_id: 77
+                    created_at: '2026-10-26T15:42:10+00:00'
+                  - id: 417
+                    context: quote
+                    status: ok
+                    mode: production
+                    currency_code: USD
+                    options_count: 3
+                    selected_option_key: null
+                    service_label: USPS Ground Advantage
+                    cost: 15.87
+                    charged_amount: null
+                    applied: false
+                    outcome: not_applied
+                    applied_financial_line_id: null
+                    quote_line_id: null
+                    adjustments: null
+                    created_at: '2026-10-26T15:30:02+00:00'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:read
+      operationId: get-api-quotes-quote-shipping-estimates
+    post:
+      tags:
+      - Quotes
+      summary: Estimate Quote Shipping
+      description: 'Rates the quote''s selected product lines with the account''s
+        own EasyPost connection, to the quote''s shipping address (`shipping_address_id`),
+        and records the run. Nothing on the quote changes until a rate is applied.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Request body (all optional — send `{}` to rate the order as it stands):
+
+        - `origin_warehouse_id` (integer, nullable): rate every item from this warehouse
+        instead of each line''s own warehouse.
+
+        - `parcels` (array, max 50, nullable): override the parcels built from product
+        weights and dimensions. Each parcel: `weight_oz` (number, required, > 0, max
+        2400 = 150 lb), `length_in` / `width_in` / `height_in` (number, optional,
+        > 0, max 108).
+
+        - `refresh` (boolean): bypass the 15-minute rate cache.
+
+
+        Response (`data`):
+
+        - `status`: `ok`, `not_connected` (no EasyPost connection), `key_rejected`
+        (the EasyPost API key was refused), `missing_package_data` (some products
+        have no weight — listed in `missing_weight_products`), `no_origin_address`
+        (the shipping warehouse has no complete address), `no_destination` (no ship-to
+        address), `no_items` (no product lines), `no_rates` (no carrier returned a
+        rate) or `rating_failed` (EasyPost could not rate the shipment; try again).
+        Only `ok` carries `options`; every status comes back as 200 with a human-readable
+        `message`.
+
+        - `mode`: `production` or `test` — the mode of the EasyPost key that rated
+        the shipment (test keys return list rates).
+
+        - `currency`: the order''s currency; every `amount` is converted to it. `original_amount`
+        / `original_currency` are what the carrier quoted.
+
+        - `options[]`: one per carrier service, cheapest first — `key` (`<carrier>|<service>`,
+        pass it as `option_key` when applying), `carrier`, `service`, `carrier_account_id`,
+        `amount`, `currency`, `original_amount`, `original_currency`, `delivery_days`,
+        and `origins[]` (the per-warehouse share when the order ships from several
+        warehouses: `warehouse_id`, `warehouse_name`, `amount`, `currency`, `parcels`).
+        A service is offered only when every origin warehouse can use it.
+
+        - `warnings[]`: notes such as products rated on a default weight or a missing
+        exchange rate.
+
+        - `missing_weight_products[]`: `{id, sku, name}` of products with no weight.
+
+        - `shipments[]`: what was rated per origin warehouse — `warehouse_id`, `warehouse_name`,
+        `from` address, `parcels[]` (`weight_oz`, `length_in`, `width_in`, `height_in`)
+        and `total_weight_oz`.
+
+        - `quoted_at`, `request_hash`, `estimate_id`: when it was rated, a fingerprint
+        of the rated request, and the recorded estimate''s id (use it in the apply
+        endpoint).
+
+        - `defaults`: the account''s default markup (`markup_type` `percent` or `flat`,
+        `markup_value`) used when applying without an explicit markup.
+
+        - `subject`: the current Shipping lines that a rate would replace (`existing_shipping_lines[]`:
+        `id`, `description`, `quantity`, `amount`, `tax_rate`), the current `total`,
+        `currency`, the `new_line_tax_rate` a new Shipping line would carry and `is_tax_included`.
+
+
+        Identical requests within 15 minutes reuse the cached rates; send `refresh:
+        true` to re-rate.
+
+
+        A quote that is no longer editable (sent, accepted, declined, expired, converted)
+        is refused with 422 — revise it first.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `quotes.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin_warehouse_id:
+                  type: integer
+                parcels:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      weight_oz:
+                        type: integer
+                      length_in:
+                        type: integer
+                      width_in:
+                        type: integer
+                      height_in:
+                        type: integer
+                refresh:
+                  type: boolean
+              example:
+                origin_warehouse_id: 1
+                parcels:
+                - weight_oz: 64
+                  length_in: 14
+                  width_in: 10
+                  height_in: 8
+                - weight_oz: 38.5
+                  length_in: 12
+                  width_in: 9
+                  height_in: 6
+                refresh: false
+      parameters:
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      message:
+                        type: string
+                      mode:
+                        type: string
+                      currency:
+                        type: string
+                      options:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key:
+                              type: string
+                            carrier:
+                              type: string
+                            service:
+                              type: string
+                            carrier_account_id:
+                              type: string
+                            amount:
+                              type: number
+                            currency:
+                              type: string
+                            original_amount:
+                              type: number
+                            original_currency:
+                              type: string
+                            delivery_days:
+                              type: integer
+                            origins:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  warehouse_id:
+                                    type: integer
+                                  warehouse_name:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  currency:
+                                    type: string
+                                  parcels:
+                                    type: integer
+                      warnings:
+                        type: array
+                      missing_weight_products:
+                        type: array
+                      shipments:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            warehouse_id:
+                              type: integer
+                            warehouse_name:
+                              type: string
+                            from:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                street1:
+                                  type: string
+                                city:
+                                  type: string
+                                state:
+                                  type: string
+                                zip:
+                                  type: string
+                                country:
+                                  type: string
+                            parcels:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  weight_oz:
+                                    type: integer
+                                  length_in:
+                                    type: integer
+                                  width_in:
+                                    type: integer
+                                  height_in:
+                                    type: integer
+                            total_weight_oz:
+                              type: number
+                      quoted_at:
+                        type: string
+                      request_hash:
+                        type: string
+                      estimate_id:
+                        type: integer
+                      defaults:
+                        type: object
+                        properties:
+                          markup_type:
+                            type: string
+                          markup_value:
+                            type: integer
+                      subject:
+                        type: object
+                        properties:
+                          existing_shipping_lines:
+                            type: array
+                          total:
+                            type: number
+                          currency:
+                            type: string
+                          new_line_tax_rate:
+                            type: number
+                          is_tax_included:
+                            type: boolean
+                example:
+                  data:
+                    status: ok
+                    message: Rates found.
+                    mode: production
+                    currency: USD
+                    options:
+                    - key: USPS|GroundAdvantage
+                      carrier: USPS
+                      service: GroundAdvantage
+                      carrier_account_id: ca_9a8b7c6d5e
+                      amount: 15.87
+                      currency: USD
+                      original_amount: 15.87
+                      original_currency: USD
+                      delivery_days: 4
+                      origins:
+                      - warehouse_id: 1
+                        warehouse_name: Main Warehouse
+                        amount: 15.87
+                        currency: USD
+                        parcels: 2
+                    - key: UPS|Ground
+                      carrier: UPS
+                      service: Ground
+                      carrier_account_id: ca_5d1e2f3a4b
+                      amount: 18.42
+                      currency: USD
+                      original_amount: 18.42
+                      original_currency: USD
+                      delivery_days: 3
+                      origins:
+                      - warehouse_id: 1
+                        warehouse_name: Main Warehouse
+                        amount: 18.42
+                        currency: USD
+                        parcels: 2
+                    - key: FedEx|FEDEX_2_DAY
+                      carrier: FedEx
+                      service: FEDEX_2_DAY
+                      carrier_account_id: ca_1f2e3d4c5b
+                      amount: 41.06
+                      currency: USD
+                      original_amount: 41.06
+                      original_currency: USD
+                      delivery_days: 2
+                      origins:
+                      - warehouse_id: 1
+                        warehouse_name: Main Warehouse
+                        amount: 41.06
+                        currency: USD
+                        parcels: 2
+                    warnings: []
+                    missing_weight_products: []
+                    shipments:
+                    - warehouse_id: 1
+                      warehouse_name: Main Warehouse
+                      from:
+                        name: Main Warehouse
+                        street1: 1200 Industrial Way
+                        city: Reno
+                        state: NV
+                        zip: '89502'
+                        country: US
+                      parcels:
+                      - weight_oz: 64
+                        length_in: 14
+                        width_in: 10
+                        height_in: 8
+                      - weight_oz: 38.5
+                        length_in: 12
+                        width_in: 9
+                        height_in: 6
+                      total_weight_oz: 102.5
+                    quoted_at: '2026-10-26T15:42:10+00:00'
+                    request_hash: 9c1f0a6e4b2d7c35
+                    estimate_id: 418
+                    defaults:
+                      markup_type: percent
+                      markup_value: 10
+                    subject:
+                      existing_shipping_lines: []
+                      total: 214.5
+                      currency: USD
+                      new_line_tax_rate: 8.25
+                      is_tax_included: false
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      quote:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Quote Q-000012 is not editable in status sent. Revise it
+                    to change shipping.
+                  errors:
+                    quote:
+                    - Quote Q-000012 is not editable in status sent. Revise it to
+                      change shipping.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:write
+      operationId: post-api-quotes-quote-shipping-estimates
+  /api/quotes/{quote}/shipping-estimates/{shippingEstimate}/apply:
+    post:
+      tags:
+      - Quotes
+      summary: Apply Quote Shipping Estimate
+      description: 'Applies one rate from a recorded estimate to the quote: creates
+        or replaces its "Shipping" revenue line (a product-less quote line with the
+        Shipping line type, described as "&lt;Carrier> &lt;Service> (est.)", taxed
+        at the quote''s tax rate) and recalculates the quote totals. With `record_only`
+        it records the cost only.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Request body:
+
+        - `option_key` (string, required, max 120): the `key` of one of the estimate''s
+        options, e.g. `UPS|Ground`.
+
+        - `markup_type` (string, nullable): `percent` or `flat`. Defaults to the account''s
+        default markup.
+
+        - `markup_value` (number, nullable, 0–100000): percent of the rate, or a flat
+        amount added to it.
+
+        - `charge_amount` (number, nullable, 0–1000000): charge exactly this amount;
+        wins over any markup.
+
+        - `replace_quote_line_id` (integer, nullable): the existing Shipping line
+        to replace. When omitted, a quote with no Shipping line gets a new one, one
+        with a single Shipping line has it replaced, and one with several is refused
+        with 422 until you name one or send `add_new`.
+
+        - `add_new` (boolean): add a new Shipping line even when one exists.
+
+        - `set_shipping_method` (boolean): also set the shipping method to the account''s
+        method that matches this carrier and service, when one clearly does.
+
+        - `record_only` (boolean): record the rate as the shipping cost only, without
+        adding a charge.
+
+
+        Response (`data`): `quote_line` (the line written, with its `financial_line_type`;
+        null for `record_only`) and `estimate` (the updated estimate row).
+
+
+        Errors: 404 when the estimate does not belong to this quote; 422 when the
+        quote is not editable, the `option_key` is unknown, the named line is not
+        one of the quote''s Shipping lines, or several Shipping lines exist and none
+        was chosen.
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `quotes.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                option_key:
+                  type: string
+                markup_type:
+                  type: string
+                markup_value:
+                  type: number
+                charge_amount:
+                  type: string
+                  nullable: true
+                replace_quote_line_id:
+                  type: string
+                  nullable: true
+                add_new:
+                  type: boolean
+                set_shipping_method:
+                  type: boolean
+                record_only:
+                  type: boolean
+              example:
+                option_key: UPS|Ground
+                markup_type: flat
+                markup_value: 2.5
+                charge_amount: null
+                replace_quote_line_id: null
+                add_new: false
+                set_shipping_method: false
+                record_only: false
+      parameters:
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      - name: shippingEstimate
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Shipping estimate ID (`estimate_id` from Estimate Quote Shipping)
+        example: '418'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      quote_line:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          quote_id:
+                            type: integer
+                          product_id:
+                            type: string
+                            nullable: true
+                          warehouse_id:
+                            type: string
+                            nullable: true
+                          sku:
+                            type: string
+                            nullable: true
+                          description:
+                            type: string
+                          quantity:
+                            type: integer
+                          unit_price:
+                            type: number
+                          discount_type:
+                            type: string
+                          financial_line_type_id:
+                            type: integer
+                          nominal_code_id:
+                            type: integer
+                          proration_strategy:
+                            type: string
+                          allocate_to_products:
+                            type: boolean
+                          sort:
+                            type: integer
+                          created_at:
+                            type: string
+                          updated_at:
+                            type: string
+                          financial_line_type:
+                            type: object
+                            properties:
+                              id:
+                                type: integer
+                              name:
+                                type: string
+                              classification:
+                                type: string
+                              nominal_code_id:
+                                type: integer
+                              proration_strategy:
+                                type: string
+                              allocate_to_products:
+                                type: boolean
+                      estimate:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          context:
+                            type: string
+                          status:
+                            type: string
+                          mode:
+                            type: string
+                          currency_code:
+                            type: string
+                          options_count:
+                            type: integer
+                          selected_option_key:
+                            type: string
+                          service_label:
+                            type: string
+                          cost:
+                            type: number
+                          charged_amount:
+                            type: number
+                          applied:
+                            type: boolean
+                          outcome:
+                            type: string
+                          applied_financial_line_id:
+                            type: string
+                            nullable: true
+                          quote_line_id:
+                            type: integer
+                          adjustments:
+                            type: object
+                            properties:
+                              cost:
+                                type: number
+                              markup_type:
+                                type: string
+                              markup_value:
+                                type: number
+                              charge:
+                                type: number
+                              overridden:
+                                type: boolean
+                              replaced_quote_line_id:
+                                type: string
+                                nullable: true
+                              shipping_method_id:
+                                type: integer
+                              quote_line_id:
+                                type: integer
+                          created_at:
+                            type: string
+                example:
+                  data:
+                    quote_line:
+                      id: 77
+                      quote_id: 12
+                      product_id: null
+                      warehouse_id: null
+                      sku: null
+                      description: UPS Ground (est.)
+                      quantity: 1
+                      unit_price: 20.92
+                      discount_type: none
+                      financial_line_type_id: 3
+                      nominal_code_id: 41
+                      proration_strategy: revenue_based
+                      allocate_to_products: true
+                      sort: 4
+                      created_at: '2026-10-26T15:43:01.000000Z'
+                      updated_at: '2026-10-26T15:43:01.000000Z'
+                      financial_line_type:
+                        id: 3
+                        name: Shipping
+                        classification: revenue
+                        nominal_code_id: 41
+                        proration_strategy: revenue_based
+                        allocate_to_products: true
+                    estimate:
+                      id: 418
+                      context: quote
+                      status: ok
+                      mode: production
+                      currency_code: USD
+                      options_count: 3
+                      selected_option_key: UPS|Ground
+                      service_label: UPS Ground
+                      cost: 18.42
+                      charged_amount: 20.92
+                      applied: true
+                      outcome: line_added
+                      applied_financial_line_id: null
+                      quote_line_id: 77
+                      adjustments:
+                        cost: 18.42
+                        markup_type: flat
+                        markup_value: 2.5
+                        charge: 20.92
+                        overridden: false
+                        replaced_quote_line_id: null
+                        shipping_method_id: 4
+                        quote_line_id: 77
+                      created_at: '2026-10-26T15:42:10+00:00'
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      quote:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Quote Q-000012 is not editable in status accepted. Revise
+                    it to change shipping.
+                  errors:
+                    quote:
+                    - Quote Q-000012 is not editable in status accepted. Revise it
+                      to change shipping.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: orders:write
+      operationId: post-api-quotes-quote-shipping-estimates-shippingestimate-apply
   /api/pos/register-session/current:
     get:
       tags:
@@ -897682,7 +899753,18 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        Shipping is priced server-side for the chosen method (`shipping_method_id`,
+        else the account''s default for the ship-to) and written onto the order: a
+        REVENUE "Shipping" line for a charged price, nothing for free, and `shipping_pending_review`
+        for a method calculated on review. Send `expected_shipping_amount` (number
+        ≥ 0, nullable; null = calculated on review) with the price you were shown
+        to have the order refused with 409 `shipping_changed` — carrying the new `shipping_amount`
+        — when it moved by more than the greater of 1.00 and 0.5%. Omit it to skip
+        the check. A chosen method that is not available for this order (destination,
+        subtotal, weight or origin limits) is refused with 422 `shipping_method_unavailable`.'
       requestBody:
         content:
           application/json:
@@ -897697,11 +899779,14 @@ paths:
                   type: integer
                 payment_method:
                   type: string
+                expected_shipping_amount:
+                  type: integer
               example:
                 ship_to_address_id: 501
                 customer_po_number: PO-9001
                 shipping_method_id: 3
                 payment_method: on_account
+                expected_shipping_amount: 24
       parameters:
       - name: customer
         in: path
@@ -897750,6 +899835,42 @@ paths:
                     number: SO-12070
                     status: draft
                   approval: null
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+                  shipping_amount:
+                    type: integer
+                  context:
+                    type: object
+                    properties:
+                      shipping_amount:
+                        type: integer
+                      shipping_label:
+                        type: string
+                      currency_code:
+                        type: string
+                example:
+                  error: The shipping price changed since you last saw it. Please
+                    confirm the new price to place your order.
+                  reason: shipping_changed
+                  shipping_amount: 27
+                  context:
+                    shipping_amount: 27
+                    shipping_label: Estimated
+                    currency_code: USD
         '429': *id001
         '401': *id002
         '403': *id005
@@ -901751,6 +903872,10 @@ paths:
         units. Display-layer only; channel sync is unaffected.
 
 
+        - shipping_free_threshold (number|null, read-only here): the portal-wide free-shipping
+        threshold, edited with Update Portal Shipping Settings.
+
+
         Order history & quotes:
 
         - order_history_scope: `all_channels` (default — buyers see every order the
@@ -901840,6 +903965,8 @@ paths:
                         type: integer
                       margin_replacement_cost_adjustment_label:
                         type: string
+                      shipping_free_threshold:
+                        type: integer
                       order_history_scope:
                         type: string
                       guest_rfq_enabled:
@@ -901875,6 +904002,7 @@ paths:
                     preview_access_business_domains_only: true
                     margin_replacement_cost_adjustment_percent: -15
                     margin_replacement_cost_adjustment_label: at special
+                    shipping_free_threshold: 1000
                     order_history_scope: all_channels
                     guest_rfq_enabled: true
                     guest_rfq_note: 'Government and agency buyers: we quote within
@@ -902286,7 +904414,11 @@ paths:
         this account''s override (`override_order_discount_tiers_json`: null = uses
         the catalog''s, `[]` = catalog discount switched off for this account) and
         the ladder in effect. `portal_catalog_id` / `portal_catalog_name` are kept
-        for older clients: the lowest catalog id, and every name joined.'
+        for older clients: the lowest catalog id, and every name joined.
+
+
+        `free_shipping` (boolean) and `free_shipping_threshold_override` (number|null,
+        null = the portal-wide threshold) are the account''s portal shipping overrides.'
       parameters:
       - name: customer
         in: path
@@ -902391,6 +904523,11 @@ paths:
                             type: array
                             items:
                               type: string
+                      free_shipping:
+                        type: boolean
+                      free_shipping_threshold_override:
+                        type: string
+                        nullable: true
                       buyers_count:
                         type: integer
                       active_buyers_count:
@@ -902459,6 +904596,8 @@ paths:
                       approval_threshold: 5000
                       levels:
                       - approver
+                    free_shipping: false
+                    free_shipping_threshold_override: null
                     buyers_count: 3
                     active_buyers_count: 2
                     pending_invites_count: 1
@@ -902557,7 +904696,13 @@ paths:
         `product_pricing_tier_id` (nullable, must exist; null = the tenant''s default
         tier) sets the account''s pricing tier — the dealer hub edits it here. Every
         key is optional and only supplied keys are written; the catalog set (`portal_catalog_ids`
-        + `portal_catalog_discount_overrides`) is replaced only when sent.'
+        + `portal_catalog_discount_overrides`) is replaced only when sent.
+
+
+        Shipping: `free_shipping` (boolean) makes every portal shipping method free
+        for this account; `free_shipping_threshold_override` (number ≥ 0, nullable)
+        replaces the portal-wide free-shipping threshold for this account (null =
+        inherit). Both are returned on the account.'
       requestBody:
         content:
           application/json:
@@ -902617,6 +904762,10 @@ paths:
                         type: integer
                       percent:
                         type: integer
+                free_shipping:
+                  type: boolean
+                free_shipping_threshold_override:
+                  type: integer
               example:
                 product_pricing_tier_id: 17
                 payment_term_id: 3
@@ -902644,6 +904793,8 @@ paths:
                   percent: 3
                 - min_subtotal: 5000
                   percent: 5
+                free_shipping: false
+                free_shipping_threshold_override: 750
       parameters:
       - name: customer
         in: path
@@ -902748,6 +904899,10 @@ paths:
                             type: array
                             items:
                               type: string
+                      free_shipping:
+                        type: boolean
+                      free_shipping_threshold_override:
+                        type: integer
                       buyers_count:
                         type: integer
                       active_buyers_count:
@@ -902807,6 +904962,8 @@ paths:
                       approval_threshold: 5000
                       levels:
                       - approver
+                    free_shipping: false
+                    free_shipping_threshold_override: 750
                     buyers_count: 3
                     active_buyers_count: 2
                     pending_invites_count: 1
@@ -904370,6 +906527,1071 @@ paths:
         '404': *id003
       x-session-only: true
       operationId: get-api-admin-portal-special-order-list-uploads-id-file
+  /api/admin/portal/shipping:
+    get:
+      tags:
+      - Shipping
+      summary: Get Portal Shipping Settings
+      description: "Get the portal shipping settings: each method's pricing, the free-shipping\
+        \ threshold, the live-rate fallback, and readiness for live rates.\n\n:::warning[Not\
+        \ yet available to API tokens]\nThis endpoint currently requires session authentication;\
+        \ Personal Access Token scope support is in progress.\n:::\n\nResponse (`data`):\n\
+        - `methods[]`: every shipping method — `id`, `name`, `full_name`, `carrier_name`,\
+        \ `is_pickup`, `customer_arranges_freight`, `delivery_min_days`, `delivery_max_days`,\
+        \ `included_locations` / `excluded_locations` (country codes), `has_pricing`\
+        \ (false = never configured, so the default applies: free for buyer-arranged\
+        \ freight, else on review) and `pricing`:\n  - `mode`: `live_rate` (carrier\
+        \ rates via EasyPost), `flat`, `free` or `on_review` (calculated on review\
+        \ — the order is placed with `shipping_pending_review` and you price it later).\n\
+        \  - `flat_amount`, `flat_basis` (`order`, `unit` or `case`) — flat mode.\n\
+        \  - `services[]` (`carrier_account_id`, `carrier`, `service`), `handling_fee`,\
+        \ `markup_percent`, `rounding` (`none`, `0.5` or `1` — round up to the next\
+        \ 0.50 / 1.00), `max_charge` — live-rate mode. The cheapest listed service\
+        \ is charged.\n  - `min_subtotal`, `max_subtotal`, `max_weight_oz`, `origin_warehouse_ids`\
+        \ — the method is hidden at checkout outside these limits (any mode).\n- `free_threshold`\
+        \ (number|null): subtotal at which every method becomes free (an account can\
+        \ override it, or get free shipping outright).\n- `fallback_mode` (`flat`|`on_review`)\
+        \ and `fallback_amount`: what a live-rate method charges when rates are unavailable.\n\
+        - `portal_aov` (number|null): average portal order value, a guide for the\
+        \ threshold.\n- `warehouses[]`: `id`, `name` of the warehouses a method can\
+        \ ship from.\n- `readiness`: `connected`, `mode`, `key_last4`, `key_error`,\
+        \ `carrier_accounts[]`, `carrier_accounts_error`, `products_total`, `products_with_weight`,\
+        \ `weight_coverage_percent` and `missing_weight_products[]` (`id`, `sku`,\
+        \ `name`) — live rates need a production EasyPost key, carrier accounts and\
+        \ product weights.\n\nAuthentication: Requires Bearer token (staff) with portal\
+        \ management access."
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      methods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            full_name:
+                              type: string
+                            carrier_name:
+                              type: string
+                            is_pickup:
+                              type: boolean
+                            customer_arranges_freight:
+                              type: boolean
+                            delivery_min_days:
+                              type: integer
+                            delivery_max_days:
+                              type: integer
+                            included_locations:
+                              type: array
+                              items:
+                                type: string
+                            excluded_locations:
+                              type: array
+                            has_pricing:
+                              type: boolean
+                            pricing:
+                              type: object
+                              properties:
+                                mode:
+                                  type: string
+                                flat_amount:
+                                  type: string
+                                  nullable: true
+                                flat_basis:
+                                  type: string
+                                  nullable: true
+                                services:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      carrier_account_id:
+                                        type: string
+                                      carrier:
+                                        type: string
+                                      service:
+                                        type: string
+                                handling_fee:
+                                  type: number
+                                markup_percent:
+                                  type: integer
+                                rounding:
+                                  type: string
+                                max_charge:
+                                  type: integer
+                                min_subtotal:
+                                  type: string
+                                  nullable: true
+                                max_subtotal:
+                                  type: string
+                                  nullable: true
+                                max_weight_oz:
+                                  type: integer
+                                origin_warehouse_ids:
+                                  type: array
+                                  items:
+                                    type: integer
+                      free_threshold:
+                        type: integer
+                      fallback_mode:
+                        type: string
+                      fallback_amount:
+                        type: integer
+                      portal_aov:
+                        type: number
+                      warehouses:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                      readiness:
+                        type: object
+                        properties:
+                          connected:
+                            type: boolean
+                          mode:
+                            type: string
+                          key_last4:
+                            type: string
+                          key_error:
+                            type: string
+                            nullable: true
+                          carrier_accounts:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                carrier:
+                                  type: string
+                                description:
+                                  type: string
+                          carrier_accounts_error:
+                            type: string
+                            nullable: true
+                          products_total:
+                            type: integer
+                          products_with_weight:
+                            type: integer
+                          weight_coverage_percent:
+                            type: number
+                          missing_weight_products:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                name:
+                                  type: string
+                example:
+                  data:
+                    methods:
+                    - id: 3
+                      name: Ground
+                      full_name: UPS Ground
+                      carrier_name: UPS
+                      is_pickup: false
+                      customer_arranges_freight: false
+                      delivery_min_days: 2
+                      delivery_max_days: 5
+                      included_locations:
+                      - US
+                      excluded_locations: []
+                      has_pricing: true
+                      pricing:
+                        mode: live_rate
+                        flat_amount: null
+                        flat_basis: null
+                        services:
+                        - carrier_account_id: ca_5d1e2f3a4b
+                          carrier: UPS
+                          service: Ground
+                        handling_fee: 2.5
+                        markup_percent: 10
+                        rounding: '1'
+                        max_charge: 75
+                        min_subtotal: null
+                        max_subtotal: null
+                        max_weight_oz: 2400
+                        origin_warehouse_ids:
+                        - 1
+                    - id: 5
+                      name: Freight (LTL)
+                      full_name: Freight (LTL)
+                      carrier_name: null
+                      is_pickup: false
+                      customer_arranges_freight: false
+                      delivery_min_days: 5
+                      delivery_max_days: 10
+                      included_locations: []
+                      excluded_locations: []
+                      has_pricing: true
+                      pricing:
+                        mode: on_review
+                        flat_amount: null
+                        flat_basis: null
+                        services: []
+                        handling_fee: 0
+                        markup_percent: 0
+                        rounding: none
+                        max_charge: null
+                        min_subtotal: 1500
+                        max_subtotal: null
+                        max_weight_oz: null
+                        origin_warehouse_ids: []
+                    - id: 7
+                      name: Will Call
+                      full_name: Will Call
+                      carrier_name: null
+                      is_pickup: true
+                      customer_arranges_freight: true
+                      delivery_min_days: null
+                      delivery_max_days: null
+                      included_locations: []
+                      excluded_locations: []
+                      has_pricing: false
+                      pricing:
+                        mode: free
+                        flat_amount: null
+                        flat_basis: null
+                        services: []
+                        handling_fee: 0
+                        markup_percent: 0
+                        rounding: none
+                        max_charge: null
+                        min_subtotal: null
+                        max_subtotal: null
+                        max_weight_oz: null
+                        origin_warehouse_ids: []
+                    free_threshold: 1000
+                    fallback_mode: flat
+                    fallback_amount: 25
+                    portal_aov: 842.17
+                    warehouses:
+                    - id: 1
+                      name: Main Warehouse
+                    - id: 2
+                      name: East Coast DC
+                    readiness:
+                      connected: true
+                      mode: production
+                      key_last4: 9f3K
+                      key_error: null
+                      carrier_accounts:
+                      - id: ca_5d1e2f3a4b
+                        carrier: UPS
+                        description: UPS account 1A2B3C
+                      - id: ca_9a8b7c6d5e
+                        carrier: USPS
+                        description: null
+                      - id: ca_1f2e3d4c5b
+                        carrier: FedEx
+                        description: FedEx Reno
+                      carrier_accounts_error: null
+                      products_total: 412
+                      products_with_weight: 398
+                      weight_coverage_percent: 96.6
+                      missing_weight_products:
+                      - id: 5044
+                        sku: GLUE-500
+                        name: Industrial Glue 500ml
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: get-api-admin-portal-shipping
+    put:
+      tags:
+      - Shipping
+      summary: Update Portal Shipping Settings
+      description: "Save the portal shipping settings in one transaction. Methods\
+        \ not listed keep their pricing. Settings that do not apply to a method's\
+        \ mode are cleared (a flat method loses its services and markup; a live-rate\
+        \ method loses its flat amount). Returns the same payload as Get Portal Shipping\
+        \ Settings.\n\n:::warning[Not yet available to API tokens]\nThis endpoint\
+        \ currently requires session authentication; Personal Access Token scope support\
+        \ is in progress.\n:::\n\nRequest body:\n- `methods` (array, required, may\
+        \ be empty, max 200). Each:\n  - `shipping_method_id` (integer, required,\
+        \ distinct, an existing shipping method).\n  - `mode` (required): `live_rate`,\
+        \ `flat`, `free` or `on_review`. A pickup method can't be `live_rate`.\n \
+        \ - `flat_amount` (number 0–1000000; required when `mode` is `flat`), `flat_basis`\
+        \ (`order`, `unit` or `case`; default `order`).\n  - `services` (array, max\
+        \ 20; at least one required for `live_rate`): `carrier` (string, required,\
+        \ max 60), `service` (string, required, max 60), `carrier_account_id` (string,\
+        \ optional, max 80).\n  - `handling_fee` (number 0–100000), `markup_percent`\
+        \ (number 0–500), `rounding` (`none`, `0.5`, `1`), `max_charge` (number 0–1000000)\
+        \ — live rate only.\n  - `min_subtotal`, `max_subtotal` (number ≥ 0; max must\
+        \ be ≥ min), `max_weight_oz` (number ≥ 0), `origin_warehouse_ids` (array of\
+        \ warehouse ids, max 50).\n- `free_threshold` (number ≥ 0, nullable): 0 or\
+        \ null turns the threshold off.\n- `fallback_mode` (required): `flat` or `on_review`.\n\
+        - `fallback_amount` (number 0–1000000, nullable): required when `fallback_mode`\
+        \ is `flat` and any method is live rate.\n\nAuthentication: Requires Bearer\
+        \ token (staff) with portal management access."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                methods:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      shipping_method_id:
+                        type: integer
+                      mode:
+                        type: string
+                      services:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            carrier_account_id:
+                              type: string
+                            carrier:
+                              type: string
+                            service:
+                              type: string
+                      handling_fee:
+                        type: number
+                      markup_percent:
+                        type: integer
+                      rounding:
+                        type: string
+                      max_charge:
+                        type: integer
+                      min_subtotal:
+                        type: string
+                        nullable: true
+                      max_subtotal:
+                        type: string
+                        nullable: true
+                      max_weight_oz:
+                        type: integer
+                      origin_warehouse_ids:
+                        type: array
+                        items:
+                          type: integer
+                free_threshold:
+                  type: integer
+                fallback_mode:
+                  type: string
+                fallback_amount:
+                  type: integer
+              example:
+                methods:
+                - shipping_method_id: 3
+                  mode: live_rate
+                  services:
+                  - carrier_account_id: ca_5d1e2f3a4b
+                    carrier: UPS
+                    service: Ground
+                  handling_fee: 2.5
+                  markup_percent: 10
+                  rounding: '1'
+                  max_charge: 75
+                  min_subtotal: null
+                  max_subtotal: null
+                  max_weight_oz: 2400
+                  origin_warehouse_ids:
+                  - 1
+                - shipping_method_id: 4
+                  mode: flat
+                  flat_amount: 15
+                  flat_basis: order
+                  min_subtotal: null
+                  max_subtotal: 999.99
+                - shipping_method_id: 5
+                  mode: on_review
+                  min_subtotal: 1500
+                free_threshold: 1000
+                fallback_mode: flat
+                fallback_amount: 25
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      methods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            full_name:
+                              type: string
+                            carrier_name:
+                              type: string
+                            is_pickup:
+                              type: boolean
+                            customer_arranges_freight:
+                              type: boolean
+                            delivery_min_days:
+                              type: integer
+                            delivery_max_days:
+                              type: integer
+                            included_locations:
+                              type: array
+                              items:
+                                type: string
+                            excluded_locations:
+                              type: array
+                            has_pricing:
+                              type: boolean
+                            pricing:
+                              type: object
+                              properties:
+                                mode:
+                                  type: string
+                                flat_amount:
+                                  type: string
+                                  nullable: true
+                                flat_basis:
+                                  type: string
+                                  nullable: true
+                                services:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      carrier_account_id:
+                                        type: string
+                                      carrier:
+                                        type: string
+                                      service:
+                                        type: string
+                                handling_fee:
+                                  type: number
+                                markup_percent:
+                                  type: integer
+                                rounding:
+                                  type: string
+                                max_charge:
+                                  type: integer
+                                min_subtotal:
+                                  type: string
+                                  nullable: true
+                                max_subtotal:
+                                  type: string
+                                  nullable: true
+                                max_weight_oz:
+                                  type: integer
+                                origin_warehouse_ids:
+                                  type: array
+                                  items:
+                                    type: integer
+                      free_threshold:
+                        type: integer
+                      fallback_mode:
+                        type: string
+                      fallback_amount:
+                        type: integer
+                      portal_aov:
+                        type: number
+                      warehouses:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                      readiness:
+                        type: object
+                        properties:
+                          connected:
+                            type: boolean
+                          mode:
+                            type: string
+                          key_last4:
+                            type: string
+                          key_error:
+                            type: string
+                            nullable: true
+                          carrier_accounts:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: string
+                                carrier:
+                                  type: string
+                                description:
+                                  type: string
+                          carrier_accounts_error:
+                            type: string
+                            nullable: true
+                          products_total:
+                            type: integer
+                          products_with_weight:
+                            type: integer
+                          weight_coverage_percent:
+                            type: number
+                          missing_weight_products:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                sku:
+                                  type: string
+                                name:
+                                  type: string
+                example:
+                  data:
+                    methods:
+                    - id: 3
+                      name: Ground
+                      full_name: UPS Ground
+                      carrier_name: UPS
+                      is_pickup: false
+                      customer_arranges_freight: false
+                      delivery_min_days: 2
+                      delivery_max_days: 5
+                      included_locations:
+                      - US
+                      excluded_locations: []
+                      has_pricing: true
+                      pricing:
+                        mode: live_rate
+                        flat_amount: null
+                        flat_basis: null
+                        services:
+                        - carrier_account_id: ca_5d1e2f3a4b
+                          carrier: UPS
+                          service: Ground
+                        handling_fee: 2.5
+                        markup_percent: 10
+                        rounding: '1'
+                        max_charge: 75
+                        min_subtotal: null
+                        max_subtotal: null
+                        max_weight_oz: 2400
+                        origin_warehouse_ids:
+                        - 1
+                    - id: 5
+                      name: Freight (LTL)
+                      full_name: Freight (LTL)
+                      carrier_name: null
+                      is_pickup: false
+                      customer_arranges_freight: false
+                      delivery_min_days: 5
+                      delivery_max_days: 10
+                      included_locations: []
+                      excluded_locations: []
+                      has_pricing: true
+                      pricing:
+                        mode: on_review
+                        flat_amount: null
+                        flat_basis: null
+                        services: []
+                        handling_fee: 0
+                        markup_percent: 0
+                        rounding: none
+                        max_charge: null
+                        min_subtotal: 1500
+                        max_subtotal: null
+                        max_weight_oz: null
+                        origin_warehouse_ids: []
+                    - id: 7
+                      name: Will Call
+                      full_name: Will Call
+                      carrier_name: null
+                      is_pickup: true
+                      customer_arranges_freight: true
+                      delivery_min_days: null
+                      delivery_max_days: null
+                      included_locations: []
+                      excluded_locations: []
+                      has_pricing: false
+                      pricing:
+                        mode: free
+                        flat_amount: null
+                        flat_basis: null
+                        services: []
+                        handling_fee: 0
+                        markup_percent: 0
+                        rounding: none
+                        max_charge: null
+                        min_subtotal: null
+                        max_subtotal: null
+                        max_weight_oz: null
+                        origin_warehouse_ids: []
+                    free_threshold: 1000
+                    fallback_mode: flat
+                    fallback_amount: 25
+                    portal_aov: 842.17
+                    warehouses:
+                    - id: 1
+                      name: Main Warehouse
+                    - id: 2
+                      name: East Coast DC
+                    readiness:
+                      connected: true
+                      mode: production
+                      key_last4: 9f3K
+                      key_error: null
+                      carrier_accounts:
+                      - id: ca_5d1e2f3a4b
+                        carrier: UPS
+                        description: UPS account 1A2B3C
+                      - id: ca_9a8b7c6d5e
+                        carrier: USPS
+                        description: null
+                      - id: ca_1f2e3d4c5b
+                        carrier: FedEx
+                        description: FedEx Reno
+                      carrier_accounts_error: null
+                      products_total: 412
+                      products_with_weight: 398
+                      weight_coverage_percent: 96.6
+                      missing_weight_products:
+                      - id: 5044
+                        sku: GLUE-500
+                        name: Industrial Glue 500ml
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      methods.0.services:
+                        type: array
+                        items:
+                          type: string
+                      fallback_amount:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Pick at least one carrier service for a live-rate method.
+                    (and 1 more error)
+                  errors:
+                    methods.0.services:
+                    - Pick at least one carrier service for a live-rate method.
+                    fallback_amount:
+                    - Add a fallback rate — buyers need a price if live rates are
+                      unavailable.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: put-api-admin-portal-shipping
+  /api/admin/portal/shipping/preview:
+    post:
+      tags:
+      - Shipping
+      summary: Preview Portal Shipping
+      description: 'Price a sample cart for one portal account with the saved shipping
+        settings, showing every method''s price, or why it is hidden, and the arithmetic
+        behind it. Nothing is saved. Rate limited to 60 requests per minute.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        Request body:
+
+        - `customer_id` (integer, required): the portal account.
+
+        - `items` (array, max 200, nullable): the sample cart — `product_id` (integer,
+        required) and `quantity` (number > 0, required). Priced at the account''s
+        prices.
+
+        - `use_recent_order` (boolean): when no `items` are sent, use the account''s
+        most recent order as the cart.
+
+        - `ship_to` (object, nullable): `name`, `address1`, `city`, `province`, `province_code`,
+        `zip`, `country_code`. Defaults to the account''s default shipping address
+        (or the recent order''s ship-to).
+
+
+        Response (`data`): `customer`, `cart` (`source` `items` or `recent_order`
+        with `sales_order_id` / `order_number`, `subtotal`, `currency`, `units`, `lines`),
+        `destination`, `free_shipping` (`threshold`, `remaining`, `met`, `account_free`;
+        null when no threshold applies) and `methods[]`: `shipping_method_id`, `name`,
+        `configured_mode`, `mode` (what applies to this cart — a failed live rate
+        takes the fallback''s mode), `amount` (null for on review), `currency`, `label`
+        (`Free`, `Calculated on review`, `Estimated` or null), `is_estimate`, delivery
+        days, `hidden` / `hidden_reason`, `fallback_reason`, `free_reason`, `trace[]`
+        (`step`, `label`, `amount`, `total`), `summary`, `carrier_cost`, `option_key`
+        and `unconfigured`. Buyers never see `trace`, `summary`, `carrier_cost` or
+        `option_key`.
+
+
+        Errors: 422 when the account does not exist or there is no cart to price.
+
+
+        Authentication: Requires Bearer token (staff) with portal management access.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_id:
+                  type: integer
+                items:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                use_recent_order:
+                  type: boolean
+                ship_to:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                    address1:
+                      type: string
+                    city:
+                      type: string
+                    province:
+                      type: string
+                    province_code:
+                      type: string
+                    zip:
+                      type: string
+                    country_code:
+                      type: string
+              example:
+                customer_id: 101
+                items:
+                - product_id: 5001
+                  quantity: 12
+                - product_id: 5002
+                  quantity: 4
+                use_recent_order: false
+                ship_to:
+                  name: Acme Wholesale
+                  address1: 455 Commerce Dr
+                  city: Boise
+                  province: Idaho
+                  province_code: ID
+                  zip: '83702'
+                  country_code: US
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      customer:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      cart:
+                        type: object
+                        properties:
+                          source:
+                            type: string
+                          subtotal:
+                            type: number
+                          currency:
+                            type: string
+                          units:
+                            type: integer
+                          lines:
+                            type: integer
+                      destination:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                          street1:
+                            type: string
+                          city:
+                            type: string
+                          state:
+                            type: string
+                          zip:
+                            type: string
+                          country:
+                            type: string
+                      free_shipping:
+                        type: object
+                        properties:
+                          threshold:
+                            type: integer
+                          remaining:
+                            type: number
+                          met:
+                            type: boolean
+                          account_free:
+                            type: boolean
+                      methods:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            shipping_method_id:
+                              type: integer
+                            name:
+                              type: string
+                            configured_mode:
+                              type: string
+                            mode:
+                              type: string
+                            amount:
+                              type: integer
+                            currency:
+                              type: string
+                            label:
+                              type: string
+                            is_estimate:
+                              type: boolean
+                            delivery_min_days:
+                              type: integer
+                            delivery_max_days:
+                              type: integer
+                            delivery_days:
+                              type: integer
+                            hidden:
+                              type: boolean
+                            hidden_reason:
+                              type: string
+                              nullable: true
+                            fallback_reason:
+                              type: string
+                              nullable: true
+                            free_reason:
+                              type: string
+                              nullable: true
+                            trace:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  step:
+                                    type: string
+                                  label:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  total:
+                                    type: number
+                            summary:
+                              type: string
+                            carrier_cost:
+                              type: number
+                            option_key:
+                              type: string
+                            unconfigured:
+                              type: boolean
+                example:
+                  data:
+                    customer:
+                      id: 101
+                      name: Acme Wholesale
+                    cart:
+                      source: items
+                      subtotal: 642.4
+                      currency: USD
+                      units: 16
+                      lines: 2
+                    destination:
+                      name: Acme Wholesale
+                      street1: 455 Commerce Dr
+                      city: Boise
+                      state: ID
+                      zip: '83702'
+                      country: US
+                    free_shipping:
+                      threshold: 1000
+                      remaining: 357.6
+                      met: false
+                      account_free: false
+                    methods:
+                    - shipping_method_id: 3
+                      name: UPS Ground
+                      configured_mode: live_rate
+                      mode: live_rate
+                      amount: 24
+                      currency: USD
+                      label: Estimated
+                      is_estimate: true
+                      delivery_min_days: 2
+                      delivery_max_days: 5
+                      delivery_days: 3
+                      hidden: false
+                      hidden_reason: null
+                      fallback_reason: null
+                      free_reason: null
+                      trace:
+                      - step: rate
+                        label: UPS Ground rate
+                        amount: 18.42
+                        total: 18.42
+                      - step: handling
+                        label: Handling fee
+                        amount: 2.5
+                        total: 20.92
+                      - step: markup
+                        label: Markup 10%
+                        amount: 2.09
+                        total: 23.01
+                      - step: rounding
+                        label: Rounded up to 1.00
+                        amount: 0.99
+                        total: 24
+                      summary: $18.42 UPS Ground + $2.50 handling + 10% ↑ $0.99 rounding
+                        = $24.00
+                      carrier_cost: 18.42
+                      option_key: UPS|Ground
+                      unconfigured: false
+                    - shipping_method_id: 5
+                      name: Freight (LTL)
+                      configured_mode: on_review
+                      mode: on_review
+                      amount: null
+                      currency: USD
+                      label: null
+                      is_estimate: false
+                      delivery_min_days: 5
+                      delivery_max_days: 10
+                      delivery_days: null
+                      hidden: true
+                      hidden_reason: Subtotal $642.40 is below the $1,500.00 minimum
+                      fallback_reason: null
+                      free_reason: null
+                      trace: []
+                      summary: Hidden — Subtotal $642.40 is below the $1,500.00 minimum
+                      carrier_cost: null
+                      option_key: null
+                      unconfigured: false
+                    - shipping_method_id: 7
+                      name: Will Call
+                      configured_mode: free
+                      mode: free
+                      amount: 0
+                      currency: USD
+                      label: Free
+                      is_estimate: false
+                      delivery_min_days: null
+                      delivery_max_days: null
+                      delivery_days: null
+                      hidden: false
+                      hidden_reason: null
+                      fallback_reason: null
+                      free_reason: mode
+                      trace:
+                      - step: mode
+                        label: No pricing set — buyer-arranged freight is free
+                        amount: null
+                        total: null
+                      - step: free
+                        label: Free
+                        amount: 0
+                        total: 0
+                      summary: Free
+                      carrier_cost: null
+                      option_key: null
+                      unconfigured: true
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  error:
+                    type: string
+                example:
+                  message: Pick products, or use the account's most recent order,
+                    to preview shipping.
+                  error: Pick products, or use the account's most recent order, to
+                    preview shipping.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-session-only: true
+      operationId: post-api-admin-portal-shipping-preview
   /api/portal/auth/login:
     post:
       tags:
@@ -910422,7 +913644,20 @@ paths:
 
         A buyer whose portal role is Viewer gets 422 `role_cannot_order`; a `ship_to_address_id`
         that is not one of the account''s addresses gets 422 `unknown_ship_to_address`
-        ("That ship-to address is not on your account.").'
+        ("That ship-to address is not on your account.").
+
+
+        Shipping is re-priced server-side for the chosen `shipping_method_id` (else
+        the account''s default for the ship-to) and written onto the order: a Shipping
+        charge for a priced method, nothing for free, and "shipping pending" for a
+        method calculated on review. Send `expected_shipping_amount` (number ≥ 0,
+        nullable; null = calculated on review) with the price shown by List Shipping
+        Methods or Estimate Checkout: when the re-priced shipping differs by more
+        than the greater of 1.00 and 0.5%, the order is not placed and the response
+        is 409 `shipping_changed` with the new `shipping_amount` (and `context.shipping_label`
+        / `context.currency_code`) — confirm it and submit again with the new amount.
+        Omit the field to skip the check. A chosen method that does not apply to this
+        order gets 422 `shipping_method_unavailable`.'
       requestBody:
         content:
           application/json:
@@ -910441,6 +913676,8 @@ paths:
                   type: string
                 payment_method:
                   type: string
+                expected_shipping_amount:
+                  type: integer
               example:
                 ship_to_address_id: 501
                 customer_po_number: PO-7781
@@ -910448,6 +913685,7 @@ paths:
                 shipping_method_id: 3
                 note: Leave at dock B
                 payment_method: on_account
+                expected_shipping_amount: 24
       parameters: []
       responses:
         '200':
@@ -910485,6 +913723,42 @@ paths:
                       status: pending_approval
                       current_level: 1
                       levels: 2
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  reason:
+                    type: string
+                  shipping_amount:
+                    type: integer
+                  context:
+                    type: object
+                    properties:
+                      shipping_amount:
+                        type: integer
+                      shipping_label:
+                        type: string
+                      currency_code:
+                        type: string
+                example:
+                  error: The shipping price changed since you last saw it. Please
+                    confirm the new price to place your order.
+                  reason: shipping_changed
+                  shipping_amount: 27
+                  context:
+                    shipping_amount: 27
+                    shipping_label: Estimated
+                    currency_code: USD
         '422':
           description: Unprocessable Entity
           headers:
@@ -910529,6 +913803,15 @@ paths:
                     error: That ship-to address is not on your account.
                     reason: unknown_ship_to_address
                     context: []
+                example-4:
+                  summary: 422 Shipping Method Unavailable
+                  value:
+                    error: That shipping method is not available for this order. Please
+                      choose another one.
+                    reason: shipping_method_unavailable
+                    context:
+                      shipping_method_id: 5
+                      reason: Subtotal $642.40 is below the $1,500.00 minimum
         '429': *id001
         '401': *id002
         '403': *id005
@@ -910560,7 +913843,19 @@ paths:
         the registration''s rate. `tax_note` explains the tax line and `tax_status`
         is one of: unknown_destination, not_registered, exempt, taxable, taxable_no_rate
         (both null when no registrations are set up, in which case an optional `tax_rate_id`
-        is used as before).'
+        is used as before).
+
+
+        Shipping: the selected `shipping_method_id` (else the account''s default for
+        the ship-to) is priced for the cart. The ship-to is `ship_to_address_id` or
+        an ad-hoc `ship_to` (`name`, `address1`, `city`, `province`, `province_code`,
+        `zip`, `country_code`) not saved yet. `shipping_estimate` is null when the
+        method is calculated on review or does not apply. `shipping_label` is `Free`,
+        `Calculated on review`, `Estimated` (a live carrier rate) or null (a plain
+        flat price); `shipping_mode` is `live_rate`, `flat`, `free` or `on_review`;
+        `shipping_is_estimate` is true for a live rate; `free_shipping` is the cart''s
+        progress toward free shipping (`threshold`, `remaining`, `met`, `account_free`)
+        or null.'
       requestBody:
         content:
           application/json:
@@ -910571,9 +913866,13 @@ paths:
                   type: integer
                 ship_to_address_id:
                   type: integer
+                ship_to:
+                  type: string
+                  nullable: true
               example:
                 shipping_method_id: 3
                 ship_to_address_id: 501
+                ship_to: null
       parameters: []
       responses:
         '200':
@@ -910615,11 +913914,28 @@ paths:
                     type: string
                   tax_status:
                     type: string
+                  shipping_label:
+                    type: string
+                  shipping_mode:
+                    type: string
+                  shipping_is_estimate:
+                    type: boolean
+                  free_shipping:
+                    type: object
+                    properties:
+                      threshold:
+                        type: integer
+                      remaining:
+                        type: number
+                      met:
+                        type: boolean
+                      account_free:
+                        type: boolean
                 example:
                   subtotal: 91.2
                   tax_estimate: 6.84
-                  shipping_estimate: 12
-                  total_estimate: 110.04
+                  shipping_estimate: 24
+                  total_estimate: 122.04
                   currency_code: USD
                   is_estimate: true
                   min_order_value:
@@ -910629,6 +913945,14 @@ paths:
                     first_order: false
                   tax_note: Nevada sales tax (Clark County Tax + Nevada State Tax).
                   tax_status: taxable
+                  shipping_label: Estimated
+                  shipping_mode: live_rate
+                  shipping_is_estimate: true
+                  free_shipping:
+                    threshold: 1000
+                    remaining: 908.8
+                    met: false
+                    account_free: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -910763,6 +914087,11 @@ paths:
         :::
 
 
+        `shipping_pending_review` is true while the seller has not priced shipping
+        yet (the order used a method calculated on review); `shipping_total` is the
+        order''s shipping charge (0 when none).
+
+
         Which orders: by default every order the account has, whatever channel it
         came through (the portal, the merchant''s store, phone or email orders entered
         by staff) — another channel''s draft orders are never shown. A merchant can
@@ -910818,6 +914147,10 @@ paths:
                               type: boolean
                       currency_code:
                         type: string
+                      shipping_pending_review:
+                        type: boolean
+                      shipping_total:
+                        type: integer
                       subtotal:
                         type: number
                       tax_total:
@@ -910889,6 +914222,8 @@ paths:
                       label: Complete
                       reached: false
                     currency_code: USD
+                    shipping_pending_review: false
+                    shipping_total: 12
                     subtotal: 91.2
                     tax_total: 6.84
                     total: 110.04
@@ -911164,7 +914499,8 @@ paths:
       tags:
       - Checkout & Orders
       summary: List Shipping Methods
-      description: 'List the shipping methods available at checkout.
+      description: 'List the shipping methods available at checkout, each priced for
+        the current cart and ship-to.
 
 
         :::warning[Not yet available to API tokens]
@@ -911172,7 +914508,37 @@ paths:
         This endpoint currently requires session authentication; Personal Access Token
         scope support is in progress.
 
-        :::'
+        :::
+
+
+        The ship-to is a saved address (`ship_to_address_id`), an ad-hoc one (`ship_to[...]`),
+        or — with neither — the account''s default shipping address. Methods that
+        do not apply to this cart (destination, subtotal, weight or origin limits)
+        are left out. The account''s default method for the ship-to comes first with
+        `is_default: true`.
+
+
+        Each method: `id`, `name`, `full_name`, `delivery_min_days`, `delivery_max_days`,
+        `is_pickup`, `customer_arranges_freight`, `is_default` and `price`:
+
+        - `mode`: `live_rate`, `flat`, `free` or `on_review`.
+
+        - `amount` (number|null): null = calculated on review (the seller prices shipping
+        after you order); 0 = free.
+
+        - `currency`, `label` (`Free`, `Calculated on review`, `Estimated` for a live
+        carrier rate, or null for a plain flat price), `is_estimate`, `delivery_days`,
+        `delivery_min_days`, `delivery_max_days`.
+
+
+        Top level: `free_shipping` — the cart''s progress toward free shipping (`threshold`,
+        `remaining`, `met`, `account_free` when the account always ships free), or
+        null when there is no threshold — and `defaults` (`default_id`, `domestic_id`,
+        `international_id`) so a client can re-pick the default when the address changes.
+
+
+        Send the shown `price.amount` as `expected_shipping_amount` on Submit Checkout
+        so a price that moved is confirmed before the order is placed.'
       parameters: []
       responses:
         '200':
@@ -911204,6 +914570,50 @@ paths:
                           type: integer
                         is_pickup:
                           type: boolean
+                        customer_arranges_freight:
+                          type: boolean
+                        is_default:
+                          type: boolean
+                        price:
+                          type: object
+                          properties:
+                            mode:
+                              type: string
+                            amount:
+                              type: integer
+                            currency:
+                              type: string
+                            label:
+                              type: string
+                            is_estimate:
+                              type: boolean
+                            delivery_days:
+                              type: integer
+                            delivery_min_days:
+                              type: integer
+                            delivery_max_days:
+                              type: integer
+                  free_shipping:
+                    type: object
+                    properties:
+                      threshold:
+                        type: integer
+                      remaining:
+                        type: number
+                      met:
+                        type: boolean
+                      account_free:
+                        type: boolean
+                  defaults:
+                    type: object
+                    properties:
+                      default_id:
+                        type: integer
+                      domestic_id:
+                        type: integer
+                      international_id:
+                        type: string
+                        nullable: true
                 example:
                   data:
                   - id: 3
@@ -911212,6 +914622,60 @@ paths:
                     delivery_min_days: 2
                     delivery_max_days: 5
                     is_pickup: false
+                    customer_arranges_freight: false
+                    is_default: true
+                    price:
+                      mode: live_rate
+                      amount: 24
+                      currency: USD
+                      label: Estimated
+                      is_estimate: true
+                      delivery_days: 3
+                      delivery_min_days: 2
+                      delivery_max_days: 5
+                  - id: 4
+                    name: Flat Rate
+                    full_name: Flat Rate
+                    delivery_min_days: 3
+                    delivery_max_days: 7
+                    is_pickup: false
+                    customer_arranges_freight: false
+                    is_default: false
+                    price:
+                      mode: flat
+                      amount: 15
+                      currency: USD
+                      label: null
+                      is_estimate: false
+                      delivery_days: null
+                      delivery_min_days: 3
+                      delivery_max_days: 7
+                  - id: 7
+                    name: Will Call
+                    full_name: Will Call
+                    delivery_min_days: null
+                    delivery_max_days: null
+                    is_pickup: true
+                    customer_arranges_freight: true
+                    is_default: false
+                    price:
+                      mode: free
+                      amount: 0
+                      currency: USD
+                      label: Free
+                      is_estimate: false
+                      delivery_days: null
+                      delivery_min_days: null
+                      delivery_max_days: null
+                  free_shipping:
+                    threshold: 1000
+                    remaining: 357.6
+                    met: false
+                    account_free: false
+                  defaults:
+                    default_id: 3
+                    domestic_id: 3
+                    international_id: null
         '429': *id001
         '401': *id002
         '403': *id005
@@ -1015521,6 +1018985,7 @@ x-tagGroups:
   - Catalogs
   - Analytics
   - Special Order List
+  - Shipping
   - Registration
   - Session
   - Catalog
