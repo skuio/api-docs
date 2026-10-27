@@ -882639,6 +882639,11 @@ paths:
         pending).
 
 
+        `email_events` lists each send (who it was emailed to, or `emailed: false`
+        when it was only marked sent) and each failed email (`type: send_failed` with
+        the delivery `error`), oldest first.
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: quote
@@ -882811,6 +882816,23 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      email_events:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            to:
+                              type: array
+                              items:
+                                type: string
+                            emailed:
+                              type: boolean
+                            error:
+                              type: string
+                            occurred_at:
+                              type: string
                 example:
                   data:
                     id: 12
@@ -882875,6 +882897,19 @@ paths:
                       acted_at: null
                     created_at: '2026-06-18T10:00:00.000000Z'
                     updated_at: '2026-06-18T10:00:00.000000Z'
+                    email_events:
+                    - type: send_failed
+                      to:
+                      - purchasing@fortbraggsupply.com
+                      emailed: false
+                      error: Connection could not be established with host "smtp.example.com:587"
+                      occurred_at: '2026-06-18T10:04:10.000000Z'
+                    - type: sent
+                      to:
+                      - purchasing@fortbraggsupply.com
+                      emailed: true
+                      error: null
+                      occurred_at: '2026-06-18T10:05:00.000000Z'
         '429': *id001
         '401': *id002
         '403': *id005
@@ -883788,13 +883823,115 @@ paths:
         '422': *id004
       x-required-scope: orders:write
       operationId: put-api-quotes-quote-lines-line
+  /api/quotes/{quote}/email-preview:
+    get:
+      tags:
+      - Quotes
+      summary: Get Quote Email Preview
+      description: 'Shows what Send Quote would email for this quote: the default
+        recipient (the customer''s email, or null when it has none), the rendered
+        subject and HTML body from the Quote Sent email template, the same body as
+        editable plain text without the View & respond button, which Send always adds
+        back (`message`), whether the quote PDF is attached, the quote''s current
+        memo, and the id of the tenant''s Quote Sent template (null when the built-in
+        copy is used).
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token. Permission: `quotes.send`.'
+      parameters:
+      - name: quote
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Quote ID
+        example: '12'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      to:
+                        type: string
+                      subject:
+                        type: string
+                      body:
+                        type: string
+                      message:
+                        type: string
+                      attaches_pdf:
+                        type: boolean
+                      memo_for_customer:
+                        type: string
+                      template_id:
+                        type: integer
+                example:
+                  data:
+                    to: purchasing@fortbraggsupply.com
+                    subject: Quote Q-000012 from GoDark Bags
+                    body: <p>Hello Fort Bragg Supply,</p><p>Please find attached quote
+                      <strong>Q-000012</strong> for <strong>USD 4,980.00</strong>.
+                      It is valid until Nov 2, 2026.</p><p>Use the button below to
+                      view the quote, download it, and accept or decline it online.</p><p><a
+                      href="https://godark.sku.io/quote/8f2c1a9d…" style="display:inline-block;padding:12px
+                      22px;background:#1867c0;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600">View
+                      &amp; respond</a></p><p>Questions? Just reply to this email.</p><p>Thank
+                      you,<br>GoDark Bags</p>
+                    message: 'Hello Fort Bragg Supply,
+
+
+                      Please find attached quote Q-000012 for USD 4,980.00. It is
+                      valid until Nov 2, 2026.
+
+
+                      Use the button below to view the quote, download it, and accept
+                      or decline it online.
+
+
+                      Questions? Just reply to this email.
+
+
+                      Thank you,
+
+                      GoDark Bags'
+                    attaches_pdf: true
+                    memo_for_customer: Thank you for your interest in our products.
+                      This quote is valid for 7 days. Please contact us with any questions.
+                    template_id: 41
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:read
+      operationId: get-api-quotes-quote-email-preview
   /api/quotes/{quote}/send:
     post:
       tags:
       - Quotes
       summary: Send Quote
-      description: 'Snapshots an immutable version, issues a public token, sets status
-        to `sent`, and stamps `sent_at` / `valid_until`. The quote must be editable.
+      description: 'Issues the quote and emails it to the customer: snapshots an immutable
+        version, issues a public token, sets status to `sent`, stamps `sent_at` /
+        `valid_until`, and sends the Quote Sent email template with the quote PDF
+        attached. The quote must be editable.
 
 
         :::info[Required scope: `orders:write`]
@@ -883805,9 +883942,83 @@ paths:
         :::
 
 
+        **Nobody to email is an error.** When `to` is empty and the customer has no
+        email address, the request returns 422 on `to` and the quote stays a draft.
+        If the email cannot be delivered, the request returns 422 on `email`, the
+        quote is not marked sent, and a `send_failed` event is recorded on its activity.
+
+
+        **Body (all optional):**
+
+        - `send_email` (boolean, default `true`) — `false` marks the quote sent without
+        emailing anyone (for a quote delivered another way); every other field is
+        then ignored except `memo_for_customer`.
+
+        - `to` (array of emails, max 20) — recipients; empty = the customer''s email.
+
+        - `cc` (array of emails, max 20) — extra CC recipients.
+
+        - `subject` (string, max 255) — replaces the template subject for this send
+        only. Placeholders such as `{{quote_number}}` are filled in.
+
+        - `message` (string, max 20000) — plain-text body that replaces the template
+        wording for this send only; blank lines start new paragraphs. The **View &
+        respond** button (a link to the customer''s quote page, where they can download
+        the PDF and accept or decline without logging in) is always added after it.
+
+        - `memo_for_customer` (string or null, max 5000) — when present, saved onto
+        the quote (and so its PDF) before it is sent; `null` clears it.
+
+
+        Use `GET /api/quotes/{quote}/email-preview` to see what will be sent first.
+
+
+        `email_events` lists each send (who it was emailed to, or `emailed: false`
+        when it was only marked sent) and each failed email (`type: send_failed` with
+        the delivery `error`), oldest first.
+
+
         Authentication: Requires Bearer token. Permission: `quotes.send`.'
       requestBody:
-        content: {}
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to:
+                  type: array
+                  items:
+                    type: string
+                cc:
+                  type: array
+                  items:
+                    type: string
+                subject:
+                  type: string
+                message:
+                  type: string
+                memo_for_customer:
+                  type: string
+                send_email:
+                  type: boolean
+              example:
+                to:
+                - purchasing@fortbraggsupply.com
+                cc:
+                - sales@godarkbags.com
+                subject: Quote {{quote_number}} — as discussed
+                message: 'Hi Sheri,
+
+
+                  As discussed on the call, the attached quote covers 40 units shipped
+                  in a single delivery.
+
+
+                  Thank you,
+
+                  GoDark Bags'
+                memo_for_customer: Pricing assumes a single delivery.
+                send_email: true
       parameters:
       - name: quote
         in: path
@@ -883962,6 +884173,23 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      email_events:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type:
+                              type: string
+                            to:
+                              type: array
+                              items:
+                                type: string
+                            emailed:
+                              type: boolean
+                            error:
+                              type: string
+                            occurred_at:
+                              type: string
                 example:
                   data:
                     id: 12
@@ -884020,11 +884248,53 @@ paths:
                       sort: 0
                     created_at: '2026-06-18T10:00:00.000000Z'
                     updated_at: '2026-06-18T10:00:00.000000Z'
+                    email_events:
+                    - type: send_failed
+                      to:
+                      - purchasing@fortbraggsupply.com
+                      emailed: false
+                      error: Connection could not be established with host "smtp.example.com:587"
+                      occurred_at: '2026-06-18T10:04:10.000000Z'
+                    - type: sent
+                      to:
+                      - purchasing@fortbraggsupply.com
+                      emailed: true
+                      error: null
+                      occurred_at: '2026-06-18T10:05:00.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 No recipient
+                  value:
+                    message: 'Quote Q-000012 can''t be sent: customer Fort Bragg Supply
+                      has no email address. Add one to the customer or enter a recipient.'
+                    errors:
+                      to:
+                      - 'Quote Q-000012 can''t be sent: customer Fort Bragg Supply
+                        has no email address. Add one to the customer or enter a recipient.'
+                example-1:
+                  summary: 422 Email not delivered
+                  value:
+                    message: Quote Q-000012 was not sent — the email could not be
+                      delivered (Connection refused). It has not been marked as sent.
+                    errors:
+                      email:
+                      - Quote Q-000012 was not sent — the email could not be delivered
+                        (Connection refused). It has not been marked as sent.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: orders:write
       operationId: post-api-quotes-quote-send
   /api/quotes/{quote}/accept:
@@ -884042,6 +884312,11 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        **Refused transitions return 422.** A quote that is not issued (`sent` / `viewed`)
+        or is past its validity date cannot be accepted; the response is `{message,
+        errors: {quote: [message]}}` and the quote is unchanged.
 
 
         Authentication: Requires Bearer token. Permission: `quotes.accept`.'
@@ -884257,11 +884532,36 @@ paths:
                       sort: 0
                     created_at: '2026-06-18T10:00:00.000000Z'
                     updated_at: '2026-06-18T10:00:00.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      quote:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Quote Q-000012 cannot be accepted from status declined.
+                  errors:
+                    quote:
+                    - Quote Q-000012 cannot be accepted from status declined.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: orders:write
       operationId: post-api-quotes-quote-accept
   /api/quotes/{quote}/decline:
@@ -885086,7 +885386,12 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        **Refused transitions return 422.** The quote must be `accepted`, and at least
+        one selected line must not already be on an order; otherwise the response
+        is `{message, errors: {quote: [message]}}` and no order is created.'
       requestBody:
         content:
           application/json:
@@ -885142,11 +885447,38 @@ paths:
                     status: converted
                   sales_order_id: 7788
                   sales_order_number: SO-7788
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      quote:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Quote Q-000012 must be accepted before a sales order can
+                    be created from it.
+                  errors:
+                    quote:
+                    - Quote Q-000012 must be accepted before a sales order can be
+                      created from it.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: orders:write
       operationId: post-api-quotes-quote-create-order
   /api/quotes/{quote}/lines/bulk-warehouse:
@@ -885563,9 +885895,12 @@ paths:
       tags:
       - Quotes
       summary: Bulk Send Quotes
-      description: 'Sends multiple quotes to their customers. Only quotes in a sendable
-        (draft/revised) state are sent; the rest are skipped. Inventory is allocated
-        for quotes that opted in. The response reports how many were sent vs. skipped.
+      description: 'Emails multiple quotes to their customers (Quote Sent template,
+        PDF attached). Only quotes in a sendable (draft/revised) state whose customer
+        has an email address are sent; the rest are skipped, and `not_emailed` lists
+        why each quote with nobody to email (or an undeliverable email) was skipped.
+        Inventory is allocated for quotes that opted in. The response reports how
+        many were sent vs. skipped.
 
 
         :::info[Required scope: `orders:write`]
@@ -885628,11 +885963,20 @@ paths:
                         type: integer
                       skipped:
                         type: integer
+                      not_emailed:
+                        type: array
+                        items:
+                          type: string
                 example:
-                  message: Sent 2 quote(s), skipped 1.
+                  message: 'Sent 2 quote(s), skipped 1. Not sent: Quote Q-000014 can''t
+                    be sent: customer Fort Bragg Supply has no email address. Add
+                    one to the customer or enter a recipient.'
                   data:
                     sent: 2
                     skipped: 1
+                    not_emailed:
+                    - 'Quote Q-000014 can''t be sent: customer Fort Bragg Supply has
+                      no email address. Add one to the customer or enter a recipient.'
         '429': *id001
         '401': *id002
         '403': *id005
