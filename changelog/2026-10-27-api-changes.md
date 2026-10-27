@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-27
-description: This release includes 47 additions, 4 changes. 1 breaking change — action required.
+description: This release includes 63 additions, 5 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-10-27
 ---
 
-This release includes 47 additions, 4 changes. 1 breaking change — action required.
+This release includes 63 additions, 5 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -56,10 +56,27 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `PUT /api/admin/portal/home` — Update Portal Home Page
 
 ### Quotes
+- `GET /api/public/quotes/{token}` — Get Customer Quote
+- `POST /api/public/quotes/{token}/accept` — Accept Customer Quote
+- `POST /api/public/quotes/{token}/comment` — Add Customer Quote Comment
+- `POST /api/public/quotes/{token}/decline` — Decline Customer Quote
+- `GET /api/public/quotes/{token}/documents/{attachment}` — Download Customer Quote Document
+- `GET /api/public/quotes/{token}/pdf` — Get Customer Quote PDF
+- `POST /api/quotes/from-template/{template}` — Create Quote from Template
+- `GET /api/quotes/{quote}/attachments` — List Quote Documents
+- `POST /api/quotes/{quote}/attachments` — Upload Quote Document
+- `DELETE /api/quotes/{quote}/attachments/{attachment}` — Delete Quote Document
+- `PATCH /api/quotes/{quote}/attachments/{attachment}` — Update Quote Document
+- `GET /api/quotes/{quote}/attachments/{attachment}/download` — Download Quote Document
 - `GET /api/quotes/{quote}/email-preview` — Get Quote Email Preview
+- `GET /api/quotes/{quote}/price-breaks` — Get Quote Price Breaks
+- `POST /api/quotes/{quote}/save-as-template` — Save Quote as Template
 - `GET /api/quotes/{quote}/shipping-estimates` — List Quote Shipping Estimates
 - `POST /api/quotes/{quote}/shipping-estimates` — Estimate Quote Shipping
 - `POST /api/quotes/{quote}/shipping-estimates/{shippingEstimate}/apply` — Apply Quote Shipping Estimate
+
+### Quotes & RFQ
+- `GET /api/portal/quotes/{quote}/attachments/{attachment}` — Download Quote Document
 
 ### Sales Orders
 - `GET /api/sales-orders/{salesOrder}/shipping-estimates` — List Sales Order Shipping Estimates
@@ -98,11 +115,18 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `GET /api/store-email-templates/{id}/versions` — List Email Template Versions
 - `GET /api/store-email-templates/{id}/versions/{versionId}` — Get Email Template Version
 
+### Warehouses
+- `POST /api/v2/product-warehouse-locations/import` — Import Product Bins
+
 ## Changed
 
 ### Checkout & Orders
 - `POST /api/portal/checkout` — Submit Checkout
   - new response code(s): `409`
+
+### Quotes
+- `DELETE /api/quotes/{quote}` — Delete Quote
+  - new response code(s): `422`
 
 ### Rep-Assisted Ordering
 - `POST /api/admin/portal/accounts/{customer}/place-order` — Place Order on Behalf
