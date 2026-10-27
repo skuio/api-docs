@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-10-27
-description: This release includes 63 additions, 5 changes. 1 breaking change — action required.
+description: This release includes 102 additions, 5 changes. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-10-27
 ---
 
-This release includes 63 additions, 5 changes. 1 breaking change — action required.
+This release includes 102 additions, 5 changes. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -27,6 +27,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ## Added
 
+### API Keys
+- `GET /api/portal/api-keys` — List API Keys
+- `POST /api/portal/api-keys` — Create API Key
+- `DELETE /api/portal/api-keys/{key}` — Revoke API Key
+- `POST /api/portal/api-keys/{key}/regenerate` — Regenerate API Key
+
 ### Authentication
 - `POST /api/portal/view-as/keep-alive` — Keep Staff View Alive
 
@@ -37,6 +43,45 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `DELETE /api/admin/portal/branding/assets/{type}` — Remove Branding Image
 - `GET /api/portal/branding` — Get Portal Branding
 - `GET /api/portal/branding/{type}` — Get Portal Branding Image
+
+### Checkout & Orders
+- `POST /api/portal/addresses/validate` — Validate Address
+
+### Dropship Branding
+- `GET /api/portal/dropship/branding` — Get Dropship Branding
+- `PUT /api/portal/dropship/branding` — Update Dropship Branding
+- `POST /api/portal/dropship/branding/logo` — Upload Dropship Logo
+
+### Dropship Orders
+- `GET /api/portal/dropship/batches` — List Dropship Batches
+- `POST /api/portal/dropship/batches` — Upload Dropship Batch
+- `DELETE /api/portal/dropship/batches/{batch}` — Discard Dropship Batch
+- `GET /api/portal/dropship/batches/{batch}` — Get Dropship Batch
+- `GET /api/portal/dropship/batches/{batch}/errors.csv` — Download Dropship Batch Error Rows
+- `POST /api/portal/dropship/batches/{batch}/submit` — Submit Dropship Batch
+- `GET /api/portal/dropship/orders` — List Dropship Orders
+- `POST /api/portal/dropship/orders` — Create Dropship Order
+- `GET /api/portal/dropship/orders/export.csv` — Export Dropship Tracking
+- `GET /api/portal/dropship/orders/exports/{trackedJobLog}` — Get Dropship Tracking Export
+- `POST /api/portal/dropship/orders/{order}/cancel` — Cancel Dropship Order
+- `GET /api/portal/dropship/orders/{retailerOrderNumber}` — Get Dropship Order by Retailer Order Number
+- `GET /api/portal/dropship/template.csv` — Download Dropship CSV Template
+
+### Dropship Profiles
+- `GET /api/admin/portal/accounts/{customer}/dropship-profile` — Get Dropship Profile
+- `PUT /api/admin/portal/accounts/{customer}/dropship-profile` — Update Dropship Profile
+- `DELETE /api/admin/portal/accounts/{customer}/dropship-profile/logo` — Delete Dropship Logo
+- `POST /api/admin/portal/accounts/{customer}/dropship-profile/logo` — Upload Dropship Logo
+- `GET /api/admin/portal/accounts/{customer}/dropship-profile/packing-slip-preview` — Download Dropship Packing Slip Sample
+
+### Dropship Webhooks
+- `GET /api/admin/portal/accounts/{customer}/webhooks` — List Dropship Webhooks
+- `POST /api/admin/portal/accounts/{customer}/webhooks` — Create Dropship Webhook
+- `DELETE /api/admin/portal/accounts/{customer}/webhooks/{webhook}` — Delete Dropship Webhook
+- `PUT /api/admin/portal/accounts/{customer}/webhooks/{webhook}` — Update Dropship Webhook
+- `GET /api/admin/portal/accounts/{customer}/webhooks/{webhook}/deliveries` — List Dropship Webhook Deliveries
+- `POST /api/admin/portal/accounts/{customer}/webhooks/{webhook}/rotate-secret` — Rotate Dropship Webhook Secret
+- `POST /api/admin/portal/accounts/{customer}/webhooks/{webhook}/test` — Send Test Dropship Webhook
 
 ### EasyPost
 - `GET /api/easypost/carrier-accounts` — List EasyPost Carrier Accounts
@@ -78,7 +123,17 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Quotes & RFQ
 - `GET /api/portal/quotes/{quote}/attachments/{attachment}` — Download Quote Document
 
+### Reporting
+- `GET /api/reports/dropship-performance` — Get Dropship Performance Report
+
+### Returns
+- `GET /api/portal/returns/lookup` — Get Returnable Lines by Order Number
+
+### Returns & RMAs
+- `GET /api/rmas/{rma}/dropship-credit` — Get RMA Dropship Credit
+
 ### Sales Orders
+- `GET /api/sales-orders/{salesOrder}/customer-dropship` — Get Customer Dropship Details
 - `GET /api/sales-orders/{salesOrder}/shipping-estimates` — List Sales Order Shipping Estimates
 - `POST /api/sales-orders/{salesOrder}/shipping-estimates` — Estimate Sales Order Shipping
 - `POST /api/sales-orders/{salesOrder}/shipping-estimates/{shippingEstimate}/apply` — Apply Sales Order Shipping Estimate
@@ -86,6 +141,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Session
 - `GET /api/portal/home` — Get Home Page
+
+### Settings
+- `POST /api/admin/portal/accounts/bulk-settings` — Bulk Update Account Settings
 
 ### Shipping
 - `GET /api/admin/portal/shipping` — Get Portal Shipping Settings
@@ -97,7 +155,6 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/store-email-layouts` — Create Store Brand Layout
 - `DELETE /api/store-email-layouts/{id}` — Delete Store Brand Layout
 - `GET /api/store-email-layouts/{id}` — Get Brand Layout
-- `PUT /api/store-email-layouts/{id}` — Update Brand Layout
 - `POST /api/store-email-layouts/{id}/reset` — Reset Brand Layout
 - `GET /api/store-email-layouts/{id}/versions` — List Brand Layout Versions
 - `GET /api/store-email-layouts/{id}/versions/{versionId}` — Get Brand Layout Version
@@ -118,11 +175,14 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Warehouses
 - `POST /api/v2/product-warehouse-locations/import` — Import Product Bins
 
+_…plus 2 more (see the API reference)._
+
 ## Changed
 
 ### Checkout & Orders
 - `POST /api/portal/checkout` — Submit Checkout
-  - new response code(s): `409`
+  - new response code(s): `201`, `409`
+  - removed response code(s): `200`
 
 ### Quotes
 - `DELETE /api/quotes/{quote}` — Delete Quote
@@ -130,7 +190,8 @@ This release removes endpoints or tightens request requirements. Review the **Br
 
 ### Rep-Assisted Ordering
 - `POST /api/admin/portal/accounts/{customer}/place-order` — Place Order on Behalf
-  - new response code(s): `409`
+  - new response code(s): `201`, `409`
+  - removed response code(s): `200`
 
 ### Store Email Templates
 - `PUT /api/store-email-templates/{id}` — Update Store Email Template
