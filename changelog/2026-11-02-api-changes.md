@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-02
-description: This release includes 48 additions, 3 changes. 2 breaking changes — action required.
+description: This release includes 54 additions, 3 changes. 2 breaking changes — action required.
 authors: [product-team]
 tags: [added, changed, breaking]
 date: 2026-11-02
 ---
 
-This release includes 48 additions, 3 changes. 2 breaking changes — action required.
+This release includes 54 additions, 3 changes. 2 breaking changes — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -67,6 +67,12 @@ This release removes endpoints or tightens request requirements. Review the **Br
 - `POST /api/ledger/payment-posting/start` — Start Payment Posting
 - `GET /api/ledger/reports/accrued-landed-cost` — List Accrued Landed Cost
 - `GET /api/ledger/reports/accrued-landed-cost/summary` — Get Accrued Landed Cost Summary
+- `GET /api/ledger/reports/payout-channel-order-ar` — Get Payout-Channel Order AR Summary
+- `GET /api/ledger/reports/payout-channel-order-ar/{salesChannel}/entries` — List Payout-Channel Order AR Entries
+- `POST /api/ledger/reports/payout-channel-order-ar/{salesChannel}/repair` — Repair Payout-Channel Order AR
+- `POST /api/ledger/reports/payout-channel-order-ar/{salesChannel}/void-provider` — Void Payout-Channel Order Invoices in Accounting System
+- `PUT /api/ledger/settings/channel-sync/{integrationInstance}/settlement-revenue` — Set Channel Settlement Revenue
+- `GET /api/ledger/settings/channel-sync/{integrationInstance}/settlement-revenue/preview` — Preview Channel Settlement Revenue Switch
 - `POST /api/ledger/settings/granularity/preview` — Preview Granularity Change
 - `GET /api/ledger/settlement-split/parts` — Get Settlement Month-End Parts
 - `GET /api/ledger/settlement-split/settings/{integrationInstance}` — Get Settlement Month-End Split Setting

@@ -27492,6 +27492,8 @@ paths:
                               type: string
                             label:
                               type: string
+                            document_number:
+                              type: string
                             link_route:
                               type: string
                             remote_url:
@@ -27588,6 +27590,7 @@ paths:
                       remote_id: a1b2c3d4-0000-0000-0000-000000000000
                       link_type_label: Invoice
                       label: INV-1042
+                      document_number: INV-1042
                       link_route: /integrations/xero/invoices/55
                       remote_url: https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=a1b2c3d4-0000-0000-0000-000000000000
                     provider_status: AUTHORISED
@@ -29785,6 +29788,14 @@ paths:
         until the payment or allocation is removed there.
 
 
+        **Batch push still in progress:** for a batch''s journal entry that has no
+        provider document yet while an earlier push of the same batch is still in
+        progress, Resync pushes nothing and reports `predecessor_push_pending: true`
+        (message: "An earlier push of this batch is still in progress — try again
+        once it finishes."). That earlier push may still create the provider document;
+        once it finishes, Resync updates that document as usual.
+
+
         **Behaviour:** mints the entry''s manual push op (manual eligibility bypasses
         the soft per-type Sync toggle but NOT structural blockers — connection inactive,
         batch member / open batch, internal-only, or before the provider start date)
@@ -29802,11 +29813,11 @@ paths:
 
 
         **Response:** 200 with `data.sync` ({ eligible, synced, failed, amended, locked_blocked,
-        error, regenerated, entry_id }) and `data.entry` (the refreshed ledger entry
-        object, which includes a `locked_amend_blocked` flag). `error` carries the
-        provider rejection message when `failed` is true. `locked_blocked` is true
-        when the provider document is fully locked and not even the reference could
-        be pushed. `message` summarises the outcome.
+        predecessor_push_pending, error, regenerated, entry_id }) and `data.entry`
+        (the refreshed ledger entry object, which includes a `locked_amend_blocked`
+        flag). `error` carries the provider rejection message when `failed` is true.
+        `locked_blocked` is true when the provider document is fully locked and not
+        even the reference could be pushed. `message` summarises the outcome.
 
 
         Permission: requires `accounting.sync` (granular permissions; admins bypass;
@@ -33422,6 +33433,7 @@ paths:
                         remote_id: b7c1e2a4-9f3d-4a2b-8e6c-2f1d0a9b8c77
                         link_type_label: Invoice
                         label: INV-1042
+                        document_number: INV-1042
                         link_route: /integrations/xero/invoices/318
                         remote_url: https://go.xero.com/app/invoicing/view/b7c1e2a4-9f3d-4a2b-8e6c-2f1d0a9b8c77
                       provider_status: AUTHORISED
@@ -40108,7 +40120,12 @@ paths:
 
 
         **COGS and returns:** every channel also reports `cogs` (COGS journals from
-        fulfillments) and `returns` (customer return journals).'
+        fulfillments) and `returns` (customer return journals).
+
+
+        `channels[].sales_channel_id` is the sales channel the integration feeds (null
+        when it has none) — the id the payout-channel order AR report filters by (`filter[sales_channel_id]`)
+        and its entries endpoint takes.'
       parameters: []
       responses:
         '200':
@@ -40187,6 +40204,8 @@ paths:
                           type: object
                           properties:
                             instance_id:
+                              type: integer
+                            sales_channel_id:
                               type: integer
                             name:
                               type: string
@@ -40344,6 +40363,7 @@ paths:
                       sales_credit: per_document
                     channels:
                     - instance_id: 2
+                      sales_channel_id: 12
                       name: MyBinding Shopify
                       integration_name: Shopify
                       is_sku_internal: false
@@ -40557,7 +40577,12 @@ paths:
 
 
         **COGS and returns:** every channel also reports `cogs` (COGS journals from
-        fulfillments) and `returns` (customer return journals).'
+        fulfillments) and `returns` (customer return journals).
+
+
+        `channels[].sales_channel_id` is the sales channel the integration feeds (null
+        when it has none) — the id the payout-channel order AR report filters by (`filter[sales_channel_id]`)
+        and its entries endpoint takes.'
       parameters:
       - name: integrationInstance
         in: path
@@ -40643,6 +40668,8 @@ paths:
                           type: object
                           properties:
                             instance_id:
+                              type: integer
+                            sales_channel_id:
                               type: integer
                             name:
                               type: string
@@ -40792,6 +40819,7 @@ paths:
                       sales_credit: per_document
                     channels:
                     - instance_id: 3
+                      sales_channel_id: 13
                       name: Wholesale Shopify
                       integration_name: Shopify
                       is_sku_internal: false
@@ -41037,6 +41065,8 @@ paths:
                           properties:
                             instance_id:
                               type: integer
+                            sales_channel_id:
+                              type: integer
                             name:
                               type: string
                             integration_name:
@@ -41187,6 +41217,7 @@ paths:
                       sales_credit: per_document
                     channels:
                     - instance_id: 3
+                      sales_channel_id: 13
                       name: Wholesale Shopify
                       integration_name: Shopify
                       is_sku_internal: false
@@ -41469,6 +41500,8 @@ paths:
                           properties:
                             instance_id:
                               type: integer
+                            sales_channel_id:
+                              type: integer
                             name:
                               type: string
                             integration_name:
@@ -41621,6 +41654,7 @@ paths:
                       sales_credit: per_document
                     channels:
                     - instance_id: 3
+                      sales_channel_id: 13
                       name: Wholesale Shopify
                       integration_name: Shopify
                       is_sku_internal: false
@@ -42159,6 +42193,426 @@ paths:
         '403': *id005
       x-required-scope: accounting:read
       operationId: get-api-ledger-settings-revenue-recognition-preview
+  /api/ledger/settings/channel-sync/{integrationInstance}/settlement-revenue:
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Set Channel Settlement Revenue
+      description: "Sets when a sales channel's payouts or settlements take over booking\
+        \ its revenue, so its per-order invoices and credits stop posting their own\
+        \ ledger entries and the revenue is counted once.\n\n:::warning[Not yet available\
+        \ to API tokens]\nThis endpoint currently requires session authentication;\
+        \ Personal Access Token scope support is in progress.\n:::\n\n**Authentication:**\
+        \ Requires Bearer token with the Manage accounting settings permission.\n\n\
+        **Body** (every field optional; a field left out keeps its current value):\n\
+        - `per_order_revenue_entries_off_from` (date Y-m-d, nullable): the cut-over.\
+        \ Order invoices and credits dated on/after it post no ledger entry. It cannot\
+        \ be inside a locked period (422 naming the first allowed day). Null removes\
+        \ it, so documents post per order again.\n- `payout_accounting_start_date`\
+        \ (date Y-m-d, nullable, Amazon only): when the channel's settlements start\
+        \ booking revenue. Orders sold before it keep their own invoices. Other channels\
+        \ set it on their Finance settings; 422 here.\n- `accounting_sync_mode` (string,\
+        \ Amazon only): `per_order` (order invoices book revenue; settlements book\
+        \ fees and other lines) or `per_payout` (settlements book revenue). Switching\
+        \ to `per_payout` is refused while the settlements' order-sale lines (`Order\
+        \ / ItemPrice / Principal` and `Refund / ItemPrice / Principal`) do not both\
+        \ book revenue — unless the channel's settlements never booked revenue, in\
+        \ which case the switch is allowed and its settlements with order-sale lines\
+        \ are held until those lines are mapped (`order_sale_mapping_pending`); switching\
+        \ to `per_order` is refused while either of them still does. Switching mode\
+        \ changes which document books revenue for orders created afterwards; orders\
+        \ already created keep theirs. Send `order_revenue_mapping` with the switch\
+        \ to re-map those lines in the same step.\n- `order_revenue_mapping` (object,\
+        \ optional, Amazon only, only together with `accounting_sync_mode`): re-points\
+        \ the two order-sale settlement lines in the same transaction as the mode\
+        \ switch, so the switch and the mapping change are saved together or not at\
+        \ all. They are re-mapped from the day the order invoices stop posting (`per_payout`)\
+        \ or start posting again (`per_order`).\n  - `order_revenue_mapping.nominal_code_id`\
+        \ (integer, required with the object): the account the order-sale lines post\
+        \ to. For `per_payout` it must be a revenue (Sales or Revenue type) account,\
+        \ since the settlements then book order sales; for `per_order` it must be\
+        \ a non-revenue account (such as a settlement clearing account), since the\
+        \ order invoices book the sales and a revenue account would count each sale\
+        \ twice. 422 on this field otherwise.\n  - `order_revenue_mapping.mapping_group_id`\
+        \ (integer, nullable): the settlement mapping group they post in. It must\
+        \ belong to this channel and be an Invoice group for `per_payout` or a Bill\
+        \ group for `per_order`; omit it to use the channel's first group of that\
+        \ type.\n\nChanging the dates re-evaluates the channel's documents in open\
+        \ periods in the background. Returns the channel's refreshed explanation (same\
+        \ shape as Get Channel Sync Explanation); its `settlement_revenue` object\
+        \ holds:\n- `accounting_sync_mode`, `payout_accounting_start_date` / `revenue_start`\
+        \ (the same date under both names), `per_order_revenue_entries_off_from` (the\
+        \ cut-over) and `first_open_day` (the earliest allowed cut-over; null when\
+        \ nothing is locked).\n- `order_revenue_mapped` (boolean, Amazon only, else\
+        \ null): whether the settlements book order sales AND refunds. A switch to\
+        \ `per_payout` needs it true, or an `order_revenue_mapping`.\n- `order_revenue_booked_by_settlements`\
+        \ (boolean, Amazon only, else null): whether either order-sale line books\
+        \ revenue. A switch to `per_order` needs it false, or an `order_revenue_mapping`.\n\
+        - `per_order_revenue_entries_on_from` (date or null): after the channel left\
+        \ payout mode, the day its per-order invoices and credits post again; null\
+        \ when it never left.\n- `closed_windows` (array): each period the channel\
+        \ spent in payout mode and then left, as `{from, to, start}` (`from` inclusive,\
+        \ `to` exclusive, `start` the revenue start date in force then, or null).\
+        \ History only: whether an order's documents post follows the order's own\
+        \ revenue owner, decided when it was created, so an order sold while the channel\
+        \ ran per payout stays booked by its settlements after the switch.\n- `order_sale_mapping_pending`\
+        \ (boolean, Amazon only, else null): the channel runs per payout but its Order\
+        \ and Refund / ItemPrice / Principal settlement lines don't book revenue yet;\
+        \ settlements with such lines are held until they are mapped.\n- `clearing_account_needed`\
+        \ (boolean or null): the channel has orders booked by their own invoices whose\
+        \ payout or settlement lines would post to revenue too, because the account\
+        \ those lines go to instead is not set (Amazon: settlement clearing account;\
+        \ Shopify: account for invoiced orders paid through payouts). Null when the\
+        \ channel has no such account.\n- `accounting_sync_mode_editable_here` / `start_date_editable_here`:\
+        \ whether those fields are set on this endpoint (Amazon) or on the channel's\
+        \ Finance settings.\n\n404 when the channel does not exist; 422 when the channel\
+        \ has no settlements, for a date inside a locked period, for a mode switch\
+        \ the order-sale mappings do not fit, for `order_revenue_mapping` sent without\
+        \ `accounting_sync_mode`, for an `order_revenue_mapping.nominal_code_id` of\
+        \ the wrong account type for the mode, or for a mapping group of another channel\
+        \ or of the wrong document type."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accounting_sync_mode:
+                  type: string
+                payout_accounting_start_date:
+                  type: string
+                per_order_revenue_entries_off_from:
+                  type: string
+              example:
+                accounting_sync_mode: per_payout
+                payout_accounting_start_date: '2025-12-01'
+                per_order_revenue_entries_off_from: '2026-01-01'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      channels:
+                      - integration_instance_id: 3
+                        name: Amazon US
+                        settlement_revenue:
+                          integration_instance_id: 3
+                          has_settlements: true
+                          in_payout_mode: true
+                          accounting_sync_mode: per_payout
+                          payout_accounting_start_date: '2025-12-01'
+                          revenue_start: '2025-12-01'
+                          per_order_revenue_entries_off_from: '2026-01-01'
+                          first_open_day: '2026-01-01'
+                          order_revenue_mapped: true
+                          accounting_sync_mode_editable_here: true
+                          start_date_editable_here: true
+                          order_revenue_booked_by_settlements: true
+                          per_order_revenue_entries_on_from: null
+                          order_sale_mapping_pending: false
+                          clearing_account_needed: false
+                          closed_windows:
+                          - from: '2025-06-01'
+                            to: '2025-09-01'
+                            start: '2025-06-01'
+                    message: Saved when settlements book this channel's revenue.
+                    status: success
+                example-1:
+                  summary: 200 OK — switch to Per order with order-sale mapping
+                  value:
+                    data:
+                      channels:
+                      - integration_instance_id: 3
+                        name: Amazon US
+                        settlement_revenue:
+                          integration_instance_id: 3
+                          has_settlements: true
+                          in_payout_mode: false
+                          accounting_sync_mode: per_order
+                          payout_accounting_start_date: '2025-12-01'
+                          revenue_start: '2025-12-01'
+                          per_order_revenue_entries_off_from: null
+                          first_open_day: '2026-01-01'
+                          order_revenue_mapped: false
+                          accounting_sync_mode_editable_here: true
+                          start_date_editable_here: true
+                          order_revenue_booked_by_settlements: false
+                          per_order_revenue_entries_on_from: '2026-11-01'
+                          order_sale_mapping_pending: false
+                          clearing_account_needed: false
+                          closed_windows:
+                          - from: '2026-01-01'
+                            to: '2026-11-01'
+                            start: '2025-12-01'
+                    message: Saved when settlements book this channel's revenue.
+                    status: success
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Date in a locked period
+                  value:
+                    message: The books are locked through 2025-12-31. Choose 2026-01-01
+                      or later.
+                    errors:
+                      per_order_revenue_entries_off_from:
+                      - The books are locked through 2025-12-31. Choose 2026-01-01
+                        or later.
+                example-1:
+                  summary: 422 Mapping sent without a mode
+                  value:
+                    message: 'Send the order-sale mapping together with accounting_sync_mode:
+                      it is applied as part of the switch.'
+                    errors:
+                      order_revenue_mapping:
+                      - 'Send the order-sale mapping together with accounting_sync_mode:
+                        it is applied as part of the switch.'
+                example-2:
+                  summary: 422 Wrong account type for the mode
+                  value:
+                    message: 'Choose a non-revenue account (such as a settlement clearing
+                      account): Per order books order sales from the order invoices,
+                      so a revenue account here would count each sale twice.'
+                    errors:
+                      order_revenue_mapping.nominal_code_id:
+                      - 'Choose a non-revenue account (such as a settlement clearing
+                        account): Per order books order sales from the order invoices,
+                        so a revenue account here would count each sale twice.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: put-api-ledger-settings-channel-sync-integrationinstance-settlement-revenue
+  /api/ledger/settings/channel-sync/{integrationInstance}/settlement-revenue/preview:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Preview Channel Settlement Revenue Switch
+      description: 'Previews what switching a sales channel between Per order and
+        Per payout revenue booking would do to its open orders, before you save the
+        switch. Read-only: nothing is changed.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token with the Manage accounting settings
+        permission.
+
+
+        **Query parameters:**
+
+        - `accounting_sync_mode` (required): `per_order` or `per_payout`.
+
+        - `payout_accounting_start_date` (optional, Y-m-d or empty): the start date
+        the switch would set. Left out = the current one.
+
+        - `per_order_revenue_entries_off_from` (optional, Y-m-d or empty): the cut-over
+        the same save would set. It is kept as given, so `switch_date` and `invoices_stop_from`
+        follow it. Left out = derived as the save derives it.
+
+
+        **Straddling orders** are open orders (not cancelled, not drafts, imported
+        from the channel) sold in the `lookback_days` (60) before `switch_date` that
+        no payout or settlement line names yet, so their settlement arrives after
+        the switch.
+
+
+        **Response fields:**
+
+        - `current_mode` / `accounting_sync_mode` / `mode_changes`: the channel''s
+        mode now, the proposed one, and whether they differ.
+
+        - `switch_date`: entering Per payout, the first sale day the settlements book
+        (the start date, else the switch day); leaving it, today.
+
+        - `lookback_from`, `lookback_days`: the earliest sale day counted.
+
+        - `awaiting_settlement` (`count`, `total` = net sales in your home currency):
+        the straddling orders. `awaiting_booked_by` says what keeps booking their
+        revenue: `invoices` (entering Per payout: their invoices stay, their settlement
+        lines go to the clearing account) or `settlements` (leaving Per payout: their
+        settlements book them on arrival, their invoices stay unposted).
+
+        - `claimed_by_settlements` (entering Per payout with a start date in the past,
+        else null): orders sold from `switch_date` up to now that the settlements
+        take over; their invoices and credits stop posting from `invoices_stop_from`.
+
+        - `clearing_account_mapped`: whether the account the payout lines of invoice-booked
+        orders post to instead of revenue is set; null when the channel has none.
+
+        - `payout_term`: what the channel calls its payout documents: `settlement`
+        (Amazon, Walmart) or `payout` (eBay, Shopify, TikTok Shop). `messages` use
+        the same word.
+
+        - `messages`: plain-language sentences describing the effect.
+
+
+        **Errors:** 422 when the mode is missing or invalid, the date is malformed,
+        or the channel has no payouts or settlements that book revenue; 404 when the
+        channel does not exist.'
+      parameters:
+      - name: accounting_sync_mode
+        in: query
+        schema:
+          type: string
+        description: 'Required. The mode the switch would set: `per_order` or `per_payout`.'
+        example: per_payout
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel integration instance id
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      integration_instance_id:
+                        type: integer
+                      current_mode:
+                        type: string
+                      accounting_sync_mode:
+                        type: string
+                      mode_changes:
+                        type: boolean
+                      switch_date:
+                        type: string
+                      lookback_from:
+                        type: string
+                      lookback_days:
+                        type: integer
+                      awaiting_settlement:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          total:
+                            type: number
+                      awaiting_booked_by:
+                        type: string
+                      claimed_by_settlements:
+                        type: object
+                        properties:
+                          count:
+                            type: integer
+                          total:
+                            type: number
+                      invoices_stop_from:
+                        type: string
+                      clearing_account_mapped:
+                        type: boolean
+                      messages:
+                        type: array
+                        items:
+                          type: string
+                      payout_term:
+                        type: string
+                example:
+                  data:
+                    integration_instance_id: 3
+                    current_mode: per_order
+                    accounting_sync_mode: per_payout
+                    mode_changes: true
+                    switch_date: '2026-10-15'
+                    lookback_from: '2026-08-16'
+                    lookback_days: 60
+                    awaiting_settlement:
+                      count: 12
+                      total: 1843.5
+                    awaiting_booked_by: invoices
+                    claimed_by_settlements:
+                      count: 40
+                      total: 6120.25
+                    invoices_stop_from: '2026-10-15'
+                    clearing_account_mapped: true
+                    messages:
+                    - 12 orders sold before Oct 15, 2026 are still waiting for a settlement.
+                      Their invoices keep booking their revenue; their settlement
+                      lines go to the clearing account.
+                    - 40 orders sold from Oct 15, 2026 will be booked by settlements;
+                      their invoices and credits stop posting.
+                    payout_term: settlement
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      accounting_sync_mode:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: This channel has no settlements or payouts that book revenue.
+                  errors:
+                    accounting_sync_mode:
+                    - This channel has no settlements or payouts that book revenue.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: get-api-ledger-settings-channel-sync-integrationinstance-settlement-revenue-preview
   /api/ledger/payout-mapping-periods:
     get:
       tags:
@@ -50067,6 +50521,7 @@ paths:
                       remote_id: 5f2c9d1e-1a4b-4c0e-9c11-8a7f2b6d4e33
                       link_type_label: Manual Journal
                       label: MJ-4471
+                      document_number: MJ-4471
                       link_route: /xero/manual-journals/812
                       remote_url: https://go.xero.com/Journal/View.aspx?journalID=5f2c9d1e-1a4b-4c0e-9c11-8a7f2b6d4e33
                     sync_status: synced
@@ -58351,6 +58806,808 @@ paths:
         '403': *id005
       x-required-scope: accounting:read
       operationId: get-api-ledger-reports-accrued-landed-cost-summary
+  /api/ledger/reports/payout-channel-order-ar:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Get Payout-Channel Order AR Summary
+      description: 'Order-invoice accounts receivable on sales channels whose payouts
+        or settlements already book the revenue (Amazon settlements, Shopify / eBay
+        / Walmart per-payout channels). Such AR is counted twice and never cleared.
+        One row per payout channel.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Authentication:** Requires Bearer token (accounting:read scope for tokens).
+
+
+        **Buckets** (by each document''s own date: order date for an order''s own
+        invoice, invoice date for a per-shipment invoice, credit date for a credit):
+
+        - `open`: documents on/after the channel''s `cutover` dated in an open period.
+        These should be 0.00; the Repair (open) action removes them.
+
+        - `locked`: documents on/after `revenue_start` whose entry is in a locked
+        period (doubled, frozen by the lock). `window_from` / `window_to` is the doubled
+        window the Repair (locked) action reverses on the first open day.
+
+        - `pre_settlement`: documents before `revenue_start`. No payout carried that
+        revenue, so it is real; informational.
+
+        - `provider_orphaned`: invoices / credits SKU.io withdrew whose document is
+        still in the accounting system (`provider` = `xero` or `qbo`), plus emptied
+        batch (summary) invoices / credits whose every order a payout now books. Removed
+        only by the Void action. `amount` and `entries` count ledger entries; `documents`
+        counts the accounting-system documents themselves (an entry still open on
+        two connections is two documents) and is the number the Void action is confirmed
+        with; `connections` splits `documents` per accounting connection (`connection_id`,
+        `connection_name`, `provider`, `documents`), most first. `provider` is the
+        provider of the connection holding the most documents.
+
+        - `provider_needs_update`: accounting-system documents that still include
+        orders a payout now books, alongside orders that still post: batch (summary)
+        invoices / credits whose orders partly left the batch, and consolidated invoices
+        withdrawn in part (rebuilt without the lines of payout-booked orders). They
+        are never voided (that would remove the remaining orders) and never updated
+        automatically; syncing the entry (`update_entry_id`) updates the document.
+        `amount` is the AR of the entry holding the document.
+
+
+        `last_repair` is the channel''s latest repair run (null when none): `at` (UTC
+        ISO-8601), `scope` (`open` or `locked`), `tracked_job_id` and `status` (`pending`,
+        `processing`, `completed`, `partial`, `failed` or `cancelled`; `partial` means
+        the run finished but left some documents un-repaired, so the buckets may not
+        be 0.00 yet). A consolidated invoice (billing several orders) is counted once
+        on each channel whose orders it bills, and is bucketed only where every order
+        it bills belongs to that channel and is booked by its payouts.
+
+
+        `in_payout_mode` is false for a channel that has left payout mode and is listed
+        only because it still has documents in the accounting system or earlier payout-mode
+        windows; its `open`, `locked` and `pre_settlement` buckets are then empty,
+        and its kept documents can still be listed and voided (but not repaired).
+
+
+        **Query:** `as_of` (Y-m-d, default today) counts entries dated up to the end
+        of that day. An empty `data` array means no channel books its revenue through
+        payouts.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        sales_channel_id:
+                          type: integer
+                        sales_channel_name:
+                          type: string
+                        integration:
+                          type: string
+                        integration_instance_id:
+                          type: integer
+                        open:
+                          type: object
+                          properties:
+                            amount:
+                              type: integer
+                            entries:
+                              type: integer
+                        locked:
+                          type: object
+                          properties:
+                            amount:
+                              type: integer
+                            entries:
+                              type: integer
+                            window_from:
+                              type: string
+                            window_to:
+                              type: string
+                        pre_settlement:
+                          type: object
+                          properties:
+                            amount:
+                              type: integer
+                            entries:
+                              type: integer
+                        revenue_start:
+                          type: string
+                        cutover:
+                          type: string
+                        provider_orphaned:
+                          type: object
+                          properties:
+                            amount:
+                              type: integer
+                            entries:
+                              type: integer
+                            provider:
+                              type: string
+                            documents:
+                              type: integer
+                            connections:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  connection_id:
+                                    type: integer
+                                  connection_name:
+                                    type: string
+                                  provider:
+                                    type: string
+                                  documents:
+                                    type: integer
+                        last_repair:
+                          type: object
+                          properties:
+                            at:
+                              type: string
+                            scope:
+                              type: string
+                            tracked_job_id:
+                              type: integer
+                            status:
+                              type: string
+                        provider_needs_update:
+                          type: object
+                          properties:
+                            amount:
+                              type: integer
+                            entries:
+                              type: integer
+                        in_payout_mode:
+                          type: boolean
+                  status:
+                    type: string
+                example:
+                  data:
+                  - sales_channel_id: 3
+                    sales_channel_name: Amazon US
+                    integration: amazon
+                    integration_instance_id: 3
+                    open:
+                      amount: 55
+                      entries: 3
+                    locked:
+                      amount: 20
+                      entries: 1
+                      window_from: '2025-12-01'
+                      window_to: '2025-12-31'
+                    pre_settlement:
+                      amount: 10
+                      entries: 1
+                    revenue_start: '2025-12-01'
+                    cutover: '2026-01-01'
+                    provider_orphaned:
+                      amount: 40
+                      entries: 1
+                      provider: qbo
+                      documents: 2
+                      connections:
+                      - connection_id: 5
+                        connection_name: QuickBooks US
+                        provider: qbo
+                        documents: 1
+                      - connection_id: 9
+                        connection_name: QuickBooks Canada
+                        provider: qbo
+                        documents: 1
+                    last_repair:
+                      at: '2026-11-01T06:54:44Z'
+                      scope: open
+                      tracked_job_id: 991
+                      status: completed
+                    provider_needs_update:
+                      amount: 120
+                      entries: 1
+                    in_payout_mode: true
+                  status: success
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      as_of:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Enter the as-of date as YYYY-MM-DD.
+                  errors:
+                    as_of:
+                    - Enter the as-of date as YYYY-MM-DD.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-ledger-reports-payout-channel-order-ar
+  /api/ledger/reports/payout-channel-order-ar/{salesChannel}/entries:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Payout-Channel Order AR Entries
+      description: 'The order invoice and credit entries behind one channel''s row
+        of the payout-channel order AR summary, paginated.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Authentication:** Requires Bearer token (accounting:read scope for tokens).
+
+
+        **Filters:**
+
+        - `filter[period_state]`: `open`, `locked` or `pre_settlement` (the summary
+        bucket; current entries only).
+
+        - `filter[sync_state]`: `orphaned` (withdrawn here, still in the accounting
+        system; the documents the Void action covers), `needs_update` (a batch invoice
+        / credit whose accounting-system document still includes orders that left
+        the batch, or a consolidated invoice withdrawn in part whose document still
+        includes the lines of orders a payout now books), `internal` (no accounting-system
+        document) or `synced` (a live accounting-system document).
+
+        - `filter[search]`: matches the sales order number, the channel''s own order
+        number (e.g. the Amazon order id), the invoice / credit number and the ledger
+        entry reference or id. Narrow it with `search_columns` (`id`, `ledger_entry_reference`,
+        `sales_order_number`, `channel_order_number`, `document_number`) and make
+        columns exact with `search_strict_columns`; the id is always an exact match.
+        At most 255 characters.
+
+        Without filters it lists every bucketed entry plus every document still in
+        the accounting system.
+
+
+        **Sort:** `sort` = `entry_id`, `effective_at`, `ar_amount` or `sales_order_number`;
+        prefix `-` for descending. Default `-effective_at`.
+
+
+        **Pagination:** `page`, `per_page` (default 10, max 200).
+
+
+        Row fields: `document_type` is `sales_invoice`, `sales_credit` or `ledger_batch`
+        (a batch / summary invoice or credit: `document_id` is the batch id, and the
+        order and document-number fields are null); `update_entry_id` is, for a `needs_update`
+        row, the entry where a sync updates the accounting-system document: the batch''s
+        current entry, or the partly withdrawn invoice''s own current entry (null
+        otherwise); `ar_amount` is the entry''s net debit on Accounts Receivable (credits
+        are negative); `period_state` is the bucket (null for a withdrawn document
+        listed only because it is still in the accounting system); `period_locked`
+        whether the entry''s date is in a locked period; `document_date` is the document''s
+        own date (tenant time zone); `channel_order_number` is the channel''s own
+        id of the order (null when the order was not imported from the channel); `provider_document_number`
+        is the accounting system''s number for the document the entry is synced to
+        (null when there is none, or it has not been read back yet) and `provider_link`
+        is that document''s link (`label`, `link_type_label`, `document_number`, `link_route`
+        to its page in the app when one exists, `remote_url` to the accounting system).
+        422 when the channel is not on the summary (its revenue is not booked by payouts,
+        and it has no kept accounting-system documents or earlier payout-mode windows).'
+      parameters:
+      - name: salesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel id (a channel whose payouts or settlements book
+          its revenue)
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        ledger_entry_id:
+                          type: integer
+                        ledger_entry_reference:
+                          type: string
+                        document_type:
+                          type: string
+                        document_id:
+                          type: integer
+                        document_number:
+                          type: string
+                        sales_order_id:
+                          type: integer
+                        sales_order_number:
+                          type: string
+                        channel_order_number:
+                          type: string
+                        document_date:
+                          type: string
+                        effective_at:
+                          type: string
+                        ar_amount:
+                          type: integer
+                        period_state:
+                          type: string
+                        period_locked:
+                          type: boolean
+                        sync_state:
+                          type: string
+                        is_current:
+                          type: boolean
+                        provider_document_number:
+                          type: string
+                        provider_link:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                            remote_type:
+                              type: string
+                            remote_id:
+                              type: string
+                            link_type_label:
+                              type: string
+                            label:
+                              type: string
+                            document_number:
+                              type: string
+                            link_route:
+                              type: string
+                            remote_url:
+                              type: string
+                        update_entry_id:
+                          type: string
+                          nullable: true
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        page:
+                          type: string
+                          nullable: true
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - ledger_entry_id: 6
+                    ledger_entry_reference: SO-8660
+                    document_type: sales_invoice
+                    document_id: 5
+                    document_number: SO-8660
+                    sales_order_id: 5
+                    sales_order_number: SO-8660
+                    channel_order_number: 114-7777777-1234567
+                    document_date: '2026-03-10'
+                    effective_at: '2026-03-10T18:00:00Z'
+                    ar_amount: 40
+                    period_state: open
+                    period_locked: false
+                    sync_state: orphaned
+                    is_current: false
+                    provider_document_number: '1043'
+                    provider_link:
+                      provider: QuickBooks
+                      remote_type: qbo_invoice
+                      remote_id: '981'
+                      link_type_label: Invoice
+                      label: '1043'
+                      document_number: '1043'
+                      link_route: /integrations/quickbooks/invoices/52
+                      remote_url: https://app.qbo.intuit.com/app/invoice?txnId=981
+                    update_entry_id: null
+                  - ledger_entry_id: 5
+                    ledger_entry_reference: CR-1042
+                    document_type: sales_credit
+                    document_id: 1
+                    document_number: CR-1042
+                    sales_order_id: 3
+                    sales_order_number: SO-7508
+                    channel_order_number: 113-2468024-6802468
+                    document_date: '2026-02-15'
+                    effective_at: '2026-02-15T18:00:00Z'
+                    ar_amount: -5
+                    period_state: open
+                    period_locked: false
+                    sync_state: internal
+                    is_current: true
+                    provider_document_number: null
+                    provider_link: null
+                    update_entry_id: null
+                  - ledger_entry_id: 14
+                    ledger_entry_reference: BATCH-2026-03-01
+                    document_type: ledger_batch
+                    document_id: 7
+                    document_number: null
+                    sales_order_id: null
+                    sales_order_number: null
+                    channel_order_number: null
+                    document_date: '2026-03-01'
+                    effective_at: '2026-03-01T18:00:00Z'
+                    ar_amount: 120
+                    period_state: null
+                    period_locked: false
+                    sync_state: needs_update
+                    is_current: false
+                    provider_document_number: INV-0412
+                    provider_link: null
+                    update_entry_id: 21
+                  first_page_url: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries?page=1
+                  from: 1
+                  last_page: 3
+                  last_page_url: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries?page=3
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    page: null
+                    active: false
+                  - url: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries?page=1
+                    label: '1'
+                    page: 1
+                    active: true
+                  - url: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries?page=2
+                    label: Next &raquo;
+                    page: 2
+                    active: false
+                  next_page_url: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries?page=2
+                  path: https://acme.sku.io/api/ledger/reports/payout-channel-order-ar/3/entries
+                  per_page: 2
+                  prev_page_url: null
+                  to: 2
+                  total: 6
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      sales_channel:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: This sales channel's revenue is not booked by payouts or
+                    settlements.
+                  errors:
+                    sales_channel:
+                    - This sales channel's revenue is not booked by payouts or settlements.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:read
+      operationId: get-api-ledger-reports-payout-channel-order-ar-saleschannel-entries
+  /api/ledger/reports/payout-channel-order-ar/{salesChannel}/repair:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Repair Payout-Channel Order AR
+      description: 'Starts a background job that removes one channel''s doubled order-invoice
+        AR and returns its tracked job id (poll it with the tracked jobs endpoints).
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token with the Sync accounting permission.
+
+
+        **Body:**
+
+        - `scope` (string, required): `open` re-derives the channel''s order invoices
+        and credits dated in open periods, so the ones its payouts book are withdrawn
+        (a draft entry is discarded, a posted one reversed); `locked` moves the channel''s
+        cut-over back to its revenue start and reverses the doubled locked-period
+        entries on the first open day. Locked months'' statements do not change; the
+        correction lands in the first open month. Neither scope changes documents
+        in the accounting system.
+
+
+        422 on `scope` when the channel has left payout mode (`in_payout_mode` false
+        in the summary: its order invoices are no longer doubled, and only its kept
+        accounting-system documents can be voided), when nothing applies (no cut-over
+        or no open-period AR for `open`; no locked-period AR for `locked`), and on
+        `sales_channel` when the channel''s revenue is not booked by payouts.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+              example:
+                scope: open
+      parameters:
+      - name: salesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel id (a channel whose payouts or settlements book
+          its revenue)
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 991
+                  message: Repair started — track progress.
+                  status: success
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 422 Nothing to repair
+                  value:
+                    message: Amazon US has no doubled order-invoice AR in locked periods.
+                    errors:
+                      scope:
+                      - Amazon US has no doubled order-invoice AR in locked periods.
+                example-1:
+                  summary: 422 Channel not in payout mode
+                  value:
+                    message: Amazon US no longer books its revenue through payouts,
+                      so its order invoices are not doubled. Only its kept provider
+                      documents can be voided.
+                    errors:
+                      scope:
+                      - Amazon US no longer books its revenue through payouts, so
+                        its order invoices are not doubled. Only its kept provider
+                        documents can be voided.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: post-api-ledger-reports-payout-channel-order-ar-saleschannel-repair
+  /api/ledger/reports/payout-channel-order-ar/{salesChannel}/void-provider:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Void Payout-Channel Order Invoices in Accounting System
+      description: 'Starts a background job that voids, in Xero or QuickBooks Online,
+        the channel''s order invoices and credits that SKU.io withdrew because a payout
+        books their revenue but that are still in the accounting system (`provider_orphaned`
+        in the summary), including emptied batch (summary) invoices / credits whose
+        every order a payout now books. Batch documents that still include remaining
+        orders (`provider_needs_update`) are never voided. Returns the tracked job
+        id.
+
+
+        :::warning[Not yet available to API tokens]
+
+        This endpoint currently requires session authentication; Personal Access Token
+        scope support is in progress.
+
+        :::
+
+
+        **Authentication:** Requires Bearer token with the Sync accounting permission.
+
+
+        **Body:**
+
+        - `confirm_count` (integer, required, min 1): must equal the channel''s current
+        `provider_orphaned.documents` (accounting-system documents, which can exceed
+        `provider_orphaned.entries` when an entry is still open on more than one connection),
+        so a stale confirmation never voids more than it showed.
+
+
+        Each document is voided through the normal sync pipeline. A document is cleared
+        from the count only when the accounting system confirms the void; one that
+        fails (for example, paid or locked there) stays counted and can be voided
+        again. Only the documents counted at confirmation are voided: each is re-checked
+        right before its void, and one that changed since (already voided, re-linked,
+        no longer withdrawn, or a different accounting-system document) is skipped,
+        not voided. A document withdrawn after the confirmation waits for the next
+        one. The job''s results list `confirmed_count`, `documents_processed`, `voided_count`,
+        `failed_count`, `skipped_count`, `has_failures` (true when any document failed
+        or was skipped) and per-document `documents[]` (`ledger_entry_id`, `sync_link_id`,
+        `reference`, `remote_id`, `status` = `voided` / `failed` / `skipped`, `error`).
+
+
+        422 on `confirm_count` when it differs from the current count or nothing is
+        left to void, and on `sales_channel` when the channel is not on the summary.
+        A channel that has left payout mode can still void its kept documents.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confirm_count:
+                  type: integer
+              example:
+                confirm_count: 2
+      parameters:
+      - name: salesChannel
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales channel id (a channel whose payouts or settlements book
+          its revenue)
+        example: '3'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                  status:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 991
+                  message: Voiding started — track progress.
+                  status: success
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      confirm_count:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 2 documents are waiting to be voided now, not 1. Reload
+                    the report and confirm again.
+                  errors:
+                    confirm_count:
+                    - 2 documents are waiting to be voided now, not 1. Reload the
+                      report and confirm again.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-session-only: true
+      operationId: post-api-ledger-reports-payout-channel-order-ar-saleschannel-void-provider
   /api/ledger/outbox:
     get:
       tags:
@@ -183624,6 +184881,10 @@ paths:
         (per_order or per_payout; default per_order), and the optional payout accounting
         start date before which payouts are not posted. Fallback and clearing accounts
         fall back to the workspace-wide values when the instance has none of its own.
+        Also returns `invoiced_order_payout_nominal_code_id`: the account the sale
+        and refund lines of orders already booked by their own invoices (sold before
+        payouts took over, or while the store ran per order) post to instead of revenue,
+        so the sale is booked once; null = those lines post as mapped.
 
 
         :::info[Required scope: `accounting:read`]
@@ -183662,6 +184923,8 @@ paths:
                     type: integer
                   clearing_nominal_code_id:
                     type: integer
+                  invoiced_order_payout_nominal_code_id:
+                    type: integer
                   accounting_sync_mode:
                     type: string
                   payout_accounting_start_date:
@@ -183670,6 +184933,7 @@ paths:
                   fallback_revenue_nominal_code_id: 220
                   fallback_expense_nominal_code_id: 310
                   clearing_nominal_code_id: 145
+                  invoiced_order_payout_nominal_code_id: 412
                   accounting_sync_mode: per_payout
                   payout_accounting_start_date: '2026-07-01'
         '429': *id001
@@ -183711,6 +184975,12 @@ paths:
         that payout documents settle against; must reference an existing general-ledger
         account.
 
+        - invoiced_order_payout_nominal_code_id (optional, nullable, integer): account
+        the sale and refund lines of orders already booked by their own invoices post
+        to instead of revenue, so the sale is booked once; must reference an existing
+        general-ledger account. Null = those lines post as mapped. Dated like the
+        fallback accounts.
+
         - accounting_sync_mode (optional, string): one of per_order, per_payout.
 
         - payout_accounting_start_date (optional, nullable, date): payouts dated before
@@ -183749,6 +185019,8 @@ paths:
                   type: integer
                 clearing_nominal_code_id:
                   type: integer
+                invoiced_order_payout_nominal_code_id:
+                  type: integer
                 accounting_sync_mode:
                   type: string
                 payout_accounting_start_date:
@@ -183759,6 +185031,7 @@ paths:
                 fallback_revenue_nominal_code_id: 220
                 fallback_expense_nominal_code_id: 310
                 clearing_nominal_code_id: 145
+                invoiced_order_payout_nominal_code_id: 412
                 accounting_sync_mode: per_payout
                 payout_accounting_start_date: '2026-07-01'
                 effective_from: '2026-11-01'
@@ -183789,6 +185062,8 @@ paths:
                     type: integer
                   clearing_nominal_code_id:
                     type: integer
+                  invoiced_order_payout_nominal_code_id:
+                    type: integer
                   accounting_sync_mode:
                     type: string
                   payout_accounting_start_date:
@@ -183799,6 +185074,7 @@ paths:
                   fallback_revenue_nominal_code_id: 220
                   fallback_expense_nominal_code_id: 310
                   clearing_nominal_code_id: 145
+                  invoiced_order_payout_nominal_code_id: 412
                   accounting_sync_mode: per_payout
                   payout_accounting_start_date: '2026-07-01'
                   skipped_posted_count: 2
@@ -330628,6 +331904,8 @@ paths:
                     type: integer
                   fallback_expense_nominal_code_id:
                     type: integer
+                  invoiced_order_payout_nominal_code_id:
+                    type: integer
                   landed_cost_bill_mode:
                     type: string
                   landed_cost_proration_strategy:
@@ -330635,6 +331913,7 @@ paths:
                 example:
                   fallback_revenue_nominal_code_id: 10
                   fallback_expense_nominal_code_id: 20
+                  invoiced_order_payout_nominal_code_id: 412
                   landed_cost_bill_mode: auto_create
                   landed_cost_proration_strategy: cost_based
         '429': *id001
@@ -330690,6 +331969,8 @@ paths:
                   type: integer
                 fallback_expense_nominal_code_id:
                   type: integer
+                invoiced_order_payout_nominal_code_id:
+                  type: integer
                 landed_cost_bill_mode:
                   type: string
                 landed_cost_proration_strategy:
@@ -330699,6 +331980,7 @@ paths:
               example:
                 fallback_revenue_nominal_code_id: 10
                 fallback_expense_nominal_code_id: 20
+                invoiced_order_payout_nominal_code_id: 412
                 landed_cost_bill_mode: auto_create
                 landed_cost_proration_strategy: cost_based
                 effective_from: '2026-11-01'
@@ -428077,7 +429359,11 @@ paths:
         provider). `payout_accounting_start_date` is the first settlement date that
         posts. Unmapped positive lines post to `fallback_revenue_nominal_code_id`,
         unmapped negative lines to `fallback_expense_nominal_code_id` (this store''s
-        values, otherwise the global ones).
+        values, otherwise the global ones). `invoiced_order_payout_nominal_code_id`
+        is the account the sale and refund lines (price, shipping, tax, savings —
+        not commission or fees) of orders already booked by their own invoices post
+        to instead of revenue, so the sale is booked once; null = those lines post
+        as mapped.
 
 
         :::info[Required scope: `accounting:read`]
@@ -428116,6 +429402,8 @@ paths:
                     nullable: true
                   fallback_expense_nominal_code_id:
                     type: integer
+                  invoiced_order_payout_nominal_code_id:
+                    type: integer
                   accounting_sync_mode:
                     type: string
                   payout_accounting_start_date:
@@ -428125,6 +429413,7 @@ paths:
                 example:
                   fallback_revenue_nominal_code_id: null
                   fallback_expense_nominal_code_id: 57
+                  invoiced_order_payout_nominal_code_id: 412
                   accounting_sync_mode: per_payout
                   payout_accounting_start_date: '2026-07-09'
                   effective_from: '2026-11-01'
@@ -428158,10 +429447,13 @@ paths:
 
         Body (all optional): `accounting_sync_mode` (per_order or per_payout), `payout_accounting_start_date`
         (nullable date, Y-m-d), `fallback_revenue_nominal_code_id` (nullable account
-        ID), `fallback_expense_nominal_code_id` (nullable account ID). `effective_from`
-        (optional, nullable, Y-m-d): settlements dated on or after this date use the
-        new fallback accounts and are rebuilt; earlier ones keep the accounts they
-        posted with. Defaults to today. Must be after the accounting lock date.
+        ID), `fallback_expense_nominal_code_id` (nullable account ID), `invoiced_order_payout_nominal_code_id`
+        (nullable account ID: where the sale and refund lines of orders already booked
+        by their own invoices post instead of revenue; null = they post as mapped).
+        `effective_from` (optional, nullable, Y-m-d): settlements dated on or after
+        this date use the new fallback accounts and are rebuilt; earlier ones keep
+        the accounts they posted with. Defaults to today. Must be after the accounting
+        lock date.
 
 
         Mapping changes are dated. Each change applies to settlements dated on or
@@ -428189,6 +429481,8 @@ paths:
                   nullable: true
                 fallback_expense_nominal_code_id:
                   type: integer
+                invoiced_order_payout_nominal_code_id:
+                  type: integer
                 accounting_sync_mode:
                   type: string
                 payout_accounting_start_date:
@@ -428198,6 +429492,7 @@ paths:
               example:
                 fallback_revenue_nominal_code_id: null
                 fallback_expense_nominal_code_id: 57
+                invoiced_order_payout_nominal_code_id: 412
                 accounting_sync_mode: per_payout
                 payout_accounting_start_date: '2026-07-09'
                 effective_from: '2026-11-01'
@@ -428227,6 +429522,8 @@ paths:
                     nullable: true
                   fallback_expense_nominal_code_id:
                     type: integer
+                  invoiced_order_payout_nominal_code_id:
+                    type: integer
                   accounting_sync_mode:
                     type: string
                   payout_accounting_start_date:
@@ -428236,6 +429533,7 @@ paths:
                 example:
                   fallback_revenue_nominal_code_id: null
                   fallback_expense_nominal_code_id: 57
+                  invoiced_order_payout_nominal_code_id: 412
                   accounting_sync_mode: per_payout
                   payout_accounting_start_date: '2026-07-09'
                   skipped_posted_count: 2
@@ -502124,7 +503422,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -502205,7 +503503,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: null
-                    external_url: https://shop.example.com/account/orders/ord_7t1qz0hcm3wk8pd4e2ub
+                    external_url: https://shop.example.com/admin/orders/?q=1002&all=1
                     sales_order_id: null
                     sales_order_route: null
                     sales_order: null
@@ -504133,7 +505431,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -505478,7 +506776,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -506275,7 +507573,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -507076,7 +508374,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -507869,7 +509167,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: SO-0001
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: 21
                     sales_order_route: /orders/sales-orders/21
                     sales_order:
@@ -508718,7 +510016,7 @@ paths:
                     notes: null
                     metadata: []
                     external_reference: null
-                    external_url: https://shop.example.com/account/orders/ord_jvpyjbzav2re94zkqe9w
+                    external_url: https://shop.example.com/admin/orders/?q=1001&all=1
                     sales_order_id: null
                     sales_order_route: null
                     sales_order: null
@@ -510325,7 +511623,7 @@ paths:
                     notes: null
                     metadata: {}
                     external_reference: null
-                    external_url: https://demo-store.example.com/account/orders/ord_10471
+                    external_url: https://demo-store.example.com/admin/orders/?q=10471&all=1
                     sales_order_id: 3312
                     sales_order_route: /orders/sales-orders/3312
                     sales_order:
@@ -857118,10 +858416,35 @@ paths:
         whether the store invoiced or left out such orders; recorded when the order
         is created; null for orders of per-order channels.
 
+        - `revenue_owner`: which document books the order''s revenue, decided once
+        when the order is created: payout (its channel''s payouts or settlements)
+        or order (its own invoices and credits); null for an order of a channel without
+        payout documents. It does not change when the channel''s accounting mode changes
+        later.
+
         - `revenue_booked_by`: payout (the Shopify Payments payout books its revenue,
         also while pending), order_invoice (invoiced per order because it was paid
         outside Shopify Payments) or left_out (paid outside Shopify Payments while
-        the store left those out of the books); null for per-order channels.
+        the store left those out of the books) or settlement (an Amazon, Walmart or
+        eBay order whose settlement or payout books its revenue from the channel''s
+        cut-over date); null for per-order channels.
+
+        - `revenue_settlements` (array or null): every settlement or payout that books
+        this order''s revenue, for orders a settlement / payout channel carries; null
+        for other orders. Each item: `payout_type` (`amazon_settlement`, `walmart_settlement`,
+        `ebay_payout` or `shopify_payout`), `payout_id`, `label` (the channel''s settlement
+        / payout id), `date` (the payout''s accounting date, Y-m-d, tenant time zone),
+        `amount_for_order` (the order''s revenue in that payout, signed: a refund
+        payout is negative), `currency_code` (the currency of `amount_for_order`:
+        the account''s base currency, which can differ from the order''s own currency),
+        `ledger_entry_id` and `ledger_entry_reference` (the payout''s invoice or credit
+        ledger entry that posts that revenue; null until the payout has posted).
+
+        - `revenue_channel_label` (string or null): what the channel calls that document,
+        e.g. `Amazon settlement`; null when `revenue_settlements` is null.
+
+        - `invoices_post_no_ledger_entry` (boolean): true when the order''s invoices
+        post no ledger entry of their own because its payouts book the revenue.
 
 
         `is_customer_dropship` (boolean): true when the merchant ships this order
@@ -857503,8 +858826,18 @@ paths:
                         nullable: true
                       payout_settlement:
                         type: string
+                      revenue_owner:
+                        type: string
                       revenue_booked_by:
                         type: string
+                      revenue_settlements:
+                        type: string
+                        nullable: true
+                      revenue_channel_label:
+                        type: string
+                        nullable: true
+                      invoices_post_no_ledger_entry:
+                        type: boolean
                       shipping_pending_review:
                         type: boolean
                       shipping_quote_available:
@@ -857729,7 +859062,11 @@ paths:
                     delete_unavailable_reason: null
                     revert_to_draft_unavailable_reason: null
                     payout_settlement: outside_payout
+                    revenue_owner: order
                     revenue_booked_by: order_invoice
+                    revenue_settlements: null
+                    revenue_channel_label: null
+                    invoices_post_no_ledger_entry: false
                     shipping_pending_review: false
                     shipping_quote_available: true
                     can_quote_shipping: true
