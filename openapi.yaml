@@ -4321,7 +4321,10 @@ paths:
         Every transaction type is returned, whether or not it has been saved before.
         A type that has never been saved inherits the control of the type it was split
         out of — `inventory_revaluation` (automatic cost true-ups) inherits `inventory_adjustment`
-        until you save it a setting of its own.
+        until you save it a setting of its own. `ledger_reclass` (reclass journals
+        that correct already-posted balances) is the exception: it has its own control
+        and is enabled until you save it off, because a correction must reach the
+        books.
 
 
         **mirror_sync_controls** (Xero connections only; empty object otherwise):
@@ -22721,6 +22724,12 @@ paths:
 
         - name (required): Unique payment type name, max 255 characters
 
+        - accounting_integration_id (optional, integer or null): The connected accounting
+        system''s bank account its payments go through — an id from Get Payment Type
+        Bank Accounts. Null clears it; leave it out to keep the current one. Supplier
+        payments of a type with no bank account are refused while an accounting system
+        takes payment pushes, because they could not sync.
+
 
         **Requires permission:** `payment_types.create`'
       requestBody:
@@ -22731,8 +22740,11 @@ paths:
               properties:
                 name:
                   type: string
+                accounting_integration_id:
+                  type: integer
               example:
                 name: Wire Transfer
+                accounting_integration_id: 12
       parameters: []
       responses:
         '200':
@@ -22757,8 +22769,7 @@ paths:
                       name:
                         type: string
                       accounting_integration_id:
-                        type: string
-                        nullable: true
+                        type: integer
                       created_at:
                         type: string
                       updated_at:
@@ -22771,7 +22782,7 @@ paths:
                   data:
                     id: 10
                     name: Wire Transfer
-                    accounting_integration_id: null
+                    accounting_integration_id: 12
                     created_at: '2024-03-15T14:30:00Z'
                     updated_at: '2024-03-15T14:30:00Z'
                     archived_at: null
@@ -22954,12 +22965,18 @@ paths:
 
         - name (optional): New payment type name, must be unique, max 255 characters
 
+        - accounting_integration_id (optional, integer or null): The connected accounting
+        system''s bank account its payments go through — an id from Get Payment Type
+        Bank Accounts. Null clears it; leave it out to keep the current one. Supplier
+        payments of a type with no bank account are refused while an accounting system
+        takes payment pushes, because they could not sync.
+
 
         **Requires permission:** `payment_types.update`
 
 
-        `name` is required and must be unique; only `name` is updated (other fields
-        in the body are ignored).'
+        `name` is required and must be unique. `name` and `accounting_integration_id`
+        are the only fields updated; anything else in the body is ignored.'
       requestBody:
         content:
           application/json:
@@ -22968,8 +22985,11 @@ paths:
               properties:
                 name:
                   type: string
+                accounting_integration_id:
+                  type: integer
               example:
                 name: Bank Wire Transfer
+                accounting_integration_id: 12
       parameters:
       - name: payment_type
         in: path
@@ -23001,8 +23021,7 @@ paths:
                       name:
                         type: string
                       accounting_integration_id:
-                        type: string
-                        nullable: true
+                        type: integer
                       created_at:
                         type: string
                       updated_at:
@@ -23015,7 +23034,7 @@ paths:
                   data:
                     id: 10
                     name: Bank Wire Transfer
-                    accounting_integration_id: null
+                    accounting_integration_id: 12
                     created_at: '2024-03-15T14:30:00Z'
                     updated_at: '2024-03-15T15:00:00Z'
                     archived_at: null
@@ -23289,6 +23308,95 @@ paths:
         '422': *id004
       x-required-scope: settings:write
       operationId: post-api-payment-types-accounting-mapping
+  /api/payment-types/accounting-accounts:
+    get:
+      tags:
+      - Configuration
+      summary: Get Payment Type Bank Accounts
+      description: 'List the connected accounting system''s bank accounts a payment
+        type can be mapped to (Xero BANK accounts, or QuickBooks bank and credit card
+        accounts), and whether supplier payments need that mapping.
+
+
+        :::info[Required scope: `settings:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Response fields:
+
+        - provider: `xero`, `qbo`, or null when no accounting system is connected
+
+        - provider_name: display name of the provider, or null
+
+        - requires_mapping: true when supplier payments push to the provider, so a
+        payment type without a bank account is refused
+
+        - sync_start_date: payments dated before this (Y-m-d) never sync and need
+        no bank account; null when unset
+
+        - accounts: id, name and code of each active account; pass an id as accounting_integration_id
+        when creating or updating a payment type'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      provider_name:
+                        type: string
+                      requires_mapping:
+                        type: boolean
+                      sync_start_date:
+                        type: string
+                      accounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            code:
+                              type: string
+                example:
+                  data:
+                    provider: xero
+                    provider_name: Xero
+                    requires_mapping: true
+                    sync_start_date: '2026-01-01'
+                    accounts:
+                    - id: 12
+                      name: Business Checking
+                      code: 090
+                    - id: 14
+                      name: Company Credit Card
+                      code: 091
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: settings:read
+      operationId: get-api-payment-types-accounting-accounts
   /api/payment-types/{paymentType}/archive:
     put:
       tags:
@@ -42468,6 +42576,11 @@ paths:
         the same save would set. It is kept as given, so `switch_date` and `invoices_stop_from`
         follow it. Left out = derived as the save derives it.
 
+        - `payout_processors[]` (optional, Storefront stores only): the processors
+        (`stripe`, `paypal`) the store would book by payouts. Left out = its saved
+        selection; empty = none. Only orders a payout can carry (paid through one
+        of them, or already snapshotted as payout-settled) are counted.
+
 
         **Straddling orders** are open orders (not cancelled, not drafts, imported
         from the channel) sold in the `lookback_days` (60) before `switch_date` that
@@ -54153,11 +54266,14 @@ paths:
       tags:
       - Ledger (Accounting v2)
       summary: List Close Periods
-      description: 'Every month in the closable range (most recent first) with lifecycle
-        status (open, in_review, closing, closed), checklist progress, blocking-failure
-        and warning counts, and close sign-off metadata. Months are materialized lazily
-        — a month that has never been interacted with reports status open with is_started
-        false.
+      description: 'Every month in the closable range (most recent first, from the
+        accounting start date). Months on or before a lock date set outside the close
+        are flagged is_locked: they can still be closed for the record, in order among
+        themselves, but no later month waits for them — the first unlocked non-closed
+        month is the one up next with lifecycle status (open, in_review, closing,
+        closed), checklist progress, blocking-failure and warning counts, and close
+        sign-off metadata. Months are materialized lazily — a month that has never
+        been interacted with reports status open with is_started false.
 
 
         :::info[Required scope: `accounting:read`]
@@ -54547,8 +54663,10 @@ paths:
       summary: Start Period Close
       description: 'Begin the close for a month: materializes the period, seeds its
         checklist (automated checks, built-in review items, and any custom items configured
-        in accounting settings), and evaluates every automated check. Returns the
-        full period detail.
+        in accounting settings), and evaluates the automated checks. Slower checks
+        (provider documents reconciliation) run in a background re-check that starts
+        automatically; until it finishes they show status pending with a result payload
+        of {"deferred": true}. Returns the full period detail.
 
 
         :::info[Required scope: `accounting:write`]
@@ -54770,9 +54888,11 @@ paths:
       tags:
       - Ledger (Accounting v2)
       summary: Refresh Close Checklist
-      description: 'Re-evaluate every automated check on a started, non-closed period
+      description: 'Start a background re-check of every automated check on a started,
+        non-closed period (including the slower provider-documents reconciliation),
         and append any newly configured custom checklist items. Completed manual items
-        are never reset.
+        are never reset. The response returns immediately with the current period
+        detail and a tracked_job_log_id; the checklist updates when that job completes.
 
 
         :::info[Required scope: `accounting:write`]
@@ -54918,6 +55038,8 @@ paths:
                                   type: integer
                           snapshots:
                             type: array
+                      tracked_job_log_id:
+                        type: integer
                   message:
                     type: string
                 example:
@@ -54984,7 +55106,8 @@ paths:
                         evaluated_at: null
                         sort_order: 300
                       snapshots: []
-                  message: Checklist re-evaluated.
+                    tracked_job_log_id: 48213
+                  message: Re-check started — the checklist updates when it finishes.
         '429': *id001
         '401': *id002
         '403': *id005
@@ -92667,14 +92790,15 @@ paths:
         campaign)` for campaigns). `product` rows only include spend mapped to a product.
 
 
-        **Shared filters (all optional):** `platform` (amazon_ads, ebay, google_ads,
-        walmart_connect, meta_ads, tiktok_ads); `ad_account_ids`, `campaign_ids`,
-        `product_ids` (comma-separated string or array of integers); `date_from` /
-        `date_to` (date-only, `m/d/Y`, in the app timezone; default window is the
-        30 days ending yesterday, and `date_to` must be on or after `date_from`).
-        Money is in tenant currency. Ratios are fractions (0.25 = 25%) and are null
-        when their denominator is zero. `provisional` is true when any day in the
-        window may still be restated by the platform.
+        **Shared filters (all optional):** `platforms` (one or more of amazon_ads,
+        ebay, google_ads, walmart_connect, meta_ads, tiktok_ads, comma-separated or
+        as an array; the older single `platform` is still accepted and merged in);
+        `ad_account_ids`, `campaign_ids`, `product_ids` (comma-separated string or
+        array of integers); `date_from` / `date_to` (date-only, `m/d/Y`, in the app
+        timezone; default window is the 30 days ending yesterday, and `date_to` must
+        be on or after `date_from`). Money is in tenant currency. Ratios are fractions
+        (0.25 = 25%) and are null when their denominator is zero. `provisional` is
+        true when any day in the window may still be restated by the platform.
 
 
         **Pagination:** `per_page` default 10, max 500; `page`.
@@ -92881,14 +93005,16 @@ paths:
         (personal access and OAuth tokens).
 
 
-        **Shared filters (all optional):** `platform` (amazon_ads, ebay, google_ads,
-        walmart_connect, meta_ads, tiktok_ads); `ad_account_ids`, `campaign_ids`,
-        `product_ids` (comma-separated string or array of integers); `date_from` /
-        `date_to` (date-only, `m/d/Y`, in the app timezone; default window is the
-        30 days ending yesterday, and `date_to` must be on or after `date_from`).
-        Money is in tenant currency. Ratios are fractions (0.25 = 25%) and are null
-        when their denominator is zero. `provisional` is true when any day in the
-        window may still be restated by the platform. `per_page` is accepted but ignored.
+        **Shared filters (all optional):** `platforms` (one or more of amazon_ads,
+        ebay, google_ads, walmart_connect, meta_ads, tiktok_ads, comma-separated or
+        as an array; the older single `platform` is still accepted and merged in);
+        `ad_account_ids`, `campaign_ids`, `product_ids` (comma-separated string or
+        array of integers); `date_from` / `date_to` (date-only, `m/d/Y`, in the app
+        timezone; default window is the 30 days ending yesterday, and `date_to` must
+        be on or after `date_from`). Money is in tenant currency. Ratios are fractions
+        (0.25 = 25%) and are null when their denominator is zero. `provisional` is
+        true when any day in the window may still be restated by the platform. `per_page`
+        is accepted but ignored.
 
 
         Fields: `date_from`, `date_to` (resolved window, `YYYY-MM-DD`), `spend`, `attributed_sales`,
@@ -93143,7 +93269,14 @@ paths:
         (the same spend in the ad account''s currency, the basis for bids), `account_currency`
         (that currency''s ISO code), `attributed_sales` (tenant currency), `orders`,
         `acos` (spend / attributed sales, both in tenant currency), `cvr` (orders
-        / clicks, null with no clicks), `provisional`.'
+        / clicks, null with no clicks), `provisional`.
+
+
+        **Platforms:** `platforms` filters by one or more platforms (comma-separated
+        or `platforms[]=`); the older single `platform` is still accepted and merged
+        into the list. Omit both for every platform. Additive totals (spend, sales,
+        clicks, contribution after ads) for several platforms equal the sum of the
+        single-platform results.'
       parameters: []
       responses:
         '200':
@@ -93372,10 +93505,11 @@ paths:
 
         **Query (all optional):** `type` filter: `approvals`, `stock`, `spend` or
         `setup` (omit for all); `include_cleared` (boolean: also return decisions
-        cleared since the start of today, flagged `cleared: true`); `platform` (amazon_ads,
-        ebay, google_ads, walmart_connect, meta_ads, tiktok_ads); `limit` (default
-        100, max 250); `date_from` / `date_to` (m/d/Y, the KPI window; default the
-        30 days ending yesterday).
+        cleared since the start of today, flagged `cleared: true`); `platforms` (one
+        or more of amazon_ads, ebay, google_ads, walmart_connect, meta_ads, tiktok_ads,
+        comma-separated or as an array; the older single `platform` is still accepted
+        and merged in); `limit` (default 100, max 250); `date_from` / `date_to` (m/d/Y,
+        the KPI window; default the 30 days ending yesterday).
 
 
         **Ordering:** decisions are ranked by urgency and money at stake and assigned
@@ -93421,7 +93555,17 @@ paths:
 
         **Event freezes:** a signal raised while an event freeze is active gets no
         proposed change set (critical stock-outs excepted when the freeze allows them);
-        its `details.frozen_by` names the freeze, otherwise it is `null`.'
+        its `details.frozen_by` names the freeze, otherwise it is `null`.
+
+
+        **Signal `details` (guardrail signals):** `effective_mode` (`off`, `monitor`,
+        `suggest` or `auto`: the mode guardrails act in for the signal''s product
+        and ad account), `proposable` (true when Propose Guardrail Signal Fix can
+        plan a fix now: the signal is open, actionable, has no set waiting for approval,
+        and nothing blocks it), `propose_path` (that endpoint, when proposable), `no_proposal_reason`
+        (plain-English reason the signal has no proposed change, or null) and `no_proposal_code`
+        (its machine-readable code, e.g. `monitor_only`, `frozen`, `mode_off`, `campaigns_off`,
+        `holdout_control`, `not_actionable`, `kill_switch`).'
       parameters: []
       responses:
         '200':
@@ -93605,6 +93749,19 @@ paths:
                                             type: string
                                       status:
                                         type: string
+                            effective_mode:
+                              type: string
+                            proposable:
+                              type: boolean
+                            no_proposal_reason:
+                              type: string
+                              nullable: true
+                            no_proposal_code:
+                              type: string
+                              nullable: true
+                            propose_path:
+                              type: string
+                              nullable: true
                         group:
                           type: string
                         rank_score:
@@ -93800,6 +93957,11 @@ paths:
                           after:
                             state: paused
                           status: pending
+                      effective_mode: suggest
+                      proposable: false
+                      no_proposal_reason: null
+                      no_proposal_code: null
+                      propose_path: null
                     group: needs_you_now
                     rank_score: 0.9312
                     age_hours: 7.4
@@ -121028,6 +121190,196 @@ paths:
         '403': *id005
       x-required-scope: advertising:write
       operationId: post-api-advertising-signals-signal-regenerate
+  /api/advertising/signals/{signal}/propose:
+    post:
+      tags:
+      - Guardrails
+      summary: Propose Guardrail Signal Fix
+      description: 'Plans the signal''s own fix now, as a change set waiting for approval,
+        even when guardrails for its product are set to Monitor (which otherwise only
+        flags problems). Use it for a signal whose decision card has `details.proposable:
+        true`; once created, the set appears on the signal''s decision with approve
+        and reject actions.
+
+
+        :::info[Required scope: `advertising:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        The proposal is never applied automatically: it always waits for approval,
+        whatever the mode. The usual safeguards still apply: nothing is proposed when
+        guardrails, the ad account''s automation or the product''s campaigns are set
+        to Off, while the kill switch is on, during an event freeze (except Critical
+        signals when the freeze allows them), for a product in the comparison group
+        of a running guardrail test, when the platform does not support the change
+        for the ad type, for ads SKU.io already paused or someone changed by hand
+        recently, or when the account needs reconnecting. Calling it again while the
+        set is still waiting for approval returns that same set (`created: false`)
+        instead of a duplicate.
+
+
+        No request body. Responds `201 Created` with the new set, `200 OK` with the
+        set already waiting, or `422` with a plain-English `message` and a machine-readable
+        `reason` when nothing can be proposed. Reason codes: `not_open`, `cleared`,
+        `not_actionable`, `mode_off`, `account_off`, `campaigns_off`, `needs_reconnect`,
+        `kill_switch`, `frozen`, `holdout_control`, `read_only_access`, `no_capabilities`,
+        `already_held`, `cooldown`, `guardrail_disabled`, `unsupported`, `no_live_ads`,
+        `already_acted_on`, `nothing_found`, `stale_data`, `busy`, `failed`.
+
+
+        Requires the `advertising.manage` permission. Personal access tokens need
+        the `advertising:write` scope.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: signal
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Guardrail signal ID
+        example: '2210'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      signal_id:
+                        type: integer
+                      ad_change_set_id:
+                        type: integer
+                      status:
+                        type: string
+                      created:
+                        type: boolean
+                      change_count:
+                        type: integer
+                      summary:
+                        type: string
+                      decision_key:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    signal_id: 2210
+                    ad_change_set_id: 1562
+                    status: pending_approval
+                    created: false
+                    change_count: 2
+                    summary: Pause 2 ads for TENT-2P-GRN on Acme Outdoor US (out of
+                      stock, still spending)
+                    decision_key: signal:2210
+                  message: A fix is already waiting for your approval.
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      signal_id:
+                        type: integer
+                      ad_change_set_id:
+                        type: integer
+                      status:
+                        type: string
+                      created:
+                        type: boolean
+                      change_count:
+                        type: integer
+                      summary:
+                        type: string
+                      decision_key:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    signal_id: 2210
+                    ad_change_set_id: 1562
+                    status: pending_approval
+                    created: true
+                    change_count: 2
+                    summary: Pause 2 ads for TENT-2P-GRN on Acme Outdoor US (out of
+                      stock, still spending)
+                    decision_key: signal:2210
+                  message: SKU.io proposed a fix. It is waiting for your approval.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Not Found.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  reason:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      signal:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: An event freeze (Black Friday) is on, so SKU.io isn't proposing
+                    changes until it ends.
+                  reason: frozen
+                  errors:
+                    signal:
+                    - An event freeze (Black Friday) is on, so SKU.io isn't proposing
+                      changes until it ends.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: advertising:write
+      operationId: post-api-advertising-signals-signal-propose
   /api/advertising/guardrail-policies:
     get:
       tags:
@@ -352988,6 +353340,30 @@ paths:
         cannot be attributed until the facility is mapped.
 
 
+        `ledger_drift` reports stock that left AWD with no departure in Amazon''s
+        AWD inventory ledger. For each FNSKU, the change in Amazon''s daily AWD on-hand
+        (available + reserved) between consecutive inventory snapshots is compared
+        with the ledger movements dated in the same window. A ledger row and the snapshot
+        that reflects it may land up to two days apart and still count as one movement,
+        and units on an AWD-sourced FBA shipment whose departure the ledger has not
+        recorded yet count as explained (`awaiting_ledger_fba_units`). Only snapshots
+        up to `ledger_covered_through`, the newest movement in the uploaded ledger,
+        are compared, so days nobody has uploaded the ledger for are never reported.
+        Drops are reported for the 30 days before that date.
+
+        - `skus`: worst first. `drops` lists when each fall first showed (`date`,
+        the snapshot instant in UTC); the units left between `previous_capture` and
+        `date`.
+
+        - `likely_destination`: one of your 3PL warehouses whose reported stock rose
+        by about the same quantity (within 10%) within 14 days. A suggestion only;
+        nothing is linked or moved.
+
+
+        The same check raises an `awd_ledger_drift` alert per integration, which resolves
+        itself once a later ledger upload explains every drop.
+
+
         :::info[Required scope: `integrations:read`]
 
         Grant this scope to your token under [Settings → Developer → Personal Access
@@ -353126,6 +353502,60 @@ paths:
                               type: integer
                             first_shipped_at:
                               type: string
+                      ledger_drift:
+                        type: object
+                        properties:
+                          ledger_covered_through:
+                            type: string
+                          compared_from:
+                            type: string
+                          compared_to:
+                            type: string
+                          sku_count:
+                            type: integer
+                          unexplained_units:
+                            type: integer
+                          awaiting_ledger_fba_units:
+                            type: integer
+                          first_drop_at:
+                            type: string
+                          last_drop_at:
+                            type: string
+                          skus:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                fnsku:
+                                  type: string
+                                msku:
+                                  type: string
+                                product_id:
+                                  type: integer
+                                unexplained_units:
+                                  type: integer
+                                drops:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      date:
+                                        type: string
+                                      previous_capture:
+                                        type: string
+                                      units:
+                                        type: integer
+                                likely_destination:
+                                  type: object
+                                  properties:
+                                    warehouse_id:
+                                      type: integer
+                                    warehouse_name:
+                                      type: string
+                                    units:
+                                      type: integer
+                                    received_at:
+                                      type: string
                 example:
                   data:
                     departures:
@@ -353216,6 +353646,41 @@ paths:
                       shipment_count: 64
                       departed_units: 6120
                       first_shipped_at: '2026-04-13T19:00:00+00:00'
+                    ledger_drift:
+                      ledger_covered_through: '2026-10-31T21:11:34+00:00'
+                      compared_from: '2026-09-30T04:07:09+00:00'
+                      compared_to: '2026-10-31T04:07:13+00:00'
+                      sku_count: 2
+                      unexplained_units: 415
+                      awaiting_ledger_fba_units: 1450
+                      first_drop_at: '2026-10-29T04:07:16+00:00'
+                      last_drop_at: '2026-10-30T04:07:12+00:00'
+                      skus:
+                      - fnsku: B0GFBP7QMR
+                        msku: FLASH-CARD-BASICS
+                        product_id: 4182
+                        unexplained_units: 250
+                        drops:
+                        - date: '2026-10-29T04:07:16+00:00'
+                          previous_capture: '2026-10-28T04:07:12+00:00'
+                          units: 200
+                        - date: '2026-10-30T04:07:12+00:00'
+                          previous_capture: '2026-10-29T04:07:16+00:00'
+                          units: 50
+                        likely_destination:
+                          warehouse_id: 1
+                          warehouse_name: Midpoint
+                          units: 249
+                          received_at: '2026-11-03T10:01:03+00:00'
+                      - fnsku: B09VCX39F5
+                        msku: MAT-12X18-GRY
+                        product_id: 3907
+                        unexplained_units: 165
+                        drops:
+                        - date: '2026-10-30T04:07:12+00:00'
+                          previous_capture: '2026-10-29T04:07:16+00:00'
+                          units: 165
+                        likely_destination: null
         '429': *id001
         '401': *id002
         '403': *id005
@@ -498071,6 +498536,12 @@ paths:
         `items_count` is not included here — count `items`.
 
 
+        `booked_by_payout` names the Stripe payout that books the order''s revenue
+        when its store books per payout (the earliest payout with a charge line matched
+        to the order: `id`, `provider`, `external_id`), or null when no payout has
+        a charge for it.
+
+
         Returns 404 when the order belongs to a different connection than the one
         in the path.
 
@@ -498129,6 +498600,15 @@ paths:
                         type: string
                       payment_method_label:
                         type: string
+                      booked_by_payout:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          provider:
+                            type: string
+                          external_id:
+                            type: string
                       paid_at:
                         type: string
                       currency_code:
@@ -498609,6 +499089,10 @@ paths:
                     payment_provider: stripe
                     payment_reference: pi_3UFq2b
                     payment_method_label: Card
+                    booked_by_payout:
+                      id: 14
+                      provider: stripe
+                      external_id: po_1ExAmPlE0000000000Payout
                     paid_at: '2026-09-13T18:02:00+00:00'
                     currency_code: USD
                     subtotal: 25
@@ -508846,6 +509330,3386 @@ paths:
         '404': *id003
       x-required-scope: integrations:write
       operationId: post-api-storefront-instances-id-fulfillments-id2-submit
+  /api/storefront/payouts:
+    get:
+      tags:
+      - Storefront
+      summary: List Storefront Payouts
+      description: 'Lists the Stripe payouts your Storefront stores report, across
+        every store (narrow with `filter[integration_instance_ids]`), newest arrival
+        first.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        A payout is one deposit the processor sent to your bank. Its lines are the
+        charges, refunds, disputes and fees it settles; each charge line is matched
+        to the SKU.io sales order it paid for. When a store books its revenue per
+        payout (see Get Storefront Accounting Settings), a paid payout posts to your
+        accounting provider as a sales invoice for the gross amounts and a bill for
+        the processor''s fees, and its deposit is recorded against the account you
+        chose for that processor.
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.
+
+
+        Fields:
+
+        - `amount`, `gross_total`, `fee_total`: decimal strings in the payout currency;
+        `amount` is what reached the bank, `gross_total` and `fee_total` sum the lines
+        (null until the lines are read); a standalone processor fee line counts in
+        full toward `fee_total` and not toward `gross_total`, so `fee_total` matches
+        the fees the payout books and `gross_total` − `fee_total` still equals the
+        sum of the line nets.
+
+        - `status`: the processor''s status (pending, in_transit, paid, failed, canceled).
+
+        - `accounting_status`: pending (waits on the store: per-order mode, processor
+        not booked by payouts, or not paid yet), ready, posted, held (something must
+        be fixed first; see `readiness` on Get Storefront Payout), error, or before_start
+        (arrives before the store''s payout accounting start date and never posts).
+
+        - `documents`: the accounting documents posted for the payout (`kind`: invoice,
+        bill, sales_credit, vendor_credit, revenue_recognition), with their reference,
+        total and sync status. The deposit is included on Get Storefront Payout.
+
+        - `also_reported_by_instance_ids`: other stores that report the same processor
+        account; only one store books it (see `shared_account_owner` in the accounting
+        settings).
+
+        - `readiness` is null in the list; read one payout for its checks.
+
+
+        Payouts sync automatically every hour for stores booked per payout; Sync Storefront
+        Payouts starts a sync on demand.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        integration_instance_id:
+                          type: integer
+                        integration_instance_name:
+                          type: string
+                        provider:
+                          type: string
+                        provider_label:
+                          type: string
+                        provider_account_id:
+                          type: string
+                        external_id:
+                          type: string
+                        reference:
+                          type: string
+                        status:
+                          type: string
+                        amount:
+                          type: string
+                        currency:
+                          type: string
+                        arrival_date:
+                          type: string
+                        payout_created_at:
+                          type: string
+                        method:
+                          type: string
+                        destination_label:
+                          type: string
+                        gross_total:
+                          type: string
+                        fee_total:
+                          type: string
+                        line_count:
+                          type: integer
+                        matched_order_count:
+                          type: integer
+                        accounting_status:
+                          type: string
+                        readiness:
+                          type: string
+                          nullable: true
+                        documents:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              kind:
+                                type: string
+                              reference:
+                                type: string
+                              document_number:
+                                type: string
+                              total:
+                                type: string
+                              display_status:
+                                type: string
+                              entry_id:
+                                type: integer
+                        also_reported_by_instance_ids:
+                          type: array
+                        base_currency_rate:
+                          type: string
+                          nullable: true
+                        lines_synced_at:
+                          type: string
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        url:
+                          type: string
+                          nullable: true
+                        label:
+                          type: string
+                        active:
+                          type: boolean
+                  next_page_url:
+                    type: string
+                    nullable: true
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 14
+                    integration_instance_id: 1
+                    integration_instance_name: Main Storefront
+                    provider: stripe
+                    provider_label: Stripe
+                    provider_account_id: acct_1ExAmPlE00000000
+                    external_id: po_1ExAmPlE0000000000Payout
+                    reference: Stripe payout po_1ExAmPlE0000000000Payout
+                    status: paid
+                    amount: '496.88'
+                    currency: USD
+                    arrival_date: '2026-11-03'
+                    payout_created_at: '2026-10-31T00:14:52Z'
+                    method: standard
+                    destination_label: WELLS FARGO BANK ****6789
+                    gross_total: '512.33'
+                    fee_total: '15.45'
+                    line_count: 2
+                    matched_order_count: 2
+                    accounting_status: posted
+                    readiness: null
+                    documents:
+                    - kind: invoice
+                      reference: Stripe payout po_1ExAmPlE0000000000Payout
+                      document_number: INV-1042
+                      total: '512.33'
+                      display_status: synced
+                      entry_id: 9021
+                    - kind: bill
+                      reference: Stripe fees po_1ExAmPlE0000000000Payout
+                      document_number: BILL-1043
+                      total: '15.45'
+                      display_status: synced
+                      entry_id: 9022
+                    also_reported_by_instance_ids: []
+                    base_currency_rate: null
+                    lines_synced_at: '2026-11-01T18:23:05Z'
+                    created_at: '2026-11-01T18:23:04Z'
+                    updated_at: '2026-11-01T18:24:11Z'
+                  first_page_url: https://sku2.test/api/storefront/payouts?page=1
+                  from: 1
+                  last_page: 1
+                  last_page_url: https://sku2.test/api/storefront/payouts?page=1
+                  links:
+                  - url: null
+                    label: '&laquo; Previous'
+                    active: false
+                  - url: https://sku2.test/api/storefront/payouts?page=1
+                    label: '1'
+                    active: true
+                  - url: null
+                    label: Next &raquo;
+                    active: false
+                  next_page_url: null
+                  path: https://sku2.test/api/storefront/payouts
+                  per_page: 10
+                  prev_page_url: null
+                  to: 1
+                  total: 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      filter.accounting_status:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'The filter.accounting status value "stuck" is not one
+                    of: pending, ready, posted, held, error, before_start.'
+                  errors:
+                    filter.accounting_status:
+                    - 'The filter.accounting status value "stuck" is not one of: pending,
+                      ready, posted, held, error, before_start.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payouts
+  /api/storefront/payouts/{storefrontPayout}:
+    get:
+      tags:
+      - Storefront
+      summary: Get Storefront Payout
+      description: 'Gets one payout with its lines, the sales orders they matched,
+        its accounting readiness and every document it posted, deposit included.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.
+
+
+        Beyond the list fields:
+
+        - `lines`: one per balance change the payout settles, oldest first. `category`
+        is charge, refund, dispute, dispute_reversal, fee, adjustment, reserve, transfer
+        or other; `gross`, `fee` and `net` are decimal strings in the payout currency
+        (`net` = `gross` - `fee`); `fee_details` breaks the fee down. `store_order_id`
+        / `order_number` identify the store order; `sales_order_id` / `sales_order_number`
+        the SKU.io sales order it matched (`matched` is false when none was found).
+        `source_id` is the processor''s charge, refund or dispute ID.
+
+        - `lines_net_total`: the lines'' net sum (null until the lines are read);
+        `lines_balance`: whether the lines add up to the deposit.
+
+        - `readiness.status`: done (posted), ready, or blocked. `readiness.checks`
+        lists each condition with `state` (pass, fail, or warn), a `note` saying what
+        to change, and a relative app `link` to where it is changed. The checks: per_payout_mode_enabled,
+        processor_in_list, after_accounting_start_date, payout_paid, lines_synced,
+        lines_balance, mappings_configured (every line has an account or a fallback
+        covers it), currency_conversion_configured, shared_account_owner, deposit_account_set,
+        and accounting_transactions_created once posted.
+
+        - `payout_sync_error`: the last processor permission the store reported missing
+        for this store (`provider`, `permission`, `message`, `at`), or null.
+
+
+        Returns 404 when the payout does not exist.'
+      parameters:
+      - name: storefrontPayout
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Storefront payout ID (the `id` from List Storefront Payouts)
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      integration_instance_name:
+                        type: string
+                      provider:
+                        type: string
+                      provider_label:
+                        type: string
+                      provider_account_id:
+                        type: string
+                      external_id:
+                        type: string
+                      reference:
+                        type: string
+                      status:
+                        type: string
+                      amount:
+                        type: string
+                      currency:
+                        type: string
+                      arrival_date:
+                        type: string
+                      payout_created_at:
+                        type: string
+                      method:
+                        type: string
+                      destination_label:
+                        type: string
+                      gross_total:
+                        type: string
+                      fee_total:
+                        type: string
+                      line_count:
+                        type: integer
+                      matched_order_count:
+                        type: integer
+                      accounting_status:
+                        type: string
+                      readiness:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          checks:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                label:
+                                  type: string
+                                state:
+                                  type: string
+                                note:
+                                  type: string
+                                  nullable: true
+                                link:
+                                  type: string
+                                  nullable: true
+                      documents:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            reference:
+                              type: string
+                            document_number:
+                              type: string
+                            total:
+                              type: string
+                            display_status:
+                              type: string
+                            entry_id:
+                              type: integer
+                      also_reported_by_instance_ids:
+                        type: array
+                      base_currency_rate:
+                        type: string
+                        nullable: true
+                      lines_synced_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      lines_net_total:
+                        type: string
+                      lines_balance:
+                        type: boolean
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            external_id:
+                              type: string
+                            type:
+                              type: string
+                            category:
+                              type: string
+                            category_label:
+                              type: string
+                            source_id:
+                              type: string
+                            store_order_id:
+                              type: string
+                            order_number:
+                              type: string
+                            payment_reference:
+                              type: string
+                            sales_order_id:
+                              type: integer
+                            sales_order_number:
+                              type: string
+                            matched:
+                              type: boolean
+                            gross:
+                              type: string
+                            fee:
+                              type: string
+                            net:
+                              type: string
+                            fee_details:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  description:
+                                    type: string
+                            line_created_at:
+                              type: string
+                            available_on:
+                              type: string
+                            description:
+                              type: string
+                      payout_sync_error:
+                        type: string
+                        nullable: true
+                      deposit_account:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                example:
+                  data:
+                    id: 14
+                    integration_instance_id: 1
+                    integration_instance_name: Main Storefront
+                    provider: stripe
+                    provider_label: Stripe
+                    provider_account_id: acct_1ExAmPlE00000000
+                    external_id: po_1ExAmPlE0000000000Payout
+                    reference: Stripe payout po_1ExAmPlE0000000000Payout
+                    status: paid
+                    amount: '496.88'
+                    currency: USD
+                    arrival_date: '2026-11-03'
+                    payout_created_at: '2026-10-31T00:14:52Z'
+                    method: standard
+                    destination_label: WELLS FARGO BANK ****6789
+                    gross_total: '512.33'
+                    fee_total: '15.45'
+                    line_count: 2
+                    matched_order_count: 2
+                    accounting_status: posted
+                    readiness:
+                      status: done
+                      checks:
+                      - key: per_payout_mode_enabled
+                        label: Per-payout accounting on
+                        state: pass
+                        note: null
+                        link: null
+                      - key: processor_in_list
+                        label: Stripe is booked by payouts
+                        state: pass
+                        note: null
+                        link: null
+                      - key: after_accounting_start_date
+                        label: On or after the payout accounting start date
+                        state: pass
+                        note: null
+                        link: null
+                      - key: payout_paid
+                        label: Paid out
+                        state: pass
+                        note: null
+                        link: null
+                      - key: lines_synced
+                        label: Lines read from the store
+                        state: pass
+                        note: null
+                        link: null
+                      - key: lines_balance
+                        label: Lines add up to the deposit
+                        state: pass
+                        note: null
+                        link: null
+                      - key: mappings_configured
+                        label: Every line has an account
+                        state: pass
+                        note: null
+                        link: null
+                      - key: currency_conversion_configured
+                        label: Exchange rate set
+                        state: pass
+                        note: null
+                        link: null
+                      - key: shared_account_owner
+                        label: Booked by one store
+                        state: pass
+                        note: null
+                        link: null
+                      - key: deposit_account_set
+                        label: Deposit account set
+                        state: pass
+                        note: null
+                        link: null
+                      - key: accounting_transactions_created
+                        label: Posted to the ledger
+                        state: pass
+                        note: null
+                        link: null
+                    documents:
+                    - kind: invoice
+                      reference: Stripe payout po_1ExAmPlE0000000000Payout
+                      document_number: INV-1042
+                      total: '512.33'
+                      display_status: synced
+                      entry_id: 9021
+                    - kind: bill
+                      reference: Stripe fees po_1ExAmPlE0000000000Payout
+                      document_number: BILL-1043
+                      total: '15.45'
+                      display_status: synced
+                      entry_id: 9022
+                    - kind: deposit
+                      reference: DEP-Stripe payout po_1ExAmPlE0000000000Payout
+                      document_number: JE-1044
+                      total: '496.88'
+                      display_status: synced
+                      entry_id: 9023
+                    also_reported_by_instance_ids: []
+                    base_currency_rate: null
+                    lines_synced_at: '2026-11-01T18:23:05Z'
+                    created_at: '2026-11-01T18:23:04Z'
+                    updated_at: '2026-11-01T18:24:11Z'
+                    lines_net_total: '496.88'
+                    lines_balance: true
+                    lines:
+                    - id: 301
+                      external_id: txn_3UXSl2ExAmPlE0000hXk1Ab7
+                      type: charge
+                      category: charge
+                      category_label: Charge
+                      source_id: ch_3UXSl2ExAmPlE0000Rk2mZ4p
+                      store_order_id: ord_8kq2v7mzt4hx31pd
+                      order_number: EX15000
+                      payment_reference: pi_3UXSl2ExAmPlE0000aBc1234
+                      sales_order_id: 1842
+                      sales_order_number: EX15000
+                      matched: true
+                      gross: '170.78'
+                      fee: '5.25'
+                      net: '165.53'
+                      fee_details:
+                      - type: stripe_fee
+                        amount: 5.25
+                        description: Stripe processing fees
+                      line_created_at: '2026-10-28T16:41:09Z'
+                      available_on: '2026-10-30'
+                      description: Order EX15000
+                    - id: 302
+                      external_id: txn_3UXTm8ExAmPlE0001pLr7Qd2
+                      type: charge
+                      category: charge
+                      category_label: Charge
+                      source_id: ch_3UXTm8ExAmPlE0001Wn5yT8s
+                      store_order_id: ord_2hd9w4xkq7nb58re
+                      order_number: EX15001
+                      payment_reference: pi_3UXTm8ExAmPlE0001dEf5678
+                      sales_order_id: 1843
+                      sales_order_number: EX15001
+                      matched: true
+                      gross: '341.55'
+                      fee: '10.20'
+                      net: '331.35'
+                      fee_details:
+                      - type: stripe_fee
+                        amount: 10.2
+                        description: Stripe processing fees
+                      line_created_at: '2026-10-28T19:05:33Z'
+                      available_on: '2026-10-30'
+                      description: Order EX15001
+                    payout_sync_error: null
+                    deposit_account:
+                      id: 70
+                      code: '100'
+                      name: Chase xx-1234
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payouts-storefrontpayout
+  /api/storefront/payouts/{storefrontPayout}/refresh-lines:
+    post:
+      tags:
+      - Storefront
+      summary: Re-read Storefront Payout Lines
+      description: 'Reads one payout and its lines again from the store, now, and
+        returns the payout as Get Storefront Payout does. Use it when a payout''s
+        lines were not available at the last sync or look incomplete. The payout''s
+        accounting status is re-evaluated; a payout already posted keeps its posted
+        documents.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.sync permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Errors (422):
+
+        - The store''s processor connection lacks a permission it needs (for Stripe,
+        a restricted key without Balance: Read or Payouts: Read): `error.code` is
+        `processor_permission_missing`, with the `provider` and the `permission` to
+        grant.
+
+        - The store could not be reached or returned an error: `message` starts with
+        "Could not read the payout from the store".'
+      requestBody:
+        content: {}
+      parameters:
+      - name: storefrontPayout
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Storefront payout ID (the `id` from List Storefront Payouts)
+        example: '14'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: integer
+                      integration_instance_name:
+                        type: string
+                      provider:
+                        type: string
+                      provider_label:
+                        type: string
+                      provider_account_id:
+                        type: string
+                      external_id:
+                        type: string
+                      reference:
+                        type: string
+                      status:
+                        type: string
+                      amount:
+                        type: string
+                      currency:
+                        type: string
+                      arrival_date:
+                        type: string
+                      payout_created_at:
+                        type: string
+                      method:
+                        type: string
+                      destination_label:
+                        type: string
+                      gross_total:
+                        type: string
+                      fee_total:
+                        type: string
+                      line_count:
+                        type: integer
+                      matched_order_count:
+                        type: integer
+                      accounting_status:
+                        type: string
+                      readiness:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          checks:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                label:
+                                  type: string
+                                state:
+                                  type: string
+                                note:
+                                  type: string
+                                  nullable: true
+                                link:
+                                  type: string
+                                  nullable: true
+                      documents:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            kind:
+                              type: string
+                            reference:
+                              type: string
+                            document_number:
+                              type: string
+                            total:
+                              type: string
+                            display_status:
+                              type: string
+                            entry_id:
+                              type: integer
+                      also_reported_by_instance_ids:
+                        type: array
+                      base_currency_rate:
+                        type: string
+                        nullable: true
+                      lines_synced_at:
+                        type: string
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                      lines_net_total:
+                        type: string
+                      lines_balance:
+                        type: boolean
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            external_id:
+                              type: string
+                            type:
+                              type: string
+                            category:
+                              type: string
+                            category_label:
+                              type: string
+                            source_id:
+                              type: string
+                            store_order_id:
+                              type: string
+                            order_number:
+                              type: string
+                            payment_reference:
+                              type: string
+                            sales_order_id:
+                              type: integer
+                            sales_order_number:
+                              type: string
+                            matched:
+                              type: boolean
+                            gross:
+                              type: string
+                            fee:
+                              type: string
+                            net:
+                              type: string
+                            fee_details:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  type:
+                                    type: string
+                                  amount:
+                                    type: number
+                                  description:
+                                    type: string
+                            line_created_at:
+                              type: string
+                            available_on:
+                              type: string
+                            description:
+                              type: string
+                      payout_sync_error:
+                        type: string
+                        nullable: true
+                      deposit_account:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 14
+                    integration_instance_id: 1
+                    integration_instance_name: Main Storefront
+                    provider: stripe
+                    provider_label: Stripe
+                    provider_account_id: acct_1ExAmPlE00000000
+                    external_id: po_1ExAmPlE0000000000Payout
+                    reference: Stripe payout po_1ExAmPlE0000000000Payout
+                    status: paid
+                    amount: '496.88'
+                    currency: USD
+                    arrival_date: '2026-11-03'
+                    payout_created_at: '2026-10-31T00:14:52Z'
+                    method: standard
+                    destination_label: WELLS FARGO BANK ****6789
+                    gross_total: '512.33'
+                    fee_total: '15.45'
+                    line_count: 2
+                    matched_order_count: 2
+                    accounting_status: posted
+                    readiness:
+                      status: done
+                      checks:
+                      - key: per_payout_mode_enabled
+                        label: Per-payout accounting on
+                        state: pass
+                        note: null
+                        link: null
+                      - key: processor_in_list
+                        label: Stripe is booked by payouts
+                        state: pass
+                        note: null
+                        link: null
+                      - key: after_accounting_start_date
+                        label: On or after the payout accounting start date
+                        state: pass
+                        note: null
+                        link: null
+                      - key: payout_paid
+                        label: Paid out
+                        state: pass
+                        note: null
+                        link: null
+                      - key: lines_synced
+                        label: Lines read from the store
+                        state: pass
+                        note: null
+                        link: null
+                      - key: lines_balance
+                        label: Lines add up to the deposit
+                        state: pass
+                        note: null
+                        link: null
+                      - key: mappings_configured
+                        label: Every line has an account
+                        state: pass
+                        note: null
+                        link: null
+                      - key: currency_conversion_configured
+                        label: Exchange rate set
+                        state: pass
+                        note: null
+                        link: null
+                      - key: shared_account_owner
+                        label: Booked by one store
+                        state: pass
+                        note: null
+                        link: null
+                      - key: deposit_account_set
+                        label: Deposit account set
+                        state: pass
+                        note: null
+                        link: null
+                      - key: accounting_transactions_created
+                        label: Posted to the ledger
+                        state: pass
+                        note: null
+                        link: null
+                    documents:
+                    - kind: invoice
+                      reference: Stripe payout po_1ExAmPlE0000000000Payout
+                      document_number: INV-1042
+                      total: '512.33'
+                      display_status: synced
+                      entry_id: 9021
+                    - kind: bill
+                      reference: Stripe fees po_1ExAmPlE0000000000Payout
+                      document_number: BILL-1043
+                      total: '15.45'
+                      display_status: synced
+                      entry_id: 9022
+                    - kind: deposit
+                      reference: DEP-Stripe payout po_1ExAmPlE0000000000Payout
+                      document_number: JE-1044
+                      total: '496.88'
+                      display_status: synced
+                      entry_id: 9023
+                    also_reported_by_instance_ids: []
+                    base_currency_rate: null
+                    lines_synced_at: '2026-11-01T18:23:05Z'
+                    created_at: '2026-11-01T18:23:04Z'
+                    updated_at: '2026-11-01T18:24:11Z'
+                    lines_net_total: '496.88'
+                    lines_balance: true
+                    lines:
+                    - id: 301
+                      external_id: txn_3UXSl2ExAmPlE0000hXk1Ab7
+                      type: charge
+                      category: charge
+                      category_label: Charge
+                      source_id: ch_3UXSl2ExAmPlE0000Rk2mZ4p
+                      store_order_id: ord_8kq2v7mzt4hx31pd
+                      order_number: EX15000
+                      payment_reference: pi_3UXSl2ExAmPlE0000aBc1234
+                      sales_order_id: 1842
+                      sales_order_number: EX15000
+                      matched: true
+                      gross: '170.78'
+                      fee: '5.25'
+                      net: '165.53'
+                      fee_details:
+                      - type: stripe_fee
+                        amount: 5.25
+                        description: Stripe processing fees
+                      line_created_at: '2026-10-28T16:41:09Z'
+                      available_on: '2026-10-30'
+                      description: Order EX15000
+                    - id: 302
+                      external_id: txn_3UXTm8ExAmPlE0001pLr7Qd2
+                      type: charge
+                      category: charge
+                      category_label: Charge
+                      source_id: ch_3UXTm8ExAmPlE0001Wn5yT8s
+                      store_order_id: ord_2hd9w4xkq7nb58re
+                      order_number: EX15001
+                      payment_reference: pi_3UXTm8ExAmPlE0001dEf5678
+                      sales_order_id: 1843
+                      sales_order_number: EX15001
+                      matched: true
+                      gross: '341.55'
+                      fee: '10.20'
+                      net: '331.35'
+                      fee_details:
+                      - type: stripe_fee
+                        amount: 10.2
+                        description: Stripe processing fees
+                      line_created_at: '2026-10-28T19:05:33Z'
+                      available_on: '2026-10-30'
+                      description: Order EX15001
+                    payout_sync_error: null
+                    deposit_account:
+                      id: 70
+                      code: '100'
+                      name: Chase xx-1234
+                  message: Payout lines re-read from the store
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Processor permission missing
+                  value:
+                    message: 'Grant Balance: Read to the store''s Stripe key.'
+                    error:
+                      code: processor_permission_missing
+                      provider: stripe
+                      permission: 'Balance: Read'
+                example-1:
+                  summary: Store unreachable
+                  value:
+                    message: 'Could not read the payout from the store: cURL error
+                      28: Operation timed out after 30001 milliseconds'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:write
+      operationId: post-api-storefront-payouts-storefrontpayout-refresh-lines
+  /api/storefront/{integrationInstance}/payouts/sync:
+    post:
+      tags:
+      - Storefront
+      summary: Sync Storefront Payouts
+      description: 'Starts a background sync of one store''s payouts. For every processor
+        the store books by payouts, new and changed payouts are read from the last
+        sync point, with their lines, and matched to sales orders; payouts still pending
+        or in transit are re-read until they settle. Returns a tracked job ID; follow
+        its progress with the tracked job endpoints.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Payouts also sync automatically every hour for stores booked per payout. A
+        processor whose permission is missing is skipped and reported as `payout_sync_error`
+        on Get Storefront Accounting Settings, so its payouts are picked up once the
+        permission is granted.
+
+
+        Authentication: Requires Bearer token and the integrations.sync permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        `tracked_job_id` and `tracked_job_log_id` carry the same value.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_id:
+                        type: integer
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_id: 4812
+                    tracked_job_log_id: 4812
+                  message: Payout sync started
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  error:
+                    type: string
+                  required_permissions:
+                    type: array
+                    items:
+                      type: string
+                example:
+                  message: 'Your user account is missing the required permission:
+                    integrations.sync. This is a role permission, not a token scope
+                    — the token itself is valid.'
+                  error: insufficient_permission
+                  required_permissions:
+                  - integrations.sync
+        '429': *id001
+        '401': *id002
+        '404': *id003
+        '422': *id004
+      x-required-scope: accounting:write
+      operationId: post-api-storefront-integrationinstance-payouts-sync
+  /api/storefront/{integrationInstance}/finance-settings:
+    get:
+      tags:
+      - Storefront
+      summary: Get Storefront Accounting Settings
+      description: 'Gets how one store books its revenue: per order, or per Stripe
+        payout, and the accounts payouts post to.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.
+
+
+        Fields:
+
+        - `accounting_sync_mode`: `per_order` (each order''s own invoice and payment,
+        the default) or `per_payout` (the store''s revenue is booked from its processor
+        payouts).
+
+        - `payout_processors`: the processors whose payouts book revenue in per-payout
+        mode (stripe — PayPal has no payouts; its orders are always booked per order).
+        Orders paid any other way keep their per-order documents.
+
+        - `payout_accounting_start_date` (Y-m-d or null): payouts arriving before
+        it are listed but never post; orders before it keep their per-order documents.
+
+        - `payout_deposit_nominal_code_ids`: per processor, the bank or clearing account
+        its payouts land in (null = not set; a payout then posts its documents but
+        its deposit waits).
+
+        - `processor_fee_nominal_code_ids`: `{paypal: id}` — the expense account the
+        fee PayPal keeps on each payment posts to (null = the merchant-fee account).
+        PayPal has no payouts: its balance is a bank account in the books, each PayPal
+        order is a deposit into it (booked per order), and each payment''s fee posts
+        as its own entry (Dr this account / Cr the PayPal account), synced as Spend
+        Money in Xero or a Purchase in QuickBooks.
+
+        - `shared_account_owner`: when one processor account serves several stores,
+        `"<provider>:<account id>"` → the integration instance ID of the store that
+        books its payouts. `shared_accounts` lists those accounts with the stores
+        reporting them and the current owner.
+
+        - `available_processors`: the payout processors this store has taken money
+        through or reported payouts for.
+
+        - `processors_with_payouts`: the processors this store already has payouts
+        from. Their deposit accounts stay in force (and editable) even when they are
+        no longer in `payout_processors`, because their existing payouts'' deposits
+        still post to them.
+
+        - `payout_sync_error`: the last processor permission the store reported missing
+        (`provider`, `permission`, `message`, `at`), or null.
+
+        - `fallback_settings`: per processor, the accounts used for a line type that
+        has no mapped account (see Get Storefront Payout Fallback Settings).'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: Success
+                  value:
+                    status: success
+                    data:
+                      accounting_sync_mode: per_payout
+                      payout_processors:
+                      - stripe
+                      payout_accounting_start_date: '2026-11-01'
+                      payout_deposit_nominal_code_ids:
+                        stripe: 12
+                      processor_fee_nominal_code_ids:
+                        paypal: null
+                      shared_account_owner: {}
+                      available_processors:
+                      - stripe
+                      processors_with_payouts:
+                      - stripe
+                      shared_accounts: []
+                      payout_sync_error: null
+                      fallback_settings:
+                        stripe:
+                          fallback_revenue_nominal_code_id: 55
+                          fallback_expense_nominal_code_id: 63
+                          invoiced_order_payout_nominal_code_id: 31
+                example-1:
+                  summary: Shared processor account
+                  value:
+                    status: success
+                    data:
+                      accounting_sync_mode: per_payout
+                      payout_processors:
+                      - stripe
+                      payout_accounting_start_date: '2026-11-01'
+                      payout_deposit_nominal_code_ids:
+                        stripe: 12
+                      processor_fee_nominal_code_ids:
+                        paypal: null
+                      shared_account_owner:
+                        stripe:acct_1ExAmPlE00000000: null
+                      available_processors:
+                      - stripe
+                      processors_with_payouts:
+                      - stripe
+                      shared_accounts:
+                      - provider: stripe
+                        account_id: acct_1ExAmPlE00000000
+                        instance_ids:
+                        - 1
+                        - 2
+                        owner_instance_id: null
+                      payout_sync_error:
+                        provider: stripe
+                        permission: 'Balance: Read'
+                        message: 'Your Stripe key cannot read balance transactions.
+                          Grant Balance: Read.'
+                        at: '2026-11-02T09:23:11+00:00'
+                      fallback_settings:
+                        stripe:
+                          fallback_revenue_nominal_code_id: 55
+                          fallback_expense_nominal_code_id: 63
+                          invoiced_order_payout_nominal_code_id: 31
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-integrationinstance-finance-settings
+    put:
+      tags:
+      - Storefront
+      summary: Update Storefront Accounting Settings
+      description: 'Changes how one store books its revenue. Send only the fields
+        to change.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body (all optional):
+
+        - `accounting_sync_mode` (string): `per_order` or `per_payout`.
+
+        - `payout_processors` (array of strings): stripe (PayPal has no payouts; its
+        orders are always booked per order).
+
+        - `payout_accounting_start_date` (nullable, Y-m-d): must be after the accounting
+        lock date (re-sending the stored date is always accepted).
+
+        - `payout_deposit_nominal_code_ids` (nullable object keyed by stripe): a bank
+        or current-asset account ID per processor. Merged into the stored accounts:
+        a processor you leave out keeps its account (so dropping a processor from
+        `payout_processors` never loses the account its existing payouts deposit to),
+        a processor sent as null is cleared, and null for the whole object clears
+        every account.
+
+        - `processor_fee_nominal_code_ids` (nullable object, `paypal` only): the PayPal
+        fee account (any account but Accounts Receivable / Payable or a Xero system
+        account; null = the merchant-fee account). A change re-posts the store''s
+        PayPal fee entries not posted yet.
+
+        - `shared_account_owner` (nullable object): `"<provider>:<account id>"` →
+        the integration instance ID of the store that books that shared account''s
+        payouts (one of the stores in `shared_accounts`), or null. The choice is recorded
+        on every store reporting the account and its unposted payouts move to the
+        owner.
+
+        - `fallback_settings` (object keyed by stripe): each with `fallback_revenue_nominal_code_id`,
+        `fallback_expense_nominal_code_id` and `invoiced_order_payout_nominal_code_id`
+        (nullable account IDs), as in Update Storefront Payout Fallback Settings.
+
+        - `effective_from` (optional, nullable, string, Y-m-d): payouts arriving on
+        or after this date (by arrival date) use the change and are rebuilt; earlier
+        ones keep the accounts they posted with. Defaults to today. Must be after
+        the accounting lock date. Applies to `fallback_settings`.
+
+
+        What a change does:
+
+        - The settings, the snapshot of which existing orders the payouts carry and
+        the switch-over date are saved together, so nothing reads a half-saved store.
+
+        - Switching the mode, the start date or the processors re-decides which orders
+        the payouts book and rebuilds the store''s per-order documents and payouts
+        to match; per-order documents an order no longer needs are withdrawn, and
+        orders already in a payout keep it.
+
+        - A new deposit account re-posts the store''s payout deposits.
+
+
+        The response is the full settings, as Get Storefront Accounting Settings returns
+        them, plus `skipped_posted_count` (posted payouts a fallback change makes
+        out of date).
+
+
+        An account that posts to a Xero system account (for example Xero''s built-in
+        Sales Tax / GST account) is rejected with a 422 while Xero is your connected
+        accounting provider, because Xero refuses lines coded to system accounts.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accounting_sync_mode:
+                  type: string
+                payout_processors:
+                  type: array
+                  items:
+                    type: string
+                payout_accounting_start_date:
+                  type: string
+                payout_deposit_nominal_code_ids:
+                  type: object
+                  properties:
+                    stripe:
+                      type: integer
+                processor_fee_nominal_code_ids:
+                  type: object
+                  properties:
+                    paypal:
+                      type: integer
+                shared_account_owner:
+                  type: object
+                  properties:
+                    stripe:acct_1ExAmPlE00000000:
+                      type: integer
+                fallback_settings:
+                  type: object
+                  properties:
+                    stripe:
+                      type: object
+                      properties:
+                        fallback_revenue_nominal_code_id:
+                          type: integer
+                        fallback_expense_nominal_code_id:
+                          type: integer
+                        invoiced_order_payout_nominal_code_id:
+                          type: integer
+                effective_from:
+                  type: string
+              example:
+                accounting_sync_mode: per_payout
+                payout_processors:
+                - stripe
+                payout_accounting_start_date: '2026-11-01'
+                payout_deposit_nominal_code_ids:
+                  stripe: 12
+                processor_fee_nominal_code_ids:
+                  paypal: 63
+                shared_account_owner:
+                  stripe:acct_1ExAmPlE00000000: 1
+                fallback_settings:
+                  stripe:
+                    fallback_revenue_nominal_code_id: 55
+                    fallback_expense_nominal_code_id: 63
+                    invoiced_order_payout_nominal_code_id: 31
+                effective_from: '2026-11-01'
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      accounting_sync_mode:
+                        type: string
+                      payout_processors:
+                        type: array
+                        items:
+                          type: string
+                      payout_accounting_start_date:
+                        type: string
+                      payout_deposit_nominal_code_ids:
+                        type: object
+                        properties:
+                          stripe:
+                            type: integer
+                      processor_fee_nominal_code_ids:
+                        type: object
+                        properties:
+                          paypal:
+                            type: integer
+                      shared_account_owner:
+                        type: object
+                        properties:
+                          stripe:acct_1ExAmPlE00000000:
+                            type: integer
+                      available_processors:
+                        type: array
+                        items:
+                          type: string
+                      processors_with_payouts:
+                        type: array
+                        items:
+                          type: string
+                      shared_accounts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            provider:
+                              type: string
+                            account_id:
+                              type: string
+                            instance_ids:
+                              type: array
+                              items:
+                                type: integer
+                            owner_instance_id:
+                              type: integer
+                      payout_sync_error:
+                        type: string
+                        nullable: true
+                      fallback_settings:
+                        type: object
+                        properties:
+                          stripe:
+                            type: object
+                            properties:
+                              fallback_revenue_nominal_code_id:
+                                type: integer
+                              fallback_expense_nominal_code_id:
+                                type: integer
+                              invoiced_order_payout_nominal_code_id:
+                                type: integer
+                      skipped_posted_count:
+                        type: integer
+                example:
+                  status: success
+                  message: Accounting settings saved.
+                  data:
+                    accounting_sync_mode: per_payout
+                    payout_processors:
+                    - stripe
+                    payout_accounting_start_date: '2026-11-01'
+                    payout_deposit_nominal_code_ids:
+                      stripe: 12
+                    processor_fee_nominal_code_ids:
+                      paypal: 63
+                    shared_account_owner:
+                      stripe:acct_1ExAmPlE00000000: 1
+                    available_processors:
+                    - stripe
+                    processors_with_payouts:
+                    - stripe
+                    shared_accounts:
+                    - provider: stripe
+                      account_id: acct_1ExAmPlE00000000
+                      instance_ids:
+                      - 1
+                      - 2
+                      owner_instance_id: 1
+                    payout_sync_error: null
+                    fallback_settings:
+                      stripe:
+                        fallback_revenue_nominal_code_id: 55
+                        fallback_expense_nominal_code_id: 63
+                        invoiced_order_payout_nominal_code_id: 31
+                    skipped_posted_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      payout_accounting_start_date:
+                        type: array
+                        items:
+                          type: string
+                      payout_deposit_nominal_code_ids.stripe:
+                        type: array
+                        items:
+                          type: string
+                      processor_fee_nominal_code_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The books are locked through 2026-09-30. Choose 2026-10-01
+                    or later. (and 2 more errors)
+                  errors:
+                    payout_accounting_start_date:
+                    - The books are locked through 2026-09-30. Choose 2026-10-01 or
+                      later.
+                    payout_deposit_nominal_code_ids.stripe:
+                    - Choose a bank or clearing account for where payouts land.
+                    processor_fee_nominal_code_ids:
+                    - A fee account can be set for PayPal (paypal) only.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:write
+      operationId: put-api-storefront-integrationinstance-finance-settings
+  /api/storefront/payout-mappings/groups:
+    get:
+      tags:
+      - Storefront
+      summary: List Storefront Payout Mapping Groups
+      description: 'Lists the mapping groups of one processor that a store''s payouts
+        can use: the store''s own groups and the global ones, creating the default
+        global groups on first use. `mappings_count` is how many of the processor''s
+        line types are in the group.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        A mapping group is one accounting document per payout: an `invoice` group
+        posts a sales invoice (a sales credit when it nets negative), a `bill` group
+        a supplier bill (a supplier credit when it nets positive). Every tenant starts
+        with two global groups: "Stripe Sales" (invoice) and "Stripe Fees" (bill).
+        Line types in no group post to the fallback invoice or bill.
+
+
+        Every call names the processor (`provider`: stripe) and the store (`integration_instance_id`).
+        A store sees its own rows plus the global rows every store shares; another
+        store''s rows are never reachable.
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.'
+      parameters:
+      - name: provider
+        in: query
+        schema:
+          type: string
+        description: 'Required. The processor: stripe'
+        example: stripe
+      - name: integration_instance_id
+        in: query
+        schema:
+          type: integer
+        description: Required. The Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        integration_instance_id:
+                          type: string
+                          nullable: true
+                        provider:
+                          type: string
+                        name:
+                          type: string
+                        document_type:
+                          type: string
+                        sort_order:
+                          type: integer
+                        mappings_count:
+                          type: integer
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                example:
+                  status: success
+                  data:
+                  - id: 1
+                    integration_instance_id: null
+                    provider: stripe
+                    name: Stripe Sales
+                    document_type: invoice
+                    sort_order: 0
+                    mappings_count: 8
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:20:41.000000Z'
+                  - id: 2
+                    integration_instance_id: null
+                    provider: stripe
+                    name: Stripe Fees
+                    document_type: bill
+                    sort_order: 1
+                    mappings_count: 9
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:20:41.000000Z'
+                  - id: 5
+                    integration_instance_id: null
+                    provider: stripe
+                    name: Stripe Disputes
+                    document_type: bill
+                    sort_order: 4
+                    mappings_count: 2
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:20:41.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      provider:
+                        type: array
+                        items:
+                          type: string
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Choose Stripe (the only processor with payouts). (and 1
+                    more error)
+                  errors:
+                    provider:
+                    - Choose Stripe (the only processor with payouts).
+                    integration_instance_id:
+                    - That store does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payout-mappings-groups
+    post:
+      tags:
+      - Storefront
+      summary: Create Storefront Payout Mapping Group
+      description: 'Creates a mapping group for one processor. New groups are global:
+        every store''s line types of that processor can use them.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        A mapping group is one accounting document per payout: an `invoice` group
+        posts a sales invoice (a sales credit when it nets negative), a `bill` group
+        a supplier bill (a supplier credit when it nets positive). Every tenant starts
+        with two global groups: "Stripe Sales" (invoice) and "Stripe Fees" (bill).
+        Line types in no group post to the fallback invoice or bill.
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer): a Storefront integration instance
+        ID.
+
+        - `name` (required string, max 255).
+
+        - `document_type` (required): invoice or bill.
+
+        - `sort_order` (optional integer ≥ 0): defaults to after the processor''s
+        last group.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                name:
+                  type: string
+                document_type:
+                  type: string
+                sort_order:
+                  type: integer
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                name: Stripe Disputes
+                document_type: bill
+                sort_order: 4
+      parameters: []
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: string
+                        nullable: true
+                      provider:
+                        type: string
+                      name:
+                        type: string
+                      document_type:
+                        type: string
+                      sort_order:
+                        type: integer
+                      mappings_count:
+                        type: integer
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                example:
+                  data:
+                    id: 5
+                    integration_instance_id: null
+                    provider: stripe
+                    name: Stripe Disputes
+                    document_type: bill
+                    sort_order: 4
+                    mappings_count: 0
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:20:41.000000Z'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      document_type:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: A document type (invoice or bill) is required.
+                  errors:
+                    document_type:
+                    - A document type (invoice or bill) is required.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: post-api-storefront-payout-mappings-groups
+  /api/storefront/payout-mappings/groups/{storefrontPayoutMappingGroup}:
+    put:
+      tags:
+      - Storefront
+      summary: Update Storefront Payout Mapping Group
+      description: 'Renames a group or changes its document type. The unposted payouts
+        with lines in the group are rebuilt; `skipped_posted_count` is the number
+        of posted payouts the change makes out of date (flagged for review, not rebuilt).
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body (both optional):
+
+        - `name` (string, max 255).
+
+        - `document_type`: invoice or bill.
+
+
+        Returns 404 when the group does not exist.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                document_type:
+                  type: string
+              example:
+                name: Stripe Disputes & Chargebacks
+                document_type: bill
+      parameters:
+      - name: storefrontPayoutMappingGroup
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Payout mapping group ID
+        example: '5'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      integration_instance_id:
+                        type: string
+                        nullable: true
+                      provider:
+                        type: string
+                      name:
+                        type: string
+                      document_type:
+                        type: string
+                      sort_order:
+                        type: integer
+                      created_at:
+                        type: string
+                      updated_at:
+                        type: string
+                  skipped_posted_count:
+                    type: integer
+                example:
+                  data:
+                    id: 5
+                    integration_instance_id: null
+                    provider: stripe
+                    name: Stripe Disputes & Chargebacks
+                    document_type: bill
+                    sort_order: 4
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-02T15:04:19.000000Z'
+                  skipped_posted_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      document_type:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The document type must be invoice or bill.
+                  errors:
+                    document_type:
+                    - The document type must be invoice or bill.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:write
+      operationId: put-api-storefront-payout-mappings-groups-storefrontpayoutmappinggroup
+    delete:
+      tags:
+      - Storefront
+      summary: Delete Storefront Payout Mapping Group
+      description: 'Deletes a group. Its line types become ungrouped (their lines
+        post on the fallback invoice or bill) and the unposted payouts that used it
+        are rebuilt.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Returns 204 with no body; 404 when the group does not exist.'
+      parameters:
+      - name: storefrontPayoutMappingGroup
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Payout mapping group ID
+        example: '5'
+      responses:
+        '204':
+          description: No Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/plain
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ''
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: accounting:write
+      operationId: delete-api-storefront-payout-mappings-groups-storefrontpayoutmappinggroup
+  /api/storefront/payout-mappings/groups/reorder:
+    post:
+      tags:
+      - Storefront
+      summary: Reorder Storefront Payout Mapping Groups
+      description: 'Sets the display order of the groups. Order is presentation only;
+        it does not change how payouts post.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer).
+
+        - `ids` (required array, at least one): group IDs in the new order; each must
+        be a global group or one of this store''s.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                ids:
+                - 1
+                - 5
+                - 2
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                example:
+                  status: success
+                  message: Groups reordered successfully.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids.1:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The selected ids.1 is invalid.
+                  errors:
+                    ids.1:
+                    - The selected ids.1 is invalid.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: post-api-storefront-payout-mappings-groups-reorder
+  /api/storefront/payout-mappings/type-mappings:
+    get:
+      tags:
+      - Storefront
+      summary: List Storefront Payout Type Mappings
+      description: 'Lists the line types of one processor with the account and mapping
+        group a store resolves for each: the store''s own override where one exists,
+        otherwise the global mapping (`is_override` tells which). The defaults are
+        created on first use: for each category (charge, refund, dispute, dispute_reversal,
+        adjustment, reserve, transfer, other) a gross row in the processor''s Sales
+        group and a fee row in its Fees group, plus a standalone-fee row; accounts
+        start unset.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        `financial_code` identifies the line type: `<provider>:<category>` for the
+        gross amount, `<provider>:<category>:fee` for the processor''s fee on it.
+        A line type with no account posts to the store''s fallback revenue or expense
+        account by its sign.
+
+
+        Every call names the processor (`provider`: stripe) and the store (`integration_instance_id`).
+        A store sees its own rows plus the global rows every store shares; another
+        store''s rows are never reachable.
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.'
+      parameters:
+      - name: provider
+        in: query
+        schema:
+          type: string
+        description: 'Required. The processor: stripe'
+        example: stripe
+      - name: integration_instance_id
+        in: query
+        schema:
+          type: integer
+        description: Required. The Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current_page:
+                    type: integer
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        integration_instance_id:
+                          type: string
+                          nullable: true
+                        provider:
+                          type: string
+                        category:
+                          type: string
+                        component:
+                          type: string
+                        description:
+                          type: string
+                        financial_code:
+                          type: string
+                        typical_amount_sign:
+                          type: string
+                        tax_class:
+                          type: string
+                          nullable: true
+                        tax_class_label:
+                          type: string
+                          nullable: true
+                        needs_review:
+                          type: boolean
+                        tax_class_confirmed:
+                          type: boolean
+                        nominal_code_id:
+                          type: integer
+                        storefront_payout_mapping_group_id:
+                          type: integer
+                        nominalCode:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                        mappingGroup:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                            document_type:
+                              type: string
+                        is_override:
+                          type: boolean
+                        created_at:
+                          type: string
+                        updated_at:
+                          type: string
+                  first_page_url:
+                    type: string
+                  from:
+                    type: integer
+                  last_page:
+                    type: integer
+                  last_page_url:
+                    type: string
+                  links:
+                    type: array
+                  next_page_url:
+                    type: string
+                  path:
+                    type: string
+                  per_page:
+                    type: integer
+                  prev_page_url:
+                    type: string
+                    nullable: true
+                  to:
+                    type: integer
+                  total:
+                    type: integer
+                example:
+                  current_page: 1
+                  data:
+                  - id: 41
+                    integration_instance_id: null
+                    provider: stripe
+                    category: charge
+                    component: gross
+                    description: Stripe charges
+                    financial_code: stripe:charge
+                    typical_amount_sign: positive
+                    tax_class: null
+                    tax_class_label: null
+                    needs_review: false
+                    tax_class_confirmed: false
+                    nominal_code_id: 55
+                    storefront_payout_mapping_group_id: 1
+                    nominalCode:
+                      id: 55
+                      code: '4000'
+                      name: Online Store Sales
+                    mappingGroup:
+                      id: 1
+                      name: Stripe Sales
+                      document_type: invoice
+                    is_override: false
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:31:02.000000Z'
+                  - id: 42
+                    integration_instance_id: null
+                    provider: stripe
+                    category: charge
+                    component: fee
+                    description: Stripe fees on charges
+                    financial_code: stripe:charge:fee
+                    typical_amount_sign: mixed
+                    tax_class: null
+                    tax_class_label: null
+                    needs_review: false
+                    tax_class_confirmed: false
+                    nominal_code_id: 63
+                    storefront_payout_mapping_group_id: 2
+                    nominalCode:
+                      id: 63
+                      code: '6150'
+                      name: Merchant Processing Fees
+                    mappingGroup:
+                      id: 2
+                      name: Stripe Fees
+                      document_type: bill
+                    is_override: false
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:31:02.000000Z'
+                  - id: 48
+                    integration_instance_id: null
+                    provider: stripe
+                    category: fee
+                    component: gross
+                    description: Stripe standalone fees
+                    financial_code: stripe:fee
+                    typical_amount_sign: negative
+                    tax_class: null
+                    tax_class_label: null
+                    needs_review: false
+                    tax_class_confirmed: false
+                    nominal_code_id: 63
+                    storefront_payout_mapping_group_id: 2
+                    nominalCode:
+                      id: 63
+                      code: '6150'
+                      name: Merchant Processing Fees
+                    mappingGroup:
+                      id: 2
+                      name: Stripe Fees
+                      document_type: bill
+                    is_override: false
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:31:02.000000Z'
+                  - id: 51
+                    integration_instance_id: 1
+                    provider: stripe
+                    category: refund
+                    component: gross
+                    description: Stripe refunds
+                    financial_code: stripe:refund
+                    typical_amount_sign: negative
+                    tax_class: null
+                    tax_class_label: null
+                    needs_review: false
+                    tax_class_confirmed: false
+                    nominal_code_id: 57
+                    storefront_payout_mapping_group_id: 1
+                    nominalCode:
+                      id: 57
+                      code: '4050'
+                      name: Sales Returns & Refunds
+                    mappingGroup:
+                      id: 1
+                      name: Stripe Sales
+                      document_type: invoice
+                    is_override: true
+                    created_at: '2026-11-01T18:20:41.000000Z'
+                    updated_at: '2026-11-01T18:31:02.000000Z'
+                  first_page_url: https://sku2.test/api/storefront/payout-mappings/type-mappings?provider=stripe&integration_instance_id=1&page=1
+                  from: 1
+                  last_page: 5
+                  last_page_url: https://sku2.test/api/storefront/payout-mappings/type-mappings?provider=stripe&integration_instance_id=1&page=5
+                  links: []
+                  next_page_url: https://sku2.test/api/storefront/payout-mappings/type-mappings?provider=stripe&integration_instance_id=1&page=2
+                  path: https://sku2.test/api/storefront/payout-mappings/type-mappings
+                  per_page: 4
+                  prev_page_url: null
+                  to: 4
+                  total: 17
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      provider:
+                        type: array
+                        items:
+                          type: string
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Choose Stripe (the only processor with payouts). (and 1
+                    more error)
+                  errors:
+                    provider:
+                    - Choose Stripe (the only processor with payouts).
+                    integration_instance_id:
+                    - That store does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payout-mappings-type-mappings
+    put:
+      tags:
+      - Storefront
+      summary: Update Storefront Payout Type Mappings
+      description: 'Sets the account and/or mapping group of one or more line types.
+        Only global rows and this store''s own rows can be changed; a global row may
+        only use a global group. Affected payouts not yet posted are rebuilt (every
+        store''s, when a global row changed).
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer).
+
+        - `mappings` (required array, at least one): each item has `id` (required
+        mapping ID), `nominal_code_id` (nullable account ID; null clears it) and `storefront_payout_mapping_group_id`
+        (nullable group ID; null ungroups it).
+
+        - `effective_from` (optional, nullable, string, Y-m-d): payouts arriving on
+        or after this date (by arrival date) use the change and are rebuilt; earlier
+        ones keep the accounts they posted with. Defaults to today. Must be after
+        the accounting lock date.
+
+
+        Mapping changes are dated. Each change applies to payouts arriving on or after
+        `effective_from`, so payouts already in your books before that date keep the
+        accounts they posted with. GET /api/ledger/payout-mapping-periods (List Payout
+        Mapping Periods, kind storefront_payout_type_mapping or storefront_payout_fallback_setting)
+        returns a row''s dated history and scheduled changes, and GET /api/ledger/payout-mapping-periods/impact
+        (Preview Payout Mapping Change) counts the payouts a change would rebuild.
+
+
+        `skipped_posted_count` in the response is the number of payouts already posted
+        that the change makes out of date; they are flagged for review rather than
+        rebuilt.
+
+
+        An account that posts to a Xero system account (for example Xero''s built-in
+        Sales Tax / GST account) is rejected with a 422 while Xero is your connected
+        accounting provider, because Xero refuses lines coded to system accounts.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                mappings:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      nominal_code_id:
+                        type: integer
+                      storefront_payout_mapping_group_id:
+                        type: integer
+                effective_from:
+                  type: string
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                mappings:
+                - id: 41
+                  nominal_code_id: 55
+                  storefront_payout_mapping_group_id: 1
+                - id: 42
+                  nominal_code_id: 63
+                effective_from: '2026-11-01'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      skipped_posted_count:
+                        type: integer
+                example:
+                  status: success
+                  message: Payout type mappings updated successfully.
+                  data:
+                    skipped_posted_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      mappings.0.id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: One or more type mappings do not belong to this store.
+                  errors:
+                    mappings.0.id:
+                    - One or more type mappings do not belong to this store.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: put-api-storefront-payout-mappings-type-mappings
+  /api/storefront/payout-mappings/type-mappings/bulk-assign:
+    put:
+      tags:
+      - Storefront
+      summary: Bulk Assign Storefront Payout Type Mappings
+      description: 'Assigns one account and/or mapping group to many line types at
+        once, applied like Update Storefront Payout Type Mappings (global rows and
+        this store''s own).
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer).
+
+        - `ids` (required array of mapping IDs, at least one).
+
+        - `nominal_code_id` (optional, nullable account ID): sent = applied, null
+        clears the account.
+
+        - `storefront_payout_mapping_group_id` (optional, nullable group ID): sent
+        = applied, null ungroups. At least one of the two must be sent.
+
+        - `effective_from` (optional, nullable, string, Y-m-d): payouts arriving on
+        or after this date (by arrival date) use the change and are rebuilt; earlier
+        ones keep the accounts they posted with. Defaults to today. Must be after
+        the accounting lock date.
+
+
+        `data.updated` is the number of rows assigned.
+
+
+        Mapping changes are dated. Each change applies to payouts arriving on or after
+        `effective_from`, so payouts already in your books before that date keep the
+        accounts they posted with. GET /api/ledger/payout-mapping-periods (List Payout
+        Mapping Periods, kind storefront_payout_type_mapping or storefront_payout_fallback_setting)
+        returns a row''s dated history and scheduled changes, and GET /api/ledger/payout-mapping-periods/impact
+        (Preview Payout Mapping Change) counts the payouts a change would rebuild.
+
+
+        `skipped_posted_count` in the response is the number of payouts already posted
+        that the change makes out of date; they are flagged for review rather than
+        rebuilt.
+
+
+        An account that posts to a Xero system account (for example Xero''s built-in
+        Sales Tax / GST account) is rejected with a 422 while Xero is your connected
+        accounting provider, because Xero refuses lines coded to system accounts.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                ids:
+                  type: array
+                  items:
+                    type: integer
+                nominal_code_id:
+                  type: integer
+                storefront_payout_mapping_group_id:
+                  type: integer
+                effective_from:
+                  type: string
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                ids:
+                - 42
+                - 44
+                - 46
+                nominal_code_id: 63
+                storefront_payout_mapping_group_id: 2
+                effective_from: '2026-11-01'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                      skipped_posted_count:
+                        type: integer
+                example:
+                  status: success
+                  message: 3 type mapping(s) updated successfully.
+                  data:
+                    updated: 3
+                    skipped_posted_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      nominal_code_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: At least one of nominal_code_id or storefront_payout_mapping_group_id
+                    must be provided.
+                  errors:
+                    nominal_code_id:
+                    - At least one of nominal_code_id or storefront_payout_mapping_group_id
+                      must be provided.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: put-api-storefront-payout-mappings-type-mappings-bulk-assign
+  /api/storefront/payout-mappings/type-mappings/export:
+    get:
+      tags:
+      - Storefront
+      summary: Export Storefront Payout Type Mappings
+      description: 'Downloads one processor''s payout type mappings for a store as
+        a CSV file, one row per financial code, ordered by financial code. Each row
+        shows the mapping the store uses: its own where it has one, otherwise the
+        global one.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Columns:
+
+        - `Financial Code`: the line type (for example `stripe:charge`, `stripe:charge:fee`).
+
+        - `Nominal Code`: the account as `code - name` (for example `4000 - Online
+        Store Sales`), blank when unmapped.
+
+        - `Mapping Group`: the group name, blank when none is assigned.
+
+
+        The file uses the columns Import Storefront Payout Type Mappings reads, so
+        it can be edited and uploaded again.
+
+
+        Response: `text/csv` file download (`storefront-<provider>-payout-type-mappings-YYYY-MM-DD_HHMMSS.csv`),
+        not JSON.
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.'
+      parameters:
+      - name: provider
+        in: query
+        schema:
+          type: string
+        description: 'Required. The processor: stripe'
+        example: stripe
+      - name: integration_instance_id
+        in: query
+        schema:
+          type: integer
+        description: Required. The Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: '"Financial Code","Nominal Code","Mapping Group"
+
+                  "stripe:charge","4000 - Online Store Sales","Stripe Sales"
+
+                  "stripe:charge:fee","6150 - Merchant Processing Fees","Stripe Fees"
+
+                  "stripe:dispute","","Stripe Sales"
+
+                  '
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payout-mappings-type-mappings-export
+  /api/storefront/payout-mappings/type-mappings/import:
+    post:
+      tags:
+      - Storefront
+      summary: Import Storefront Payout Type Mappings
+      description: 'Sets the account and mapping group of many line types at once
+        from a CSV file, in the format Export Storefront Payout Type Mappings downloads.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Two steps:
+
+        1. Upload the CSV as multipart form data to `POST /api/store-file` with fields
+        `file` and `destination=models`. The response contains `stored_name`.
+
+        2. Call this endpoint with that `stored_name`.
+
+
+        CSV columns (header row required): `Financial Code`, `Nominal Code`, `Mapping
+        Group`.
+
+
+        How each row is applied:
+
+        - The row updates the mapping the store uses for that financial code: its
+        own where it has one, otherwise the global one.
+
+        - `Nominal Code` accepts `code - name` (for example `4000 - Online Store Sales`),
+        a bare code (`4000`) or an account name. A blank value clears the account.
+
+        - `Mapping Group` is a group name. A blank value leaves the group as it is.
+        A global row can only use a global group.
+
+        - Rows with no financial code, a financial code this store does not have,
+        an account that does not exist (or is a Xero system account), or a group that
+        is not found or not allowed are not applied and are listed in `skipped` with
+        their line number and the reason. Nothing is guessed.
+
+
+        Changes are dated like Update Storefront Payout Type Mappings: payouts arriving
+        on or after `effective_from` use the new mappings and are rebuilt; earlier
+        payouts keep the accounts they posted with.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer).
+
+        - `stored_name` (required string, max 255): the name returned by `POST /api/store-file`.
+
+        - `effective_from` (optional, nullable, string, Y-m-d): payouts arriving on
+        or after this date (by arrival date) use the change and are rebuilt; earlier
+        ones keep the accounts they posted with. Defaults to today. Must be after
+        the accounting lock date.
+
+
+        Response: `data.updated` is the number of rows applied, `data.skipped` lists
+        the rows that were not, `data.skipped_posted_count` the posted payouts the
+        change makes out of date.
+
+
+        Errors:
+
+        - 400: the uploaded file was not found (upload it again), or the file has
+        no rows.
+
+        - 422: `stored_name` is missing, or `effective_from` is not a valid date or
+        falls on or before the accounting lock date.
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                stored_name:
+                  type: string
+                effective_from:
+                  type: string
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                stored_name: a1b2c3d4e5f6_stripe-type-mappings.csv
+                effective_from: '2026-11-01'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                      skipped:
+                        type: array
+                        items:
+                          type: string
+                      skipped_posted_count:
+                        type: integer
+                example:
+                  status: success
+                  message: 2 type mapping(s) imported.
+                  data:
+                    updated: 2
+                    skipped:
+                    - 'Line 4: account "7999" was not found, so "stripe:dispute" was
+                      left as it is.'
+                    skipped_posted_count: 0
+        '400':
+          description: Bad Request
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: File not found
+                  value:
+                    status: failure
+                    message: The uploaded file was not found. Upload it again.
+                    errors:
+                      stored_name:
+                      - message: The uploaded file was not found. Upload it again.
+                        code: 400
+                        data: []
+                example-1:
+                  summary: Empty file
+                  value:
+                    status: failure
+                    message: The file has no rows to import.
+                    errors:
+                      stored_name:
+                      - message: The file has no rows to import.
+                        code: 400
+                        data: []
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      stored_name:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Upload a file to import.
+                  errors:
+                    stored_name:
+                    - Upload a file to import.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: post-api-storefront-payout-mappings-type-mappings-import
+  /api/storefront/payout-mappings/fallback-settings:
+    get:
+      tags:
+      - Storefront
+      summary: Get Storefront Payout Fallback Settings
+      description: 'Gets the fallback accounts one processor''s payouts use for a
+        store: the store''s own where it set them, otherwise the global ones (null
+        = not set).
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        - `fallback_revenue_nominal_code_id`: the account an unmapped line type posts
+        to when it adds money (a charge with no account).
+
+        - `fallback_expense_nominal_code_id`: the account an unmapped line type posts
+        to when it takes money (fees, refunds with no account).
+
+        - `invoiced_order_payout_nominal_code_id`: for an order that already has its
+        own invoice (for example one placed before the store switched to per-payout
+        booking), the account its payout line is credited to instead of revenue: a
+        clearing (current asset) account. It cannot be the Accounts Receivable or
+        Accounts Payable account (422): the payout''s documents already post against
+        those, so its deposit could not settle the line.
+
+
+        Every call names the processor (`provider`: stripe) and the store (`integration_instance_id`).
+        A store sees its own rows plus the global rows every store shares; another
+        store''s rows are never reachable.
+
+
+        Authentication: Requires Bearer token. Open to API tokens with the accounting:read
+        scope.'
+      parameters:
+      - name: provider
+        in: query
+        schema:
+          type: string
+        description: 'Required. The processor: stripe'
+        example: stripe
+      - name: integration_instance_id
+        in: query
+        schema:
+          type: integer
+        description: Required. The Storefront integration instance ID
+        example: '1'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      fallback_revenue_nominal_code_id:
+                        type: integer
+                      fallback_expense_nominal_code_id:
+                        type: integer
+                      invoiced_order_payout_nominal_code_id:
+                        type: integer
+                example:
+                  status: success
+                  data:
+                    provider: stripe
+                    fallback_revenue_nominal_code_id: 55
+                    fallback_expense_nominal_code_id: 63
+                    invoiced_order_payout_nominal_code_id: 31
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      provider:
+                        type: array
+                        items:
+                          type: string
+                      integration_instance_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Choose Stripe (the only processor with payouts). (and 1
+                    more error)
+                  errors:
+                    provider:
+                    - Choose Stripe (the only processor with payouts).
+                    integration_instance_id:
+                    - That store does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-storefront-payout-mappings-fallback-settings
+    put:
+      tags:
+      - Storefront
+      summary: Update Storefront Payout Fallback Settings
+      description: 'Saves a store''s fallback accounts for one processor. Keys left
+        out keep the account in force (inherited from the global setting when the
+        store has none of its own yet). A changed account rebuilds the store''s unposted
+        payouts.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+        Open to API tokens with the accounting:write scope.
+
+
+        Body:
+
+        - `provider` (required): stripe.
+
+        - `integration_instance_id` (required integer).
+
+        - `fallback_revenue_nominal_code_id`, `fallback_expense_nominal_code_id`,
+        `invoiced_order_payout_nominal_code_id` (optional, nullable account IDs):
+
+        - `fallback_revenue_nominal_code_id`: the account an unmapped line type posts
+        to when it adds money (a charge with no account).
+
+        - `fallback_expense_nominal_code_id`: the account an unmapped line type posts
+        to when it takes money (fees, refunds with no account).
+
+        - `invoiced_order_payout_nominal_code_id`: for an order that already has its
+        own invoice (for example one placed before the store switched to per-payout
+        booking), the account its payout line is credited to instead of revenue: a
+        clearing (current asset) account. It cannot be the Accounts Receivable or
+        Accounts Payable account (422): the payout''s documents already post against
+        those, so its deposit could not settle the line.
+
+        - `effective_from` (optional, nullable, string, Y-m-d): payouts arriving on
+        or after this date (by arrival date) use the change and are rebuilt; earlier
+        ones keep the accounts they posted with. Defaults to today. Must be after
+        the accounting lock date.
+
+
+        The response is the settings now in force, plus top-level `skipped_posted_count`.
+
+
+        Mapping changes are dated. Each change applies to payouts arriving on or after
+        `effective_from`, so payouts already in your books before that date keep the
+        accounts they posted with. GET /api/ledger/payout-mapping-periods (List Payout
+        Mapping Periods, kind storefront_payout_type_mapping or storefront_payout_fallback_setting)
+        returns a row''s dated history and scheduled changes, and GET /api/ledger/payout-mapping-periods/impact
+        (Preview Payout Mapping Change) counts the payouts a change would rebuild.
+
+
+        `skipped_posted_count` in the response is the number of payouts already posted
+        that the change makes out of date; they are flagged for review rather than
+        rebuilt.
+
+
+        An account that posts to a Xero system account (for example Xero''s built-in
+        Sales Tax / GST account) is rejected with a 422 while Xero is your connected
+        accounting provider, because Xero refuses lines coded to system accounts.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                provider:
+                  type: string
+                integration_instance_id:
+                  type: integer
+                fallback_revenue_nominal_code_id:
+                  type: integer
+                fallback_expense_nominal_code_id:
+                  type: integer
+                invoiced_order_payout_nominal_code_id:
+                  type: integer
+                effective_from:
+                  type: string
+              example:
+                provider: stripe
+                integration_instance_id: 1
+                fallback_revenue_nominal_code_id: 55
+                fallback_expense_nominal_code_id: 63
+                invoiced_order_payout_nominal_code_id: 31
+                effective_from: '2026-11-01'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      provider:
+                        type: string
+                      fallback_revenue_nominal_code_id:
+                        type: integer
+                      fallback_expense_nominal_code_id:
+                        type: integer
+                      invoiced_order_payout_nominal_code_id:
+                        type: integer
+                  skipped_posted_count:
+                    type: integer
+                example:
+                  status: success
+                  message: Fallback accounts saved.
+                  data:
+                    provider: stripe
+                    fallback_revenue_nominal_code_id: 55
+                    fallback_expense_nominal_code_id: 63
+                    invoiced_order_payout_nominal_code_id: 31
+                  skipped_posted_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      invoiced_order_payout_nominal_code_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The invoiced order payout nominal code id field must be
+                    an integer.
+                  errors:
+                    invoiced_order_payout_nominal_code_id:
+                    - The invoiced order payout nominal code id field must be an integer.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: put-api-storefront-payout-mappings-fallback-settings
   /api/etsy/instances:
     get:
       tags:
@@ -925513,6 +929377,111 @@ paths:
         '404': *id003
       x-required-scope: purchase-orders:read
       operationId: get-api-purchase-orders-purchaseorder-cash-flow
+  /api/purchase-orders/{purchaseOrder}/cash-flow/export:
+    get:
+      tags:
+      - Purchase Orders
+      summary: Export Purchase Order Cash Flow
+      description: 'Download one purchase order''s dated cash flows as a CSV: one
+        row per payment, payout, fee, sale and the remaining stock at cost, on the
+        chosen basis and cost variant. Same columns as the purchase order list''s
+        `content_mode=cash_flows` export, which runs in the background for many orders;
+        this returns the file directly.
+
+
+        :::info[Required scope: `purchase-orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Columns.** Purchase Order, Supplier, Destination Warehouse, Basis, Date
+        (YYYY-MM-DD), Type, Category, Detail, Units (blank for payments and fees),
+        Amount (negative = cash out, positive = cash back, tenant currency), Estimated
+        (`Yes` for remaining stock at cost, capital inferred from received cost, or
+        an Amazon payout not yet disbursed), Source, Source ID.
+
+
+        The file is UTF-8 with a byte-order mark, named `cash-flow-<po-number>-<date>.csv`.
+        Computed on request; nothing is stored.
+
+
+        Requires a Bearer token with permission to export purchase orders.'
+      parameters:
+      - name: purchaseOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '1042'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv; charset=UTF-8
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename=cash-flow-po-1042-2026-11-02.csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "\uFEFF\"Purchase Order\",Supplier,\"Destination Warehouse\"\
+                  ,Basis,Date,Type,Category,Detail,Units,Amount,Estimated,Source,\"\
+                  Source ID\"\nPO-1042,\"Pacific Textiles\",\"AWD US (Amazon)\",\"\
+                  Amazon payout\",2026-05-22,Deposit,\"Supplier deposit\",\"Vendor\
+                  \ deposit\",,-1800,No,\"Vendor Deposit\",311\nPO-1042,\"Pacific\
+                  \ Textiles\",\"AWD US (Amazon)\",\"Amazon payout\",2026-08-16,\"\
+                  Amazon fee\",\"Amazon inbound fees\",\"Deducted from Amazon payout:\
+                  \ Inbound Placement Service Fee\",,-148,No,\"Amazon Settlement\"\
+                  ,58\nPO-1042,\"Pacific Textiles\",\"AWD US (Amazon)\",\"Amazon payout\"\
+                  ,2026-08-16,\"Amazon payout\",\"Amazon payouts\",\"Amazon payout\
+                  \ (settlement Aug 1 – Aug 15, 2026) — 60 unit(s)\",60,967.2,No,\"\
+                  Amazon Settlement\",58\nPO-1042,\"Pacific Textiles\",\"AWD US (Amazon)\"\
+                  ,\"Amazon payout\",2026-11-02,\"Remaining stock\",\"Remaining stock\
+                  \ at cost\",\"Remaining stock (at cost)\",320,2214.4,Yes,\"Purchase\
+                  \ Order\",1042\n"
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      variant:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The variant must be "product" (product cost only) or "fully_loaded"
+                    (with freight, duty and allocated costs).
+                  errors:
+                    variant:
+                    - The variant must be "product" (product cost only) or "fully_loaded"
+                      (with freight, duty and allocated costs).
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: purchase-orders:read
+      operationId: get-api-purchase-orders-purchaseorder-cash-flow-export
   /api/purchase-orders/{purchaseOrder}/consignment/settlement-preview:
     get:
       tags:
