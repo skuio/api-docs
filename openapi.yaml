@@ -55754,7 +55754,22 @@ paths:
         Authentication: Bearer token.
 
 
-        Errors: 422 for an unknown report key.'
+        Errors: 422 for an unknown report key.
+
+
+        Trial balance reconciliation (`report=trial_balance_reconciliation`): each
+        row carries `sku_balance`, `provider_balance`, `provider_direct` (activity
+        entered in Xero itself, e.g. bank-feed spend and receive money, not from SKU.io;
+        null when not available, e.g. QuickBooks or a Xero journal copy that is behind),
+        `provider_from_sku` (provider balance less `provider_direct`), `variance`
+        (SKU − provider), `baseline` (difference carried from before the accounting
+        start date, balance-sheet accounts only; null when none) and `variance_after_baseline`
+        (SKU − baseline − provider_from_sku; tolerance applies to this). Totals add
+        `baseline_total`, `accounts_with_baseline` and `provider_direct_total`. The
+        payload adds `baseline_carried_from` (date or null), `provider_direct_note`
+        (why direct entries could not be set aside, or null) and `legend` (plain-words
+        meaning of those columns). Baselines are reporting only: they never change
+        the ledger or anything sent to the provider.'
       parameters:
       - name: period
         in: path
@@ -55974,12 +55989,13 @@ paths:
       summary: Capture Provider Trial Balances
       description: 'Capture the accounting provider''s trial balance as of the period
         end (period key format YYYY-MM), for every connected accounting integration.
-        This is the one metered provider pull behind the Trial Balance Reconciliation
-        report and the trial_balance_reconciled close check — both read only the cached
-        snapshot this produces. Synchronous: one trial-balance call per connection;
-        connections whose provider exposes no trial-balance report are skipped, not
-        failed. Re-running re-captures in place so provider-side edits are picked
-        up.
+        This is the metered provider pull behind the Trial Balance Reconciliation
+        report and the trial_balance_reconciled close check. Starting a close and
+        every checklist refresh also re-capture it in the background, so this is only
+        needed to refresh the report on demand. Synchronous: one trial-balance call
+        per connection; connections whose provider exposes no trial-balance report
+        are skipped, not failed. Re-running re-captures in place for the exact period-end
+        day.
 
 
         :::info[Required scope: `accounting:write`]
@@ -55988,6 +56004,15 @@ paths:
         Tokens](https://app.sku.io/settings/api).
 
         :::
+
+
+        A failed read (provider unavailable, connection needing re-authorisation)
+        is reported per connection in `failures` and never replaced by another day''s
+        figures.
+
+
+        A closed or closing period keeps the trial balance it closed against: the
+        request is rejected with 422.
 
 
         Authentication: Bearer token. Requires the accounting sync permission.'
@@ -56012,27 +56037,60 @@ paths:
             application/json:
               schema:
                 type: object
+              examples:
+                example-0:
+                  summary: Captured
+                  value:
+                    data:
+                      captured: 1
+                      unsupported: 0
+                      failures: []
+                    message: 1 provider trial balance captured. Re-check the close
+                      to reconcile.
+                example-1:
+                  summary: Provider read failed
+                  value:
+                    data:
+                      captured: 0
+                      unsupported: 0
+                      failures:
+                      - connection_id: 3
+                        connection_name: Xero
+                        reason: The connection needs re-authorising.
+                    message: 'Couldn''t capture the provider trial balance: Xero —
+                      The connection needs re-authorising.'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
                 properties:
-                  data:
-                    type: object
-                    properties:
-                      captured:
-                        type: integer
-                      unsupported:
-                        type: integer
                   message:
                     type: string
+                  errors:
+                    type: object
+                    properties:
+                      period:
+                        type: array
+                        items:
+                          type: string
                 example:
-                  data:
-                    captured: 1
-                    unsupported: 0
-                  message: 1 provider trial balance captured. Re-check the close to
-                    reconcile.
+                  message: Period 2026-09 is closed — it keeps the provider trial
+                    balance it closed against.
+                  errors:
+                    period:
+                    - Period 2026-09 is closed — it keeps the provider trial balance
+                      it closed against.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: accounting:write
       operationId: post-api-ledger-close-periods-period-capture-provider-balances
   /api/ledger/close/periods/{period}/sync-breakdown:
@@ -56228,6 +56286,749 @@ paths:
         '422': *id004
       x-required-scope: accounting:write
       operationId: post-api-ledger-close-periods-period-export
+  /api/ledger/close/baselines:
+    get:
+      tags:
+      - Ledger (Accounting v2)
+      summary: List Reconciliation Baselines
+      description: 'Get the active reconciliation baselines and their full change
+        history. Baselines record differences between SKU.io and the accounting provider
+        (or between A/R / A/P and their open documents) that were already there before
+        SKU.io''s books started, each with a written reason, so the month-end close
+        checks flag only new differences. They are reporting only: nothing is posted,
+        and nothing sent to the provider changes.
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Two kinds: `trial_balance` (per accounting connection and balance-sheet account,
+        SKU.io''s balance minus the provider''s at the end of the day before your
+        first open month: the latest accounting lock date when your books are locked
+        past the start, otherwise the day before the accounting start date. A different
+        day can be picked when proposing and saving) and `control_account` (`receivable`
+        / `payable`: the control account minus its open documents at the end of the
+        payment-posting start date). `as_of_date` is null when that start date is
+        not set. `history` lists every row, newest first; a changed or cleared baseline
+        keeps its row with `superseded_at` set.
+
+
+        Authentication: Bearer token.
+
+
+        `trial_balance.as_of_date` is the default day a trial-balance proposal is
+        measured at; `as_of_basis` says why (`lock` — the latest accounting lock date,
+        the day before the first open month; `close_floor` / `start_date` — the day
+        before the books start), and `earliest_as_of_date` is the earliest day that
+        can be picked. Each connection''s `as_of_date` is the day its held amounts
+        were measured at (null when none are held). `control_account.as_of_date` is
+        the payment-posting start date, or the latest accounting lock date when that
+        is later.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      baselines:
+                        type: object
+                        properties:
+                          trial_balance:
+                            type: object
+                            properties:
+                              as_of_date:
+                                type: string
+                              as_of_basis:
+                                type: string
+                              earliest_as_of_date:
+                                type: string
+                              carried_from:
+                                type: string
+                              tolerance:
+                                type: integer
+                              connections:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    as_of_date:
+                                      type: string
+                                    baselines:
+                                      type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          id:
+                                            type: integer
+                                          account_code:
+                                            type: string
+                                          account_name:
+                                            type: string
+                                          amount:
+                                            type: number
+                                          as_of_date:
+                                            type: string
+                                          reason:
+                                            type: string
+                                          set_by_user_id:
+                                            type: integer
+                                          set_by_name:
+                                            type: string
+                                          set_at:
+                                            type: string
+                                    total:
+                                      type: number
+                          control_account:
+                            type: object
+                            properties:
+                              as_of_date:
+                                type: string
+                              carried_from:
+                                type: string
+                              tolerance:
+                                type: number
+                              baselines:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: integer
+                                    account_code:
+                                      type: string
+                                    account_name:
+                                      type: string
+                                    amount:
+                                      type: number
+                                    as_of_date:
+                                      type: string
+                                    reason:
+                                      type: string
+                                    set_by_user_id:
+                                      type: integer
+                                    set_by_name:
+                                      type: string
+                                    set_at:
+                                      type: string
+                              total:
+                                type: number
+                          history:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                kind:
+                                  type: string
+                                connection_id:
+                                  type: integer
+                                account_code:
+                                  type: string
+                                account_name:
+                                  type: string
+                                amount:
+                                  type: number
+                                as_of_date:
+                                  type: string
+                                reason:
+                                  type: string
+                                set_by_name:
+                                  type: string
+                                set_at:
+                                  type: string
+                                superseded_at:
+                                  type: string
+                                  nullable: true
+                                superseded_by_name:
+                                  type: string
+                                  nullable: true
+                                superseded_reason:
+                                  type: string
+                                  nullable: true
+                example:
+                  data:
+                    baselines:
+                      trial_balance:
+                        as_of_date: '2025-12-31'
+                        as_of_basis: lock
+                        earliest_as_of_date: '2024-12-31'
+                        carried_from: '2026-01-01'
+                        tolerance: 0
+                        connections:
+                        - connection_id: 3
+                          connection_name: Xero
+                          as_of_date: '2025-12-31'
+                          baselines:
+                          - id: 12
+                            account_code: '141'
+                            account_name: Amazon FBA US Inventory
+                            amount: 372326.99
+                            as_of_date: '2025-12-31'
+                            reason: Stock and prepayments from before 2026 that SKU.io
+                              never held.
+                            set_by_user_id: 4
+                            set_by_name: Dana Lee
+                            set_at: '2026-11-03T18:20:11+00:00'
+                          total: 372326.99
+                      control_account:
+                        as_of_date: '2026-01-01'
+                        carried_from: '2026-01-01'
+                        tolerance: 0.05
+                        baselines:
+                        - id: 14
+                          account_code: receivable
+                          account_name: Accounts Receivable
+                          amount: 52268.67
+                          as_of_date: '2026-01-01'
+                          reason: Open invoices from before payment posting started.
+                          set_by_user_id: 4
+                          set_by_name: Dana Lee
+                          set_at: '2026-11-03T18:20:11+00:00'
+                        total: 52268.67
+                      history:
+                      - id: 12
+                        kind: trial_balance
+                        connection_id: 3
+                        account_code: '141'
+                        account_name: Amazon FBA US Inventory
+                        amount: 372326.99
+                        as_of_date: '2025-12-31'
+                        reason: Stock and prepayments from before 2026 that SKU.io
+                          never held.
+                        set_by_name: Dana Lee
+                        set_at: '2026-11-03T18:20:11+00:00'
+                        superseded_at: null
+                        superseded_by_name: null
+                        superseded_reason: null
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:read
+      operationId: get-api-ledger-close-baselines
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Save Reconciliation Baselines
+      description: "Save the full set of baselines for one kind (and, for `trial_balance`,\
+        \ one accounting connection) under one written reason. Baselines record differences\
+        \ between SKU.io and the accounting provider (or between A/R / A/P and their\
+        \ open documents) that were already there before SKU.io's books started, each\
+        \ with a written reason, so the month-end close checks flag only new differences.\
+        \ They are reporting only: nothing is posted, and nothing sent to the provider\
+        \ changes.\n\n:::info[Required scope: `accounting:write`]\nGrant this scope\
+        \ to your token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nBody:\n- `kind` (required) — `trial_balance` or `control_account`.\n\
+        - `connection_id` (integer) — required for `trial_balance`: an accounting\
+        \ connection that supports trial-balance reconciliation. Ignored for `control_account`.\n\
+        - `reason` (required, string, 3–2000 chars) — why these differences are carried;\
+        \ kept with each baseline, and with any baseline this save clears.\n- `as_of_date`\
+        \ (optional, `Y-m-d`, `trial_balance` only) — the day the amounts were measured\
+        \ at; send the `as_of_date` the proposal returned. Defaults to the day before\
+        \ your first open month. Saving the same amount at a different day re-records\
+        \ it at that day.\n- `accounts` (required, array, may be empty, max 500) —\
+        \ the baselines to hold:\n  - `accounts.*.account_code` (required, string,\
+        \ max 64, distinct) — the account code, or `receivable` / `payable` for `control_account`.\n\
+        \  - `accounts.*.account_name` (nullable string, max 255).\n  - `accounts.*.amount`\
+        \ (required, number) — the carried difference, SKU.io minus provider (or ledger\
+        \ minus documents). 0 clears the account.\n\nAccounts left out are cleared;\
+        \ an empty list clears them all. An unchanged amount keeps its existing row;\
+        \ a changed one supersedes it. The as-of date is set by the server (the day\
+        \ before the accounting start date, or the payment-posting start date). A\
+        \ baseline only applies to periods ending after its as-of date. Returns the\
+        \ refreshed overview (same shape as List Reconciliation Baselines).\n\nAuthentication:\
+        \ Bearer token. Requires the accounting settings permission."
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                connection_id:
+                  type: integer
+                reason:
+                  type: string
+                as_of_date:
+                  type: string
+                accounts:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      account_code:
+                        type: string
+                      account_name:
+                        type: string
+                      amount:
+                        type: number
+              example:
+                kind: trial_balance
+                connection_id: 3
+                reason: Stock and prepayments from before 2026 that SKU.io never held.
+                as_of_date: '2025-12-31'
+                accounts:
+                - account_code: '141'
+                  account_name: Amazon FBA US Inventory
+                  amount: 372326.99
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      baselines:
+                        type: object
+                        properties:
+                          trial_balance:
+                            type: object
+                            properties:
+                              as_of_date:
+                                type: string
+                              as_of_basis:
+                                type: string
+                              earliest_as_of_date:
+                                type: string
+                              carried_from:
+                                type: string
+                              tolerance:
+                                type: integer
+                              connections:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    connection_id:
+                                      type: integer
+                                    connection_name:
+                                      type: string
+                                    as_of_date:
+                                      type: string
+                                    baselines:
+                                      type: array
+                                      items:
+                                        type: object
+                                        properties:
+                                          id:
+                                            type: integer
+                                          account_code:
+                                            type: string
+                                          account_name:
+                                            type: string
+                                          amount:
+                                            type: number
+                                          as_of_date:
+                                            type: string
+                                          reason:
+                                            type: string
+                                          set_by_user_id:
+                                            type: integer
+                                          set_by_name:
+                                            type: string
+                                          set_at:
+                                            type: string
+                                    total:
+                                      type: number
+                          control_account:
+                            type: object
+                            properties:
+                              as_of_date:
+                                type: string
+                              carried_from:
+                                type: string
+                              tolerance:
+                                type: number
+                              baselines:
+                                type: array
+                                items:
+                                  type: object
+                                  properties:
+                                    id:
+                                      type: integer
+                                    account_code:
+                                      type: string
+                                    account_name:
+                                      type: string
+                                    amount:
+                                      type: number
+                                    as_of_date:
+                                      type: string
+                                    reason:
+                                      type: string
+                                    set_by_user_id:
+                                      type: integer
+                                    set_by_name:
+                                      type: string
+                                    set_at:
+                                      type: string
+                              total:
+                                type: number
+                          history:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                id:
+                                  type: integer
+                                kind:
+                                  type: string
+                                connection_id:
+                                  type: integer
+                                account_code:
+                                  type: string
+                                account_name:
+                                  type: string
+                                amount:
+                                  type: number
+                                as_of_date:
+                                  type: string
+                                reason:
+                                  type: string
+                                set_by_name:
+                                  type: string
+                                set_at:
+                                  type: string
+                                superseded_at:
+                                  type: string
+                                  nullable: true
+                                superseded_by_name:
+                                  type: string
+                                  nullable: true
+                                superseded_reason:
+                                  type: string
+                                  nullable: true
+                  message:
+                    type: string
+                example:
+                  data:
+                    baselines:
+                      trial_balance:
+                        as_of_date: '2025-12-31'
+                        as_of_basis: lock
+                        earliest_as_of_date: '2024-12-31'
+                        carried_from: '2026-01-01'
+                        tolerance: 0
+                        connections:
+                        - connection_id: 3
+                          connection_name: Xero
+                          as_of_date: '2025-12-31'
+                          baselines:
+                          - id: 12
+                            account_code: '141'
+                            account_name: Amazon FBA US Inventory
+                            amount: 372326.99
+                            as_of_date: '2025-12-31'
+                            reason: Stock and prepayments from before 2026 that SKU.io
+                              never held.
+                            set_by_user_id: 4
+                            set_by_name: Dana Lee
+                            set_at: '2026-11-03T18:20:11+00:00'
+                          total: 372326.99
+                      control_account:
+                        as_of_date: '2026-01-01'
+                        carried_from: '2026-01-01'
+                        tolerance: 0.05
+                        baselines:
+                        - id: 14
+                          account_code: receivable
+                          account_name: Accounts Receivable
+                          amount: 52268.67
+                          as_of_date: '2026-01-01'
+                          reason: Open invoices from before payment posting started.
+                          set_by_user_id: 4
+                          set_by_name: Dana Lee
+                          set_at: '2026-11-03T18:20:11+00:00'
+                        total: 52268.67
+                      history:
+                      - id: 12
+                        kind: trial_balance
+                        connection_id: 3
+                        account_code: '141'
+                        account_name: Amazon FBA US Inventory
+                        amount: 372326.99
+                        as_of_date: '2025-12-31'
+                        reason: Stock and prepayments from before 2026 that SKU.io
+                          never held.
+                        set_by_name: Dana Lee
+                        set_at: '2026-11-03T18:20:11+00:00'
+                        superseded_at: null
+                        superseded_by_name: null
+                        superseded_reason: null
+                  message: Baselines saved — re-check a month in review to pick them
+                    up.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      reason:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Say why these differences are carried from before the start
+                    date — the reason is kept with the baseline.
+                  errors:
+                    reason:
+                    - Say why these differences are carried from before the start
+                      date — the reason is kept with the baseline.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: put-api-ledger-close-baselines
+  /api/ledger/close/baselines/propose:
+    post:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Propose Reconciliation Baselines
+      description: 'Work the baselines out again without saving anything. Baselines
+        record differences between SKU.io and the accounting provider (or between
+        A/R / A/P and their open documents) that were already there before SKU.io''s
+        books started, each with a written reason, so the month-end close checks flag
+        only new differences. They are reporting only: nothing is posted, and nothing
+        sent to the provider changes.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Body:
+
+        - `kind` (required) — `trial_balance` or `control_account`.
+
+        - `as_of_date` (optional, `Y-m-d`, `trial_balance` only) — the day to measure
+        at. Defaults to the day before your first open month. Must be before today
+        and no earlier than the day before the books start; otherwise 422 on `as_of_date`.
+
+
+        For `trial_balance` this re-captures the provider''s trial balance for the
+        as-of date (one metered report call per connection) and compares it with SKU.io''s
+        ledger at the same moment. Only balance-sheet accounts are proposed: income
+        and expense accounts are compared year to date, and equity and bank accounts
+        are never compared. An account is proposed when its difference exceeds the
+        trial-balance tolerance, or when it already holds a baseline (then `difference`
+        may be 0, so a save clears it). A connection whose read fails returns its
+        reason in `error` and no proposals.
+
+
+        For `control_account` the proposal is A/R and A/P minus their open documents
+        at the end of the payment-posting start date.
+
+
+        Returns 422 when the start date the kind is measured on is not set.
+
+
+        Authentication: Bearer token. Requires the accounting settings permission.
+
+
+        When payment posting started the day after the as-of date, SKU.io''s side
+        includes its opening true-up: Accounts Receivable and Accounts Payable were
+        already reset to the provider''s balances, so they carry no difference, and
+        the true-up''s offset account shows what it moved. `opening_true_up` is then
+        `{date, account_codes}` (the true-up''s date and the A/R and A/P account codes
+        it reset); otherwise null.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  type: string
+                as_of_date:
+                  type: string
+              example:
+                kind: trial_balance
+                as_of_date: '2025-12-31'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      proposal:
+                        type: object
+                        properties:
+                          kind:
+                            type: string
+                          as_of_date:
+                            type: string
+                          is_default_date:
+                            type: boolean
+                          carried_from:
+                            type: string
+                          tolerance:
+                            type: integer
+                          opening_true_up:
+                            type: object
+                            properties:
+                              date:
+                                type: string
+                              account_codes:
+                                type: array
+                                items:
+                                  type: string
+                          connections:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                connection_id:
+                                  type: integer
+                                connection_name:
+                                  type: string
+                                error:
+                                  type: string
+                                  nullable: true
+                                captured_at:
+                                  type: string
+                                proposals:
+                                  type: array
+                                  items:
+                                    type: object
+                                    properties:
+                                      account_code:
+                                        type: string
+                                      account_name:
+                                        type: string
+                                      account_type:
+                                        type: string
+                                      sku_balance:
+                                        type: number
+                                      provider_balance:
+                                        type: integer
+                                      difference:
+                                        type: number
+                                      current_baseline:
+                                        type: string
+                                        nullable: true
+                example:
+                  data:
+                    proposal:
+                      kind: trial_balance
+                      as_of_date: '2025-12-31'
+                      is_default_date: true
+                      carried_from: '2026-01-01'
+                      tolerance: 0
+                      opening_true_up:
+                        date: '2026-01-01'
+                        account_codes:
+                        - '120'
+                        - '200'
+                      connections:
+                      - connection_id: 3
+                        connection_name: Xero
+                        error: null
+                        captured_at: '2026-11-03T18:19:02+00:00'
+                        proposals:
+                        - account_code: '101'
+                          account_name: Prepaid Purchases
+                          account_type: Current
+                          sku_balance: 514222.16
+                          provider_balance: 100000
+                          difference: 414222.16
+                          current_baseline: null
+                        - account_code: '102'
+                          account_name: Inventory In Transit
+                          account_type: Current
+                          sku_balance: 1000
+                          provider_balance: 10581.99
+                          difference: -9581.99
+                          current_baseline: null
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      kind:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'Start payment posting first: A/R and A/P baselines are
+                    measured on its start date.'
+                  errors:
+                    kind:
+                    - 'Start payment posting first: A/R and A/P baselines are measured
+                      on its start date.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: post-api-ledger-close-baselines-propose
   /api/ledger/facilitator-tax/status:
     get:
       tags:

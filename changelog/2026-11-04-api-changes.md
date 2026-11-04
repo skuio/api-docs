@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-04
-description: This release includes 21 additions.
+description: This release includes 24 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-11-04
 ---
 
-This release includes 21 additions.
+This release includes 24 additions.
 
 <!-- truncate -->
 
@@ -19,6 +19,11 @@ This release includes 21 additions.
 
 ### Guardrails
 - `POST /api/advertising/signals/{signal}/propose` — Propose Guardrail Signal Fix
+
+### Ledger (Accounting v2)
+- `GET /api/ledger/close/baselines` — List Reconciliation Baselines
+- `PUT /api/ledger/close/baselines` — Save Reconciliation Baselines
+- `POST /api/ledger/close/baselines/propose` — Propose Reconciliation Baselines
 
 ### Purchase Orders
 - `GET /api/purchase-orders/{purchaseOrder}/cash-flow/export` — Export Purchase Order Cash Flow
