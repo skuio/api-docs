@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-05
-description: This release includes 424 additions, 5 changes.
+description: This release includes 433 additions, 5 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-11-05
 ---
 
-This release includes 424 additions, 5 changes.
+This release includes 433 additions, 5 changes.
 
 <!-- truncate -->
 
@@ -115,7 +115,6 @@ This release includes 424 additions, 5 changes.
 - `GET /api/repairs/part-compatibilities` — List Part Compatibilities
 - `DELETE /api/repairs/part-compatibilities/{row}` — Delete Part Compatibility
 - `GET /api/repairs/part-compatibilities/{row}` — Get Part Compatibility
-- `GET /api/repairs/part-units/{product}` — List Part Units
 - `DELETE /api/repairs/recovery-claims/{claim}` — Delete Recovery Claim
 - `DELETE /api/repairs/registrations/{registration}` — Void Warranty Registration
 - `DELETE /api/repairs/sla-policies/{policy}` — Delete SLA Policy
@@ -126,11 +125,12 @@ This release includes 424 additions, 5 changes.
 - `DELETE /api/repairs/{repair}/lines/{line}` — Remove Repair Unit
 - `DELETE /api/repairs/{repair}/lines/{line}/parts/{part}` — Remove Part from Unit
 - `DELETE /api/repairs/{repair}/lines/{line}/time-entries/{entry}` — Delete Time Entry for Unit
+- `DELETE /api/repairs/{repair}/notes/{noteId}` — Delete Repair Note
 
 ### SPS Commerce
 - `DELETE /api/spscommerce/{integrationInstance}/location-codes/{locationCode}` — Delete Location Code
 
-_…plus 324 more (see the API reference)._
+_…plus 333 more (see the API reference)._
 
 ## Changed
 

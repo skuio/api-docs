@@ -531335,7 +531335,11 @@ paths:
         - `store_id` (optional): the SKU.io store imported orders belong to.
 
         - `order_import_start_date` (optional, Y-m-d): orders created before this
-        date are not imported.'
+        date are not imported.
+
+
+        `order_import_start_date` cannot be earlier than the account''s inventory
+        start date (422 on that field).'
       requestBody:
         content:
           application/json:
@@ -531643,10 +531647,37 @@ paths:
                     store:
                       id: 1
                       name: SKU.io
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      order_import_start_date:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The order import start date can't be before your inventory
+                    start date (2026-09-01).
+                  errors:
+                    order_import_start_date:
+                    - The order import start date can't be before your inventory start
+                      date (2026-09-01).
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-required-scope: integrations:write
       operationId: post-api-nuorder-instances
   /api/nuorder/instances/{integrationInstance}:
@@ -532004,7 +532035,11 @@ paths:
         — starts from the Warehouse Mappings entry but can be any warehouses), `inventoryModificationRules`
         (`maxRuleType` / `minRuleType`: `None`, `Fixed Allocation` or `% of Available`,
         with `maxRuleTypeValue` / `minRuleTypeValue`; `subtractBufferStock`), `inventory.futureAtsEnabled`,
-        `inventory.futureAtsHorizonDays` (1–730).'
+        `inventory.futureAtsHorizonDays` (1–730).
+
+
+        `order_import_start_date` cannot be earlier than the account''s inventory
+        start date (422 on that field).'
       requestBody:
         content:
           application/json:
@@ -532353,11 +532388,38 @@ paths:
                     store:
                       id: 1
                       name: SKU.io
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      order_import_start_date:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The order import start date can't be before your inventory
+                    start date (2026-09-01).
+                  errors:
+                    order_import_start_date:
+                    - The order import start date can't be before your inventory start
+                      date (2026-09-01).
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: integrations:write
       operationId: put-api-nuorder-instances-integrationinstance
     delete:
@@ -534021,7 +534083,12 @@ paths:
 
 
         Quantities are in NuORDER units of sale (packs when `units_per_pack` is set);
-        `unit_quantity` and `unit_price` are per unit.'
+        `unit_quantity` and `unit_price` are per unit.
+
+
+        Each SKU.io fulfillment carries `awaiting_nuorder`: true while it is shipped,
+        not voided, not yet sent to NuORDER and the NuORDER order is not cancelled
+        — the same rule as the pending fulfillments list.'
       parameters:
       - name: integrationInstance
         in: path
@@ -534218,6 +534285,8 @@ paths:
                                         type: string
                                       sku:
                                         type: string
+                                awaiting_nuorder:
+                                  type: boolean
                       lines_count:
                         type: integer
                       unmapped_items_count:
@@ -534504,6 +534573,7 @@ paths:
                           quantity: 12
                           product_name: AEF9IATRH3 — BLACK / S (pack of 6)
                           sku: AEF9IATRH3-BLACK-S
+                        awaiting_nuorder: false
                     lines_count: 4
                     unmapped_items_count: 0
                     shipping_address:
@@ -539235,7 +539305,12 @@ paths:
         :::
 
 
-        Authentication: Bearer token (integrations scope).'
+        Authentication: Bearer token (integrations scope).
+
+
+        `orders_count` and `total_ordered` both leave out cancelled orders. `total_ordered`
+        is in `total_ordered_currency`; when the retailer''s orders are in more than
+        one currency it is null and `ordered_currencies` lists them.'
       parameters:
       - name: integrationInstance
         in: path
@@ -539316,6 +539391,12 @@ paths:
                               type: string
                             route:
                               type: string
+                        total_ordered_currency:
+                          type: string
+                        ordered_currencies:
+                          type: array
+                          items:
+                            type: string
                   first_page_url:
                     type: string
                   from:
@@ -539368,6 +539449,9 @@ paths:
                       id: 12
                       name: Nordstrom
                       route: /crm/customers/12
+                    total_ordered_currency: USD
+                    ordered_currencies:
+                    - USD
                   first_page_url: https://sku.test/api/nuorder/instances/2/customers?page=1
                   from: 1
                   last_page: 1
@@ -540274,7 +540358,9 @@ paths:
       description: 'Retries a failed attempt. A failed shipment re-sends its fulfillment
         if NuORDER still does not have it; a failed cancellation re-runs the order''s
         cancellation passback, which only sends quantities NuORDER does not already
-        show cancelled.
+        show cancelled. A manual retry is sent even when the portal''s tracking sync
+        switch is off; it is refused (422) when sending cancelled quantities is turned
+        off for the portal, or when this environment may not write to NuORDER.
 
 
         :::info[Required scope: `integrations:write`]
@@ -540363,28 +540449,125 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  data:
-                    type: object
-                    properties:
-                      queued:
-                        type: boolean
-                      message:
-                        type: string
-                  message:
-                    type: string
-                example:
-                  data:
-                    queued: false
+              examples:
+                example-0:
+                  summary: 422 Nothing to retry
+                  value:
+                    data:
+                      queued: false
+                      message: NuORDER already has this shipment, or the fulfillment
+                        was voided.
                     message: NuORDER already has this shipment, or the fulfillment
                       was voided.
-                  message: NuORDER already has this shipment, or the fulfillment was
-                    voided.
+                example-1:
+                  summary: 422 Cancellations off or blocked
+                  value:
+                    data:
+                      queued: false
+                      message: Sending cancelled quantities to NuORDER is turned off
+                        for this portal. Turn it on in Settings to retry.
+                    message: Sending cancelled quantities to NuORDER is turned off
+                      for this portal. Turn it on in Settings to retry.
         '429': *id001
         '401': *id002
         '403': *id005
       x-required-scope: integrations:write
       operationId: post-api-nuorder-instances-integrationinstance-fulfillments-failures-shipment-retry
+  /api/nuorder/instances/{integrationInstance}/fulfillments/failures/{shipment}/dismiss:
+    post:
+      tags:
+      - NuORDER
+      summary: Dismiss Failed NuORDER Send
+      description: 'Stops retrying a failed send that NuORDER can never accept (for
+        example a shipment of partial packs), or one you recorded in NuORDER yourself.
+        The attempt is marked dismissed: it leaves the failed list and its count,
+        a dismissed shipment leaves the pending list too, and dismissed cancelled
+        quantities are not sent again by later cancellation sends. NuORDER itself
+        is not changed.
+
+
+        :::info[Required scope: `integrations:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Only the latest failed attempt of a send can be dismissed; any other attempt
+        (including one whose outcome is still unknown) returns 404.
+
+
+        Authentication: Bearer token (integrations scope) and the sales_orders.fulfill
+        permission.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: NuORDER integration instance id.
+        example: '2'
+      - name: shipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Failed attempt id (from List Failed NuORDER Sends).
+        example: '17'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              examples:
+                example-0:
+                  summary: 200 OK
+                  value:
+                    data:
+                      message: Dismissed. This shipment is not sent to NuORDER, so
+                        record it there if the retailer needs it.
+                    message: Dismissed. This shipment is not sent to NuORDER, so record
+                      it there if the retailer needs it.
+                example-1:
+                  summary: 200 OK — cancellation
+                  value:
+                    data:
+                      message: Dismissed. These cancelled quantities are not sent
+                        to NuORDER, so record them there if needed.
+                    message: Dismissed. These cancelled quantities are not sent to
+                      NuORDER, so record them there if needed.
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Failed NuORDER attempt not found.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '422': *id004
+      x-required-scope: integrations:write
+      operationId: post-api-nuorder-instances-integrationinstance-fulfillments-failures-shipment-dismiss
   /api/nuorder/instances/{integrationInstance}/products:
     get:
       tags:
@@ -540571,6 +540754,10 @@ paths:
                           type: string
                         updated_at:
                           type: string
+                        archived_by_sync:
+                          type: boolean
+                        last_synced_at:
+                          type: string
                   first_page_url:
                     type: string
                   from:
@@ -540663,6 +540850,8 @@ paths:
                     archived_at: null
                     created_at: '2026-11-03T10:00:12+00:00'
                     updated_at: '2026-11-03T10:12:44+00:00'
+                    archived_by_sync: false
+                    last_synced_at: '2026-11-04T08:00:12+00:00'
                   first_page_url: https://acme.sku.io/api/...?page=1
                   from: 1
                   last_page: 1
@@ -540697,7 +540886,13 @@ paths:
         :::
 
 
-        **Authentication:** Bearer token (Personal Access Token).'
+        **Authentication:** Bearer token (Personal Access Token).
+
+
+        `last_synced_at` is when SKU.io last saved this product from NuORDER (catalog
+        sync or a single-product refresh). `archived_by_sync` is true when the size
+        was archived because NuORDER no longer lists it, false when someone archived
+        it in SKU.io.'
       parameters:
       - name: integrationInstance
         in: path
@@ -541006,6 +541201,14 @@ paths:
                               type: string
                             updated_at:
                               type: string
+                            archived_by_sync:
+                              type: boolean
+                            last_synced_at:
+                              type: string
+                      archived_by_sync:
+                        type: boolean
+                      last_synced_at:
+                        type: string
                 example:
                   data:
                     id: 412
@@ -541134,6 +541337,10 @@ paths:
                       archived_at: null
                       created_at: '2026-11-03T10:00:12+00:00'
                       updated_at: '2026-11-03T10:12:44+00:00'
+                      archived_by_sync: false
+                      last_synced_at: '2026-11-04T08:00:12+00:00'
+                    archived_by_sync: false
+                    last_synced_at: '2026-11-04T08:00:12+00:00'
         '404':
           description: Not Found
           headers:
@@ -541665,8 +541872,15 @@ paths:
         - `filter[...]`, `sort` — the List NuORDER Products filters and sort.
 
 
-        The file always starts with `Sr No.` and `id`; date-time columns are in the
+        The file always starts with `Sr No.` and `ID`; date-time columns are in the
         account''s timezone.
+
+
+        **Large exports:** up to 1,000 rows the response is the file itself (200).
+        Above 1,000 rows the export is built in the background and the response is
+        `202` JSON with `data.queued`, `data.tracked_job_log_id` and `data.record_count`.
+        When the job finishes, its `results.download_url` (GET /api/export/download?file=...)
+        serves the file to the user who started it.
 
 
         **Authentication:** Bearer token (Personal Access Token).'
@@ -541697,6 +541911,36 @@ paths:
         description: NuORDER integration instance ID.
         example: '12'
       responses:
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      queued:
+                        type: boolean
+                      tracked_job_log_id:
+                        type: integer
+                      record_count:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    queued: true
+                    tracked_job_log_id: 8812
+                    record_count: 4210
+                  message: Exporting 4,210 rows in the background — download the file
+                    from the job tray when it finishes.
         '422':
           description: Unprocessable Entity
           headers:
@@ -542018,6 +542262,10 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      archived_by_sync:
+                        type: boolean
+                      last_synced_at:
+                        type: string
                   message:
                     type: string
                 example:
@@ -542087,6 +542335,8 @@ paths:
                     archived_at: null
                     created_at: '2026-11-03T10:00:12+00:00'
                     updated_at: '2026-11-03T10:12:44+00:00'
+                    archived_by_sync: false
+                    last_synced_at: '2026-11-04T08:00:12+00:00'
                   message: Product refreshed from NuORDER.
         '404':
           description: Not Found
@@ -542317,6 +542567,10 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      archived_by_sync:
+                        type: boolean
+                      last_synced_at:
+                        type: string
                   message:
                     type: string
                 example:
@@ -542386,6 +542640,8 @@ paths:
                     archived_at: null
                     created_at: '2026-11-03T10:00:12+00:00'
                     updated_at: '2026-11-03T10:12:44+00:00'
+                    archived_by_sync: false
+                    last_synced_at: '2026-11-04T08:00:12+00:00'
                   message: Size mapped.
         '404':
           description: Not Found
@@ -542869,6 +543125,10 @@ paths:
                         type: string
                       updated_at:
                         type: string
+                      archived_by_sync:
+                        type: boolean
+                      last_synced_at:
+                        type: string
                   linked_existing:
                     type: boolean
                   message:
@@ -542940,6 +543200,8 @@ paths:
                     archived_at: null
                     created_at: '2026-11-03T10:00:12+00:00'
                     updated_at: '2026-11-03T10:12:44+00:00'
+                    archived_by_sync: false
+                    last_synced_at: '2026-11-04T08:00:12+00:00'
                   linked_existing: false
                   message: SKU.io product created and mapped.
         '404':
@@ -690056,7 +690318,21 @@ paths:
         reach the warehouse: asn_856 (the default) or warehouse_940_945 (an order
         released to a linked warehouse goes out as a 940, and its shipment is recorded
         when the 945 comes back). On warehouse_940_945 with asn_source external, the
-        3PL sends the retailer''s 856 and SKU.io does not.'
+        3PL sends the retailer''s 856 and SKU.io does not.
+
+        - trading_partner_settings.{partner}.warehouse_flows (object, optional): the
+        warehouses that differ from the partner''s shipment_flow, keyed by warehouse
+        ID, each asn_856 or warehouse_940_945. Use it for a retailer split across
+        3PLs.
+
+        - warehouse_links[].sends_order_updates (boolean, default false): when true,
+        an order edited after its 940 went out sends the 3PL an updated 940 automatically.
+        When false, an alert is raised and the update is sent with Send EDI Document
+        Update.
+
+        - warehouse_links[].cancels_short_ships (boolean, default false): when true,
+        a 945 that says the order is finished but shipped less than ordered cancels
+        the unshipped balance on the sales order. When false, an alert is raised.'
       requestBody:
         content:
           application/json:
@@ -690143,6 +690419,10 @@ paths:
                         type: string
                       sends_cancellations:
                         type: boolean
+                      sends_order_updates:
+                        type: boolean
+                      cancels_short_ships:
+                        type: boolean
               example:
                 name: SPS Commerce
                 receiver_id: ACMEVENDOR
@@ -690179,6 +690459,8 @@ paths:
                   trading_partner_id: CROSSGATE3PL
                   warehouse_code: CG1
                   sends_cancellations: true
+                  sends_order_updates: false
+                  cancels_short_ships: false
       parameters:
       - name: id
         in: path
@@ -690331,6 +690613,10 @@ paths:
                               type: string
                             sends_cancellations:
                               type: boolean
+                            sends_order_updates:
+                              type: boolean
+                            cancels_short_ships:
+                              type: boolean
                 example:
                   success: true
                   data:
@@ -690407,6 +690693,8 @@ paths:
                       trading_partner_id: CROSSGATE3PL
                       warehouse_code: CG1
                       sends_cancellations: true
+                      sends_order_updates: false
+                      cancels_short_ships: false
         '422':
           description: Unprocessable Entity
           headers:
@@ -693207,6 +693495,19 @@ paths:
                           type: boolean
                         is_cancellation:
                           type: boolean
+                        is_update:
+                          type: boolean
+                        is_out_of_date:
+                          type: boolean
+                        is_superseded:
+                          type: boolean
+                        can_send_update:
+                          type: boolean
+                        can_recover:
+                          type: boolean
+                        acknowledged_at:
+                          type: string
+                          nullable: true
                   first_page_url:
                     type: string
                   from:
@@ -693256,6 +693557,12 @@ paths:
                     sales_invoice: null
                     can_reprocess: false
                     is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
                   - id: 12
                     transaction_set: '856'
                     direction: outbound
@@ -693277,6 +693584,12 @@ paths:
                     sales_invoice: null
                     can_reprocess: false
                     is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
                   first_page_url: https://sku8.test/api/spscommerce/4/documents?page=1
                   from: 1
                   last_page: 1
@@ -693469,6 +693782,19 @@ paths:
                         type: boolean
                       is_cancellation:
                         type: boolean
+                      is_update:
+                        type: boolean
+                      is_out_of_date:
+                        type: boolean
+                      is_superseded:
+                        type: boolean
+                      can_send_update:
+                        type: boolean
+                      can_recover:
+                        type: boolean
+                      acknowledged_at:
+                        type: string
+                        nullable: true
                 example:
                   message: Resend queued
                   data:
@@ -693492,6 +693818,12 @@ paths:
                     created_at: '2026-10-08T23:06:12.000000Z'
                     can_reprocess: false
                     is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
         '422':
           description: Unprocessable Content
           headers:
@@ -693614,6 +693946,19 @@ paths:
                         type: boolean
                       is_cancellation:
                         type: boolean
+                      is_update:
+                        type: boolean
+                      is_out_of_date:
+                        type: boolean
+                      is_superseded:
+                        type: boolean
+                      can_send_update:
+                        type: boolean
+                      can_recover:
+                        type: boolean
+                      acknowledged_at:
+                        type: string
+                        nullable: true
                 example:
                   message: Reprocess queued
                   data:
@@ -693638,6 +693983,12 @@ paths:
                     created_at: '2026-10-08T23:06:12.000000Z'
                     can_reprocess: true
                     is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
         '422':
           description: Unprocessable Content
           headers:
@@ -693661,6 +694012,497 @@ paths:
         '404': *id003
       x-required-scope: integrations:write
       operationId: post-api-spscommerce-integrationinstance-documents-document-reprocess
+  /api/spscommerce/{integrationInstance}/documents/{document}/send-update:
+    post:
+      tags:
+      - SPS Commerce
+      summary: Send EDI Document Update
+      description: 'Send the 3PL an updated warehouse order (940) for an order that
+        changed after this 940 went out. The update carries the order as it stands
+        now and replaces earlier versions, which can no longer be resent. Check first
+        that the 3PL treats an updated 940 as a replacement: one that reads it as
+        a new order could ship twice.
+
+
+        :::info[Required scope: `integrations:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+
+
+        Returns 422 when this 940 isn''t out of date or its order has closed; 404
+        when it belongs to another connection.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The integration instance ID.
+      - name: document
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The document ID.
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      transaction_set:
+                        type: string
+                      direction:
+                        type: string
+                      status:
+                        type: string
+                      control_number:
+                        type: string
+                      po_number:
+                        type: string
+                      trading_partner_id:
+                        type: string
+                      sales_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sales_order_number:
+                            type: string
+                      fulfillment:
+                        type: string
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      can_resend:
+                        type: boolean
+                      can_reprocess:
+                        type: boolean
+                      is_cancellation:
+                        type: boolean
+                      is_update:
+                        type: boolean
+                      is_out_of_date:
+                        type: boolean
+                      is_superseded:
+                        type: boolean
+                      can_send_update:
+                        type: boolean
+                      can_recover:
+                        type: boolean
+                      acknowledged_at:
+                        type: string
+                        nullable: true
+                      received_at:
+                        type: string
+                        nullable: true
+                      sent_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                example:
+                  message: Update queued
+                  data:
+                    id: 21
+                    transaction_set: '940'
+                    direction: outbound
+                    status: ready
+                    control_number: WOU42-1
+                    po_number: PO584615-1
+                    trading_partner_id: CROSSGATE3PL
+                    sales_order:
+                      id: 18
+                      sales_order_number: PO584615-1
+                    fulfillment: null
+                    error: null
+                    can_resend: false
+                    can_reprocess: false
+                    is_cancellation: false
+                    is_update: true
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
+                    received_at: null
+                    sent_at: null
+                    created_at: '2026-11-05T14:06:12.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This warehouse order has nothing to update. Either the
+                    3PL already has the order as it stands, or the order has closed.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: integrations:write
+      operationId: post-api-spscommerce-integrationinstance-documents-document-send-update
+  /api/spscommerce/{integrationInstance}/documents/{document}/download-again:
+    post:
+      tags:
+      - SPS Commerce
+      summary: Download EDI Document Again
+      description: 'Fetch an unreadable warehouse shipping advice (945) from SPS Commerce
+        again and, if this copy can be read, queue it to be applied. The unreadable
+        file is kept with the document. Every usual check still runs, so a shipment
+        already recorded is not recorded twice.
+
+
+        :::info[Required scope: `integrations:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+
+
+        Returns 422 when the document isn''t an unreadable 945, SPS Commerce no longer
+        has the file, or the new copy can''t be read either; 404 when it belongs to
+        another connection.'
+      requestBody:
+        content: {}
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The integration instance ID.
+      - name: document
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The document ID.
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      transaction_set:
+                        type: string
+                      direction:
+                        type: string
+                      status:
+                        type: string
+                      control_number:
+                        type: string
+                      po_number:
+                        type: string
+                      trading_partner_id:
+                        type: string
+                      sales_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sales_order_number:
+                            type: string
+                      fulfillment:
+                        type: string
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      can_resend:
+                        type: boolean
+                      can_reprocess:
+                        type: boolean
+                      is_cancellation:
+                        type: boolean
+                      is_update:
+                        type: boolean
+                      is_out_of_date:
+                        type: boolean
+                      is_superseded:
+                        type: boolean
+                      can_send_update:
+                        type: boolean
+                      can_recover:
+                        type: boolean
+                      acknowledged_at:
+                        type: string
+                        nullable: true
+                      received_at:
+                        type: string
+                      sent_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                example:
+                  message: Reprocess queued
+                  data:
+                    id: 21
+                    transaction_set: '945'
+                    direction: inbound
+                    status: received
+                    control_number: 945-1-5d41402abc4b2a76b9719d911017c592
+                    po_number: PO584615-1
+                    trading_partner_id: CROSSGATE3PL
+                    sales_order:
+                      id: 18
+                      sales_order_number: PO584615-1
+                    fulfillment: null
+                    error: null
+                    can_resend: false
+                    can_reprocess: false
+                    is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
+                    received_at: '2026-11-05T14:02:00.000000Z'
+                    sent_at: null
+                    created_at: '2026-11-05T14:06:12.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: SPS Commerce has the same unreadable file. Upload a corrected
+                    file, or ask the 3PL to send the 945 again.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: integrations:write
+      operationId: post-api-spscommerce-integrationinstance-documents-document-download-again
+  /api/spscommerce/{integrationInstance}/documents/{document}/replace-content:
+    post:
+      tags:
+      - SPS Commerce
+      summary: Replace EDI Document Content
+      description: 'Replace an unreadable warehouse shipping advice (945) with a corrected
+        file and queue it to be applied. Send multipart/form-data with a file field
+        of at most 5 MB. The unreadable file is kept with the document. Every usual
+        check still runs, including the sender check, so a replacement can''t record
+        what a resend couldn''t.
+
+
+        :::info[Required scope: `integrations:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token and the integrations.update permission.
+
+
+        Returns 422 when the document isn''t an unreadable 945 or the file isn''t
+        a readable 945, and changes nothing; 404 when it belongs to another connection.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: Required. The corrected 945 file, at most 5 MB.
+                  format: binary
+      parameters:
+      - name: integrationInstance
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The integration instance ID.
+      - name: document
+        in: path
+        schema:
+          type: string
+        required: true
+        description: The document ID.
+      responses:
+        '202':
+          description: Accepted
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      transaction_set:
+                        type: string
+                      direction:
+                        type: string
+                      status:
+                        type: string
+                      control_number:
+                        type: string
+                      po_number:
+                        type: string
+                      trading_partner_id:
+                        type: string
+                      sales_order:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sales_order_number:
+                            type: string
+                      fulfillment:
+                        type: string
+                        nullable: true
+                      error:
+                        type: string
+                        nullable: true
+                      can_resend:
+                        type: boolean
+                      can_reprocess:
+                        type: boolean
+                      is_cancellation:
+                        type: boolean
+                      is_update:
+                        type: boolean
+                      is_out_of_date:
+                        type: boolean
+                      is_superseded:
+                        type: boolean
+                      can_send_update:
+                        type: boolean
+                      can_recover:
+                        type: boolean
+                      acknowledged_at:
+                        type: string
+                        nullable: true
+                      received_at:
+                        type: string
+                      sent_at:
+                        type: string
+                        nullable: true
+                      created_at:
+                        type: string
+                example:
+                  message: Reprocess queued
+                  data:
+                    id: 21
+                    transaction_set: '945'
+                    direction: inbound
+                    status: received
+                    control_number: 945-1-5d41402abc4b2a76b9719d911017c592
+                    po_number: PO584615-1
+                    trading_partner_id: CROSSGATE3PL
+                    sales_order:
+                      id: 18
+                      sales_order_number: PO584615-1
+                    fulfillment: null
+                    error: null
+                    can_resend: false
+                    can_reprocess: false
+                    is_cancellation: false
+                    is_update: false
+                    is_out_of_date: false
+                    is_superseded: false
+                    can_send_update: false
+                    can_recover: false
+                    acknowledged_at: null
+                    received_at: '2026-11-05T14:02:00.000000Z'
+                    sent_at: null
+                    created_at: '2026-11-05T14:06:12.000000Z'
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This file isn't a 945 shipping advice, so nothing was changed.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: integrations:write
+      operationId: post-api-spscommerce-integrationinstance-documents-document-replace-content
   /api/spscommerce/{integrationInstance}/item-mappings:
     get:
       tags:
@@ -943708,6 +944550,10 @@ paths:
                             type: integer
                           name:
                             type: string
+                      tags:
+                        type: array
+                        items:
+                          type: string
                       assignee_user_id:
                         type: string
                         nullable: true
@@ -944012,6 +944858,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -944033,6 +944882,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -944216,6 +945071,8 @@ paths:
                     warehouse:
                       id: 1
                       name: Default Warehouse
+                    tags:
+                    - rush
                     assignee_user_id: null
                     contact_email: wholesale.saltwater.boutique@demo-repairs.test
                     contact_phone: null
@@ -944347,6 +945204,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -944356,6 +945214,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -944441,6 +945301,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -944450,6 +945311,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -945004,6 +945867,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -945025,6 +945891,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -945339,6 +946211,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -945348,6 +946221,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -945433,6 +946308,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -945442,6 +946318,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -945997,6 +946875,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -946018,6 +946899,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -946332,6 +947219,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -946341,6 +947229,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -946426,6 +947316,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -946435,6 +947326,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -946941,6 +947834,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -946962,6 +947858,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -947276,6 +948178,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -947285,6 +948188,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -947370,6 +948275,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -947379,6 +948285,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -947902,6 +948810,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -947923,6 +948834,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -948237,6 +949154,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -948246,6 +949164,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -948331,6 +949251,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -948340,6 +949261,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -948838,6 +949761,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -948859,6 +949785,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -949173,6 +950105,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -949182,6 +950115,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -949267,6 +950202,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -949276,6 +950212,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -950177,6 +951115,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -950198,6 +951139,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -950512,6 +951459,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -950521,6 +951469,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -950606,6 +951556,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -950615,6 +951566,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -951961,6 +952914,390 @@ paths:
         '404': *id003
       x-required-scope: repairs:write
       operationId: post-api-repairs-repair-reject
+  /api/repairs/{repair}/notes:
+    get:
+      tags:
+      - Repairs & Warranty
+      summary: Get Repair Notes
+      description: 'Get paginated notes for a repair (most recent first).
+
+
+        :::info[Required scope: `repairs:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.'
+      parameters:
+      - name: repair
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '412'
+        description: The repair ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        note:
+                          type: string
+                        is_pinned:
+                          type: boolean
+                        created_at:
+                          type: string
+                        user:
+                          type: object
+                          properties:
+                            id:
+                              type: integer
+                            name:
+                              type: string
+                  current_page:
+                    type: integer
+                example:
+                  data:
+                  - id: 1
+                    note: Customer asked to rush this one.
+                    is_pinned: false
+                    created_at: '2026-11-01T09:00:00Z'
+                    user:
+                      id: 1
+                      name: John Doe
+                  current_page: 1
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: repairs:read
+      operationId: get-api-repairs-repair-notes
+    post:
+      tags:
+      - Repairs & Warranty
+      summary: Add Repair Note
+      description: 'Add a note to a repair.
+
+
+        :::info[Required scope: `repairs:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Body:
+
+        - note (required): Note text
+
+        - is_pinned (optional, boolean): Pin note to top
+
+
+        **Requires permission:** `repairs.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                is_pinned:
+                  type: boolean
+              example:
+                note: 'Confirmed with the customer: proceed with the repair.'
+                is_pinned: false
+      parameters:
+      - name: repair
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '412'
+        description: The repair ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      note:
+                        type: string
+                      is_pinned:
+                        type: boolean
+                      created_at:
+                        type: string
+                      user:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 2
+                    note: 'Confirmed with the customer: proceed with the repair.'
+                    is_pinned: false
+                    created_at: '2026-11-01T10:00:00Z'
+                    user:
+                      id: 1
+                      name: John Doe
+                  message: Note created successfully
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+        '422': *id004
+      x-required-scope: repairs:write
+      operationId: post-api-repairs-repair-notes
+  /api/repairs/{repair}/notes/{noteId}/toggle-pin:
+    put:
+      tags:
+      - Repairs & Warranty
+      summary: Toggle Repair Note Pin
+      description: 'Toggle the pinned state of a note on a repair.
+
+
+        :::info[Required scope: `repairs:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `repairs.update`'
+      requestBody:
+        content: {}
+      parameters:
+      - name: repair
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '412'
+        description: The repair ID.
+      - name: noteId
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '2'
+        description: The note ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      is_pinned:
+                        type: boolean
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 2
+                    is_pinned: true
+                  message: Note pinned
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+        '422': *id004
+      x-required-scope: repairs:write
+      operationId: put-api-repairs-repair-notes-noteid-toggle-pin
+  /api/repairs/{repair}/notes/{noteId}:
+    delete:
+      tags:
+      - Repairs & Warranty
+      summary: Delete Repair Note
+      description: 'Delete a note from a repair.
+
+
+        :::info[Required scope: `repairs:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `repairs.update`'
+      parameters:
+      - name: repair
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '412'
+        description: The repair ID.
+      - name: noteId
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '2'
+        description: The note ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Note 2 deleted successfully
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: repairs:write
+      operationId: delete-api-repairs-repair-notes-noteid
+  /api/repairs/{repair}/tags:
+    put:
+      tags:
+      - Repairs & Warranty
+      summary: Sync Repair Tags
+      description: 'Replaces the full set of tags on a repair with the provided list.
+
+
+        :::info[Required scope: `repairs:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Fields:
+
+        - tags (required, array of strings, each max 64 chars)
+
+
+        Authentication: Requires Bearer token.
+
+
+        **Requires permission:** `repairs.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+              example:
+                tags:
+                - rush
+                - vip-customer
+      parameters:
+      - name: repair
+        in: path
+        schema:
+          type: integer
+        required: true
+        example: '412'
+        description: The repair ID.
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tags:
+                        type: array
+                        items:
+                          type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    tags:
+                    - rush
+                    - vip-customer
+                  message: Repair tags RO-2026-00412 updated successfully
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+        '422': *id004
+      x-required-scope: repairs:write
+      operationId: put-api-repairs-repair-tags
   /api/repairs/attachments:
     post:
       tags:
@@ -955017,6 +956354,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -955038,6 +956378,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -955352,6 +956698,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -955361,6 +956708,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -955446,6 +956795,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -955455,6 +956805,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -956149,6 +957501,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -956170,6 +957525,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -956484,6 +957845,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -956493,6 +957855,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -956578,6 +957942,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -956587,6 +957952,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -971315,6 +972682,9 @@ paths:
                                 vendor_dispatch_number:
                                   type: string
                                   nullable: true
+                                target_product:
+                                  type: string
+                                  nullable: true
                             risk_signals:
                               type: array
                               items:
@@ -971336,6 +972706,12 @@ paths:
                               type: string
                               nullable: true
                             credit_issued_amount:
+                              type: string
+                              nullable: true
+                            capitalization_id:
+                              type: string
+                              nullable: true
+                            refurbish:
                               type: string
                               nullable: true
                             ai_suggestion:
@@ -971650,6 +973026,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -971659,6 +973036,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/336/tag.pdf
@@ -971744,6 +973123,7 @@ paths:
                         sales_credit_id: null
                         vendor_dispatch_id: null
                         vendor_dispatch_number: null
+                        target_product: null
                       risk_signals:
                       - code: frequent_claimant
                         severity: warning
@@ -971753,6 +973133,8 @@ paths:
                         related_repair_number: null
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       attachments: []
                       tag_url: /api/repairs/309/lines/337/tag.pdf
@@ -979797,7 +981179,8 @@ paths:
         `matched_on` (`component`, `product`, `category` or `issue_type`), `issue_type_id`,
         `on_hand_at_repair_warehouse`, `available_at_repair_warehouse`, `inbound_at_repair_warehouse`
         (on open purchase orders), `warehouses` (per warehouse: `warehouse_id`, `warehouse_name`,
-        `on_hand`, `allocated`, `available`, `inbound`), `planned_quantity` and `consumed_quantity`
+        `on_hand`, `allocated`, `available`, `inbound`), `tracks_serials` (whether
+        consuming it needs picked serial numbers), `planned_quantity` and `consumed_quantity`
         already on this unit.
 
 
@@ -979876,6 +981259,8 @@ paths:
                           type: integer
                         consumed_quantity:
                           type: integer
+                        tracks_serials:
+                          type: boolean
                 example:
                   data:
                   - compatibility_id: 208
@@ -979903,6 +981288,7 @@ paths:
                       inbound: 0
                     planned_quantity: 0
                     consumed_quantity: 1
+                    tracks_serials: false
                   - compatibility_id: 211
                     part_product_id: 7731
                     sku: JR-4-GF
@@ -979922,6 +981308,7 @@ paths:
                       inbound: 0
                     planned_quantity: 2
                     consumed_quantity: 0
+                    tracks_serials: false
         '404':
           description: Not Found
           headers:
@@ -979948,10 +981335,12 @@ paths:
       tags:
       - Repairs & Warranty
       summary: List Part Units
-      description: 'Lists the units a part can be entered in on a repair: its stock
-        unit first, then alternate units with a conversion factor (e.g. a chain stocked
-        by the inch that can also be cut by the centimetre). Empty when the part has
-        no units configured; enter its quantity in stock units.
+      description: 'Lists the units a part can be entered in on a repair, plus whether
+        the part is serialised. `units`: the part''s stock unit first, then alternate
+        units with a conversion factor (e.g. a chain stocked by the inch that can
+        also be cut by the centimetre) — empty when the part has no units configured,
+        so enter its quantity in stock units. `tracks_serials`: true when consuming
+        this part requires picking serial numbers.
 
 
         :::info[Required scope: `repairs:read`]
@@ -979962,7 +981351,7 @@ paths:
         :::
 
 
-        Each item: `uom_id`, `code`, `name`, `uom_type`, `is_stock_uom`, `conversion_factor`
+        Each unit: `uom_id`, `code`, `name`, `uom_type`, `is_stock_uom`, `conversion_factor`
         (1 for the stock unit).
 
 
@@ -979989,36 +981378,43 @@ paths:
                 type: object
                 properties:
                   data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        uom_id:
-                          type: integer
-                        code:
-                          type: string
-                        name:
-                          type: string
-                        uom_type:
-                          type: string
-                        is_stock_uom:
-                          type: boolean
-                        conversion_factor:
-                          type: integer
+                    type: object
+                    properties:
+                      units:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            uom_id:
+                              type: integer
+                            code:
+                              type: string
+                            name:
+                              type: string
+                            uom_type:
+                              type: string
+                            is_stock_uom:
+                              type: boolean
+                            conversion_factor:
+                              type: integer
+                      tracks_serials:
+                        type: boolean
                 example:
                   data:
-                  - uom_id: 18
-                    code: in
-                    name: Inch
-                    uom_type: length
-                    is_stock_uom: true
-                    conversion_factor: 1
-                  - uom_id: 21
-                    code: cm
-                    name: Centimetre
-                    uom_type: length
-                    is_stock_uom: false
-                    conversion_factor: 0.393701
+                    units:
+                    - uom_id: 18
+                      code: in
+                      name: Inch
+                      uom_type: length
+                      is_stock_uom: true
+                      conversion_factor: 1
+                    - uom_id: 21
+                      code: cm
+                      name: Centimetre
+                      uom_type: length
+                      is_stock_uom: false
+                      conversion_factor: 0.393701
+                    tracks_serials: false
         '404':
           description: Not Found
           headers:
@@ -980986,7 +982382,7 @@ paths:
 
         Body (multipart/form-data):
 
-        - `file` (file, required) — CSV or TXT, max 5 MB, up to 50,000 rows.
+        - `file` (file, required) — CSV or TXT, max 20 MB, up to 50,000 rows.
 
 
         Files up to 1,000 rows import immediately and return `created`, `updated`
@@ -981004,7 +982400,7 @@ paths:
                 file:
                   type: string
                   description: CSV with headers part_sku, product_sku, category, issue_type,
-                    default_quantity (max 5 MB).
+                    default_quantity (max 20 MB).
                   format: binary
       parameters: []
       responses:
@@ -985506,9 +986902,12 @@ paths:
                           parts_sales_order_number: null
                           sales_credit_id: null
                           vendor_dispatch_id: null
+                          target_product: null
                         risk_signals: []
                         credit_redemption: null
                         credit_issued_amount: null
+                        capitalization_id: null
+                        refurbish: null
                         ai_suggestion: null
                         tag_url: /api/repairs/412/lines/1031/tag.pdf
                         resolved_at: '2026-11-02T18:40:11.000000Z'
@@ -985627,9 +987026,12 @@ paths:
                           parts_sales_order_number: null
                           sales_credit_id: null
                           vendor_dispatch_id: null
+                          target_product: null
                         risk_signals: []
                         credit_redemption: null
                         credit_issued_amount: 148
+                        capitalization_id: null
+                        refurbish: null
                         ai_suggestion: null
                         tag_url: /api/repairs/412/lines/1031/tag.pdf
                         resolved_at: '2026-11-02T18:40:11.000000Z'
@@ -985987,12 +987389,21 @@ paths:
                               vendor_dispatch_id:
                                 type: string
                                 nullable: true
+                              target_product:
+                                type: string
+                                nullable: true
                           risk_signals:
                             type: array
                           credit_redemption:
                             type: string
                             nullable: true
                           credit_issued_amount:
+                            type: string
+                            nullable: true
+                          capitalization_id:
+                            type: string
+                            nullable: true
+                          refurbish:
                             type: string
                             nullable: true
                           ai_suggestion:
@@ -986184,9 +987595,12 @@ paths:
                         parts_sales_order_number: null
                         sales_credit_id: null
                         vendor_dispatch_id: null
+                        target_product: null
                       risk_signals: []
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       tag_url: /api/repairs/412/lines/1031/tag.pdf
                       resolved_at: null
@@ -986714,12 +988128,21 @@ paths:
                               vendor_dispatch_id:
                                 type: string
                                 nullable: true
+                              target_product:
+                                type: string
+                                nullable: true
                           risk_signals:
                             type: array
                           credit_redemption:
                             type: string
                             nullable: true
                           credit_issued_amount:
+                            type: string
+                            nullable: true
+                          capitalization_id:
+                            type: string
+                            nullable: true
+                          refurbish:
                             type: string
                             nullable: true
                           ai_suggestion:
@@ -986906,9 +988329,12 @@ paths:
                         parts_sales_order_number: null
                         sales_credit_id: null
                         vendor_dispatch_id: null
+                        target_product: null
                       risk_signals: []
                       credit_redemption: null
                       credit_issued_amount: null
+                      capitalization_id: null
+                      refurbish: null
                       ai_suggestion: null
                       tag_url: /api/repairs/412/lines/1031/tag.pdf
                       resolved_at: '2026-11-02T18:40:11.000000Z'
