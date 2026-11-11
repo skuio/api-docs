@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-11
-description: This release includes 71 additions.
+description: This release includes 108 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-11-11
 ---
 
-This release includes 71 additions.
+This release includes 108 additions.
 
 <!-- truncate -->
 
@@ -23,14 +23,12 @@ This release includes 71 additions.
 - `GET /api/amazon/{integrationInstance}/awd/inbound-orders/export` — Export AWD Inbound Orders
 - `GET /api/amazon/{integrationInstance}/awd/inbound-orders/summary` — Get AWD Inbound Order Summary
 - `GET /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}` — Get AWD Inbound Order
-- `PUT /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}` — Update AWD Inbound Order
 - `POST /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/cancel` — Cancel AWD Inbound Order
 - `POST /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/confirm` — Confirm AWD Inbound Order
 - `POST /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/labels` — Request AWD Inbound Order Labels
 - `GET /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/labels/download` — Download AWD Inbound Order Labels
 - `POST /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/labels/send` — Send AWD Inbound Order Labels
 - `POST /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/refresh` — Refresh AWD Inbound Order
-- `PUT /api/amazon/{integrationInstance}/awd/inbound-orders/{awd_inbound_order}/transport` — Update AWD Inbound Order Transport
 - `POST /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/eligibility` — Check AWD Plan Eligibility
 - `POST /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/import-purchase-order` — Import Purchase Order Lines to AWD Plan
 - `POST /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/orders` — Create AWD Inbound Order from Plan
@@ -38,6 +36,14 @@ This release includes 71 additions.
 - `DELETE /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/seller-central-handoff` — Clear Seller Central Hand-off
 - `POST /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/seller-central-handoff` — Start Seller Central Hand-off
 - `POST /api/amazon/{integrationInstance}/draft-inbound-plans/{draft_inbound_plan}/awd/split` — Split AWD Plan
+
+### Build to Order
+- `POST /api/manufacturing/build-to-order/backfill` — Start Backorder Backfill
+- `GET /api/manufacturing/build-to-order/backfill/preview` — Get Backorder Backfill Preview
+- `GET /api/manufacturing/build-to-order/exceptions` — List Build-to-Order Exceptions
+- `POST /api/manufacturing/build-to-order/exceptions/{exception}/retry` — Retry Build-to-Order Exception
+- `POST /api/manufacturing/manufacturing-orders/{manufacturingOrder}/build-to-order/dismiss-flag` — Dismiss Manufacturing Order Build-to-Order Flag
+- `POST /api/sales-orders/{salesOrder}/build-to-order/reconcile` — Raise Manufacturing Orders for a Sales Order
 
 ### Ledger (Accounting v2)
 - `POST /api/ledger/cost-validation/analyse` — Analyse Cost Validation Documents
@@ -52,12 +58,10 @@ This release includes 71 additions.
 - `GET /api/ledger/health-check/runs/{id}` — Get Books Health Check Run
 - `POST /api/ledger/health-check/runs/{id}/export` — Export Books Health Check Run
 - `POST /api/ledger/health-check/runs/{id}/resume` — Resume Books Health Check Run
-- `PUT /api/ledger/health-check/settings` — Update Books Health Check Settings
 - `GET /api/ledger/history` — Get History Before Go-Live
 - `GET /api/ledger/history/counts` — List History Counts
 - `POST /api/ledger/history/counts` — Create History Count
 - `DELETE /api/ledger/history/counts/{count}` — Delete History Count
-- `PUT /api/ledger/history/counts/{count}` — Update History Count
 - `GET /api/ledger/history/documents` — List History Documents
 - `POST /api/ledger/history/documents` — Upload History Documents
 - `DELETE /api/ledger/history/documents/{document}` — Delete History Document
@@ -74,7 +78,6 @@ This release includes 71 additions.
 - `POST /api/ledger/history/purchases` — Create History Purchase
 - `POST /api/ledger/history/purchases/assign-warehouse` — Assign Warehouse to History Purchases
 - `DELETE /api/ledger/history/purchases/{purchase}` — Delete History Purchase
-- `PUT /api/ledger/history/purchases/{purchase}` — Update History Purchase
 - `GET /api/ledger/history/tie-out` — Get History Tie-Out
 - `GET /api/ledger/reports/ecommerce-pnl` — Get Ecommerce P&L
 - `POST /api/ledger/reports/ecommerce-pnl/export` — Export Ecommerce P&L Workbook
@@ -91,14 +94,48 @@ This release includes 71 additions.
 - `POST /api/purchase-orders/{purchase_order}/fba-inbound-plan` — Create FBA Inbound Plan from Purchase Order
 - `GET /api/purchase-orders/{purchase_order}/fba-plan-options` — Get FBA Plan Options for Purchase Order
 
+### Purple Dot
+- `GET /api/products/{product}/purple-dot` — Get Product Purple Dot Summary
+- `POST /api/purple-dot/refunds` — Create Refund
+- `GET /api/purple-dot/refunds/preview` — Get Refund Preview
+- `POST /api/purple-dot/refunds/{refund}/resolve` — Resolve Unconfirmed Refund
+- `POST /api/purple-dot/test` — Test Purple Dot Token
+- `GET /api/purple-dot/{instance}/activity` — List Purple Dot Activity
+- `GET /api/purple-dot/{instance}/eta-reviews` — List Purple Dot ETA Reviews
+- `POST /api/purple-dot/{instance}/eta-reviews/{review}/approve` — Approve Purple Dot ETA Review
+- `POST /api/purple-dot/{instance}/eta-reviews/{review}/dismiss` — Dismiss Purple Dot ETA Review
+- `POST /api/purple-dot/{instance}/go-live` — Go Live with Purple Dot
+- `GET /api/purple-dot/{instance}/planned-inventory` — List Purple Dot Planned Inventory
+- `POST /api/purple-dot/{instance}/planned-inventory/push` — Push Purple Dot Planned Inventory
+- `GET /api/purple-dot/{instance}/preorders` — List Purple Dot Pre-orders
+- `POST /api/purple-dot/{instance}/preorders/sync` — Sync Purple Dot Pre-orders
+- `GET /api/purple-dot/{instance}/preorders/{preorder}` — Get Purple Dot Pre-order
+- `POST /api/purple-dot/{instance}/preview` — Preview Purple Dot Connection
+- `GET /api/purple-dot/{instance}/preview/rows` — List Purple Dot Preview Rows
+- `POST /api/purple-dot/{instance}/reconcile` — Reconcile Purple Dot
+- `GET /api/purple-dot/{instance}/refunds` — List Refunds
+- `GET /api/purple-dot/{instance}/release-budgets` — List Purple Dot Release Budgets
+- `POST /api/purple-dot/{instance}/release-budgets/push` — Push Purple Dot Release Budgets
+- `GET /api/purple-dot/{instance}/summary` — Get Purple Dot Summary
+- `GET /api/purple-dot/{instance}/unmatched-exports` — List Unmatched Exports
+- `POST /api/purple-dot/{instance}/unmatched-exports/{row}/dismiss` — Dismiss Unmatched Export
+- `POST /api/purple-dot/{instance}/unmatched-exports/{row}/match` — Match Unmatched Export
+- `POST /api/purple-dot/{instance}/variant-mappings` — Map Purple Dot Variant to Product
+- `GET /api/purple-dot/{instance}/waitlists` — List Purple Dot Waitlists
+- `POST /api/purple-dot/{instance}/waitlists/{waitlist}/state` — Set Purple Dot Waitlist State
+
 ### Shopify
 - `GET /api/shopify/{integrationInstance}/optional-scopes` — Get Optional Scopes
-- `PUT /api/shopify/{integrationInstance}/optional-scopes/{scope}` — Record Optional Scope Step
 
 ### SPS Commerce
 - `GET /api/spscommerce/{integrationInstance}/documents/{document}/download` — Download EDI Document
 
 ### TikTok Posting
 - `GET /api/tiktok-posting/product-photos` — List TikTok Product Photos
+
+### Trackstar
+- `GET /api/trackstar/integration-instances/{integration_instance}/order-types` — Get Order Types
+
+_…plus 8 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
