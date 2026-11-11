@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-11
-description: This release includes 70 additions.
+description: This release includes 71 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-11-11
 ---
 
-This release includes 70 additions.
+This release includes 71 additions.
 
 <!-- truncate -->
 
@@ -97,5 +97,8 @@ This release includes 70 additions.
 
 ### SPS Commerce
 - `GET /api/spscommerce/{integrationInstance}/documents/{document}/download` — Download EDI Document
+
+### TikTok Posting
+- `GET /api/tiktok-posting/product-photos` — List TikTok Product Photos
 
 _Spec version 1.0.0 → 1.0.0._
