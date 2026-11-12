@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-12
-description: This release includes 23 additions, 2 changes.
+description: This release includes 30 additions, 2 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-11-12
 ---
 
-This release includes 23 additions, 2 changes.
+This release includes 30 additions, 2 changes.
 
 <!-- truncate -->
 
@@ -36,6 +36,15 @@ This release includes 23 additions, 2 changes.
 
 ### Integration Instances
 - `GET /api/integration-instances/{integration_instance}/deletion-impact` — Get Integration Instance Deletion Impact
+
+### Make to Order
+- `GET /api/manufacturing/make-to-order` — List Make to Order Lines
+- `POST /api/manufacturing/make-to-order/dismiss` — Dismiss Make to Order Lines
+- `POST /api/manufacturing/make-to-order/exclude-products` — Exclude Products from Make to Order
+- `GET /api/manufacturing/make-to-order/filter-options` — List Make to Order Filter Options
+- `POST /api/manufacturing/make-to-order/make` — Make Sales Order Lines
+- `POST /api/manufacturing/make-to-order/restore` — Restore Make to Order Lines
+- `GET /api/manufacturing/make-to-order/summary` — Get Make to Order Summary
 
 ### Manufacturing Orders
 - `POST /api/manufacturing/manufacturing-orders/{manufacturingOrder}/apply-line-options` — Apply Line Options to Manufacturing Order
