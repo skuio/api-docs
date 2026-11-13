@@ -7,16 +7,19 @@ slug: /guides/dates-and-timezones
 
 # Dates & Timezones
 
-Two kinds of temporal values flow through the API, with different timezone rules. Getting this wrong is the most common source of off-by-one-day bugs in integrations.
+Three kinds of temporal values flow through the API, each with its own timezone rule. Getting this wrong is the most common source of off-by-one-day bugs in integrations.
 
-## The two rules
+## The three kinds
 
 | Kind | Example fields | Timezone | Wire format |
 |------|----------------|----------|-------------|
-| **Date-time** | `created_at`, `updated_at`, `shipped_at`, `occurred_at` | **UTC**, always | `2026-07-06T18:04:11.000000Z` (ISO 8601) |
-| **Date-only** | `due_date`, `order_date`, `expected_date` | **Tenant's application timezone** — represents a whole local day | `2026-07-06` |
+| **Date-time** | `created_at`, `updated_at`, `order_date`, `shipped_at`, `occurred_at` | **UTC**, always | `2026-07-06T18:04:11.000000Z` (ISO 8601) |
+| **Date-only** | `due_date`, `etd`, `payment_due_date`, `promised_ship_by`, `discontinue_on` | None: a whole calendar day | `2026-07-06`. Some endpoints and webhook payloads send the same day as midnight UTC (`2026-07-06T00:00:00Z`). |
+| **Calendar day stored as a date-time** | `ship_by_date`, `deliver_by_date`, `hold_until_date`, `purchase_order_date`, `estimated_delivery_date`, `adjustment_date` | **Tenant's application timezone**: a whole local day, stored as the UTC instant of that day's local midnight | `2026-07-06T07:00:00.000000Z` (6 July in `America/Los_Angeles`) |
 
-Every tenant has an application timezone configured in settings (e.g. `America/Los_Angeles`). The API itself always speaks UTC for datetimes; the tenant timezone matters for date-only values and for how datetime *filters* are interpreted.
+Every tenant has an application timezone configured in settings (e.g. `America/Los_Angeles`). Read it with `GET /api/v2/settings/general` (field `timezone`; needs the `settings:read` scope). The API itself always speaks UTC for date-times; the tenant timezone matters for calendar-day values and for how date-time *filters* are interpreted.
+
+`order_date` is the moment the order was placed, so it is a **date-time**, not a date-only value. Orders from sales channels carry the channel's order time, and an order created through the API with today's date is stamped with the current time.
 
 ## Reading datetimes
 
@@ -30,11 +33,20 @@ Datetimes in responses are UTC. Convert to your display timezone yourself:
 }
 ```
 
-`created_at` above is 18:04 UTC = 11:04 in Los Angeles. `due_date` is simply "August 1st" in the tenant's local calendar — do **not** timezone-shift it, or you'll move it to July 31st.
+`created_at` above is 18:04 UTC = 11:04 in Los Angeles. `due_date` is simply "August 1st" — do **not** timezone-shift it, or you'll move it to July 31st. If a date-only field arrives as `2026-08-01T00:00:00Z`, take the first ten characters (`2026-08-01`); never convert it.
+
+### Reading calendar days stored as date-times
+
+Fields such as `ship_by_date` hold a calendar day, but the API returns them as a UTC date-time: the instant the day starts in the tenant's timezone. To get the day the SKU.io app shows:
+
+1. If the value is exactly midnight UTC (`…T00:00:00Z`), the day is that UTC date. Older records and values written as a bare date are stored this way.
+2. Otherwise, convert the value to the tenant's timezone and take the date. For example, `2026-09-14T18:30:00Z` is **15 September** in `Asia/Kolkata`.
+
+Formatting the value in UTC instead would show the day before for tenants east of UTC.
 
 ## Writing datetimes
 
-Send datetimes in UTC. `2026-07-06T18:04:11Z` and `2026-07-06 18:04:11` are both accepted and treated as UTC. Send date-only values as plain `YYYY-MM-DD` with no conversion.
+Send date-times in UTC. `2026-07-06T18:04:11Z` and `2026-07-06 18:04:11` are both accepted and treated as UTC. Send date-only values, and calendar days such as `ship_by_date`, as plain `YYYY-MM-DD` with no conversion; reading them back with the rules above returns the same day.
 
 ## Filtering by date
 
@@ -59,6 +71,8 @@ This means filter results always match what a user sees in the SKU.io UI, even t
 ## Checklist
 
 - Parse anything ending in `Z` as UTC; never assume server-local time.
-- Never apply a timezone shift to a `YYYY-MM-DD` field.
+- Never apply a timezone shift to a date-only field, even when it arrives as `…T00:00:00Z`.
+- For calendar days stored as date-times (`ship_by_date`, `purchase_order_date`, …), use the tenant's timezone, not UTC and not your own.
+- `order_date` is a date-time: treat it like `created_at`.
 - When filtering "today's orders", just pass today's local date — the API handles the UTC boundary math.
 - Store UTC in your own system and convert at the edges; it's the same rule this API follows.

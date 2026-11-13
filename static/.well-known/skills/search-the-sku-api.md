@@ -28,7 +28,7 @@ SKU.io exposes ~3,200 operations across ~165 domains. Don't guess a path — res
 
 - Lists: `?page=1&per_page=25` (default 10); Laravel envelope `{ data, current_page, last_page, per_page, total }`.
 - Filter: `?filter[status]=open&filter[search]=acme`. Sort: `?sort=-created_at`.
-- Datetimes are UTC (ISO-8601); date-only fields are the tenant's app timezone as `YYYY-MM-DD`.
+- Date-times are UTC (ISO-8601), including `order_date`. Date-only fields are a calendar day `YYYY-MM-DD` (take the date if sent as `…T00:00:00Z`). Calendar days stored as date-times (`ship_by_date`, `purchase_order_date`, …) are read in the tenant's timezone — see the Dates & Timezones guide.
 - Validation failures → 422 `{ message, errors: { field: [messages] } }`.
 
 ## See also
