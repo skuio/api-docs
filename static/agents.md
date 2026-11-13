@@ -41,8 +41,11 @@ management / ERP platform for multichannel ecommerce brands).
   "per_page": 25, "total": M }`.
 - Filtering: `?filter[status]=open&filter[search]=acme` (Spatie QueryBuilder).
 - Sorting: `?sort=-created_at` (prefix `-` for descending).
-- Datetimes are UTC in and out (ISO-8601); date-only fields are in the
-  tenant's application timezone as `YYYY-MM-DD`.
+- Date-times are UTC in and out (ISO-8601); `order_date` is a date-time.
+  Date-only fields (`due_date`, `etd`, …) are a calendar day, `YYYY-MM-DD`
+  (sometimes sent as `…T00:00:00Z`: take the date, never convert). Calendar
+  days stored as date-times (`ship_by_date`, `purchase_order_date`, …) are
+  read in the tenant's timezone (`GET /api/v2/settings/general`).
 - Validation failures return 422 with `{ "message": ..., "errors": { field:
   [messages] } }`.
 - Platform rate limit: 1,000 requests/min per token/IP; individual tokens can
