@@ -4340,7 +4340,12 @@ paths:
         **mirror_sync_controls** (Xero connections only; empty object otherwise):
         per-entity toggles for the nightly mirror downloads FROM Xero (`bank_transactions`,
         `payments`). Disabled by default — the scheduled download runs only for enabled
-        entities. Manual downloads via the download endpoints work regardless.'
+        entities. Manual downloads via the download endpoints work regardless.
+
+
+        `inventory_journal_types` lists every inventory, cost of goods sold and Amazon
+        FBA/AWD transaction type, revaluations included. Send each of them with `enabled:
+        true` to Update Sync Settings to switch on all inventory journals at once.'
       parameters: []
       responses:
         '200':
@@ -4429,6 +4434,10 @@ paths:
                                 type: boolean
                               label:
                                 type: string
+                      inventory_journal_types:
+                        type: array
+                        items:
+                          type: string
                 example:
                   data:
                     integration_instance_id: 5
@@ -4461,6 +4470,38 @@ paths:
                       payments:
                         enabled: true
                         label: Payments (download from Xero)
+                    inventory_journal_types:
+                    - sales_order_fulfillment
+                    - purchase_order_receipt
+                    - inventory_adjustment
+                    - inventory_revaluation
+                    - inventory_assembly
+                    - inventory_debt_settlement
+                    - inventory_debt_opening
+                    - customer_return
+                    - stock_take
+                    - manufacturing_order
+                    - warehouse_transfer_shipment
+                    - warehouse_transfer_receipt
+                    - warehouse_transfer_arrival
+                    - receiving_discrepancy
+                    - fba_adjustments
+                    - fba_customer_returns
+                    - fba_receipts
+                    - fba_shipments
+                    - fba_vendor_returns
+                    - fba_warehouse_transfers
+                    - fba_fc_transfer_stale_loss
+                    - fba_reimbursement_cogs
+                    - fba_revaluation
+                    - awd_received
+                    - awd_departed
+                    - awd_adjustment
+                    - awd_revaluation
+                    - amazon_ledger_summary_discrepancy
+                    - amazon_inbound_shortage
+                    - amazon_pending_inbound_shipment
+                    - fifo_rounding
         '429': *id001
         '401': *id002
         '403': *id005
@@ -47306,7 +47347,12 @@ paths:
         warns when QuickBooks Online or Xero still tracks inventory itself (QuickBooks
         items of type Inventory, Xero items tracked as inventory); its payload lists
         the items and `link.url` points to the guide for switching tracking off. Status
-        is `pass`, `fail` (blocking), `warn` (warning) or `skipped` (not applicable).'
+        is `pass`, `fail` (blocking), `warn` (warning) or `skipped` (not applicable).
+
+
+        **Opening-stock lock:** `lock_opening_stock_after_go_live` (boolean) is the
+        account setting; `opening_stock_locked` (boolean) is true when that setting
+        is on AND the books are live, i.e. when initial counts can no longer change.'
       parameters: []
       responses:
         '200':
@@ -47424,6 +47470,10 @@ paths:
                             type: boolean
                           stale_po_days:
                             type: integer
+                          lock_opening_stock_after_go_live:
+                            type: boolean
+                          opening_stock_locked:
+                            type: boolean
                 example:
                   data:
                     readiness:
@@ -47491,6 +47541,8 @@ paths:
                       first_go_live_pending: true
                       can_override: true
                       stale_po_days: 90
+                      lock_opening_stock_after_go_live: true
+                      opening_stock_locked: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -47727,8 +47779,9 @@ paths:
       tags:
       - Ledger (Accounting v2)
       summary: Update Go-Live Readiness Settings
-      description: 'Set how many days old an open, unreceived purchase order must
-        be to count as stale.
+      description: 'Save the go-live readiness settings: how many days old an open,
+        unreceived purchase order must be to count as stale, and whether opening stock
+        locks once the books are live.
 
 
         :::info[Required scope: `accounting:write`]
@@ -47743,9 +47796,14 @@ paths:
         (403 without it).
 
 
-        **Request body:**
+        **Request body** (send either field, or both):
 
-        - `stale_po_days` (integer, required): 1 to 3650'
+        - `stale_po_days` (integer, required without `lock_opening_stock_after_go_live`):
+        1 to 3650
+
+        - `lock_opening_stock_after_go_live` (boolean, required without `stale_po_days`):
+        when true, once the books are live every change to an initial count (opening
+        stock) is refused, so later changes go through adjustments and stock takes.'
       requestBody:
         content:
           application/json:
@@ -47754,8 +47812,11 @@ paths:
               properties:
                 stale_po_days:
                   type: integer
+                lock_opening_stock_after_go_live:
+                  type: boolean
               example:
                 stale_po_days: 90
+                lock_opening_stock_after_go_live: true
       parameters: []
       responses:
         '200':
@@ -47873,6 +47934,10 @@ paths:
                             type: boolean
                           stale_po_days:
                             type: integer
+                          lock_opening_stock_after_go_live:
+                            type: boolean
+                          opening_stock_locked:
+                            type: boolean
                 example:
                   data:
                     readiness:
@@ -47940,6 +48005,8 @@ paths:
                       first_go_live_pending: true
                       can_override: true
                       stale_po_days: 90
+                      lock_opening_stock_after_go_live: true
+                      opening_stock_locked: false
         '422':
           description: Unprocessable Entity
           headers:
@@ -65947,9 +66014,12 @@ paths:
 
         **Shape:** `data.rows[]` is one row per calendar month with activity, most-recent
         first. Each row carries `sku_entry_count` / `sku_total_debit` / `sku_total_credit`
-        (the matched + SKU-only entries), `provider_document_count` / `provider_total`
-        (the matched remotes + provider-only documents), and the deltas `count_variance`
-        (sku − provider count) and `amount_variance` (sku debit − provider total,
+        (the matched + SKU-only entries), `sku_document_total` (the net document value
+        those entries book in the provider — below the gross debits when a document
+        moves the same account both ways, such as refund lines inside a marketplace
+        payout invoice), `provider_document_count` / `provider_total` (the matched
+        remotes + provider-only documents), and the deltas `count_variance` (sku −
+        provider count) and `amount_variance` (`sku_document_total` − `provider_total`,
         4dp). `has_variance` is true when the counts differ or the amount delta exceeds
         the configured tolerance (`ledger.sync.dedup.amount_tolerance`, default 0.01).
 
@@ -66004,6 +66074,8 @@ paths:
                               type: string
                             sku_total_credit:
                               type: string
+                            sku_document_total:
+                              type: string
                             provider_document_count:
                               type: integer
                             provider_total:
@@ -66027,6 +66099,8 @@ paths:
                             type: string
                           sku_total_credit:
                             type: string
+                          sku_document_total:
+                            type: string
                           provider_document_count:
                             type: integer
                           provider_total:
@@ -66049,6 +66123,7 @@ paths:
                       sku_entry_count: 12
                       sku_total_debit: '4250.0000'
                       sku_total_credit: '4250.0000'
+                      sku_document_total: '4250.0000'
                       provider_document_count: 12
                       provider_total: '4250.0000'
                       count_variance: 0
@@ -66059,6 +66134,7 @@ paths:
                       sku_entry_count: 9
                       sku_total_debit: '3100.0000'
                       sku_total_credit: '3100.0000'
+                      sku_document_total: '3100.0000'
                       provider_document_count: 8
                       provider_total: '2850.0000'
                       count_variance: 1
@@ -66070,6 +66146,7 @@ paths:
                       sku_entry_count: 21
                       sku_total_debit: '7350.0000'
                       sku_total_credit: '7350.0000'
+                      sku_document_total: '7350.0000'
                       provider_document_count: 20
                       provider_total: '7100.0000'
                       count_variance: 1
@@ -69051,9 +69128,14 @@ paths:
         from the provider) and `provider_source` (`xero_trial_balance` = captured
         live from the provider''s Trial Balance; `xero_journals` = rebuilt from the
         synced journal cache), and `warehouses[]` (`warehouse_id`, `warehouse_name`,
-        `is_fba`, `sku_value`, `sku_quantity`). Each account also carries `opening_adjustments[]`
-        — the standing reconciling adjustments dated after the opening that cover
-        its gap (reversals already netted out), each with `journal_entry_id`, `effective_date`
+        `is_fba`, `sku_value`, `sku_quantity`). When the opening day is on or before
+        the period lock date, `sku_value` is the value the account was locked at (the
+        same value the daily series keeps for that day) and `repriced_since_lock`
+        says how far the live valuation has moved since (for example a bill corrected
+        after the lock that re-priced purchase clearing); it is null when the opening
+        day is not locked. Each account also carries `opening_adjustments[]` — the
+        standing reconciling adjustments dated after the opening that cover its gap
+        (reversals already netted out), each with `journal_entry_id`, `effective_date`
         and signed `amount` — and their sum `opening_adjustment_net`. Each account
         also carries `pending_ledger` (unsynced activity dated on/before the opening
         that WILL sync — self-resolving lag) and `excluded_ledger` (activity that
@@ -69137,6 +69219,9 @@ paths:
                               type: string
                             provider_source:
                               type: string
+                            repriced_since_lock:
+                              type: string
+                              nullable: true
                             warehouses:
                               type: array
                               items:
@@ -69176,6 +69261,7 @@ paths:
                       point_as_of_date: '2024-04-22'
                       provider_captured_at: '2026-08-27T10:15:00+00:00'
                       provider_source: xero_journals
+                      repriced_since_lock: null
                       warehouses:
                       - warehouse_id: 29
                         warehouse_name: FBA US (AMZ)
@@ -69198,6 +69284,7 @@ paths:
                       point_as_of_date: '2024-04-22'
                       provider_captured_at: '2026-08-27T10:15:00+00:00'
                       provider_source: xero_journals
+                      repriced_since_lock: null
                       warehouses:
                       - warehouse_id: 4
                         warehouse_name: ShipMyOrders Warehouse
@@ -69485,7 +69572,25 @@ paths:
 
         Set net_pending=1 for the ongoing (residual) true-up: it targets divergence
         + pending so the journal will not over-correct once awaiting-sync postings
-        land.'
+        land.
+
+
+        **Adjustment cap (`materiality`):** when there is a new journal to post and
+        the inventory adjustment cap is on, `materiality` reports the month of `effective_date`
+        with this journal included: `adjustments_total` (gross of the business''s
+        own true-ups on the inventory accounts: adjustments, stock-take variances
+        and reconciliation journals, each document netted then made absolute; FBA/AWD
+        adjustments only when `close_inventory_adjustment_cap_includes_marketplace`
+        is on), `inventory_value` (SKU''s ledger balance of the inventory accounts
+        at month end), `percent` (null when that value is zero or negative), `cap_percent`,
+        `cap_amount`, `over_cap`, `blocking` (the tenant enforces the cap, so posting
+        past it needs the accounting.period.override permission), `marketplace_amount`
+        (gross of the month''s Amazon FBA/AWD adjustments, counted or not), `includes_marketplace`
+        (whether they count toward the cap), `pending_amount` (true-ups not journaled
+        yet: queued ones plus this journal), `proposed_amount` (this journal''s own
+        effect on inventory value; 0 when both legs, or neither, are inventory accounts)
+        and `breakdown` rows `{key, label, amount, documents}`. Null when the cap
+        is off or nothing new would post.'
       parameters:
       - name: connection_id
         in: query
@@ -69578,6 +69683,50 @@ paths:
                               type: number
                       warehouses:
                         type: array
+                      materiality:
+                        type: object
+                        properties:
+                          period_start:
+                            type: string
+                          period_end:
+                            type: string
+                          cap_percent:
+                            type: integer
+                          adjustments_total:
+                            type: number
+                          inventory_value:
+                            type: number
+                          percent:
+                            type: number
+                          cap_amount:
+                            type: number
+                          over_cap:
+                            type: boolean
+                          blocking:
+                            type: boolean
+                          pending_amount:
+                            type: number
+                          breakdown:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                key:
+                                  type: string
+                                label:
+                                  type: string
+                                amount:
+                                  type: number
+                                documents:
+                                  type: integer
+                                counted:
+                                  type: boolean
+                          proposed_amount:
+                            type: number
+                          marketplace_amount:
+                            type: integer
+                          includes_marketplace:
+                            type: boolean
                 example:
                   data:
                     nominal_code_id: 87
@@ -69612,6 +69761,31 @@ paths:
                       direction: debit
                       amount: 104005.26
                     warehouses: []
+                    materiality:
+                      period_start: '2024-04-01'
+                      period_end: '2024-04-30'
+                      cap_percent: 2
+                      adjustments_total: 104412.76
+                      inventory_value: 1278622.78
+                      percent: 8.17
+                      cap_amount: 25572.46
+                      over_cap: true
+                      blocking: false
+                      pending_amount: 104005.26
+                      breakdown:
+                      - key: reconciliation_true_up
+                        label: Reconciliation true-ups
+                        amount: 104005.26
+                        documents: 1
+                        counted: true
+                      - key: inventory_adjustment
+                        label: Inventory adjustments
+                        amount: 407.5
+                        documents: 3
+                        counted: true
+                      proposed_amount: 104005.26
+                      marketplace_amount: 0
+                      includes_marketplace: false
         '429': *id001
         '401': *id002
         '403': *id005
@@ -69797,7 +69971,17 @@ paths:
 
 
         Pass net_pending=true for the ongoing true-up (targets the residual = divergence
-        + pending). The amount and direction are always recomputed server-side.'
+        + pending). The amount and direction are always recomputed server-side.
+
+
+        **Adjustment cap:** when the tenant enforces the inventory adjustment cap
+        (`close_block_on_inventory_adjustment_cap`) and this journal would take its
+        month past `close_inventory_adjustment_cap_percent` of inventory value, the
+        post is refused 403 unless the caller holds the accounting.period.override
+        permission. A journal that moves no inventory value is never refused for the
+        cap. Posts are taken one at a time; one that cannot start within 10 seconds
+        returns 409. With the cap as a warning only, nothing is refused; the preview''s
+        `materiality` shows where the month stands.'
       requestBody:
         content:
           application/json:
@@ -69848,6 +70032,41 @@ paths:
                   data:
                     adjustment_id: 12
                   message: Adjusting journal posted — it will sync to the provider.
+        '403':
+          description: Forbidden
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: This true-up takes 2024-04-01 to 2024-04-30 to 8.17% of
+                    inventory value, over the 2.00% adjustment cap. Posting it needs
+                    the Period Override permission.
+        '409':
+          description: Conflict
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Another adjusting journal is being posted right now. Try
+                    again in a moment.
         '422':
           description: Unprocessable Entity
           headers:
@@ -69867,7 +70086,6 @@ paths:
                     on the SKU side instead.
         '429': *id001
         '401': *id002
-        '403': *id005
       x-required-scope: accounting:write
       operationId: post-api-ledger-reconciliation-inventory-adjustment
     delete:
@@ -98181,6 +98399,15 @@ paths:
         credit lines show each product''s barcode.
 
 
+        **Slug `sales-credit`** (returns) includes `blind_receiving_enabled` (boolean,
+        default `false`) and `date_credits_on_return_receipt` (boolean, default `false`)
+        — when on, a new credit on a sales order whose return was already received
+        and not yet credited starts on the day the return was received, so the credit
+        and the restock land in the same month — and `returns_match_grace_days` (integer,
+        default `30`) — days the month-end close''s "Returns matched to credits" check
+        waits for a return''s credit or its receipt before it warns.
+
+
         Authentication: Requires Bearer token.'
       parameters:
       - name: slug
@@ -98264,6 +98491,21 @@ paths:
         order before the "Stuck, Never Dispatched" dashboard tile counts it as stranded.
         `0` disables the floor; values outside 0-90 are rejected with 422.
 
+
+
+        **Slug `sales-credit`** (returns) accepts:
+
+        - `blind_receiving_enabled` (boolean) — allow return receipts linked to no
+        RMA or sales order.
+
+        - `date_credits_on_return_receipt` (boolean) — start a new credit on the date
+        its return was received instead of today. Non-boolean values are rejected
+        with 422.
+
+        - `returns_match_grace_days` (integer, 1-365) — days the month-end close waits
+        for a return''s credit or its receipt before "Returns matched to credits"
+        warns. A credit and a receipt on the same RMA are matched whichever months
+        they fall in. Values outside 1-365 are rejected with 422.
 
 
         **Slug `packing-slip-rules`** accepts (every field optional; an empty list
@@ -98370,6 +98612,14 @@ paths:
 
         - `payment_processor` (string: `square`|`stripe`) and `square_location_id`
         (string|null, max 64).
+
+        - `card_payment_type_mode` (string: `single`|`per_processor`|`per_processor_and_location`,
+        default `single`) — which payment type register card sales are recorded under:
+        one `Card` type, one per processor (`Card – Square`, `Card – Stripe`), or
+        one per processor and register location (`Card – Square – Downtown`). Each
+        type maps to its own clearing account; card refunds use the sale''s type.
+        Saving creates the types the new mode records under; sales already recorded
+        keep their type. Any other value fails with 422.
 
 
         **Serial format.** For `inventory-tracking`, `default_serial_format` must
@@ -304355,7 +304605,20 @@ paths:
         - `sales_channel_store_updated` (object): `from` and `to`, each `{id, name}`;
         `from.id` and `from.name` are null when the sales channel had no store.
 
-        Both keys are absent when the sales channel did not move.'
+        Both keys are absent when the sales channel did not move.
+
+
+        hold_stock_for_pending_orders (optional, boolean, default false): hold stock
+        for this store''s Pending merchant-fulfilled orders. Amazon withholds the
+        buyer''s address while an order is Pending, so no sales order exists yet;
+        with this on, each Pending order line holds its units (an automatic inventory
+        hold with reason `marketplace_pending_order`) at the warehouse it would ship
+        from, which lowers the stock published to every channel. A hold is released
+        when the order becomes Unshipped (its sales order then allocates the stock)
+        or is cancelled, and expires 21 days after the order was placed. Saving the
+        setting applies it straight away: turning it on holds the current Pending
+        orders, turning it off releases every hold the store placed. FBA orders are
+        never held.'
       requestBody:
         content:
           application/json:
@@ -304386,6 +304649,8 @@ paths:
                   type: boolean
                 start_date:
                   type: string
+                hold_stock_for_pending_orders:
+                  type: boolean
                 reconcile_ledger:
                   type: boolean
                 pricing:
@@ -304443,6 +304708,7 @@ paths:
                 sync_sales_order_invoices_to_accounting: true
                 sync_sales_credit_to_accounting: true
                 start_date: '2026-01-01'
+                hold_stock_for_pending_orders: true
                 reconcile_ledger: true
                 pricing:
                   masterOfPrice:
@@ -304511,6 +304777,7 @@ paths:
                         payment_method_mappings:
                         - amazon_method: Other
                           payment_type_id: 7
+                        hold_stock_for_pending_orders: true
                       is_automatic_sync_enabled: true
                       sales_channel:
                         id: 9
@@ -304551,6 +304818,7 @@ paths:
                         payment_method_mappings:
                         - amazon_method: Other
                           payment_type_id: 7
+                        hold_stock_for_pending_orders: true
                       is_automatic_sync_enabled: true
                       sales_channel:
                         id: 9
@@ -748908,6 +749176,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -749043,6 +749314,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -749253,6 +749525,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -749387,6 +749662,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -749557,6 +749833,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -749695,6 +749974,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -749787,7 +750067,13 @@ paths:
 
 
         Authentication: Requires Bearer token. Available for shipments of SPS Commerce
-        EDI orders; other shipments return 404. Requires the sales_orders.update permission.'
+        EDI orders; other shipments return 404. Requires the sales_orders.update permission.
+        transportation_method_code (optional, nullable): how the shipment travels,
+        sent on the ship notice as its carrier transportation method — one of A (air),
+        C (consolidation), D (parcel post), H (customer pickup), L (contract carrier),
+        M (motor, common carrier), O (ocean), R (rail), U (private parcel service),
+        X (intermodal), in any case; when empty, the ship notice uses the method the
+        retailer''s purchase order named.'
       requestBody:
         content:
           application/json:
@@ -749808,6 +750094,8 @@ paths:
                   type: string
                 shipment_status_code:
                   type: string
+                transportation_method_code:
+                  type: string
               example:
                 bill_of_lading_number: BOL-0001842
                 carrier_pro_number: PRO-5531907
@@ -749816,6 +750104,7 @@ paths:
                 ship_notice_number: NRD-LOAD-88912
                 routing_sequence_code: B
                 shipment_status_code: CL
+                transportation_method_code: M
       parameters:
       - name: salesOrderFulfillment
         in: path
@@ -749907,6 +750196,8 @@ paths:
                           routing_sequence_code:
                             type: string
                           shipment_status_code:
+                            type: string
+                          transportation_method_code:
                             type: string
                       lines:
                         type: array
@@ -750044,6 +750335,7 @@ paths:
                       ship_notice_number: NRD-LOAD-88912
                       routing_sequence_code: B
                       shipment_status_code: CL
+                      transportation_method_code: M
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -750796,6 +751088,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -750930,6 +751225,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -751090,6 +751386,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -751224,6 +751523,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -751386,6 +751686,9 @@ paths:
                           shipment_status_code:
                             type: string
                             nullable: true
+                          transportation_method_code:
+                            type: string
+                            nullable: true
                       lines:
                         type: array
                         items:
@@ -751522,6 +751825,7 @@ paths:
                       ship_notice_number: null
                       routing_sequence_code: null
                       shipment_status_code: null
+                      transportation_method_code: null
                     lines:
                     - sales_order_fulfillment_line_id: 31
                       product_id: 7
@@ -835348,7 +835652,15 @@ paths:
 
 
         Available sorts: id, quantity, released_quantity, created_at, expires_at,
-        released_at (default: -created_at)'
+        released_at (default: -created_at)
+
+
+        **Automatic holds**: a hold SKU.io created for a Pending marketplace order
+        (reason `marketplace_pending_order`) has `is_system: true` and names its source:
+        `source_type` / `source_id` (the order line), `source_type_label` ("Amazon
+        Order"), `source_reference` (the Amazon order number) and `source_route` (the
+        order''s page in the app). Manual holds return `is_system: false` and null
+        source fields.'
       parameters:
       - name: page
         in: query
@@ -835407,6 +835719,23 @@ paths:
                           type: string
                         notes:
                           type: string
+                        is_system:
+                          type: boolean
+                        source_type:
+                          type: string
+                          nullable: true
+                        source_id:
+                          type: string
+                          nullable: true
+                        source_type_label:
+                          type: string
+                          nullable: true
+                        source_reference:
+                          type: string
+                          nullable: true
+                        source_route:
+                          type: string
+                          nullable: true
                         expires_at:
                           type: string
                         released_at:
@@ -835458,6 +835787,12 @@ paths:
                     reason: quality_hold
                     reason_label: Quality Hold
                     notes: Pending QA inspection
+                    is_system: false
+                    source_type: null
+                    source_id: null
+                    source_type_label: null
+                    source_reference: null
+                    source_route: null
                     expires_at: '2024-02-01T00:00:00.000000Z'
                     released_at: null
                     released_by: null
@@ -835467,12 +835802,43 @@ paths:
                       name: Jane Smith
                     created_at: '2024-01-15T10:00:00.000000Z'
                     updated_at: '2024-01-15T10:00:00.000000Z'
+                  - id: 2
+                    product_id: 42
+                    product:
+                      id: 42
+                      sku: WIDGET-001
+                      name: Premium Widget
+                    warehouse_id: 1
+                    warehouse:
+                      id: 1
+                      name: Main Warehouse
+                    quantity: 3
+                    released_quantity: 0
+                    reason: marketplace_pending_order
+                    reason_label: Marketplace Pending Order
+                    notes: Amazon order 112-4459813-2207451 is Pending. Released automatically
+                      when it becomes Unshipped or is cancelled.
+                    is_system: true
+                    source_type: Modules\Amazon\Entities\AmazonOrderItem
+                    source_id: 88412
+                    source_type_label: Amazon Order
+                    source_reference: 112-4459813-2207451
+                    source_route: /integrations/amazon/orders/50231?integration_instance_id=4
+                    expires_at: '2024-02-05T14:12:00.000000Z'
+                    released_at: null
+                    released_by: null
+                    release_reason: null
+                    created_by:
+                      id: 1
+                      name: Account Owner
+                    created_at: '2024-01-15T10:00:00.000000Z'
+                    updated_at: '2024-01-15T10:00:00.000000Z'
                   current_page: 1
                   last_page: 1
                   per_page: 10
-                  total: 1
+                  total: 2
                   from: 1
-                  to: 1
+                  to: 2
         '429': *id001
         '401': *id002
         '403': *id005
@@ -835585,6 +835951,23 @@ paths:
                         type: string
                       notes:
                         type: string
+                      is_system:
+                        type: boolean
+                      source_type:
+                        type: string
+                        nullable: true
+                      source_id:
+                        type: string
+                        nullable: true
+                      source_type_label:
+                        type: string
+                        nullable: true
+                      source_reference:
+                        type: string
+                        nullable: true
+                      source_route:
+                        type: string
+                        nullable: true
                       expires_at:
                         type: string
                       released_at:
@@ -835620,6 +836003,12 @@ paths:
                     reason: quality_hold
                     reason_label: Quality Hold
                     notes: Pending QA inspection
+                    is_system: false
+                    source_type: null
+                    source_id: null
+                    source_type_label: null
+                    source_reference: null
+                    source_route: null
                     expires_at: '2024-02-01T00:00:00.000000Z'
                     released_at: null
                     created_by:
@@ -835761,7 +836150,15 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Automatic holds**: a hold SKU.io created for a Pending marketplace order
+        (reason `marketplace_pending_order`) has `is_system: true` and names its source:
+        `source_type` / `source_id` (the order line), `source_type_label` ("Amazon
+        Order"), `source_reference` (the Amazon order number) and `source_route` (the
+        order''s page in the app). Manual holds return `is_system: false` and null
+        source fields.'
       parameters:
       - name: reservation
         in: path
@@ -835813,6 +836210,23 @@ paths:
                         type: string
                       notes:
                         type: string
+                      is_system:
+                        type: boolean
+                      source_type:
+                        type: string
+                        nullable: true
+                      source_id:
+                        type: string
+                        nullable: true
+                      source_type_label:
+                        type: string
+                        nullable: true
+                      source_reference:
+                        type: string
+                        nullable: true
+                      source_route:
+                        type: string
+                        nullable: true
                       expires_at:
                         type: string
                       released_at:
@@ -835852,6 +836266,12 @@ paths:
                     reason: quality_hold
                     reason_label: Quality Hold
                     notes: Pending QA inspection
+                    is_system: false
+                    source_type: null
+                    source_id: null
+                    source_type_label: null
+                    source_reference: null
+                    source_route: null
                     expires_at: '2024-02-01T00:00:00.000000Z'
                     released_at: null
                     released_by: null
@@ -835894,7 +836314,11 @@ paths:
         - expires_at (nullable, date, must be future): New expiration date
 
 
-        **Requires permission:** `inventory.adjust`'
+        **Requires permission:** `inventory.adjust`
+
+
+        Automatic holds (`is_system: true`) cannot be edited and return 422 — release
+        them instead.'
       requestBody:
         content:
           application/json:
@@ -835940,6 +836364,23 @@ paths:
                         type: string
                       notes:
                         type: string
+                      is_system:
+                        type: boolean
+                      source_type:
+                        type: string
+                        nullable: true
+                      source_id:
+                        type: string
+                        nullable: true
+                      source_type_label:
+                        type: string
+                        nullable: true
+                      source_reference:
+                        type: string
+                        nullable: true
+                      source_route:
+                        type: string
+                        nullable: true
                   message:
                     type: string
                 example:
@@ -835949,12 +836390,29 @@ paths:
                     quantity: 30
                     reason: quality_hold
                     notes: Updated notes
+                    is_system: false
+                    source_type: null
+                    source_id: null
+                    source_type_label: null
+                    source_reference: null
+                    source_route: null
                   message: Inventory reservation updated successfully.
+        '422':
+          description: Unprocessable Content
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                example:
+                  error: This hold was created automatically for a Pending marketplace
+                    order, so it can't be edited. Release it instead.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: put-api-v2-inventory-holds-reservation
     delete:
@@ -836352,6 +836810,7 @@ paths:
                   - other
                   - quality_hold
                   - reserved_for_event
+                  - marketplace_pending_order
         '429': *id001
         '401': *id002
         '403': *id005
@@ -836767,7 +837226,12 @@ paths:
         arrival of an open inbound shipment carrying the line, otherwise the purchase
         order''s estimated delivery date), and the line''s ordered and received quantities.
         `is_fully_received` true means the stock has already arrived, so the coverage
-        is stale. It is null when no purchase order line covers the allocation.'
+        is stale. It is null when no purchase order line covers the allocation.
+
+
+        **Stale allocations**: `filter[stale]=yes` lists allocations that are still
+        active on sales order lines that are already fully cancelled, returned or
+        fulfilled. Release them with **Release Stale Allocations**.'
       parameters:
       - name: page
         in: query
@@ -839138,7 +839602,11 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        `stale` — number of active allocations on sales order lines that are already
+        fully cancelled, returned or fulfilled (see **Release Stale Allocations**).'
       parameters: []
       responses:
         '200':
@@ -839170,6 +839638,8 @@ paths:
                         type: integer
                       tight_coverage_count:
                         type: integer
+                      stale:
+                        type: integer
                 example:
                   data:
                     pending_count: 34
@@ -839179,6 +839649,7 @@ paths:
                     pending_quantity: 340
                     released_quantity: 87
                     tight_coverage_count: 8
+                    stale: 3
         '429': *id001
         '401': *id002
         '403': *id005
@@ -840540,6 +841011,129 @@ paths:
         '422': *id004
       x-required-scope: orders:write
       operationId: post-api-v2-inventory-allocations-release-selected
+  /api/v2/inventory-allocations/release-stale:
+    post:
+      tags:
+      - Adjustments & Transfers
+      summary: Release Stale Allocations
+      description: 'Releases stale allocations: allocations that are still active
+        (planned, awaiting receipt or allocated) on a sales order line that is already
+        fully cancelled, returned or fulfilled. Each one is cancelled and its stock
+        becomes available to other orders.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Every id is re-checked when the request runs; an allocation that is no longer
+        stale (for example a fulfillment was opened on its line in the meantime) is
+        skipped and counted in `skipped`, never released. Lines with a fulfillment
+        still in progress are never stale.
+
+
+        List them first with `GET /api/v2/inventory-allocations?filter[stale]=yes`.
+
+
+        **Body**:
+
+        - `scope` (optional, `selected` | `all`, default `selected`) — `all` releases
+        every stale allocation and ignores `ids`
+
+        - `ids` (required unless `scope` is `all`, integer[], 1–500 items) — allocation
+        ids to release
+
+
+        **Response** `data`: `released` (count released), `skipped` (ids that were
+        not stale when the request ran), `remaining` (with `scope: all`, stale allocations
+        still left — at most 500 are released per request, so repeat until it is 0)
+
+
+        Requires the `inventory.adjust` permission.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                ids:
+                  type: array
+                  items:
+                    type: integer
+              example:
+                scope: selected
+                ids:
+                - 10045
+                - 10047
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      released:
+                        type: integer
+                      skipped:
+                        type: integer
+                      remaining:
+                        type: integer
+                example:
+                  message: Released 1 stale allocation(s). Skipped 1 that are no longer
+                    stale.
+                  data:
+                    released: 1
+                    skipped: 1
+                    remaining: 0
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Select at least one stale allocation to release.
+                  errors:
+                    ids:
+                    - Select at least one stale allocation to release.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: orders:write
+      operationId: post-api-v2-inventory-allocations-release-stale
   /api/v2/inventory-allocations/submit-fulfillments:
     post:
       tags:
@@ -859129,6 +859723,354 @@ paths:
         '403': *id005
       x-required-scope: warehouses:read
       operationId: get-api-v2-warehouse-locations-slotting-suggestions
+  /api/v2/warehouse-locations/locations-off-impact:
+    get:
+      tags:
+      - Warehouses
+      summary: Get Locations-Off Impact
+      description: 'Stock held in named locations (every bin except the warehouse''s
+        Unassigned/default location), per warehouse. Read this before switching warehouse
+        locations off: while they are off, every sale, receipt and adjustment is booked
+        to the default location and these bin balances stop changing.
+
+
+        :::info[Required scope: `warehouses:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Only warehouses that hold stock in a named location are returned.
+
+
+        Query parameters:
+
+        - warehouse_id (optional, integer): one warehouse. Omit for every warehouse
+        that uses locations.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        warehouse_id:
+                          type: integer
+                        warehouse_name:
+                          type: string
+                        products:
+                          type: integer
+                        locations:
+                          type: integer
+                        units:
+                          type: integer
+                  meta:
+                    type: object
+                    properties:
+                      warehouses:
+                        type: integer
+                      products:
+                        type: integer
+                      units:
+                        type: integer
+                example:
+                  data:
+                  - warehouse_id: 2
+                    warehouse_name: Main Warehouse
+                    products: 412
+                    locations: 65
+                    units: 10397
+                  meta:
+                    warehouses: 1
+                    products: 412
+                    units: 10397
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      warehouse_id:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: That warehouse does not exist.
+                  errors:
+                    warehouse_id:
+                    - That warehouse does not exist.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: warehouses:read
+      operationId: get-api-v2-warehouse-locations-locations-off-impact
+  /api/v2/warehouse-locations/reconcile-preview:
+    get:
+      tags:
+      - Warehouses
+      summary: Get Location Reconcile Preview
+      description: 'Products whose balance at the default (Unassigned) location is
+        negative while named locations still hold units. This is what stock leaving
+        while warehouse locations were switched off looks like: the movement was booked
+        to the default location and the bin kept the unit. Stock and costs are unaffected.
+
+
+        :::info[Required scope: `warehouses:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Each row is `fixable` when the product has nothing on hand and its location
+        balances add up to zero: its bin units are provably gone, and Reconcile Locations
+        clears it. Any other row needs a count of its bins.
+
+
+        Query parameters:
+
+        - warehouse_id (optional, integer): one warehouse. Omit for every warehouse
+        that uses locations.
+
+
+        Authentication: Requires Bearer token.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        warehouse_id:
+                          type: integer
+                        warehouse_name:
+                          type: string
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        name:
+                          type: string
+                        unassigned_quantity:
+                          type: integer
+                        on_hand:
+                          type: integer
+                        bins:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              warehouse_location_id:
+                                type: integer
+                              code:
+                                type: string
+                              quantity:
+                                type: integer
+                        fixable:
+                          type: boolean
+                  meta:
+                    type: object
+                    properties:
+                      products:
+                        type: integer
+                      fixable:
+                        type: integer
+                      needs_count:
+                        type: integer
+                example:
+                  data:
+                  - warehouse_id: 2
+                    warehouse_name: Main Warehouse
+                    product_id: 81300
+                    sku: BRA-34D-BLK
+                    name: Halo Lace Strapless Bra 34D Black
+                    unassigned_quantity: -1
+                    on_hand: 0
+                    bins:
+                    - warehouse_location_id: 10407
+                      code: A-01-1
+                      quantity: 1
+                    fixable: true
+                  - warehouse_id: 2
+                    warehouse_name: Main Warehouse
+                    product_id: 79952
+                    sku: BRA-36C-NUD
+                    name: Halo Lace Strapless Bra 36C Nude
+                    unassigned_quantity: -1
+                    on_hand: 3
+                    bins:
+                    - warehouse_location_id: 10407
+                      code: A-01-1
+                      quantity: 4
+                    fixable: false
+                  meta:
+                    products: 2
+                    fixable: 1
+                    needs_count: 1
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: warehouses:read
+      operationId: get-api-v2-warehouse-locations-reconcile-preview
+  /api/v2/warehouse-locations/reconcile:
+    post:
+      tags:
+      - Warehouses
+      summary: Reconcile Locations
+      description: 'Clears every fixable product from Get Location Reconcile Preview:
+        its bin units are moved to the default location with one relocation (location
+        transfer) per warehouse, so both balances return to zero. Products still in
+        stock are left untouched for a count. Safe to repeat: once nothing is fixable
+        it writes nothing.
+
+
+        :::info[Required scope: `warehouses:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Body:
+
+        - warehouse_id (optional, integer): one warehouse. Omit for every warehouse
+        that uses locations.
+
+
+        Requires the inventory.transfer permission. Warehouse locations must be switched
+        on.
+
+
+        Authentication: Requires Bearer token.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                warehouse_id:
+                  type: integer
+              example:
+                warehouse_id: 2
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        warehouse_id:
+                          type: integer
+                        warehouse_name:
+                          type: string
+                        location_transfer_id:
+                          type: integer
+                        location_transfer_number:
+                          type: string
+                        fixed_products:
+                          type: integer
+                        units_moved:
+                          type: integer
+                        remaining_products:
+                          type: integer
+                  meta:
+                    type: object
+                    properties:
+                      fixed_products:
+                        type: integer
+                      units_moved:
+                        type: integer
+                      remaining_products:
+                        type: integer
+                example:
+                  data:
+                  - warehouse_id: 2
+                    warehouse_name: Main Warehouse
+                    location_transfer_id: 79
+                    location_transfer_number: LT-000079
+                    fixed_products: 195
+                    units_moved: 236
+                    remaining_products: 143
+                  meta:
+                    fixed_products: 195
+                    units_moved: 236
+                    remaining_products: 143
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Warehouse locations are not enabled for warehouse "Main
+                    Warehouse".
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: warehouses:write
+      operationId: post-api-v2-warehouse-locations-reconcile
   /api/stock-takes/list:
     get:
       tags:
@@ -859581,7 +860523,15 @@ paths:
 
         **Serial fields.** Each item includes `tracks_serials` (boolean), `serial_generation_mode`
         (`none`, `manual` or `auto`) and `serials` (the serials of the found or missing
-        units, applied at finalize).'
+        units, applied at finalize).
+
+
+        **Opening-stock fields:** `opening_stock_locked_reason` (string or null) explains
+        why an initial count can no longer change once the books are live; `opening_stock_unlocked_warning`
+        (string or null) is the read-only notice shown while the lock is off: a warning
+        once the books are live, a suggestion to turn the lock on before then. `opening_stock_books_live`
+        (boolean) says which. Both are null for every stock take that is not an initial
+        count.'
       parameters:
       - name: stock_take
         in: path
@@ -859611,6 +860561,14 @@ paths:
                       date_count:
                         type: string
                       is_initial_count:
+                        type: boolean
+                      opening_stock_locked_reason:
+                        type: string
+                        nullable: true
+                      opening_stock_unlocked_warning:
+                        type: string
+                        nullable: true
+                      opening_stock_books_live:
                         type: boolean
                       is_blind:
                         type: boolean
@@ -859723,6 +860681,9 @@ paths:
                     id: 42
                     date_count: '2024-10-10T00:00:00+00:00'
                     is_initial_count: false
+                    opening_stock_locked_reason: null
+                    opening_stock_unlocked_warning: null
+                    opening_stock_books_live: false
                     is_blind: false
                     condition: null
                     warehouse:
@@ -859880,7 +860841,14 @@ paths:
         of a closed stock take (including an initial count) whose date falls on or
         before the accounting lock date returns `422` with error code `InventoryPeriodLocked`
         and the `date` / `lock_date` involved. Re-submitting unchanged values is accepted.
-        Move the lock date back first to correct a locked count.'
+        Move the lock date back first to correct a locked count.
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -860096,23 +861064,33 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Validation Error
+                  value:
+                    message: The warehouse can only be changed while the stock take
+                      is a draft.
+                    errors:
                       warehouse_id:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: The warehouse can only be changed while the stock take
-                    is a draft.
-                  errors:
-                    warehouse_id:
-                    - The warehouse can only be changed while the stock take is a
-                      draft.
+                      - The warehouse can only be changed while the stock take is
+                        a draft.
+                example-1:
+                  summary: 422 Opening Stock Locked
+                  value:
+                    message: Opening stock is locked because your books are live.
+                      Record the change with an inventory adjustment or a stock take
+                      instead. An accounting admin can turn the lock off in Accounting
+                      › Settings › Go-live readiness.
+                    errors:
+                      id:
+                      - message: Opening stock is locked because your books are live.
+                          Record the change with an inventory adjustment or a stock
+                          take instead. An accounting admin can turn the lock off
+                          in Accounting › Settings › Go-live readiness.
+                        code: OpeningStockLocked
+                        data:
+                          stock_take_id: 12
+                    status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -860141,7 +861119,14 @@ paths:
         that prevent deletion.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       parameters:
       - name: stock_take
         in: path
@@ -860167,6 +861152,54 @@ paths:
                     type: string
                 example:
                   message: stock take 43 deleted successfully
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -860855,7 +861888,14 @@ paths:
 
         Each item may also carry `variance_reason` — a root-cause code for why the
         counted quantity differs from the system on-hand. One of: receiving_error,
-        picking_error, damage, mislabel, shrinkage, lost, stolen, expired, unknown.'
+        picking_error, damage, mislabel, shrinkage, lost, stolen, expired, unknown.
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -860997,7 +862037,7 @@ paths:
                 type: string
                 example: application/json
           content:
-            application/json:
+            text/plain:
               schema:
                 type: object
                 properties:
@@ -861034,6 +862074,47 @@ paths:
                       code: WarehouseIdApp\Rules\StandardWarehouseRule
                       data:
                         warehouse_id: 3
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: string
+                                  nullable: true
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: null
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -861060,7 +862141,14 @@ paths:
         ids: required unless apply_to_all is true.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       parameters: []
       responses:
         '200':
@@ -861082,6 +862170,57 @@ paths:
                 example:
                   message: Bulk delete completed
                   deleted_count: 2
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      ids:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_ids:
+                                  type: array
+                                  items:
+                                    type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    ids:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_ids:
+                        - 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -861130,7 +862269,14 @@ paths:
         Returns the new stock_take_id.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -861176,10 +862322,58 @@ paths:
                 example:
                   message: stock take 44 created successfully
                   stock_take_id: 44
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: string
+                                  nullable: true
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: null
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-bulk-insert
   /api/stock-takes/check-initial-uniqueness:
@@ -861288,7 +862482,14 @@ paths:
         no items yet (add the counted products first), or if it is no longer a draft.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -861409,15 +862610,30 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  status:
-                    type: string
-                example:
-                  message: 'Add the products you counted before you initiate the count:
-                    this stock take has no items yet.'
-                  status: failure
+              examples:
+                example-0:
+                  summary: 422 No Items Yet
+                  value:
+                    message: 'Add the products you counted before you initiate the
+                      count: this stock take has no items yet.'
+                    status: failure
+                example-1:
+                  summary: 422 Opening Stock Locked
+                  value:
+                    message: Opening stock is locked because your books are live.
+                      Record the change with an inventory adjustment or a stock take
+                      instead. An accounting admin can turn the lock off in Accounting
+                      › Settings › Go-live readiness.
+                    errors:
+                      id:
+                      - message: Opening stock is locked because your books are live.
+                          Record the change with an inventory adjustment or a stock
+                          take instead. An accounting admin can turn the lock off
+                          in Accounting › Settings › Go-live readiness.
+                        code: OpeningStockLocked
+                        data:
+                          stock_take_id: 12
+                    status: failure
         '429': *id001
         '401': *id002
         '403': *id005
@@ -861608,7 +862824,14 @@ paths:
         earlier than existing consumption in an affected product/warehouse pool, opt
         in to re-anchor those later transactions to the oldest available stock (true
         FIFO) after the save commits. Runs as a background job; pools in a locked
-        accounting period or with unsupported shapes are skipped and reported.'
+        accounting period or with unsupported shapes are skipped and reported.
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -861660,11 +862883,58 @@ paths:
                     value_change: -125.0
                     variance_direction: negative
                     updated_at: '2024-10-10T16:00:00+00:00'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-stocktake-finalize
   /api/stock-takes/{stockTake}/finalize-adjustment:
@@ -861839,7 +863109,14 @@ paths:
         Returns 400 if reversal is not possible (e.g., FIFO layers already consumed).
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content: {}
       parameters:
@@ -861877,11 +863154,58 @@ paths:
                   data:
                     id: 42
                     status: closed
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-stocktake-reverse
   /api/stock-takes/{stockTake}/reconciliation-preview:
@@ -862006,7 +863330,14 @@ paths:
         earlier than existing consumption in an affected product/warehouse pool, opt
         in to re-anchor those later transactions to the oldest available stock (true
         FIFO) after the save commits. Runs as a background job; pools in a locked
-        accounting period or with unsupported shapes are skipped and reported.'
+        accounting period or with unsupported shapes are skipped and reported.
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -862145,11 +863476,58 @@ paths:
                     quantity: 6
                     link_type: App\Models\SalesOrderLine
                     link_id: 33412
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-stocktake-reconcile
   /api/stock-takes/{stockTake}/reconciliation-logs:
@@ -862240,7 +863618,14 @@ paths:
         Returns 200 with success true/false, or 422 if cancellation fails.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -862282,11 +863667,58 @@ paths:
                   success: true
                   fulfillment_id: 500
                   message: Fulfillment cancelled successfully.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-stocktake-cancel-fulfillment
   /api/stock-takes/{stockTake}/adjustment-preview:
@@ -862376,7 +863808,12 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Opening-stock lock:** while an initial count is locked (books live and `lock_opening_stock_after_go_live`
+        on), `can_reverse` is `false` and `blocked_reason` explains why; `blocked_reason`
+        is null otherwise.'
       parameters:
       - name: stockTake
         in: path
@@ -862400,6 +863837,9 @@ paths:
                 properties:
                   can_reverse:
                     type: boolean
+                  blocked_reason:
+                    type: string
+                    nullable: true
                   blocking_items:
                     type: array
                   reversible_items:
@@ -862413,6 +863853,7 @@ paths:
                           type: string
                 example:
                   can_reverse: true
+                  blocked_reason: null
                   blocking_items: []
                   reversible_items:
                   - stock_take_item_id: 101
@@ -862758,7 +864199,14 @@ paths:
         **Requires permission:** `inventory.count` Refused with a 400 on an Amazon
         FBA or AWD stock take when the warehouse is linked to an integration or its
         products have Amazon cost layers: Amazon sales cost from those records, not
-        from the count, so set the initial unit cost on the FNSKU mapping instead.'
+        from the count, so set the initial unit cost on the FNSKU mapping instead.
+
+
+        **Opening-stock lock:** once the books are live (ledger generation on, or
+        any journal entry posted) and the account''s `lock_opening_stock_after_go_live`
+        setting is on, any change to an initial count (opening stock) is refused with
+        `422` and error code `OpeningStockLocked`. Record the change with an adjustment
+        or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -862810,11 +864258,58 @@ paths:
                   message: Cost corrections started.
                   data:
                     tracked_job_log_id: 5821
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties:
+                                stock_take_id:
+                                  type: integer
+                  status:
+                    type: string
+                example:
+                  message: Opening stock is locked because your books are live. Record
+                    the change with an inventory adjustment or a stock take instead.
+                    An accounting admin can turn the lock off in Accounting › Settings
+                    › Go-live readiness.
+                  errors:
+                    id:
+                    - message: Opening stock is locked because your books are live.
+                        Record the change with an inventory adjustment or a stock
+                        take instead. An accounting admin can turn the lock off in
+                        Accounting › Settings › Go-live readiness.
+                      code: OpeningStockLocked
+                      data:
+                        stock_take_id: 12
+                  status: failure
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: inventory:write
       operationId: post-api-stock-takes-stocktake-apply-cost-correction
   /api/stock-takes/{stockTake}/fifo-layers:
@@ -863664,7 +865159,11 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        **Requires permission:** `inventory.count`'
+        **Requires permission:** `inventory.count`
+
+
+        **Opening-stock lock:** while opening stock is locked (see Update Stock Take),
+        an initial count is reported `deletable: false` with the lock as its `reason`.'
       requestBody:
         content:
           application/json:
@@ -865767,7 +867266,12 @@ paths:
         (`POST /api/data-import` with entity `amazon_fnsku_initial_costs`). Nothing
         was written.
 
-        - 409 `import_in_progress` — another import for this warehouse is running.'
+        - 409 `import_in_progress` — another import for this warehouse is running.
+
+
+        **Opening-stock lock:** once the books are live and the account''s `lock_opening_stock_after_go_live`
+        setting is on, the import is refused with `422` and code `opening_stock_locked`.
+        Record changes with an adjustment or a regular stock take instead.'
       requestBody:
         content:
           application/json:
@@ -865920,6 +867424,14 @@ paths:
                       Amazon''s inventory report. Set their cost in Amazon → FBA →
                       FNSKU Products (Initial Costs).'
                     code: warehouse_has_no_stock_takes
+                example-3:
+                  summary: 422 Opening Stock Locked
+                  value:
+                    message: Opening stock is locked because your books are live.
+                      Record the change with an inventory adjustment or a stock take
+                      instead. An accounting admin can turn the lock off in Accounting
+                      › Settings › Go-live readiness.
+                    code: opening_stock_locked
         '429': *id001
         '401': *id002
         '403': *id005
@@ -966650,8 +968162,10 @@ paths:
 
         Request body fields (provide `ids` or `filters`):
 
-        - ids (array of integers, optional, min 1): Sales order IDs to dispatch. Dispatched
-        synchronously; the response reports how many fulfillment orders were dispatched.
+        - ids (array of integers, optional, min 1): Sales order IDs to dispatch. Up
+        to 20 IDs are dispatched synchronously and the response reports how many fulfillment
+        orders were dispatched; more than 20 are queued and processed in the background,
+        like `filters`.
 
         - filters (string, optional): Filter query that resolves to a list of sales
         order IDs (same format used by the sales-orders listing endpoint). When provided,
@@ -1010808,7 +1012322,9 @@ paths:
         - sales_credit_number (optional, max 255): Custom credit number (auto-generated
         if omitted)
 
-        - credit_date (optional, date): Credit date
+        - credit_date (optional, date): Credit date. A plain date (YYYY-MM-DD) is
+        the day in your account''s timezone and is stored as the start of that day;
+        a value with a time (ISO 8601) is kept as sent.
 
         - store_id (optional): Store ID
 
@@ -1011094,7 +1012610,14 @@ paths:
         Credits created from a Shopify refund include a non-product line described
         "Shipping refund" (`sales_order_line_id` null, `is_product` false) when the
         refund paid shipping money back; its amount is the shipping refunded less
-        the shipping''s share of any refund discrepancy.'
+        the shipping''s share of any refund discrepancy.
+
+
+        `refund_payment_type` ({id, name}): for a credit raised against a point-of-sale
+        order, the payment type the sale was recorded under (for example a per-processor
+        card type, even if since archived), which the refund should be recorded under
+        so it leaves the same clearing account the sale went into. Null for any other
+        order.'
       parameters:
       - name: sales_credit
         in: path
@@ -1011210,6 +1012733,9 @@ paths:
                             type: integer
                           sales_order_number:
                             type: string
+                      refund_payment_type:
+                        type: string
+                        nullable: true
                       sales_credit_lines:
                         type: array
                         items:
@@ -1011310,6 +1012836,7 @@ paths:
                     sales_order:
                       id: 100
                       sales_order_number: SO-00100
+                    refund_payment_type: null
                     sales_credit_lines:
                     - id: 201
                       product_id: 12
@@ -1011363,7 +1012890,9 @@ paths:
 
         - sales_credit_number (optional, max 255): Custom credit number
 
-        - credit_date (optional, date): Credit date
+        - credit_date (optional, date): Credit date. A plain date (YYYY-MM-DD) is
+        the day in your account''s timezone and is stored as the start of that day;
+        a value with a time (ISO 8601) is kept as sent.
 
         - store_id (optional): Store ID
 
@@ -1172691,6 +1174220,13 @@ paths:
         The admin toggles (`enabled`, `require_customer`, `auto_print_receipt`, `auto_show_new_products_in_register`)
         are managed via `PUT /api/v2/settings/pos`; this endpoint focuses on the operational
         card-processor config.
+
+
+        **Card payment types.** When `card_payment_type_mode` (set via `PUT /api/v2/settings/pos`)
+        is `per_processor` or `per_processor_and_location`, switching `payment_processor`
+        also creates that processor''s card payment type (`Card – Stripe`, or one
+        per register location), so it can be given a clearing account before the first
+        sale.
 
 
         The settings payload''s `available_processors` only offers `square` when a
