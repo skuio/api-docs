@@ -36141,7 +36141,14 @@ paths:
         in that accounting month, so a per-month count and this feed describe the
         same set. Batch aggregate entries are excluded — an aggregate is a roll-up
         of its member entries and is managed through the batch it belongs to, not
-        as a document row.'
+        as a document row.
+
+
+        **Owner and due date:** each entry in a group''s `entries` preview carries
+        `assignment` — `null` when it has neither, otherwise `{ "assignee": { "id",
+        "name" } | null, "due_on": "YYYY-MM-DD" | null, "overdue": bool }`. `overdue`
+        is true once the due date is before today in the account''s timezone. Owners
+        are emailed a daily digest of their open entries.'
       parameters: []
       responses:
         '200':
@@ -36183,6 +36190,60 @@ paths:
                                   type: string
                                 provider_code:
                                   type: string
+                            entries:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  reference:
+                                    type: string
+                                  reference_suffix:
+                                    type: integer
+                                  type:
+                                    type: object
+                                    properties:
+                                      value:
+                                        type: string
+                                      label:
+                                        type: string
+                                  display_status:
+                                    type: object
+                                    properties:
+                                      key:
+                                        type: string
+                                      label:
+                                        type: string
+                                      color:
+                                        type: string
+                                  currency_code:
+                                    type: string
+                                  total_debit:
+                                    type: string
+                                  total_credit:
+                                    type: string
+                                  effective_at:
+                                    type: string
+                                  provider_link:
+                                    type: string
+                                    nullable: true
+                                  error_message:
+                                    type: string
+                                  assignment:
+                                    type: object
+                                    properties:
+                                      assignee:
+                                        type: object
+                                        properties:
+                                          id:
+                                            type: integer
+                                          name:
+                                            type: string
+                                      due_on:
+                                        type: string
+                                      overdue:
+                                        type: boolean
                 example:
                   data:
                     groups:
@@ -36209,6 +36270,30 @@ paths:
                         message: Account 4000 Sales Revenue is inactive in QuickBooks
                           Online.
                         provider_code: '6240'
+                      entries:
+                      - id: 1842
+                        reference: SO-10482
+                        reference_suffix: 0
+                        type:
+                          value: sales_order_invoice
+                          label: Sales Order Invoice
+                        display_status:
+                          key: failed
+                          label: Failed
+                          color: error
+                        currency_code: USD
+                        total_debit: '128.4000'
+                        total_credit: '128.4000'
+                        effective_at: '2026-06-14T07:00:00+00:00'
+                        provider_link: null
+                        error_message: Account 4000 Sales Revenue is inactive in QuickBooks
+                          Online.
+                        assignment:
+                          assignee:
+                            id: 4
+                            name: Jordan Lee
+                          due_on: '2026-07-05'
+                          overdue: false
                     - cause_key: auth_connection
                       label: Auth Connection
                       error_class: auth_connection
@@ -36231,6 +36316,128 @@ paths:
         '403': *id005
       x-required-scope: accounting:read
       operationId: get-api-ledger-entries-needs-attention
+  /api/ledger/entries/needs-attention/assignments:
+    put:
+      tags:
+      - Ledger (Accounting v2)
+      summary: Assign Needs-Attention Entries
+      description: 'Give Needs Attention entries an owner and a due date, in bulk.
+        The owner gets the entries in their daily Sync Problems Assigned to You email
+        and under **Mine** in the inbox.
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **Authentication:** Requires Bearer token. Scope: `accounting` (write). The
+        user must hold the **Sync** permission (`accounting.sync`).
+
+
+        **Body fields:**
+
+        - `entry_ids` (array of integers, required, 1–1000, distinct) — the journal
+        entries to update. Any id that does not exist fails the whole request with
+        422 on `entry_ids`; nothing is changed.
+
+        - `assignee_user_id` (integer or null, optional) — the owner. Must be an active
+        user of this account, else 422. `null` removes the owner. Leave the key out
+        to keep each entry''s current owner.
+
+        - `due_on` (date `YYYY-MM-DD` or null, optional) — the due date. `null` removes
+        it. Leave the key out to keep each entry''s current due date.
+
+
+        Sending only `due_on` sets a due date without changing anyone''s owner. An
+        owner stays on an entry after it syncs, so it is back on the same person''s
+        list if it fails again.
+
+
+        **Response:** `data.updated` — how many entries were written, with a message
+        such as `2 entries updated.`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entry_ids:
+                  type: array
+                  items:
+                    type: integer
+                assignee_user_id:
+                  type: integer
+                due_on:
+                  type: string
+              example:
+                entry_ids:
+                - 101
+                - 102
+                assignee_user_id: 7
+                due_on: '2026-11-30'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      updated:
+                        type: integer
+                example:
+                  status: success
+                  message: 2 entries updated.
+                  data:
+                    updated: 2
+        '422':
+          description: Unprocessable Content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      entry_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'These entries do not exist: 999999.'
+                  errors:
+                    entry_ids:
+                    - 'These entries do not exist: 999999.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: put-api-ledger-entries-needs-attention-assignments
   /api/ledger/entries/stale-precutover:
     get:
       tags:
@@ -90642,7 +90849,9 @@ paths:
         **Filters:**
 
         - `filter[search]` (optional, string) — free text matched against the activity
-        description and the recorded changes, e.g. an order number or SKU.
+        description and the recorded changes, e.g. an order number or SKU. A search
+        counts at most the 10,000 newest matches: `total` is capped at 10,000 and
+        pages beyond that are empty.
 
 
         Authentication: Requires Bearer token.

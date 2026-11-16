@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-16
-description: This release includes 4 additions, 3 changes.
+description: This release includes 5 additions, 3 changes.
 authors: [product-team]
 tags: [added, changed]
 date: 2026-11-16
 ---
 
-This release includes 4 additions, 3 changes.
+This release includes 5 additions, 3 changes.
 
 <!-- truncate -->
 
@@ -16,6 +16,9 @@ This release includes 4 additions, 3 changes.
 
 ### Adjustments & Transfers
 - `POST /api/v2/inventory-allocations/release-stale` — Release Stale Allocations
+
+### Ledger (Accounting v2)
+- `PUT /api/ledger/entries/needs-attention/assignments` — Assign Needs-Attention Entries
 
 ### Warehouses
 - `GET /api/v2/warehouse-locations/locations-off-impact` — Get Locations-Off Impact
