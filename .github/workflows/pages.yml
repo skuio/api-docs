@@ -33,10 +33,21 @@ jobs:
       #   2026-07-07 — OOM at Node's default ~4 GB (4,700 operations) → 6 GB
       #   2026-07-30 — OOM at 6 GB once the spec crossed 5,071 operations
       #                (peak was ~6.2 GB); six consecutive deploys failed.
+      #   2026-11-15 — OOM at 10 GB with 8,050 operations (run 43730983507,
+      #                fac8047f). Both webpack compiles finished; it died in
+      #                static-page generation, heap at 9.4 of 10 GB, after the
+      #                Terser workers had exited. The 2026-11-13 build at 7,889
+      #                operations passed, so the spec crossed the line. → 12 GB.
+      #                Found by sku-hq-app's deploy-freshness heartbeat
+      #                (self-repair #101); developer.sku.io stayed on c49d7956.
       # This repo is public, so its ubuntu-latest runners are the 4-core /
       # 16 GB tier (private repos get 2-core / 8 GB) — the old "runners have
-      # 7 GB" note here was wrong. 10 GB leaves ~6 GB for the parallel Terser
-      # workers and the OS, and roughly doubles the headroom over today's peak.
+      # 7 GB" note here was wrong. 12 GB leaves ~4 GB for the OS and the
+      # Terser workers. The 2026-11-15 OOM happened after those workers had
+      # exited, so they don't compete with the heap at the point that fails.
+      # ⚠ This is the last cheap bump: past ~13 GB the runner itself runs out
+      # of memory and the kernel kills the job. The next OOM needs the real fix
+      # below (cut the per-page loader work), not another number.
       #
       # Raising this ceiling is, for now, the only lever that works. Before the
       # next bump, don't re-try @docusaurus/faster — it was measured on
@@ -54,7 +65,7 @@ jobs:
       # help either because the memory is held by the JS-side loaders compiling
       # 5,077 MDX pages and resolving their ~15,200 JSON prop sidecars. Any real
       # fix has to cut that per-page loader work, not swap the bundler.
-      NODE_OPTIONS: --max-old-space-size=10240
+      NODE_OPTIONS: --max-old-space-size=12288
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
