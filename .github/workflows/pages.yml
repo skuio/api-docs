@@ -25,7 +25,7 @@ jobs:
   deploy:
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment_2.outputs.page_url || steps.deployment_3.outputs.page_url }}
     runs-on: ubuntu-latest
     env:
       # The client webpack compile's heap scales with the number of API
@@ -105,7 +105,42 @@ jobs:
       - uses: actions/upload-pages-artifact@v3
         with:
           path: build
+      # deploy-pages lists the run's artifacts right after the upload and fails
+      # with 'No artifacts named "github-pages"' when the listing lags behind
+      # (run 45307662924 on 2026-11-24, both attempts: 0 artifacts found within
+      # a second of a good upload). A whole re-run costs a ~85-minute rebuild,
+      # so wait for the listing, then try the deploy up to three times.
+      - name: Wait for the github-pages artifact to be listed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            for (let i = 1; i <= 20; i++) {
+              const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+                name: 'github-pages',
+              });
+              if (data.artifacts.length > 0) {
+                core.info(`Listed on check ${i}`);
+                return;
+              }
+              await new Promise((resolve) => setTimeout(resolve, 15000));
+            }
+            core.warning('Not listed after 5 minutes; trying the deploy anyway');
       - id: deployment
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - if: steps.deployment.outcome == 'failure'
+        run: sleep 60
+      - id: deployment_2
+        if: steps.deployment.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - if: steps.deployment_2.outcome == 'failure'
+        run: sleep 180
+      - id: deployment_3
+        if: steps.deployment_2.outcome == 'failure'
         uses: actions/deploy-pages@v4
       # The public "SKU.io API" Postman collection is synced by a separate
       # workflow (.github/workflows/postman-sync.yml) that fires on this run's
