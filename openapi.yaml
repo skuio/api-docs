@@ -289199,7 +289199,12 @@ paths:
         Both accept a filter_groups tree: a conjunction (and / or) plus a children
         array of conditions and nested groups. Each condition has column, operator,
         and value. product_filters narrows which products are forecast; sales_filters
-        narrows which historical orders feed the velocity baseline. A legacy filters.filterSet
+        narrows which historical orders feed the velocity baseline. Two sales_filters
+        flags default to true: exclude_returns (leave out refunded and partially refunded
+        orders; an order with no payment status is kept) and exclude_cancelled (leave
+        out cancelled orders). Omitting a flag, or sending null, means true; send
+        false to count those orders. The same defaults apply to saved configurations,
+        scheduled runs, exports and the supplier summary. A legacy filters.filterSet
         shape is also accepted for older saved configurations.
 
         Operators: is, is_not, contains, does_not_contain, starts_with, ends_with,
@@ -289480,7 +289485,42 @@ paths:
         / `order_by_overdue` / `order_by_shift_days` give the latest date an order
         can go out and still land before the projected stockout. Each supplier result
         carries `closure_notice`: the earliest closure window in the next 180 days
-        and the date orders must go out by.'
+        and the date orders must go out by.
+
+
+        DATE-AWARE PROMO LIFT
+
+        A promo_lift modifier lifts demand on the promotion''s own days only. The
+        lift is the window''s measured lift (or lift_pct_override when sent) applied
+        to the current daily rate, and the extra units - current daily rate x (factor
+        - 1) x promo days - are added once for the promo days that fall inside the
+        line''s cover window (today through lead time plus target days, including
+        any closure extension). The everyday daily_average is not multiplied, and
+        a promotion outside the cover window adds nothing. An annual window uses this
+        year''s dates; a one-off window uses its own dates, or the same dates one
+        year later once they have passed.
+
+        - demand_modifiers[].lift_pct_override (optional, -100..10000): a lift percentage
+        for this run instead of the window''s measured lift. 200 means sales triple
+        on the promo days.
+
+        - max_modifier_multiplier (optional, 1..100): caps a promo-lift multiplier
+        (and the combined lift of windows that share a day) and the automatic seasonal
+        factor.
+
+        - Each supplier result carries promo_overlaps[]: every saved promo window
+        whose next occurrence falls inside that supplier''s cover window, applied
+        or not, with window_id, name, start_date, end_date (the overlapping occurrence),
+        measured_lift_pct, measured_expected_daily, measured_product_id, recurrence,
+        applied, applied_lift_pct, overlap_days, cover_start and cover_end.
+
+        - Line inputs add promo_window_id, promo_measured_baseline (the daily rate
+        the lift was measured against), promo_overlap_days (0 = the promotion is outside
+        the cover), promo_extra_units (already included in event_units) and promo_seasonality_overlap
+        (true when an automatic seasonal factor also applies and last year''s promo
+        days were not left out of the seasonal pattern, so the uplift may be counted
+        twice). trend_fallback_reason says why a trend method fell back to the flat
+        average.'
       requestBody:
         content:
           application/json:
@@ -289625,6 +289665,8 @@ paths:
                 next_order_date:
                   type: string
                   nullable: true
+                max_modifier_multiplier:
+                  type: integer
               example:
                 supplier_ids:
                 - 1
@@ -289685,6 +289727,7 @@ paths:
                   name: Re-apply Black Friday 2024
                   product_id: 56
                   promo_window_id: 12
+                  lift_pct_override: null
                 enforce_minimum_order_value: false
                 enforce_minimum_order_quantity: false
                 cash_ranking: true
@@ -289692,6 +289735,7 @@ paths:
                 coverage_mode: order_cycle
                 order_cycle_days: 42
                 next_order_date: null
+                max_modifier_multiplier: 3
       parameters: []
       responses:
         '200':
@@ -289820,17 +289864,21 @@ paths:
                                   anomaly_days_smoothed:
                                     type: integer
                                   promo_factor:
-                                    type: string
-                                    nullable: true
+                                    type: number
                                   promo_window_name:
                                     type: string
-                                    nullable: true
                                   promo_current_baseline:
-                                    type: string
-                                    nullable: true
+                                    type: number
+                                  promo_window_id:
+                                    type: integer
+                                  promo_measured_baseline:
+                                    type: number
+                                  promo_overlap_days:
+                                    type: integer
+                                  promo_extra_units:
+                                    type: number
                                   event_units:
-                                    type: string
-                                    nullable: true
+                                    type: number
                                   in_stock_days:
                                     type: integer
                                   sellable_days:
@@ -290048,6 +290096,37 @@ paths:
                             next_cycle_date:
                               type: string
                               nullable: true
+                        promo_overlaps:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              window_id:
+                                type: integer
+                              name:
+                                type: string
+                              start_date:
+                                type: string
+                              end_date:
+                                type: string
+                              measured_lift_pct:
+                                type: number
+                              measured_expected_daily:
+                                type: number
+                              measured_product_id:
+                                type: integer
+                              recurrence:
+                                type: string
+                              applied:
+                                type: boolean
+                              applied_lift_pct:
+                                type: number
+                              overlap_days:
+                                type: integer
+                              cover_start:
+                                type: string
+                              cover_end:
+                                type: string
                 example:
                   data:
                   - supplier_id: 1
@@ -290103,10 +290182,14 @@ paths:
                         trend_capped: false
                         anomaly_days_excluded: 2
                         anomaly_days_smoothed: 0
-                        promo_factor: null
-                        promo_window_name: null
-                        promo_current_baseline: null
-                        event_units: null
+                        promo_factor: 3.0
+                        promo_window_name: Black Friday 2024
+                        promo_current_baseline: 5.1618
+                        promo_window_id: 12
+                        promo_measured_baseline: 2.1
+                        promo_overlap_days: 6
+                        promo_extra_units: 61.9416
+                        event_units: 61.9416
                         in_stock_days: 14
                         sellable_days: 15
                         calendar_daily_average: 2.5809
@@ -290332,6 +290415,20 @@ paths:
                       reason: Chinese New Year closure Jan 30 – Feb 20, 2027 adds
                         22 days + 14-day ramp
                       next_cycle_date: null
+                    promo_overlaps:
+                    - window_id: 12
+                      name: Black Friday 2024
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
+                      measured_lift_pct: 200.0
+                      measured_expected_daily: 2.1
+                      measured_product_id: 4821
+                      recurrence: annual
+                      applied: true
+                      applied_lift_pct: 200.0
+                      overlap_days: 6
+                      cover_start: '2026-11-18'
+                      cover_end: '2026-12-31'
             application/json:
               schema:
                 type: object
@@ -290380,6 +290477,37 @@ paths:
                         order_cycle_fallback_reason:
                           type: string
                           nullable: true
+                        promo_overlaps:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              window_id:
+                                type: integer
+                              name:
+                                type: string
+                              start_date:
+                                type: string
+                              end_date:
+                                type: string
+                              measured_lift_pct:
+                                type: integer
+                              measured_expected_daily:
+                                type: number
+                              measured_product_id:
+                                type: integer
+                              recurrence:
+                                type: string
+                              applied:
+                                type: boolean
+                              applied_lift_pct:
+                                type: integer
+                              overlap_days:
+                                type: integer
+                              cover_start:
+                                type: string
+                              cover_end:
+                                type: string
                   cash_plan:
                     type: object
                     properties:
@@ -290588,6 +290716,20 @@ paths:
                     lifecycle_excluded_count: 2
                     run_order_cycle: null
                     order_cycle_fallback_reason: null
+                    promo_overlaps:
+                    - window_id: 12
+                      name: Black Friday 2024
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
+                      measured_lift_pct: 200
+                      measured_expected_daily: 2.1
+                      measured_product_id: 4821
+                      recurrence: annual
+                      applied: true
+                      applied_lift_pct: 200
+                      overlap_days: 6
+                      cover_start: '2026-11-18'
+                      cover_end: '2026-12-31'
                   cash_plan:
                     as_of: '2026-11-02'
                     configured: true
@@ -290825,15 +290967,18 @@ paths:
         days before computing the baseline.
 
         - demand_modifiers[]: percentage, seasonal, event, override, or promo_lift
-        (carry promo_window_id and send value 0 - the window''s measured lift is applied
-        multiplicatively to the current baseline).
+        (carry promo_window_id and send value 0 - the window''s measured lift, or
+        lift_pct_override when sent, is applied to the current baseline on the promotion''s
+        own days only).
 
 
         The sparse-history fallback applies here too: a product with fewer than roughly
         8 weeks of history or fewer than 8 orders falls back to the flat mean (trend_factor
         1.0). See Build Forecast for the full field guide and the per-line inputs
         decomposition (base_flat, trend_factor, baseline_method, trend_capped, anomaly_days_excluded,
-        anomaly_days_smoothed, promo_factor, promo_window_name, promo_current_baseline).
+        anomaly_days_smoothed, promo_factor, promo_window_name, promo_current_baseline,
+        promo_window_id, promo_measured_baseline, promo_overlap_days, promo_extra_units,
+        promo_seasonality_overlap, trend_fallback_reason).
 
 
         enforce_minimum_order_value / enforce_minimum_order_quantity: when true, the
@@ -290942,7 +291087,14 @@ paths:
 
         - Every Sales Based line carries inputs.covers_through = today + lead time
         + target days. The result carries run_order_cycle when this run''s cycle sized
-        the cover.'
+        the cover.
+
+
+        Promo lift is date-aware: see DATE-AWARE PROMO LIFT on Build Forecast. max_modifier_multiplier
+        (optional, 1..100) caps the promo multiplier. The sync result (and the completed
+        job result for queued builds) carries promo_overlaps[]: the saved promo windows
+        whose next occurrence falls inside this supplier''s cover window, applied
+        or not.'
       requestBody:
         content:
           application/json:
@@ -291004,6 +291156,8 @@ paths:
                         type: integer
                       promo_window_id:
                         type: integer
+                      lift_pct_override:
+                        type: integer
                 enforce_minimum_order_value:
                   type: boolean
                 enforce_minimum_order_quantity:
@@ -291017,6 +291171,8 @@ paths:
                 next_order_date:
                   type: string
                   nullable: true
+                max_modifier_multiplier:
+                  type: integer
               example:
                 supplier_id: 1
                 product_count: 120
@@ -291043,12 +291199,14 @@ paths:
                   name: Re-apply Prime Day
                   product_id: 55
                   promo_window_id: 8
+                  lift_pct_override: 150
                 enforce_minimum_order_value: false
                 enforce_minimum_order_quantity: false
                 seasonal_source: auto
                 coverage_mode: order_cycle
                 order_cycle_days: 42
                 next_order_date: null
+                max_modifier_multiplier: 3
       parameters: []
       responses:
         '200':
@@ -291079,6 +291237,20 @@ paths:
                           minimum_value: 1000.0
                           minimum_quantity: 100
                         lifecycle_excluded_count: 2
+                        promo_overlaps:
+                        - window_id: 8
+                          name: Prime Day
+                          start_date: '2026-11-25'
+                          end_date: '2026-11-30'
+                          measured_lift_pct: 200.0
+                          measured_expected_daily: 2.1
+                          measured_product_id: 4821
+                          recurrence: annual
+                          applied: true
+                          applied_lift_pct: 150.0
+                          overlap_days: 6
+                          cover_start: '2026-11-18'
+                          cover_end: '2026-12-31'
                       cash_build_id: 3f1c2a9e-7b4d-4e1a-9c2f-5d8e6b0a1c23
                       otb_build_id: 9b2e4c71-0d3a-4f6e-8a15-2c7d9e3b6f40
                 example-1:
@@ -291432,6 +291604,12 @@ paths:
 
 
         Date format: YYYY-MM-DD. start_date must be <= end_date.
+
+
+        filters (optional): the same object as Build Forecast''s sales_filters. When
+        any filter is sent, exclude_returns and exclude_cancelled default to true
+        unless sent as false; with no filters (or an empty object) every non-draft,
+        non-cancelled order is read.
 
 
         Returns an array keyed by product_id, each with periods array containing quantity
@@ -292938,10 +293116,11 @@ paths:
         a fixed `target_quantity`. Persisted on both create and update.
 
         - `sales_history_days` (integer 1-365) — used by `with_sales_history` forecast
-        type
+        type. Covers exactly that many calendar dates ending today (30 = today and
+        the 29 dates before it)
 
         - `sales_start_date` / `sales_end_date` (Y-m-d) — alternative date range for
-        sales history
+        sales history; both dates are included and counted
 
         - `use_leadtime` (boolean)
 
@@ -292971,7 +293150,9 @@ paths:
 
         - `product_filters` (array) — filter criteria applied to candidate products
 
-        - `sales_filters` (array) — filter criteria applied to sales history
+        - `sales_filters` (array) — filter criteria applied to sales history. `exclude_returns`
+        and `exclude_cancelled` default to true when omitted (refunded and cancelled
+        orders are left out); send false to count them
 
         - `demand_modifiers` (array) — adjustments to projected demand
 
@@ -296781,7 +296962,12 @@ paths:
         Additional optional `config` fields: `use_min_stock_level_as_target` (boolean),
         `use_case_pack` (boolean) and `case_pack_rounding` (one of `always_round_up`,
         `always_round_down`, `round_nearest`, `none`; default `round_nearest`). `enforce_minimum_order_value`
-        and `enforce_minimum_order_quantity` are now applied to the export.'
+        and `enforce_minimum_order_quantity` are now applied to the export.
+
+
+        config.demand_modifiers[] accepts promo_window_id and lift_pct_override for
+        promo_lift modifiers, and config.max_modifier_multiplier (1..100) caps the
+        promo multiplier, so an export matches the build it was taken from.'
       requestBody:
         content:
           application/json:
@@ -297032,6 +297218,8 @@ paths:
         to the trailing 365 days.
 
         - sales_filters (optional): object narrowing which sales feed the series.
+        Same shape and defaults as Build Forecast: exclude_returns and exclude_cancelled
+        are true unless sent as false.
 
         - warehouse_id (optional): restrict the series to one warehouse.
 
@@ -297520,7 +297708,21 @@ paths:
         measured window can be applied without re-measuring. Empty until the window
         has been measured. The second modifier is named ''&lt;window> post-promo dip''
         when post_promo_dip_pct is negative and ''&lt;window> post-promo carryover''
-        when demand stayed elevated after the promo (positive).'
+        when demand stayed elevated after the promo (positive).
+
+
+        measured_product_id is the product the lift was measured on (null until the
+        window is measured again). measured_expected_daily is the daily rate the lift
+        was measured against (the expected daily rate of the last Measure Promo Lift).
+        Null until the window is measured.
+
+
+        recurrence_rule is the moving holiday the window follows (null when it repeats
+        on its calendar dates). next_occurrence is the next occurrence that has not
+        ended yet, as start_date and end_date: the holiday''s real dates for a window
+        with a recurrence_rule, this year''s calendar dates for another annual window,
+        and null for a one-off window whose dates and their repeat one year on have
+        both passed.'
       parameters: []
       responses:
         '200':
@@ -297560,8 +297762,22 @@ paths:
                             type: string
                         recurrence:
                           type: string
+                        recurrence_rule:
+                          type: string
+                          nullable: true
+                        next_occurrence:
+                          type: object
+                          properties:
+                            start_date:
+                              type: string
+                            end_date:
+                              type: string
                         measured_lift_pct:
                           type: number
+                        measured_expected_daily:
+                          type: number
+                        measured_product_id:
+                          type: integer
                         post_promo_dip_pct:
                           type: number
                         measured_at:
@@ -297608,7 +297824,13 @@ paths:
                     channel_scope:
                     - shopify
                     recurrence: annual
+                    recurrence_rule: null
+                    next_occurrence:
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
                     measured_lift_pct: 34.78
+                    measured_expected_daily: 6.3
+                    measured_product_id: 4821
                     post_promo_dip_pct: -11.2
                     measured_at: '2024-12-05T08:00:00+00:00'
                     suggested_modifiers:
@@ -297686,6 +297908,14 @@ paths:
         on the same dates each year, so its lift can be re-applied to the next occurrence).
         Default one_off.
 
+        - recurrence_rule (optional): the moving holiday the window follows, one of
+        easter, mothers_day, memorial_day, fathers_day, labor_day, black_friday_cyber_monday.
+        With it, an annual window repeats on the holiday''s real dates each year (Black
+        Friday / Cyber Monday is the Friday after US Thanksgiving to the Monday, so
+        Nov 28 - Dec 1 in 2025 and Nov 27 - Nov 30 in 2026) instead of on the same
+        calendar dates. Send null, or leave it out, for a window that repeats on its
+        calendar dates. Any other value returns 422.
+
         - product_scope (optional): array of product IDs the window applies to.
 
         - channel_scope (optional): array of sales channels the window applies to.
@@ -297696,7 +297926,15 @@ paths:
         measured window can be applied without re-measuring. Empty until the window
         has been measured. The second modifier is named ''&lt;window> post-promo dip''
         when post_promo_dip_pct is negative and ''&lt;window> post-promo carryover''
-        when demand stayed elevated after the promo (positive).'
+        when demand stayed elevated after the promo (positive).
+
+
+        recurrence_rule is the moving holiday the window follows (null when it repeats
+        on its calendar dates). next_occurrence is the next occurrence that has not
+        ended yet, as start_date and end_date: the holiday''s real dates for a window
+        with a recurrence_rule, this year''s calendar dates for another annual window,
+        and null for a one-off window whose dates and their repeat one year on have
+        both passed.'
       requestBody:
         content:
           application/json:
@@ -297713,6 +297951,9 @@ paths:
                   type: string
                 recurrence:
                   type: string
+                recurrence_rule:
+                  type: string
+                  nullable: true
                 product_scope:
                   type: array
                   items:
@@ -297727,6 +297968,7 @@ paths:
                 end_date: '2024-11-30'
                 order_tag: black-friday
                 recurrence: annual
+                recurrence_rule: null
                 product_scope:
                 - 55
                 - 56
@@ -297769,7 +298011,23 @@ paths:
                           type: string
                       recurrence:
                         type: string
+                      recurrence_rule:
+                        type: string
+                        nullable: true
+                      next_occurrence:
+                        type: object
+                        properties:
+                          start_date:
+                            type: string
+                          end_date:
+                            type: string
                       measured_lift_pct:
+                        type: string
+                        nullable: true
+                      measured_expected_daily:
+                        type: string
+                        nullable: true
+                      measured_product_id:
                         type: string
                         nullable: true
                       post_promo_dip_pct:
@@ -297799,7 +298057,13 @@ paths:
                     channel_scope:
                     - shopify
                     recurrence: annual
+                    recurrence_rule: null
+                    next_occurrence:
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
                     measured_lift_pct: null
+                    measured_expected_daily: null
+                    measured_product_id: null
                     post_promo_dip_pct: null
                     measured_at: null
                     suggested_modifiers: []
@@ -297977,7 +298241,21 @@ paths:
         measured window can be applied without re-measuring. Empty until the window
         has been measured. The second modifier is named ''&lt;window> post-promo dip''
         when post_promo_dip_pct is negative and ''&lt;window> post-promo carryover''
-        when demand stayed elevated after the promo (positive).'
+        when demand stayed elevated after the promo (positive).
+
+
+        measured_product_id is the product the lift was measured on (null until the
+        window is measured again). measured_expected_daily is the daily rate the lift
+        was measured against (the expected daily rate of the last Measure Promo Lift).
+        Null until the window is measured.
+
+
+        recurrence_rule is the moving holiday the window follows (null when it repeats
+        on its calendar dates). next_occurrence is the next occurrence that has not
+        ended yet, as start_date and end_date: the holiday''s real dates for a window
+        with a recurrence_rule, this year''s calendar dates for another annual window,
+        and null for a one-off window whose dates and their repeat one year on have
+        both passed.'
       parameters:
       - name: id
         in: path
@@ -298021,8 +298299,22 @@ paths:
                           type: string
                       recurrence:
                         type: string
+                      recurrence_rule:
+                        type: string
+                        nullable: true
+                      next_occurrence:
+                        type: object
+                        properties:
+                          start_date:
+                            type: string
+                          end_date:
+                            type: string
                       measured_lift_pct:
                         type: number
+                      measured_expected_daily:
+                        type: number
+                      measured_product_id:
+                        type: integer
                       post_promo_dip_pct:
                         type: number
                       measured_at:
@@ -298069,7 +298361,13 @@ paths:
                     channel_scope:
                     - shopify
                     recurrence: annual
+                    recurrence_rule: null
+                    next_occurrence:
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
                     measured_lift_pct: 34.78
+                    measured_expected_daily: 6.3
+                    measured_product_id: 4821
                     post_promo_dip_pct: -11.2
                     measured_at: '2024-12-05T08:00:00+00:00'
                     suggested_modifiers:
@@ -298155,6 +298453,14 @@ paths:
 
         - recurrence (optional): one_off or annual (default one_off).
 
+        - recurrence_rule (optional): the moving holiday the window follows, one of
+        easter, mothers_day, memorial_day, fathers_day, labor_day, black_friday_cyber_monday.
+        With it, an annual window repeats on the holiday''s real dates each year (Black
+        Friday / Cyber Monday is the Friday after US Thanksgiving to the Monday, so
+        Nov 28 - Dec 1 in 2025 and Nov 27 - Nov 30 in 2026) instead of on the same
+        calendar dates. Send null, or leave it out, for a window that repeats on its
+        calendar dates. Any other value returns 422.
+
         - product_scope (optional): array of product IDs the window applies to.
 
         - channel_scope (optional): array of sales channels the window applies to.
@@ -298168,7 +298474,15 @@ paths:
         measured window can be applied without re-measuring. Empty until the window
         has been measured. The second modifier is named ''&lt;window> post-promo dip''
         when post_promo_dip_pct is negative and ''&lt;window> post-promo carryover''
-        when demand stayed elevated after the promo (positive).'
+        when demand stayed elevated after the promo (positive).
+
+
+        recurrence_rule is the moving holiday the window follows (null when it repeats
+        on its calendar dates). next_occurrence is the next occurrence that has not
+        ended yet, as start_date and end_date: the holiday''s real dates for a window
+        with a recurrence_rule, this year''s calendar dates for another annual window,
+        and null for a one-off window whose dates and their repeat one year on have
+        both passed.'
       requestBody:
         content:
           application/json:
@@ -298185,6 +298499,9 @@ paths:
                   type: string
                 recurrence:
                   type: string
+                recurrence_rule:
+                  type: string
+                  nullable: true
                 product_scope:
                   type: array
                   items:
@@ -298199,6 +298516,7 @@ paths:
                 end_date: '2024-11-30'
                 order_tag: black-friday
                 recurrence: annual
+                recurrence_rule: null
                 product_scope:
                 - 55
                 - 56
@@ -298247,8 +298565,22 @@ paths:
                           type: string
                       recurrence:
                         type: string
+                      recurrence_rule:
+                        type: string
+                        nullable: true
+                      next_occurrence:
+                        type: object
+                        properties:
+                          start_date:
+                            type: string
+                          end_date:
+                            type: string
                       measured_lift_pct:
                         type: number
+                      measured_expected_daily:
+                        type: number
+                      measured_product_id:
+                        type: integer
                       post_promo_dip_pct:
                         type: number
                       measured_at:
@@ -298295,7 +298627,13 @@ paths:
                     channel_scope:
                     - shopify
                     recurrence: annual
+                    recurrence_rule: null
+                    next_occurrence:
+                      start_date: '2026-11-25'
+                      end_date: '2026-11-30'
                     measured_lift_pct: 34.78
+                    measured_expected_daily: 6.3
+                    measured_product_id: 4821
                     post_promo_dip_pct: -11.2
                     measured_at: '2024-12-05T08:00:00+00:00'
                     suggested_modifiers:
@@ -298424,8 +298762,10 @@ paths:
         It is reported as a percentage but is applied MULTIPLICATIVELY to whatever
         the current baseline is, so it stays correct as demand grows - a promotion
         that lifted demand 85% last year still lifts this year''s larger baseline
-        by 85%. Re-measure whenever you want the applied lift refreshed (for example
-        after editing the window or accruing more sales).
+        by 85%. The lift lands on the promotion''s own days only: a build adds the
+        extra units for the promo days inside each line''s cover window and leaves
+        the everyday daily rate alone. Re-measure whenever you want the applied lift
+        refreshed (for example after editing the window or accruing more sales).
 
 
         Path parameter: id - the promo window to measure.
@@ -298438,7 +298778,9 @@ paths:
         - dip_days (optional): number of days after the window to measure the post-promo
         dip, 1-365 (default 14).
 
-        - sales_filters (optional): object narrowing which sales are counted.
+        - sales_filters (optional): object narrowing which sales are counted. Same
+        shape and defaults as Build Forecast: exclude_returns and exclude_cancelled
+        are true unless sent as false.
 
         - warehouse_id (optional): restrict the measurement to one warehouse.
 
@@ -298451,7 +298793,19 @@ paths:
 
         The second suggested modifier is named ''&lt;window> post-promo dip'' when
         post_promo_dip_pct is negative and ''&lt;window> post-promo carryover'' when
-        demand stayed elevated after the promo.'
+        demand stayed elevated after the promo.
+
+
+        The measurement''s expected_daily is also saved on the window as measured_expected_daily,
+        the daily rate the lift was measured against. The product it was measured
+        on is saved as measured_product_id.
+
+
+        A window with a recurrence_rule and annual recurrence is measured on the real
+        dates of its latest occurrence that has fully ended (the post-promo days included),
+        not on the dates it was saved with; its suggested_modifiers are dated to the
+        holiday one year after the window''s saved dates. Every other window is measured
+        on its own start_date and end_date.'
       requestBody:
         content:
           application/json:
@@ -496946,8 +497300,9 @@ paths:
 
 
         **Abandoned shipments.** Shipments marked abandoned (see Mark Inbound Shipment
-        as Abandoned) are hidden by default. Pass filter[abandoned]=only to list just
-        those, or filter[abandoned]=all to include them.'
+        as Abandoned) are hidden by default, except those Walmart reports goods for
+        (`abandon_needs_review`). Pass filter[abandoned]=only to list just those,
+        or filter[abandoned]=all to include them.'
       parameters:
       - name: integrationInstance
         in: path
@@ -496991,6 +497346,22 @@ paths:
                           nullable: true
                         is_abandoned:
                           type: boolean
+                        abandon_needs_review:
+                          type: boolean
+                        restore_ships_stock:
+                          type: boolean
+                        restore_blocked_reason:
+                          type: string
+                          nullable: true
+                        unlisted_since:
+                          type: string
+                          nullable: true
+                        unlisted_no_answer_since:
+                          type: string
+                          nullable: true
+                        unlisted_checks_end_at:
+                          type: string
+                          nullable: true
                         abandoned_at:
                           type: string
                           nullable: true
@@ -497131,6 +497502,12 @@ paths:
                     can_cancel: true
                     cancel_blocked_reason: null
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_by: null
                     abandoned_reason: null
@@ -497181,6 +497558,12 @@ paths:
                     cancel_blocked_reason: This shipment has already been received
                       by Walmart, so it can no longer be cancelled.
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_by: null
                     abandoned_reason: null
@@ -497430,6 +497813,25 @@ paths:
                           nullable: true
                         is_abandoned:
                           type: boolean
+                        abandon_needs_review:
+                          type: boolean
+                        restore_ships_stock:
+                          type: boolean
+                        restore_ship_units:
+                          type: string
+                          nullable: true
+                        restore_blocked_reason:
+                          type: string
+                          nullable: true
+                        unlisted_since:
+                          type: string
+                          nullable: true
+                        unlisted_no_answer_since:
+                          type: string
+                          nullable: true
+                        unlisted_checks_end_at:
+                          type: string
+                          nullable: true
                         abandoned_at:
                           type: string
                           nullable: true
@@ -497478,6 +497880,13 @@ paths:
                     can_cancel: true
                     cancel_blocked_reason: null
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_ship_units: null
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_by: null
                     abandoned_reason: null
@@ -497670,6 +498079,25 @@ paths:
                         nullable: true
                       is_abandoned:
                         type: boolean
+                      abandon_needs_review:
+                        type: boolean
+                      restore_ships_stock:
+                        type: boolean
+                      restore_ship_units:
+                        type: string
+                        nullable: true
+                      restore_blocked_reason:
+                        type: string
+                        nullable: true
+                      unlisted_since:
+                        type: string
+                        nullable: true
+                      unlisted_no_answer_since:
+                        type: string
+                        nullable: true
+                      unlisted_checks_end_at:
+                        type: string
+                        nullable: true
                       abandoned_at:
                         type: string
                         nullable: true
@@ -497800,6 +498228,13 @@ paths:
                     can_cancel: true
                     cancel_blocked_reason: null
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_ship_units: null
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_by: null
                     abandoned_reason: null
@@ -497993,16 +498428,17 @@ paths:
         This is recorded in SKU.io only — nothing is sent to Walmart, and `status`
         keeps Walmart''s value. The shipment stops counting as inbound in SKU.io (WFS
         inventory `effective_inbound_quantity`, replenishment, open-shipment counts),
-        is hidden from the inbound shipment list by default, and its source Warehouse
-        Transfer / Purchase Order is removed so the reserved source stock is released.
-        Only this shipment is affected, not other shipments under the same inbound
-        order.
+        is hidden from the inbound shipment list by default (unless Walmart reports
+        goods for it), and its source Warehouse Transfer / Purchase Order is removed
+        so the reserved source stock is released. Only this shipment is affected,
+        not other shipments under the same inbound order.
 
 
         Allowed while Walmart reports CREATED, AWAITING_DELIVERY, SHIPPED or IN_TRANSIT
-        with no received units and no delivery date. If Walmart later reports the
-        shipment delivered, receiving or received, SKU.io clears the abandoned mark
-        automatically on the next sync.
+        with no received units and no delivery date. It stays abandoned whatever Walmart
+        reports later. When Walmart reports goods for it (received units, a delivery
+        date, delivered or receiving), `abandon_needs_review` is true and it returns
+        to the default list; only Restore brings it back.
 
 
         Body:
@@ -498076,6 +498512,25 @@ paths:
                         type: string
                       is_abandoned:
                         type: boolean
+                      abandon_needs_review:
+                        type: boolean
+                      restore_ships_stock:
+                        type: boolean
+                      restore_ship_units:
+                        type: string
+                        nullable: true
+                      restore_blocked_reason:
+                        type: string
+                        nullable: true
+                      unlisted_since:
+                        type: string
+                        nullable: true
+                      unlisted_no_answer_since:
+                        type: string
+                        nullable: true
+                      unlisted_checks_end_at:
+                        type: string
+                        nullable: true
                       abandoned_at:
                         type: string
                       abandoned_by:
@@ -498126,6 +498581,13 @@ paths:
                     cancel_blocked_reason: This shipment is marked as abandoned in
                       SKU.io. Restore it first if you want to cancel it on Walmart.
                     is_abandoned: true
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_ship_units: null
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: '2026-10-02T20:41:12.000000Z'
                     abandoned_by: Jane Operator
                     abandoned_reason: 3PL never shipped it; the units went on shipment
@@ -498200,11 +498662,24 @@ paths:
         :::
 
 
+        **This can ship stock.** When `restore_ships_stock` is true (Walmart already
+        reports the shipment departed), the stock ships from the source at once, so
+        `confirm_ship=1` is required. A shipment Walmart has received or closed cannot
+        be restored (`restore_blocked_reason`).
+
+
+        Query:
+
+        - confirm_ship (boolean): required when `restore_ships_stock` is true.
+
+
         Authentication: Requires Bearer token.
 
 
         Returns 200 with the updated shipment, 404 when the shipment does not belong
-        to the instance, and 422 when the shipment is not marked as abandoned.
+        to the instance, and 422 when the shipment is not marked as abandoned, cannot
+        be restored, needs `confirm_ship`, has nothing to ship, or the source has
+        too little stock; it then stays abandoned.
 
 
         Requires the `integrations.update` permission.'
@@ -498253,6 +498728,25 @@ paths:
                         type: string
                       is_abandoned:
                         type: boolean
+                      abandon_needs_review:
+                        type: boolean
+                      restore_ships_stock:
+                        type: boolean
+                      restore_ship_units:
+                        type: string
+                        nullable: true
+                      restore_blocked_reason:
+                        type: string
+                        nullable: true
+                      unlisted_since:
+                        type: string
+                        nullable: true
+                      unlisted_no_answer_since:
+                        type: string
+                        nullable: true
+                      unlisted_checks_end_at:
+                        type: string
+                        nullable: true
                       abandoned_at:
                         type: string
                         nullable: true
@@ -498304,6 +498798,13 @@ paths:
                     cancel_blocked_reason: A shipment in status AWAITING_DELIVERY
                       can no longer be cancelled.
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_ship_units: null
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_reason: null
                     can_abandon: true
@@ -498743,6 +499244,25 @@ paths:
                         nullable: true
                       is_abandoned:
                         type: boolean
+                      abandon_needs_review:
+                        type: boolean
+                      restore_ships_stock:
+                        type: boolean
+                      restore_ship_units:
+                        type: string
+                        nullable: true
+                      restore_blocked_reason:
+                        type: string
+                        nullable: true
+                      unlisted_since:
+                        type: string
+                        nullable: true
+                      unlisted_no_answer_since:
+                        type: string
+                        nullable: true
+                      unlisted_checks_end_at:
+                        type: string
+                        nullable: true
                       abandoned_at:
                         type: string
                         nullable: true
@@ -498840,6 +499360,13 @@ paths:
                     can_cancel: true
                     cancel_blocked_reason: null
                     is_abandoned: false
+                    abandon_needs_review: false
+                    restore_ships_stock: false
+                    restore_ship_units: null
+                    restore_blocked_reason: null
+                    unlisted_since: null
+                    unlisted_no_answer_since: null
+                    unlisted_checks_end_at: null
                     abandoned_at: null
                     abandoned_by: null
                     abandoned_reason: null
@@ -821301,6 +821828,15 @@ paths:
         refuses, leaves the order for a person to finish.
 
 
+        trading_partner_settings.{id}.hold_short_acknowledgments (boolean, default
+        false) sends this retailer''s 855 automatically only when its order holds
+        stock for every line the retailer ordered. When a line is short the 855 is
+        held with an alert naming the short lines, and is never sent by itself later:
+        Send Acknowledgment checks it again, and Resend EDI Document sends it as written,
+        accepting every line in full. Incoming stock and dropship lines do not count
+        as in stock.
+
+
         trading_partner_settings.{id}.label_division (string of at most 40 characters,
         or null) is the Division sent with this retailer''s carton labels, for a label
         template that requires one. Target''s templates take one of Master Carton,
@@ -826863,6 +827399,12 @@ paths:
         kept unsent while its sync was turned off, once that sync is back on.
 
 
+        `is_held_for_stock` is true for an 855 held because a line isn''t in stock,
+        for a retailer set to `hold_short_acknowledgments`; `error` names the short
+        lines. Such a document is also `is_held` and `can_resend`, and matches the
+        `hold` filter.
+
+
         The response also carries `unfiltered_total`: every row of the connection,
         whatever the filters.
 
@@ -826932,6 +827474,8 @@ paths:
                         can_resend:
                           type: boolean
                         is_held:
+                          type: boolean
+                        is_held_for_stock:
                           type: boolean
                         received_at:
                           type: string
@@ -827011,6 +827555,7 @@ paths:
                       trading partner'
                     can_resend: true
                     is_held: false
+                    is_held_for_stock: false
                     received_at: null
                     sent_at: null
                     created_at: '2026-10-08T23:06:12.000000Z'
@@ -827041,6 +827586,7 @@ paths:
                     error: null
                     can_resend: false
                     is_held: false
+                    is_held_for_stock: false
                     received_at: null
                     sent_at: '2026-10-08T23:06:14.000000Z'
                     created_at: '2026-10-08T23:06:12.000000Z'
@@ -827330,7 +827876,14 @@ paths:
         Also sends now ("Send now") a document held while the connection''s sync is
         paused, and an acknowledgment (855) or ship notice (856) kept unsent while
         its sync was turned off, once that sync is back on. A document whose sync
-        is still turned off is refused with 422.'
+        is still turned off is refused with 422. An 855 held because a line isn''t
+        in stock is refused with 422 naming the short lines, unless accept_short is
+        true: it is then sent as written, accepting every line in full.
+
+
+        **Request Body:**
+
+        - `accept_short` (boolean, optional) - Send an 855 that is held for stock'
       requestBody:
         content: {}
       parameters:
@@ -828734,8 +829287,9 @@ paths:
       summary: Bulk Resend EDI Documents
       description: 'Send several outbound documents that failed to send again. A document
         already sent is skipped: resending a sent warehouse order can make the 3PL
-        ship twice, so use Resend EDI Document for those, one at a time. Documents
-        that can''t be resent are skipped and counted.
+        ship twice, so use Resend EDI Document for those, one at a time. An 855 held
+        because a line isn''t in stock is skipped for the same reason. Documents that
+        can''t be resent are skipped and counted.
 
 
         :::info[Required scope: `integrations:write`]
@@ -831700,6 +832254,9 @@ paths:
 
         - `sent` - Number of acknowledgments sent
 
+        - `held` - Number held because a line isn''t in stock, for a retailer set
+        to `hold_short_acknowledgments`
+
         - `failed` - Number that could not be sent
 
         - `errors` - One message per failed purchase order
@@ -831747,6 +832304,8 @@ paths:
                     type: string
                   sent:
                     type: integer
+                  held:
+                    type: integer
                   failed:
                     type: integer
                   errors:
@@ -831756,6 +832315,7 @@ paths:
                 example:
                   message: Acknowledgments processed
                   sent: 2
+                  held: 0
                   failed: 1
                   errors:
                   - 'PO PO584615-1: SPS Commerce returned 503'
@@ -856783,7 +857343,13 @@ paths:
         - swatch_variant_attribute (optional, max 255): marks this image as the variant
         swatch for the named variant attribute (e.g. "color"). Sales channels that
         support swatches render it as the variant''s swatch image. Omit or send null
-        for a normal gallery image.'
+        for a normal gallery image.
+
+
+        - show_to_suppliers (optional, boolean or null): what suppliers see on purchase
+        orders (PO document, supplier portal, confirmation page). `true` always shows
+        the image, `false` always hides it, `null` follows the purchase order setting
+        `supplier_images`.'
       requestBody:
         content:
           application/json:
@@ -856800,6 +857366,8 @@ paths:
                   type: boolean
                 swatch_variant_attribute:
                   type: string
+                show_to_suppliers:
+                  type: boolean
                 download:
                   type: boolean
               example:
@@ -856808,6 +857376,7 @@ paths:
                 sort_order: 1
                 is_primary: true
                 swatch_variant_attribute: color
+                show_to_suppliers: true
                 download: true
       parameters:
       - name: productImage
@@ -865150,7 +865719,14 @@ paths:
         it is in the group, else the largest original. `width` / `height` are the
         pixel size read from the image (null until read), and `fingerprint_pending`
         is true while the image has not been compared yet — it is read in the background
-        shortly after this call, so poll again to pick up hash matches.'
+        shortly after this call, so poll again to pick up hash matches.
+
+
+        Suppliers: `show_to_suppliers` (boolean, nullable) is the image''s own choice
+        — `true` always shows it to suppliers on purchase orders, `false` always hides
+        it, `null` follows the purchase order setting `supplier_images` (`marked`:
+        only marked images, or `primary`: the primary image too). `shown_to_suppliers`
+        (boolean) is the result.'
       parameters:
       - name: product
         in: path
@@ -865191,6 +865767,10 @@ paths:
                           type: integer
                         swatch_variant_attribute:
                           type: string
+                        show_to_suppliers:
+                          type: boolean
+                        shown_to_suppliers:
+                          type: boolean
                         resolvable:
                           type: boolean
                         image_checked_at:
@@ -865229,6 +865809,8 @@ paths:
                     is_primary: true
                     sort_order: 0
                     swatch_variant_attribute: Color
+                    show_to_suppliers: true
+                    shown_to_suppliers: true
                     resolvable: false
                     image_checked_at: '2026-10-25T14:30:00+00:00'
                     created_at: '2024-01-15T10:30:00.000000Z'
@@ -865249,6 +865831,8 @@ paths:
                     is_primary: false
                     sort_order: 1
                     swatch_variant_attribute: null
+                    show_to_suppliers: null
+                    shown_to_suppliers: false
                     resolvable: true
                     image_checked_at: '2026-10-25T14:30:00+00:00'
                     created_at: '2024-01-15T10:31:00.000000Z'
@@ -902631,6 +903215,10 @@ paths:
                         nullable: true
                       available_for_templates:
                         type: boolean
+                      show_in_portal:
+                        type: boolean
+                      show_to_suppliers:
+                        type: boolean
                       option_values:
                         type: array
                         items:
@@ -902663,6 +903251,8 @@ paths:
                       placeholder: Enter color
                     validation: null
                     available_for_templates: true
+                    show_in_portal: false
+                    show_to_suppliers: true
                     option_values:
                     - value: Red
                       sort_order: 1
@@ -902726,7 +903316,12 @@ paths:
         Returns **422** with code `IsLinked` if the update would remove an option
         value that is still assigned to a product — the response lists the in-use
         values under `errors[].data.in_use`. Add those values back, or reassign/clear
-        them on the affected products, before removing the option.'
+        them on the affected products, before removing the option.
+
+
+        `show_to_suppliers` (boolean) shows or hides the attribute from suppliers
+        on purchase orders. Turning it on or off never marks a sent order as changed;
+        changing a shown attribute''s value on a product does.'
       requestBody:
         content:
           application/json:
@@ -902753,6 +903348,8 @@ paths:
                         nullable: true
                 available_for_templates:
                   type: boolean
+                show_to_suppliers:
+                  type: boolean
                 notes:
                   type: string
               example:
@@ -902772,6 +903369,7 @@ paths:
                   swatch_hex: '#00A651'
                   swatch_image_url: https://cdn.example.com/swatches/green.jpg
                 available_for_templates: true
+                show_to_suppliers: true
                 notes: Updated color attribute
       parameters:
       - name: id
@@ -903091,7 +903689,11 @@ paths:
         \ (a hex colour, max 20) and/or `swatch_image_url` (an image URL, max 500).\
         \ When the attribute is used as a variant axis (e.g. Color), channels that\
         \ support swatches (Walmart) render this chip for every variant that selects\
-        \ the value. Send null to clear a swatch."
+        \ the value. Send null to clear a swatch.\n\n- show_to_suppliers (optional,\
+        \ boolean, default false): suppliers see the attribute on purchase orders\
+        \ — as `{{attributes.<name>}}` on the PO document, on each line in the supplier\
+        \ portal and on the confirmation page. A variant with a blank value shows\
+        \ its style's."
       requestBody:
         content:
           application/json:
@@ -903129,6 +903731,8 @@ paths:
                   nullable: true
                 available_for_templates:
                   type: boolean
+                show_to_suppliers:
+                  type: boolean
                 attribute_group_id:
                   type: integer
                 notes:
@@ -903151,6 +903755,7 @@ paths:
                   swatch_image_url: null
                 validation: null
                 available_for_templates: true
+                show_to_suppliers: false
                 attribute_group_id: 1
                 notes: Primary product color
       parameters: []
@@ -1043818,7 +1044423,17 @@ paths:
 
         `components.*.mo_component_line_id`, `outputs.*.mo_output_line_id` and `operation_actuals.*.mo_operation_id`
         must belong to this manufacturing order; another order''s ids are a 422. Recording
-        against an order whose status does not allow it returns 422 with `code: invalid_status`.'
+        against an order whose status does not allow it returns 422 with `code: invalid_status`.
+
+
+        **Quarantined lots:** `components[].fifo_layer_ids` can''t name a layer with
+        quarantined units (422). Use `lot_allocation` for the units outside a partial
+        quarantine.
+
+
+        **Quarantined lots:** `components[].fifo_layer_ids` can''t name a layer with
+        quarantined units (422). Use `lot_allocation` for the units outside a partial
+        quarantine.'
       requestBody:
         content:
           application/json:
@@ -1057487,8 +1058102,10 @@ paths:
       summary: Trace Lot Genealogy
       description: 'Returns a genealogy tree for a batch/lot. Both directions follow
         a lot through warehouse transfers and returns. In a forward tree, stock already
-        traced is a card with `repeated: true` and no children. `batch_number` is
-        required; `product_id` is optional and auto-resolved from the batch number
+        traced is a card with `repeated: true` and no children. When one run''s consumption
+        is shown on several of the lots it made, those cards carry `consumed_shared_by`
+        (how many), and their `consumed_quantity` is not for adding up. `batch_number`
+        is required; `product_id` is optional and auto-resolved from the batch number
         when it uniquely identifies a FIFO layer. When the same batch number is used
         across multiple products, the API responds 409 with a `candidates` array so
         a UI can prompt for product disambiguation. Direction `backward` traces from
@@ -1059824,7 +1060441,10 @@ paths:
 
 
         **Body:** `title` (required, max 255), `reason` (optional, max 5000), `classification`
-        (required: class_1, class_2, class_3, unclassified).'
+        (required: class_1, class_2, class_3, unclassified).
+
+
+        Changes to title, reason or class are logged on the case as an `edited` event.'
       requestBody:
         content:
           application/json:
@@ -1060008,7 +1060628,12 @@ paths:
         Each order carries `sales_channel_name` (the channel it came in on, recorded
         when the order was added to the case) and `is_marketplace_customer` (true
         when that channel is a marketplace, so the buyer is reached through the marketplace''s
-        buyer messaging rather than by email).'
+        buyer messaging rather than by email).
+
+
+        `shipment_voided_at` is set when a refresh finds that every shipment of the
+        product on the order was voided. The order stays on the case; its units leave
+        `units_shipped`.'
       parameters:
       - name: recallCase
         in: path
@@ -1088911,13 +1089536,23 @@ paths:
                           items:
                             type: object
                             properties:
+                              source_type:
+                                type: string
+                              source_label:
+                                type: string
+                              source_route:
+                                type: string
+                              released_quantity:
+                                type: integer
+                              released_at:
+                                type: string
                               purchase_order_id:
                                 type: integer
                               purchase_order_number:
                                 type: string
-                              released_quantity:
-                                type: integer
                               eta:
+                                type: string
+                              status:
                                 type: string
                         unrecorded_channel_shipment:
                           type: object
@@ -1089132,10 +1089767,24 @@ paths:
                       received_quantity: 12
                       is_fully_received: true
                     backorder_releases:
-                    - purchase_order_id: 112
-                      purchase_order_number: PO-2274
+                    - source_type: purchase_order
+                      source_label: PO-2274
+                      source_route: /orders/purchase-orders/112
                       released_quantity: 1
+                      released_at: '2026-08-19T14:02:11+00:00'
+                      purchase_order_id: 112
+                      purchase_order_number: PO-2274
                       eta: '2026-08-19'
+                      status: closed
+                    - source_type: moved_from_sales_order
+                      source_label: Moved from SO-1042
+                      source_route: /orders/sales-orders/1042
+                      released_quantity: 1
+                      released_at: '2026-08-20T09:15:40+00:00'
+                      purchase_order_id: null
+                      purchase_order_number: null
+                      eta: null
+                      status: null
                     unrecorded_channel_shipment:
                       quantity: 2
                       reason: unmapped_product
@@ -1213860,11 +1214509,19 @@ paths:
 
         Response fields:
 
-        - `data.columns[]` — array of `{ key, label }` in canonical order
+        - `data.columns[]` — array of `{ key, label, optional, sample }` in canonical
+        order, standard columns first
 
         - `data.tenant_default` — array of column keys representing the tenant-wide
         default, or `null` if no override is set (means: use system default = every
-        column)
+        standard column)
+
+
+        Optional columns carry `optional: true`: `image_url` (the product image suppliers
+        see), `attributes` (every attribute shown to suppliers, as text) and one `attribute_<id>`
+        column per attribute shown to suppliers. They are only in a file that names
+        them. `sample` is an example value for an optional column, `null` for a standard
+        one.
 
 
         Authentication: Requires Bearer token. Scope: `purchase-orders:rw`.'
@@ -1213894,6 +1214551,11 @@ paths:
                               type: string
                             label:
                               type: string
+                            optional:
+                              type: boolean
+                            sample:
+                              type: string
+                              nullable: true
                       tenant_default:
                         type: string
                         nullable: true
@@ -1213902,20 +1214564,48 @@ paths:
                     columns:
                     - key: purchase_order
                       label: Purchase Order
+                      optional: false
+                      sample: null
                     - key: sku
                       label: SKU
+                      optional: false
+                      sample: null
                     - key: barcode
                       label: Barcode
+                      optional: false
+                      sample: null
                     - key: supplier_sku
                       label: Supplier SKU
+                      optional: false
+                      sample: null
                     - key: name
                       label: Name
+                      optional: false
+                      sample: null
                     - key: qty_ordered
                       label: Qty Ordered
+                      optional: false
+                      sample: null
                     - key: unit_cost
                       label: Unit Cost
+                      optional: false
+                      sample: null
                     - key: extended_cost
                       label: Extended Cost
+                      optional: false
+                      sample: null
+                    - key: image_url
+                      label: Image URL
+                      optional: true
+                      sample: https://example.com/product.jpg
+                    - key: attributes
+                      label: Attributes
+                      optional: true
+                      sample: 'Packaging: Gift box, medium; Metal: 14k gold plated'
+                    - key: attribute_31
+                      label: Packaging
+                      optional: true
+                      sample: Gift box, medium
                     tenant_default: null
         '429': *id001
         '401': *id002
@@ -1234958,7 +1235648,9 @@ paths:
 
         - `line_changes[]` — each entry has a `change_type` of `added`, `removed`
         or `modified`, and (for `modified`) a `fields[]` array of `{ field, from,
-        to }`.
+        to }`. A product attribute or image suppliers see also appears here: `field`
+        is `attribute_<id>` or `images`, with a `label` to show. Attributes are compared
+        only when they were shown to suppliers both when the order was sent and now.
 
         - `header_changes[]` — same shape for header-level fields.
 
@@ -1235043,6 +1235735,10 @@ paths:
                       - field: quantity
                         from: 76
                         to: 74
+                      - field: attribute_31
+                        label: Packaging
+                        from: Gift box, medium
+                        to: Velvet pouch
                     header_changes: []
         '429': *id001
         '401': *id002
@@ -1284753,7 +1285449,13 @@ paths:
 
         **Required permission:** `fulfillment_orders.ship` (Fulfillment Orders → Ship)
         and `fulfillment_orders.index` (Fulfillment Orders → View). A token also needs
-        its `orders` scope; the owner needs these role permissions.'
+        its `orders` scope; the owner needs these role permissions.
+
+
+        **Quarantined stock:** a shipment recorded by a signed-in person is refused
+        (422) when it needs quarantined units or a picked lot has been quarantined.
+        A shipment recorded with an API token has already happened, so it is recorded
+        and noted on the order.'
       requestBody:
         content:
           application/json:
@@ -1378712,7 +1379414,14 @@ paths:
         Each line carries `shipped_quantity`, `remaining_quantity` and `received_quantity`
         (what the buyer has booked in; null on a dropship order, which goes straight
         to the customer). `portal_status` can be `partially_received` once part of
-        the order has arrived.'
+        the order has arrived.
+
+
+        Each line also carries what the buyer chose to show of the product: `attributes`
+        (`label`, `value`, as sent with this revision) and `images` (`id`, `name`,
+        `url`, `thumb_url`, main image first). Image links need no token: they expire
+        within two days, open only that image of this order, and stop working when
+        the buyer hides the image. Both are empty when the buyer shows none.'
       parameters:
       - name: purchaseOrder
         in: path
@@ -1378857,6 +1379566,28 @@ paths:
                               type: integer
                             received_quantity:
                               type: integer
+                            images:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  name:
+                                    type: string
+                                  url:
+                                    type: string
+                                  thumb_url:
+                                    type: string
+                            attributes:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  label:
+                                    type: string
+                                  value:
+                                    type: string
                       current_response:
                         type: string
                         nullable: true
@@ -1379009,6 +1379740,14 @@ paths:
                       shipped_quantity: 0
                       remaining_quantity: 30
                       received_quantity: 0
+                      images:
+                      - id: 812
+                        name: Front
+                        url: /api/supplier-portal/purchase-orders/10421/images/812?size=full&supplier=9&account=example&expires=1793232000&signature=4f2a
+                        thumb_url: /api/supplier-portal/purchase-orders/10421/images/812?size=thumb&supplier=9&account=example&expires=1793232000&signature=9b1c
+                      attributes:
+                      - label: Packaging
+                        value: Hang tag, poly bag
                     current_response: null
                     responses: []
                     timeline:
