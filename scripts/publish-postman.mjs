@@ -2,36 +2,32 @@
  * Deploy-time publisher for the public "SKU.io API" Postman collection.
  *
  * Keeps the public workspace collection — the one the "Run in Postman" badge
- * forks — in lockstep with what developer.sku.io renders. Runs at the end of
- * the Pages deploy (pages.yml), reading the freshly generated
- * static/skuio-api.postman_collection.json and PUTting it over the existing
- * public collection so its UID (and therefore the badge URL) never changes.
+ * forks — in lockstep with what developer.sku.io renders. Runs after a
+ * successful Pages deploy (postman-sync.yml), reading the freshly generated
+ * static/skuio-api.postman_collection.json and replacing the existing public
+ * collection's contents so its UID (and therefore the badge URL) never changes.
  *
  * The collection UID and workspace are public identifiers (they appear in the
  * badge URL) so they live here as constants. Only the API key is a secret and
  * comes from the POSTMAN_API_KEY env var (the POSTMAN_API_KEY repo secret in
- * CI). If it is absent — local builds, forks, PRs — this step logs and skips
- * so the deploy is never blocked on a credential the environment doesn't have.
+ * CI). If it is absent — local builds, forks, PRs — this step logs and skips.
  *
- * ── Why this isn't a naive PUT-and-check-200 ──────────────────────────────
- * This collection is large (~4,000 requests, ~8 MB). Postman applies a PUT of
- * that size as an ASYNCHRONOUS "deepupdate" that outlives the HTTP response
- * window: the gateway returns 500 to the client after ~3 min while the update
- * keeps running server-side for several more minutes, then completes. A
- * client 500 here therefore does NOT mean failure, and retrying is actively
- * harmful — a second PUT collides with the still-running deepupdate and gets a
- * 409 ("currently being modified by deepupdate").
+ * ── How the replace works (Postman API "Replace collection's data asynchronously")
+ * 1. Carry the live collection's ids into the generated one. Postman's docs: "If
+ *    you don't include the collection items' ID values … the endpoint removes the
+ *    existing items and recreates the items with new ID values." The generator
+ *    emits no ids, so every sync used to delete and recreate ~9,000 requests and
+ *    examples, a server job that runs for hours.
+ * 2. PUT with `Prefer: respond-async`. Postman answers 202 with a task id.
+ * 3. Poll GET /collection-updates-tasks/{taskId} until it succeeds or fails.
  *
- * So instead of retrying we VERIFY: capture the collection's updatedAt before
- * the PUT, fire the PUT once, and — if the response is a timeout/5xx/409 —
- * poll the lightweight collection list until updatedAt advances (deepupdate
- * finished). A genuine auth/not-found error (4xx) is reported immediately with
- * no polling.
+ * Any failure exits non-zero so the workflow goes red.
  *
- * Failure policy: a missing generated file is a build bug (exit 1). Everything
- * else is non-fatal (::warning:: + exit 0) — the site still deploys and the
- * public collection stays on its previous version until the next successful
- * deploy, exactly like the [skip-tests] resilience elsewhere.
+ * _removed 2026-11-24: plain PUT without ids, treating 409/5xx/timeout as "async
+ * deepupdate, probably fine" and exiting 0. Every sync from at least 2026-10-25
+ * to 2026-11-24 got 409 "currently being modified by deepupdate" and reported
+ * green. The public collection stayed on the 2026-11-12 version, so data removed
+ * from the docs remained public in Postman. Never treat a 409 as success.
  */
 import { readFileSync, existsSync } from "fs";
 import { dirname, join } from "path";
@@ -40,52 +36,94 @@ import { fileURLToPath } from "url";
 // Public identifiers — these are embedded in the "Run in Postman" badge URL
 // (docs/api/introduction.mdx, src/pages/index.tsx). Keep them in sync there.
 const COLLECTION_UID = "7002958-7b897b8f-b2aa-4bf7-ac12-a1e7afd78588";
-const WORKSPACE_ID = "91f71d39-72ce-4e93-be5b-f77a1ed87347";
+const COLLECTION_ID = COLLECTION_UID.split("-").slice(1).join("-");
+const API = "https://api.postman.com";
 
-// The PUT's own gateway timeout is ~3 min; bound our client wait a little past
-// that so a hung socket can't stall the deploy indefinitely.
-const PUT_ABORT_MS = 300_000;
-// After a timeout/5xx/409, how long to wait for the async deepupdate to land.
-const VERIFY_TIMEOUT_MS = 360_000;
-const VERIFY_INTERVAL_MS = 20_000;
+const TASK_TIMEOUT_MS = 45 * 60_000;
+const TASK_INTERVAL_MS = 30_000;
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const collectionPath = join(root, "static", "skuio-api.postman_collection.json");
 
-function warn(message) {
-  // GitHub Actions surfaces ::warning:: in the run summary; harmless locally.
-  console.warn(`::warning::publish-postman: ${message}`);
-}
-
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function fetchUpdatedAt(apiKey) {
-  try {
-    const res = await fetch(
-      `https://api.postman.com/collections?workspace=${WORKSPACE_ID}`,
-      { headers: { "X-Api-Key": apiKey } }
-    );
-    if (!res.ok) {
-      return null;
-    }
-    const data = await res.json();
-    const mine = (data.collections || []).find((c) => c.uid === COLLECTION_UID);
-    return mine?.updatedAt ? Date.parse(mine.updatedAt) : null;
-  } catch {
-    return null;
-  }
+function fail(message) {
+  console.error(`::error::publish-postman: ${message}`);
+  process.exit(1);
 }
 
-async function verifyDeepUpdate(apiKey, baseline) {
-  const deadline = Date.now() + VERIFY_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    await sleep(VERIFY_INTERVAL_MS);
-    const current = await fetchUpdatedAt(apiKey);
-    if (current !== null && (baseline === null || current > baseline)) {
-      return current;
+async function call(apiKey, method, path, body, extraHeaders = {}) {
+  const response = await fetch(`${API}${path}`, {
+    method,
+    headers: { "X-Api-Key": apiKey, "Content-Type": "application/json", ...extraHeaders },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await response.text();
+  let json = null;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    // keep the text for the error message
+  }
+  return { status: response.status, json, text, headers: response.headers };
+}
+
+/** Key an item by folder path, name, method and position among same-named siblings. */
+function index(items, path = [], out = new Map()) {
+  const seen = new Map();
+  for (const item of items || []) {
+    const base = `${path.join("/")}|${item.name}|${item.request ? item.request.method : "folder"}`;
+    const n = seen.get(base) || 0;
+    seen.set(base, n + 1);
+    out.set(`${base}|${n}`, item);
+    if (Array.isArray(item.item)) {
+      index(item.item, [...path, item.name], out);
     }
   }
-  return null;
+  return out;
+}
+
+/** Copy the live ids onto matching generated items and examples, so the replace updates in place. */
+function carryIds(generated, live) {
+  const liveIndex = index(live.item);
+  let items = 0;
+  let responses = 0;
+  for (const [key, item] of index(generated.item)) {
+    const old = liveIndex.get(key);
+    if (!old || !old.id) {
+      continue;
+    }
+    item.id = old.id;
+    items += 1;
+    const oldResponses = new Map();
+    for (const r of old.response || []) {
+      if (r.id && !oldResponses.has(r.name)) {
+        oldResponses.set(r.name, r.id);
+      }
+    }
+    const used = new Set();
+    for (const r of item.response || []) {
+      const id = oldResponses.get(r.name);
+      if (id && !used.has(id)) {
+        r.id = id;
+        used.add(id);
+        responses += 1;
+      }
+    }
+  }
+  return { items, responses };
+}
+
+function countRequests(items) {
+  let count = 0;
+  for (const item of items || []) {
+    if (Array.isArray(item.item)) {
+      count += countRequests(item.item);
+    } else if (item.request) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 async function main() {
@@ -98,95 +136,53 @@ async function main() {
   }
 
   if (!existsSync(collectionPath)) {
-    console.error(
-      `publish-postman: ${collectionPath} not found. It is generated by scripts/gen-postman-collection.mjs during \`npm run build\` — run the build before this step.`
-    );
-    process.exit(1);
+    fail(`${collectionPath} not found. It is generated by scripts/gen-postman-collection.mjs — run it before this step.`);
   }
 
   const collection = JSON.parse(readFileSync(collectionPath, "utf8"));
-  const requestCount = countRequests(collection.item || []);
-  const payload = JSON.stringify({ collection });
+  const requestCount = countRequests(collection.item);
 
-  const baseline = await fetchUpdatedAt(apiKey);
+  const current = await call(apiKey, "GET", `/collections/${COLLECTION_UID}`);
+  if (current.status !== 200 || !current.json?.collection) {
+    fail(`could not read the live collection: ${current.status} ${current.text.slice(0, 300)}`);
+  }
+  const carried = carryIds(collection, current.json.collection);
   console.log(
-    `publish-postman: PUTting ${requestCount} requests (${(payload.length / 1_000_000).toFixed(1)} MB) to collection ${COLLECTION_UID}…`
+    `publish-postman: carried ${carried.items} item ids and ${carried.responses} example ids from the live collection (${countRequests(current.json.collection.item)} requests live, ${requestCount} new).`
   );
 
-  const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), PUT_ABORT_MS);
-  let response = null;
-  let timedOut = false;
-  try {
-    response = await fetch(
-      `https://api.postman.com/collections/${COLLECTION_UID}`,
-      {
-        method: "PUT",
-        headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
-        body: payload,
-        signal: controller.signal,
-      }
+  console.log(`publish-postman: replacing collection ${COLLECTION_UID} asynchronously…`);
+  const put = await call(apiKey, "PUT", `/collections/${COLLECTION_ID}`, { collection }, { Prefer: "respond-async" });
+  if (put.status === 409) {
+    fail(
+      `Postman refused the replace (409): ${put.text.slice(0, 300)}. A previous update holds the collection. If this repeats across deploys, the lock is stale: open a Postman support ticket with the collection UID.`
     );
-  } catch (error) {
-    // AbortError or a transport reset — the deepupdate may still be running.
-    timedOut = true;
-    console.log(
-      `publish-postman: PUT connection ended before a response (${error.name}); the async deepupdate may still be running — verifying…`
-    );
-  } finally {
-    clearTimeout(abortTimer);
+  }
+  if (put.status !== 202 && put.status !== 200) {
+    fail(`PUT returned ${put.status}: ${put.text.slice(0, 500)}`);
   }
 
-  if (response && response.ok) {
-    const result = await response.json().catch(() => ({}));
-    const name = result?.collection?.name ?? "SKU.io API";
-    console.log(`publish-postman: synced "${name}" (uid ${COLLECTION_UID}).`);
-    return;
+  const taskId = put.json?.task?.id || put.json?.taskId || put.json?.id || (put.headers.get("location") || "").split("/").pop();
+  if (!taskId) {
+    fail(`PUT returned ${put.status} without a task id: ${put.text.slice(0, 500)}`);
   }
+  console.log(`publish-postman: task ${taskId} accepted (${put.status}); polling…`);
 
-  // Hard client errors are real failures — auth, missing collection, bad body.
-  // No async deepupdate happens for these, so don't bother verifying.
-  if (response && response.status >= 400 && response.status < 500 && response.status !== 409) {
-    const body = await response.text().catch(() => "");
-    warn(
-      `Postman API returned ${response.status} ${response.statusText} — not retriable. Public collection left on its previous version. Response: ${body.slice(0, 500)}`
-    );
-    return;
-  }
-
-  // Timeout, 5xx, or 409: the PUT was accepted and is applying asynchronously.
-  // Verify by watching updatedAt advance rather than retrying (a retry would
-  // collide with the in-flight deepupdate).
-  const status = timedOut ? "timeout" : `${response.status} ${response.statusText}`;
-  console.log(
-    `publish-postman: PUT returned ${status} — Postman applies large collections as an async deepupdate. Polling updatedAt for up to ${VERIFY_TIMEOUT_MS / 1000}s…`
-  );
-  const confirmed = await verifyDeepUpdate(apiKey, baseline);
-  if (confirmed !== null) {
-    console.log(
-      `publish-postman: deepupdate confirmed — collection updatedAt advanced to ${new Date(confirmed).toISOString()}.`
-    );
-    return;
-  }
-
-  warn(
-    `deepupdate not confirmed within ${VERIFY_TIMEOUT_MS / 1000}s. It usually completes server-side regardless; the collection may simply take longer or the PUT may have failed. Check https://api.postman.com/collections/${COLLECTION_UID}.`
-  );
-}
-
-function countRequests(items) {
-  let count = 0;
-  for (const item of items) {
-    if (Array.isArray(item.item)) {
-      count += countRequests(item.item);
-    } else if (item.request) {
-      count += 1;
+  const deadline = Date.now() + TASK_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    await sleep(TASK_INTERVAL_MS);
+    const task = await call(apiKey, "GET", `/collection-updates-tasks/${taskId}`);
+    const state = String(task.json?.task?.status || task.json?.status || "").toLowerCase();
+    if (["successful", "success", "completed", "complete", "done"].includes(state)) {
+      console.log(`publish-postman: task ${taskId} ${state}; ${requestCount} requests published.`);
+      return;
     }
+    if (["failed", "failure", "error", "errored"].includes(state) || task.status >= 400) {
+      fail(`task ${taskId} ${state || task.status}: ${task.text.slice(0, 500)}`);
+    }
+    console.log(`publish-postman: task ${taskId} ${state || "pending"}…`);
   }
-  return count;
+  fail(`task ${taskId} not finished after ${TASK_TIMEOUT_MS / 60_000} minutes.`);
 }
 
-main().catch((error) => {
-  // Never fail the deploy on an unexpected publisher bug — warn and move on.
-  warn(`unexpected error: ${error.stack || error.message}`);
-});
+main().catch((error) => fail(`unexpected error: ${error.stack || error.message}`));
