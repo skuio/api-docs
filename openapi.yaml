@@ -1246928,6 +1246928,173 @@ paths:
         '404': *id003
       x-required-scope: purchase-orders:write
       operationId: post-api-purchase-orders-purchase-order-move-to-new-shipment
+  /api/purchase-orders/{purchase_order}/split-by-destination:
+    post:
+      tags:
+      - Purchase Orders
+      summary: Split Purchase Order by Destination
+      description: 'Plan one purchase order across several warehouses: creates one
+        Draft inbound shipment per destination warehouse, each with the quantities
+        given for it, in one all-or-nothing request. Use it when a supplier ships
+        one order to several warehouses or 3PLs. The purchase order PDF and the supplier
+        portal then show a Ship-to allocation: each warehouse''s address and quantities,
+        plus any units not yet on a shipment as Unassigned against the purchase order''s
+        own warehouse.
+
+
+        :::info[Required scope: `purchase-orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Request body fields:
+
+        - `destinations` (required, array, 1–50 items): one per warehouse
+
+        - `destinations.*.destination_warehouse_id` (required, integer): an existing
+        warehouse; each warehouse at most once
+
+        - `destinations.*.lines` (required, array, 1–500 items)
+
+        - `destinations.*.lines.*.purchase_order_line_id` (required, integer): a line
+        on this purchase order
+
+        - `destinations.*.lines.*.quantity` (required, numeric, ≥ 0): units for that
+        warehouse; zero quantities are skipped, and a warehouse with no units gets
+        no shipment
+
+
+        A line''s quantities across all warehouses cannot exceed what it has open:
+        ordered, less received, less units already on its shipments (in transit, draft
+        or planned). Cancelled shipments don''t count.
+
+
+        Errors (422): the purchase order is a draft, a blanket order (create a release
+        per warehouse instead) or a dropship order; a line is not an open line of
+        this purchase order; a line is over-allocated (`errors.destinations` names
+        the SKU and what is left); nothing was entered.
+
+
+        **Requires permission:** `purchase_orders.update`'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                destinations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      destination_warehouse_id:
+                        type: integer
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            purchase_order_line_id:
+                              type: integer
+                            quantity:
+                              type: integer
+              example:
+                destinations:
+                - destination_warehouse_id: 4
+                  lines:
+                  - purchase_order_line_id: 101
+                    quantity: 300
+                  - purchase_order_line_id: 102
+                    quantity: 120
+                - destination_warehouse_id: 7
+                  lines:
+                  - purchase_order_line_id: 101
+                    quantity: 240
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '3143'
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        shipment_number:
+                          type: string
+                        status:
+                          type: string
+                        destination_warehouse_id:
+                          type: integer
+                example:
+                  message: 2 draft shipments created.
+                  data:
+                  - id: 851
+                    shipment_number: IS-83710
+                    status: draft
+                    destination_warehouse_id: 4
+                  - id: 852
+                    shipment_number: IS-83711
+                    status: draft
+                    destination_warehouse_id: 7
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      destinations:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: 'BOOT-BLK-10: 600 allocated, but only 540 are left to plan.'
+                  errors:
+                    destinations:
+                    - 'BOOT-BLK-10: 600 allocated, but only 540 are left to plan.'
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: purchase-orders:write
+      operationId: post-api-purchase-orders-purchase-order-split-by-destination
   /api/purchase-orders/{purchase_order}/lost-units/receiving-discrepancy:
     post:
       tags:
@@ -1433328,7 +1433495,15 @@ paths:
         and `remaining_purchase_quantity` are the progress in that unit; they are
         null on a stock-unit line. `quantity`, `unit_cost` and the other quantities
         stay in the stock unit. Respond, ship and invoice such a line in the purchase
-        unit.'
+        unit.
+
+
+        `ship_to_allocation` is set when the order ships to more than one warehouse:
+        one entry per warehouse (`name`, `address`, `total_quantity`, and `lines`
+        with `sku`, `supplier_sku`, `description`, `quantity`), then units not yet
+        assigned to a warehouse as an entry with `is_unassigned: true`, which go to
+        the order''s ship-to unless the merchant tells you otherwise. It is null when
+        everything goes to the ship-to.'
       parameters:
       - name: purchaseOrder
         in: path
@@ -1433429,6 +1433604,55 @@ paths:
                             type: string
                           country_code:
                             type: string
+                      ship_to_allocation:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            warehouse_id:
+                              type: integer
+                            name:
+                              type: string
+                            title:
+                              type: string
+                            is_unassigned:
+                              type: boolean
+                            total_quantity:
+                              type: integer
+                            address:
+                              type: object
+                              properties:
+                                company:
+                                  type: string
+                                  nullable: true
+                                address1:
+                                  type: string
+                                address2:
+                                  type: string
+                                  nullable: true
+                                city:
+                                  type: string
+                                province:
+                                  type: string
+                                zip:
+                                  type: string
+                                country_code:
+                                  type: string
+                            lines:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  purchase_order_line_id:
+                                    type: integer
+                                  sku:
+                                    type: string
+                                  supplier_sku:
+                                    type: string
+                                  description:
+                                    type: string
+                                  quantity:
+                                    type: integer
                       latest_snapshot:
                         type: object
                         properties:
@@ -1433645,6 +1433869,45 @@ paths:
                       province: TX
                       zip: '75201'
                       country_code: US
+                    ship_to_allocation:
+                    - warehouse_id: 4
+                      name: East Coast 3PL
+                      title: East Coast 3PL
+                      is_unassigned: false
+                      total_quantity: 300
+                      address:
+                        company: null
+                        address1: 200 Harbor Way
+                        address2: null
+                        city: Newark
+                        province: NJ
+                        zip: '07114'
+                        country_code: US
+                      lines:
+                      - purchase_order_line_id: 88213
+                        sku: BOOT-BLK-10
+                        supplier_sku: F-BOOT-10
+                        description: Trail boot, black, size 10
+                        quantity: 300
+                    - warehouse_id: 1
+                      name: Main Warehouse
+                      title: Unassigned
+                      is_unassigned: true
+                      total_quantity: 240
+                      address:
+                        company: null
+                        address1: 1 Commerce Drive
+                        address2: null
+                        city: Columbus
+                        province: OH
+                        zip: '43004'
+                        country_code: US
+                      lines:
+                      - purchase_order_line_id: 88213
+                        sku: BOOT-BLK-10
+                        supplier_sku: F-BOOT-10
+                        description: Trail boot, black, size 10
+                        quantity: 240
                     latest_snapshot:
                       id: 88
                       revision_number: 2

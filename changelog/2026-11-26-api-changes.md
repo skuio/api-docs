@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-26
-description: This release includes 103 additions.
+description: This release includes 104 additions.
 authors: [product-team]
 tags: [added]
 date: 2026-11-26
 ---
 
-This release includes 103 additions.
+This release includes 104 additions.
 
 <!-- truncate -->
 
@@ -73,6 +73,7 @@ This release includes 103 additions.
 - `GET /api/purchase-orders/{purchaseOrder}/receipt-match/targets` — List Receipt Match Targets
 
 ### Purchase Orders
+- `POST /api/purchase-orders/{purchase_order}/split-by-destination` — Split Purchase Order by Destination
 - `GET /api/purchase-rfqs` — List Requests for Quote
 - `POST /api/purchase-rfqs` — Create Request for Quote
 - `GET /api/purchase-rfqs/supplier-suggestions` — List Suggested Suppliers for Request for Quote
@@ -119,7 +120,6 @@ This release includes 103 additions.
 - `POST /api/standing-orders/preview` — Preview Standing Order
 - `DELETE /api/standing-orders/{standingOrder}` — Delete Standing Order
 - `GET /api/standing-orders/{standingOrder}` — Get Standing Order
-- `PUT /api/standing-orders/{standingOrder}` — Update Standing Order
 - `GET /api/standing-orders/{standingOrder}/activity` — List Standing Order Activity
 - `POST /api/standing-orders/{standingOrder}/dates/{date}/generate` — Create Standing Order Date Now
 - `DELETE /api/standing-orders/{standingOrder}/dates/{date}/skip` — Unskip Standing Order Date
@@ -140,6 +140,6 @@ This release includes 103 additions.
 - `POST /api/walmart/{integrationInstance}/wfs/removals/{reference}/shipments/{wfsRemovalShipment}/receive` — Receive WFS Removal Shipment
 - `POST /api/walmart/{integrationInstance}/wfs/removals/{reference}/shipments/{wfsRemovalShipment}/resume-receiving` — Resume WFS Removal Shipment Receiving
 
-_…plus 3 more (see the API reference)._
+_…plus 4 more (see the API reference)._
 
 _Spec version 1.0.0 → 1.0.0._
