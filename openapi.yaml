@@ -271637,9 +271637,10 @@ paths:
         revaluation rows carry the old and new unit cost and the movement they re-price;
         transit_documents rows carry the warehouse transfer reference, its route (from/to
         warehouses), and the cap-chain leg (dispatch, receipt, fba_check_in, awd_check_in,
-        shortage, write_off) — quantities and values are signed as their effect on
-        the in-transit balance, dispatch rows carry the shipment date, and relief
-        legs return a null date (they are cumulative in-period deltas).
+        network_check_in, shortage, write_off; network_check_in is units a valued
+        Walmart WFS or TikTok FBT warehouse counted) — quantities and values are signed
+        as their effect on the in-transit balance, dispatch rows carry the shipment
+        date, and relief legs return a null date (they are cumulative in-period deltas).
 
 
         :::info[Required scope: `reports:read`]
@@ -309132,7 +309133,16 @@ paths:
         `action` state.
 
         - `view=fifo_detail` — raw cost layers (one row per layer) with age bracket,
-        layer date, source document and value.
+        layer date, source document and value. Where a lot-tracked product''s lots
+        are tracked at an Amazon FBA or AWD location, each of its Amazon layers there
+        is split into one row per lot: every row keeps its layer''s date, age, source
+        and unit cost, and the rows of a layer add up to the layer, so totals and
+        age brackets never change. Those rows carry `lot_basis`: `estimated` (Amazon
+        doesn''t say which lot it holds; SKU.io assumes the soonest-expiring units
+        left first), `reported` (Amazon reported the expiry) or `unknown` (units no
+        tracked lot accounts for, with no lot or expiry). `lot_basis` is null on every
+        other row. The product summary, metrics, distribution and trend always count
+        whole layers.
 
 
         Sorting (product summary): pass `sort_by` + `sort_dir`; sorting runs server-side
@@ -309271,6 +309281,7 @@ paths:
                       total_value: 4324
                       batch_number: L240917
                       expiry_date: '2028-09-30'
+                      lot_basis: null
                     current_page: 1
                     last_page: 1
                     per_page: 50
@@ -309515,6 +309526,92 @@ paths:
         '403': *id005
       x-required-scope: inventory:read
       operationId: get-api-inventory-aging-distribution
+  /api/inventory-aging/network-units:
+    get:
+      tags:
+      - Inventory Intelligence
+      summary: List Lot-Tracked Units at Units-Only Networks
+      description: 'Lists the units of lot-tracked products held at networks that
+        report units only — Walmart WFS and TikTok FBT. These networks report neither
+        lots, unit cost nor receipt dates, so the units are listed here instead of
+        being aged or valued: they are never part of the aging report, its metrics,
+        distribution or trend.
+
+
+        :::info[Required scope: `inventory:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Authentication: Requires Bearer token.
+
+
+        Each row is one product at one network location, with the units the network
+        says it holds and can sell (`on_hand_quantity`) from SKU.io''s latest copy
+        of that network''s inventory. `as_of` is when that copy was taken; `stale_reason`
+        explains when it could not be refreshed. Products that are not lot-tracked
+        are left out. Takes the aging report''s `warehouse_id`, `product_id`, `brand_id`,
+        `supplier_id` and `search` filters. Not paginated.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        network_key:
+                          type: string
+                        network_label:
+                          type: string
+                        warehouse_id:
+                          type: integer
+                        location_label:
+                          type: string
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        product_name:
+                          type: string
+                        on_hand_quantity:
+                          type: integer
+                        as_of:
+                          type: string
+                        stale_reason:
+                          type: string
+                          nullable: true
+                example:
+                  data:
+                  - network_key: walmart_wfs
+                    network_label: Walmart WFS
+                    warehouse_id: 14
+                    location_label: Walmart WFS
+                    product_id: 412
+                    sku: EN-VITD3-60
+                    product_name: Vitamin D3 5000 IU — 60 softgels
+                    on_hand_quantity: 120
+                    as_of: '2026-11-25T06:40:00+00:00'
+                    stale_reason: null
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: inventory:read
+      operationId: get-api-inventory-aging-network-units
   /api/inventory-aging/trend:
     get:
       tags:
@@ -309610,8 +309707,11 @@ paths:
         attachment, not JSON.
 
 
-        The FIFO-detail export includes `Lot / Batch` and `Expiry Date` columns, and
-        honors `batch_number` and `expiring_within_days`.'
+        The FIFO-detail export includes `Lot / Batch`, `Lot Basis` and `Expiry Date`
+        columns, and honors `batch_number` and `expiring_within_days`. `Lot Basis`
+        reads Estimated, Reported by Amazon or Lot unknown on rows split by lot at
+        an Amazon location, and is blank on every other row; a row with no lot there
+        reads `Lot unknown` in `Lot / Batch` too.'
       parameters:
       - name: view
         in: query
@@ -312718,6 +312818,775 @@ paths:
         '403': *id005
       x-required-scope: inventory:write
       operationId: post-api-inventory-expiry-lot-backfill
+  /api/lots/bulk-edit/template:
+    get:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Download Bulk Lot Edit Template (CSV)
+      description: 'Download the bulk lot edit CSV template so uploads start from
+        the header layout the importer expects (Content-Type: text/csv).
+
+
+        :::info[Required scope: `reports:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Columns: action, sku, warehouse, batch, new_batch, expiry_date, manufacture_date,
+        quantity, to_batch, notes.
+
+
+        - action `edit`: renames the lot named by sku + batch to new_batch and/or
+        sets its expiry_date / manufacture_date. Warehouse is optional; blank changes
+        the lot in every warehouse.
+
+        - action `move`: moves quantity of the lot at warehouse to the lot to_batch.
+        If to_batch does not exist yet it is created with the given expiry_date /
+        manufacture_date; an existing lot keeps its own dates.
+
+        - A blank action means edit, or move when to_batch is filled.
+
+
+        Dates are date-only values (YYYY-MM-DD) in the account''s timezone.
+
+
+        Authentication: Requires Bearer token. Scope: reports:read.
+
+
+        This is a file download; the response is CSV text, not JSON.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: text/csv
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'action,sku,warehouse,batch,new_batch,expiry_date,manufacture_date,quantity,to_batch,notes
+
+                  edit,ABC-123,,LOT-2026-01,LOT-2026-001,2027-01-15,,,,
+
+                  move,ABC-123,Main Warehouse,LOT-2026-02,,,,12,LOT-2026-001,Relabelled
+                  after recount
+
+                  '
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: reports:read
+      operationId: get-api-lots-bulk-edit-template
+  /api/lots/bulk-edit:
+    put:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Bulk Edit Lots
+      description: 'Rename and/or re-date existing lots. Pass the IDs of lot layers
+        (FIFO layers that carry a lot number) and the values to set; a field left
+        out or null keeps each lot''s current value.
+
+
+        :::info[Required scope: `inventory:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        With whole_lot true (the default), every layer of each selected lot (same
+        product and lot number, in any warehouse) changes with it, so a lot is never
+        left half renamed. With whole_lot false only the given layers change.
+
+
+        Each lot is checked and saved on its own and gets one entry in `data`: status
+        `applied`, or `failed` with the reason in `message`. A lot cannot be renamed
+        while it is on an open recall, or when the new number is already used by another
+        lot that arrived on the same receipt (move the quantity instead). The manufacture
+        date may not end up after the expiry date.
+
+
+        Quantity, cost and stock history never change. The new lot number and expiry
+        are mirrored onto the lot''s inventory movements, and every change is recorded
+        in the layer''s activity log with who made it.
+
+
+        Body fields:
+
+        - fifo_layer_ids (array of integers, required, 1–500): lot layer IDs.
+
+        - batch_number (string, optional, max 128): new lot number.
+
+        - expiry_date (date YYYY-MM-DD, optional).
+
+        - manufacture_date (date YYYY-MM-DD, optional).
+
+        - whole_lot (boolean, optional, default true).
+
+
+        Authentication: Requires Bearer token. Scope: inventory (write). Permission:
+        inventory.adjust.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                fifo_layer_ids:
+                  type: array
+                  items:
+                    type: integer
+                batch_number:
+                  type: string
+                expiry_date:
+                  type: string
+                manufacture_date:
+                  type: string
+                whole_lot:
+                  type: boolean
+              example:
+                fifo_layer_ids:
+                - 1201
+                - 1202
+                batch_number: LOT-2026-001
+                expiry_date: '2027-01-15'
+                manufacture_date: '2026-01-15'
+                whole_lot: true
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        line:
+                          type: string
+                          nullable: true
+                        action:
+                          type: string
+                        sku:
+                          type: string
+                        warehouse:
+                          type: string
+                          nullable: true
+                        batch:
+                          type: string
+                        status:
+                          type: string
+                        message:
+                          type: string
+                        layers_affected:
+                          type: integer
+                        quantity:
+                          type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                  - line: null
+                    action: edit
+                    sku: ABC-123
+                    warehouse: null
+                    batch: LOT-2026-01
+                    status: applied
+                    message: Rename LOT-2026-01 to LOT-2026-001, set expiry to 2027-01-15
+                      on 3 layers.
+                    layers_affected: 3
+                    quantity: 140
+                  - line: null
+                    action: edit
+                    sku: OAT-500G
+                    warehouse: null
+                    batch: OAT-0921
+                    status: failed
+                    message: Lot OAT-0921 is on open recall RC-00004. Renaming it
+                      would separate the recall from its stock; close the recall first.
+                    layers_affected: 0
+                    quantity: 0
+                  message: Updated 1 of 2 lots; 1 could not change.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      fifo_layer_ids:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: Select at least one lot.
+                  errors:
+                    fifo_layer_ids:
+                    - Select at least one lot.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: inventory:write
+      operationId: put-api-lots-bulk-edit
+  /api/lots/{fifoLayer}/move-targets:
+    get:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Get Lot Move Targets
+      description: 'Before moving stock out of a lot layer: how much of it can move,
+        and the product''s other lots it can move to.
+
+
+        :::info[Required scope: `inventory:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Response fields:
+
+        - movable_quantity: units on the layer that can move now (on hand minus quarantined
+        units).
+
+        - held_quantity: units on the layer that are quarantined and cannot move.
+
+        - lots: the product''s other lots (up to 500), each with its lot number, expiry
+        and manufacture dates, and the quantity on hand in this layer''s warehouse.
+        Soonest expiry first.
+
+
+        Authentication: Requires Bearer token. Scope: inventory. Permission: inventory.adjust.'
+      parameters:
+      - name: fifoLayer
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ID of the lot layer (FIFO layer) to move stock from.
+        example: '1201'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      movable_quantity:
+                        type: integer
+                      held_quantity:
+                        type: integer
+                      lots:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            batch_number:
+                              type: string
+                            expiry_date:
+                              type: string
+                            manufacture_date:
+                              type: string
+                            quantity_on_hand:
+                              type: integer
+                example:
+                  data:
+                    movable_quantity: 38
+                    held_quantity: 0
+                    lots:
+                    - batch_number: LOT-2026-001
+                      expiry_date: '2027-01-15'
+                      manufacture_date: '2026-01-15'
+                      quantity_on_hand: 120
+                    - batch_number: LOT-2026-003
+                      expiry_date: null
+                      manufacture_date: null
+                      quantity_on_hand: 0
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: No query results for model [App\Models\FifoLayer] 999999
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: inventory:read
+      operationId: get-api-lots-fifolayer-move-targets
+  /api/lots/{fifoLayer}/move:
+    post:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Move Lot Quantity
+      description: 'Move on-hand units from one lot layer to another lot of the same
+        product, in the same warehouse.
+
+
+        :::info[Required scope: `inventory:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        The units leave the source layer and arrive on a new layer of the destination
+        lot, at the source''s unit cost and with the source''s FIFO date, in the same
+        storage locations. Stock levels, inventory value, cost of goods sold and FIFO
+        order do not change, and no past movement is edited. The pair is recorded
+        as `lot_reassignment` inventory movements linked to the returned lot move,
+        and the lot genealogy traces the moved units from one lot to the other. A
+        later cost change to the source layer reaches the moved units too.
+
+
+        Destination: to_batch_number names the lot. If the product already has that
+        lot, its dates are kept: dates you send must match them or be left out. If
+        it does not, a new lot is created with to_expiry_date / to_manufacture_date.
+
+
+        Refused with 422 and a reason when: the quantity is more than the layer can
+        move (quarantined units cannot move), the stock is already in that lot, the
+        product tracks serial numbers, a stock take is open for the product in that
+        warehouse, or today is in a locked accounting period.
+
+
+        Body fields:
+
+        - quantity (number, required, > 0).
+
+        - to_batch_number (string, required, max 128).
+
+        - to_expiry_date (date YYYY-MM-DD, optional; for a new lot).
+
+        - to_manufacture_date (date YYYY-MM-DD, optional; for a new lot).
+
+        - notes (string, optional, max 1000).
+
+
+        Authentication: Requires Bearer token. Scope: inventory (write). Permission:
+        inventory.adjust.'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                quantity:
+                  type: integer
+                to_batch_number:
+                  type: string
+                to_expiry_date:
+                  type: string
+                  nullable: true
+                to_manufacture_date:
+                  type: string
+                  nullable: true
+                notes:
+                  type: string
+              example:
+                quantity: 12
+                to_batch_number: LOT-2026-001
+                to_expiry_date: null
+                to_manufacture_date: null
+                notes: Relabelled after recount
+      parameters:
+      - name: fifoLayer
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: ID of the lot layer (FIFO layer) to move stock from.
+        example: '1201'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      reference:
+                        type: string
+                      product_id:
+                        type: integer
+                      product:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          sku:
+                            type: string
+                          name:
+                            type: string
+                      warehouse_id:
+                        type: integer
+                      warehouse:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          name:
+                            type: string
+                      source_fifo_layer_id:
+                        type: integer
+                      destination_fifo_layer_id:
+                        type: integer
+                      quantity:
+                        type: integer
+                      unit_cost:
+                        type: number
+                      from_batch_number:
+                        type: string
+                      to_batch_number:
+                        type: string
+                      to_expiry_date:
+                        type: string
+                      to_manufacture_date:
+                        type: string
+                      notes:
+                        type: string
+                      created_by:
+                        type: integer
+                      created_at:
+                        type: string
+                  message:
+                    type: string
+                example:
+                  data:
+                    id: 57
+                    reference: 'Lot move #57'
+                    product_id: 42
+                    product:
+                      id: 42
+                      sku: ABC-123
+                      name: Cold Brew Concentrate 1L
+                    warehouse_id: 3
+                    warehouse:
+                      id: 3
+                      name: Main Warehouse
+                    source_fifo_layer_id: 1201
+                    destination_fifo_layer_id: 1388
+                    quantity: 12
+                    unit_cost: 4.125
+                    from_batch_number: LOT-2026-02
+                    to_batch_number: LOT-2026-001
+                    to_expiry_date: '2027-01-15'
+                    to_manufacture_date: '2026-01-15'
+                    notes: Relabelled after recount
+                    created_by: 7
+                    created_at: '2026-11-25T18:04:11.000000Z'
+                  message: Moved 12 from lot LOT-2026-02 to lot LOT-2026-001.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Only 8 of lot LOT-2026-02 can move from this layer (4 is
+                    quarantined).
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: inventory:write
+      operationId: post-api-lots-fifolayer-move
+  /api/lots/bulk-edit/import/preview:
+    post:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Preview Bulk Lot Edit CSV
+      description: 'Check a bulk lot edit CSV without changing anything: one entry
+        per data row saying what it would do (status `ready`) or why it cannot (status
+        `error`), plus totals in `summary`. Each row is checked against the current
+        stock; rows are not checked against each other, so a row that depends on an
+        earlier row of the same file can read as an error here.
+
+
+        :::info[Required scope: `inventory:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Upload as multipart/form-data with a `file` field (csv or txt, max 10 MB).
+        See Download Bulk Lot Edit Template for the columns.
+
+
+        Authentication: Requires Bearer token. Scope: inventory (write). Permission:
+        inventory.adjust.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: CSV file (max 10 MB) in the template's column layout.
+                  format: binary
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        line:
+                          type: integer
+                        action:
+                          type: string
+                        sku:
+                          type: string
+                        warehouse:
+                          type: string
+                          nullable: true
+                        batch:
+                          type: string
+                        status:
+                          type: string
+                        message:
+                          type: string
+                        layers_affected:
+                          type: integer
+                        quantity:
+                          type: integer
+                  summary:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      ready:
+                        type: integer
+                      errors:
+                        type: integer
+                example:
+                  data:
+                  - line: 2
+                    action: edit
+                    sku: ABC-123
+                    warehouse: null
+                    batch: LOT-2026-01
+                    status: ready
+                    message: Rename LOT-2026-01 to LOT-2026-001, set expiry to 2027-01-15
+                      on 3 layers.
+                    layers_affected: 3
+                    quantity: 140
+                  - line: 3
+                    action: move
+                    sku: ABC-123
+                    warehouse: Main Warehouse
+                    batch: LOT-2026-02
+                    status: ready
+                    message: Move 12 from lot LOT-2026-02 to lot LOT-2026-001 (expires
+                      2027-01-15) at Main Warehouse.
+                    layers_affected: 1
+                    quantity: 12
+                  - line: 4
+                    action: edit
+                    sku: ABC-999
+                    warehouse: null
+                    batch: LOT-1
+                    status: error
+                    message: No product found for SKU "ABC-999".
+                    layers_affected: 0
+                    quantity: 0
+                  summary:
+                    total: 3
+                    ready: 2
+                    errors: 1
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: The CSV file has no data rows.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: inventory:write
+      operationId: post-api-lots-bulk-edit-import-preview
+  /api/lots/bulk-edit/import:
+    post:
+      tags:
+      - Inventory Expiry & Shelf-Life
+      summary: Import Bulk Lot Edit CSV
+      description: 'Apply a bulk lot edit CSV in the background. Rows are applied
+        in file order and independently: a row that cannot be applied is recorded
+        as failed and the rest carry on. Each row behaves exactly as Bulk Edit Lots
+        (edit rows) or Move Lot Quantity (move rows; a move takes the quantity from
+        the lot''s layers in that warehouse, oldest first).
+
+
+        :::info[Required scope: `inventory:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Upload as multipart/form-data with a `file` field (csv or txt, max 10 MB).
+        The response carries the tracked job ID; the job''s results list every row''s
+        status and message.
+
+
+        Authentication: Requires Bearer token. Scope: inventory (write). Permission:
+        inventory.adjust.'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  description: CSV file (max 10 MB) in the template's column layout.
+                  format: binary
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      tracked_job_log_id:
+                        type: integer
+                  message:
+                    type: string
+                example:
+                  data:
+                    tracked_job_log_id: 9812
+                  message: Lot edits started — track progress in the job tray.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      file:
+                        type: array
+                        items:
+                          type: string
+                example:
+                  message: The file must be a CSV.
+                  errors:
+                    file:
+                    - The file must be a CSV.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: inventory:write
+      operationId: post-api-lots-bulk-edit-import
   /api/feature-adoption/catalog:
     get:
       tags:
@@ -355575,6 +356444,12 @@ paths:
 
         - `items[].blemished_configurations` — nullable array
 
+        - `items[].lots` — nullable array of `{batch_number, expiry_date, quantity}`:
+        the lots of the sellable units coming back. Only for a lot-tracked product;
+        each lot needs a `batch_number`, and the lots must add up to `quantity_new`
+        (otherwise **422**). The units are received as those lots. Amazon names no
+        lot, so SKU.io never fills this in by itself: see Get Lot Suggestions.
+
 
         `items[].product_id` may be null ONLY for a discard-only receipt of an FNSKU
         marked as an unknown item (quantity_new and quantity_blemished must be 0,
@@ -355775,6 +356650,121 @@ paths:
         '404': *id003
       x-required-scope: integrations:write
       operationId: post-api-amazon-integrationinstance-removal-shipments-removalshipment-receive
+  /api/amazon/{integrationInstance}/removal-shipments/{removalShipment}/lot-suggestions:
+    get:
+      tags:
+      - Amazon
+      summary: Get Lot Suggestions
+      description: 'Lots SKU.io suggests for the units a removal shipment brings back.
+        Amazon names no lot, so every suggestion is an estimate from the network-lot
+        figures and is never saved by itself: the person receiving picks one, types
+        another, or leaves it blank.
+
+
+        :::info[Required scope: `integrations:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Query:
+
+        - `product_id` — required, exists:products,id. The product the shipment item
+        brings back.
+
+
+        Response `data`:
+
+        - `is_lot_tracked` — false means no lot can be recorded, and `suggestions`
+        is empty.
+
+        - `source` — `removed`: lots the figures estimate went out as removals at
+        this connection''s FBA warehouses from 3 days before to 1 day after the shipment
+        date; `on_hand`: no removal was matched, so the named lots still on hand there,
+        earliest expiry first; `null`: nothing to suggest.
+
+        - `suggestions[]` — `batch_number`, `expiry_date`, `quantity` (units), `basis`
+        (`estimated`, `sent`, `reported`…).
+
+
+        The shipment must belong to the supplied integration instance (404 otherwise).
+
+
+        **Requires permission:** `integrations.sync`'
+      parameters:
+      - name: product_id
+        in: query
+        schema:
+          type: integer
+        description: Product the removal brings back
+        example: '42'
+      - name: integrationInstance
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Amazon integration instance ID
+        example: '1'
+      - name: removalShipment
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: AmazonFbaReportRemovalShipment ID being received
+        example: '12345'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      product_id:
+                        type: integer
+                      is_lot_tracked:
+                        type: boolean
+                      source:
+                        type: string
+                      suggestions:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            batch_number:
+                              type: string
+                            expiry_date:
+                              type: string
+                            quantity:
+                              type: integer
+                            basis:
+                              type: string
+                example:
+                  data:
+                    product_id: 42
+                    is_lot_tracked: true
+                    source: removed
+                    suggestions:
+                    - batch_number: ASH-2610A
+                      expiry_date: '2027-03-01'
+                      quantity: 6
+                      basis: estimated
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: integrations:read
+      operationId: get-api-amazon-integrationinstance-removal-shipments-removalshipment-lot-suggestions
   /api/amazon/{integrationInstance}/removal-shipments/receive-bulk:
     post:
       tags:
@@ -458921,7 +459911,13 @@ paths:
         push of that listing at that location was rejected by Shopify after its retries;
         push_failure then carries the error message, attempt count and last failure
         time. filter[status]=failed or filter[status]=not_tracked returns only those
-        rows.'
+        rows.
+
+
+        document_id is the id of the synced Shopify variant record behind the row
+        (the id the Get Shopify Product endpoint takes). It is null for a listing
+        SKU.io published to Shopify itself, which is linked to the Shopify product
+        rather than one variant; use product_listing_id to reach that listing.'
       parameters:
       - name: page
         in: query
@@ -849340,8 +850336,8 @@ paths:
         Body: `settings` (object, optional: `supply_warehouse_ids`, `sku_match_key`,
         `push_planned_inventory`, `net_of_backorders`, `include_transfers`, `release_mode`,
         `priority_mode`, `eta_review_threshold_days`, `refund_on_return`, `poll_minutes`,
-        `export_marker`), `access_token` (string, optional), `status` (live | paused,
-        optional).
+        `export_marker`, `checkout_method`), `access_token` (string, optional), `status`
+        (live | paused, optional).
 
 
         Changing `supply_warehouse_ids` of a connection that went live queues the
@@ -849360,7 +850356,19 @@ paths:
         waitlisted (default: sets with an open Waitlist or a held pre-order) or listed
         (every set on the connected Shopify store). `bundle_count_on_hand` (boolean,
         default false): spare on-hand pieces may complete sets whose other pieces
-        are incoming. A change re-sends planned inventory right away.'
+        are incoming. A change re-sends planned inventory right away.
+
+
+        Checkout method: `checkout_method` is `purple_dot` (Purple Dot''s own checkout:
+        a pre-order reaches Shopify only when Purple Dot releases it) or `shopify`
+        (Purple Dot''s native Shopify checkout: every pre-order is a Shopify order
+        from checkout, on hold at the store''s "… Purple Dot" location until release).
+        With `shopify`, the Shopify order is the only demand SKU.io counts for a pre-order:
+        no separate pre-order reservations are made (existing ones are cancelled),
+        the release budget is the stock SKU.io has allocated to the held Shopify orders,
+        and planned inventory no longer nets those orders. A new connection defaults
+        to `shopify` when the store has a location whose name ends in "Purple Dot".
+        Changing it re-syncs every open pre-order line and re-runs the reconcile.'
       requestBody:
         content:
           application/json:
@@ -849382,6 +850390,8 @@ paths:
                       type: string
                     bundle_count_on_hand:
                       type: boolean
+                    checkout_method:
+                      type: string
               example:
                 settings:
                   supply_warehouse_ids:
@@ -849390,6 +850400,7 @@ paths:
                   bundle_share_percent: 50
                   bundle_scope: waitlisted
                   bundle_count_on_hand: false
+                  checkout_method: shopify
       parameters:
       - name: instance
         in: path
@@ -849427,6 +850438,8 @@ paths:
                             type: array
                             items:
                               type: integer
+                          checkout_method:
+                            type: string
                   meta:
                     type: object
                     properties:
@@ -849442,6 +850455,7 @@ paths:
                     settings:
                       supply_warehouse_ids:
                       - 2
+                      checkout_method: shopify
                   meta:
                     supply_change_tracked_job_log_id: 4821
                   message: Settings saved. Held pre-orders are moving to the new supply
@@ -853721,9 +854735,9 @@ paths:
         order, the units pre-sold next to its open quantity and other backorders;
         the counts that need attention (pending ETA reviews, exported orders unmatched
         for over an hour, unmapped variants, over-committed Waitlists, failed refunds,
-        errors in the last 24 hours); and the last release-budget push and reconcile.
-        Dates are Y-m-d in the account timezone; times are ISO 8601 UTC. Requires
-        integrations.show.
+        errors in the last 24 hours, and Purple Dot locations SKU.io pushes stock
+        to); and the last release-budget push and reconcile. Dates are Y-m-d in the
+        account timezone; times are ISO 8601 UTC. Requires integrations.show.
 
 
         :::info[Required scope: `inventory:read`]
@@ -853731,7 +854745,15 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        With the Shopify checkout method (`settings.checkout_method` = `shopify`),
+        the covered, uncovered and allocated units and `coverage_by_po` come from
+        the held Shopify orders: the sales-order lines still on hold at a Purple Dot
+        location. `attention.purple_dot_location_pushes` counts the Purple Dot locations
+        the store''s inventory settings push SKU.io stock to; Purple Dot keeps Waitlist
+        units there, so it should be 0.'
       parameters:
       - name: instance
         in: path
@@ -853814,6 +854836,8 @@ paths:
                             type: integer
                           api_errors:
                             type: integer
+                          purple_dot_location_pushes:
+                            type: integer
                       planned_items_count:
                         type: integer
                       release_budget_skus:
@@ -853855,6 +854879,7 @@ paths:
                       over_committed_waitlists: 0
                       failed_refunds: 0
                       api_errors: 0
+                      purple_dot_location_pushes: 0
                     planned_items_count: 1
                     release_budget_skus: 1
                     release_budget_units: 2
@@ -854037,10 +855062,13 @@ paths:
         03:00 account time): for each SKU with held pre-orders it compares Purple
         Dot''s open pre-order units with SKU.io''s and re-reads that SKU''s pre-orders
         when they differ; it checks that no purchase order line covers more backorders
-        than it still has open; then it re-pushes every release budget and the planned
-        inventory. Differences appear in the activity log and the summary. Returns
-        the id of the background job to follow. 422 `not_live` when the connection
-        is not live. Requires integrations.sync.
+        than it still has open; with the Shopify checkout method it also compares,
+        per pre-order product, Purple Dot''s open units with the units Shopify holds
+        at the Purple Dot locations and SKU.io''s demand for them, and flags Purple
+        Dot locations SKU.io pushes stock to; then it re-pushes every release budget
+        and the planned inventory. Differences appear in the activity log and the
+        summary. Returns the id of the background job to follow. 422 `not_live` when
+        the connection is not live. Requires integrations.sync.
 
 
         :::info[Required scope: `inventory:write`]
@@ -955753,6 +956781,105 @@ paths:
         '404': *id003
       x-required-scope: warehouses:read
       operationId: get-api-v2-warehouse-transfers-warehousetransfer-tab-counts
+  /api/v2/warehouse-transfers/{warehouseTransfer}/network-send-expiry:
+    get:
+      tags:
+      - Adjustments & Transfers
+      summary: Get Network Send Expiry
+      description: 'Expired or short-dated lots a send to a marketplace network (Amazon
+        FBA or AWD, Walmart WFS, TikTok FBT) would take. The lots are the ones the
+        send really draws, in the order stock is drawn (FEFO for FEFO products, otherwise
+        oldest first, quarantined lots last). A lot is listed when its expiry date
+        has passed or is today (`expired`), or when it has fewer days left than `min_days`:
+        the network''s minimum shelf life on arrival from the send planner, or the
+        product''s own minimum, whichever is higher. SKU.io never skips a lot to avoid
+        it, because that would change the cost of goods.
+
+
+        :::info[Required scope: `warehouses:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Response (top level, no `data` wrapper):
+
+        - `applies` — false when the destination is not a marketplace network (then
+        `lots` is empty).
+
+        - `refuses` — true when the tenant turned on "Refuse Sends of Expired or Short-Dated
+        Lots to Networks" (Settings → Serial & Lot Tracking): a send a person starts
+        that takes such a lot is then refused with **422**. Sends the network reports
+        as already shipped are never refused.
+
+        - `lots[]` — `product_id`, `sku`, `batch_number`, `expiry_date`, `quantity`
+        (units the send takes from that lot), `days_left`, `min_days`, `expired`.'
+      parameters:
+      - name: warehouseTransfer
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Warehouse Transfer ID
+        example: '501'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  applies:
+                    type: boolean
+                  refuses:
+                    type: boolean
+                  lots:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        product_id:
+                          type: integer
+                        sku:
+                          type: string
+                        batch_number:
+                          type: string
+                        expiry_date:
+                          type: string
+                        quantity:
+                          type: integer
+                        days_left:
+                          type: integer
+                        min_days:
+                          type: integer
+                        expired:
+                          type: boolean
+                example:
+                  applies: true
+                  refuses: false
+                  lots:
+                  - product_id: 4
+                    sku: ASH-60
+                    batch_number: ASH-2610A
+                    expiry_date: '2026-12-05'
+                    quantity: 5
+                    days_left: 10
+                    min_days: 105
+                    expired: false
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: warehouses:read
+      operationId: get-api-v2-warehouse-transfers-warehousetransfer-network-send-expiry
   /api/v2/warehouse-transfers/{warehouseTransfer}/browse-products:
     get:
       tags:
@@ -1231190,6 +1232317,15 @@ paths:
         keeps a delayed order''s money in that original month.
 
 
+        **Order type:** `order_type` (string, nullable) — the code of one of the order
+        types set up in the purchase order settings (`order_types`, e.g. `N` for New
+        order, `R` for Reorder). A new order with no `order_type` takes the default
+        type, if one is marked. Responses return `order_type` and its name as `order_type_name`.
+        When the settings'' `number_format` contains `{TYPE}`, a new order''s number
+        includes the code, and changing the type of a draft rewrites that part of
+        its number (unless the number was entered by hand). Unknown codes return 422.
+
+
         **Blanket orders:** `is_blanket` (boolean) marks the order as a blanket agreement
         whose inbound shipments are releases drawn against it; only released quantity
         counts as incoming stock. `blanket_valid_from` / `blanket_valid_until` (date,
@@ -1231317,6 +1232453,8 @@ paths:
                   type: string
                 collection:
                   type: string
+                order_type:
+                  type: string
               example:
                 purchase_order_date: '2024-01-15'
                 supplier_id: 5
@@ -1231363,6 +1232501,7 @@ paths:
                 buying_type: preseason
                 arrival_window_end: '2027-02-10'
                 collection: Spring 1
+                order_type: N
       parameters: []
       responses:
         '200':
@@ -1233622,6 +1234761,15 @@ paths:
         keeps a delayed order''s money in that original month.
 
 
+        **Order type:** `order_type` (string, nullable) — the code of one of the order
+        types set up in the purchase order settings (`order_types`, e.g. `N` for New
+        order, `R` for Reorder). A new order with no `order_type` takes the default
+        type, if one is marked. Responses return `order_type` and its name as `order_type_name`.
+        When the settings'' `number_format` contains `{TYPE}`, a new order''s number
+        includes the code, and changing the type of a draft rewrites that part of
+        its number (unless the number was entered by hand). Unknown codes return 422.
+
+
         **Blanket orders:** `is_blanket` (boolean) marks the order as a blanket agreement
         whose inbound shipments are releases drawn against it; only released quantity
         counts as incoming stock. `blanket_valid_from` / `blanket_valid_until` (date,
@@ -1233676,6 +1234824,8 @@ paths:
                   type: string
                 collection:
                   type: string
+                order_type:
+                  type: string
               example:
                 purchase_order_date: '2024-01-15'
                 estimated_delivery_date: '2024-02-15'
@@ -1233698,6 +1234848,7 @@ paths:
                 buying_type: preseason
                 arrival_window_end: '2027-02-10'
                 collection: Spring 1
+                order_type: N
       parameters:
       - name: purchase_order
         in: path
@@ -1236913,6 +1238064,13 @@ paths:
         and Closed shipments do NOT count toward `assigned_quantity`.
 
 
+        `planned_quantity` is the pending quantity on Draft and Planned shipments.
+        It is not a claim (it never reduces `available_quantity`), but the dialog
+        pre-fills each new shipment with `available_quantity - planned_quantity`,
+        so a PO split into one shipment per warehouse offers each new shipment only
+        the units no shipment has yet.
+
+
         Fully-received lines (effective_received >= quantity) are excluded. AWD /
         FBA receipts are honoured via `getEffectiveReceivedQuantity` so received quantity
         is correct even when the `received_quantity` column is not directly updated.
@@ -1236969,6 +1238127,8 @@ paths:
                           type: integer
                         available_quantity:
                           type: integer
+                        planned_quantity:
+                          type: integer
                         already_on_shipment:
                           type: boolean
                 example:
@@ -1236983,6 +1238143,7 @@ paths:
                     unreceived_quantity: 100
                     assigned_quantity: 40
                     available_quantity: 60
+                    planned_quantity: 25
                     already_on_shipment: true
                   - purchase_order_line_id: 202
                     product_id: 11
@@ -1236994,6 +1238155,7 @@ paths:
                     unreceived_quantity: 50
                     assigned_quantity: 0
                     available_quantity: 50
+                    planned_quantity: 0
                     already_on_shipment: false
         '429': *id001
         '401': *id002
