@@ -1,12 +1,12 @@
 ---
 title: API changes — 2026-11-27
-description: This release includes 5 additions, 1 change, 1 removal. 1 breaking change — action required.
+description: This release includes 6 additions, 1 change, 1 removal. 1 breaking change — action required.
 authors: [product-team]
 tags: [added, changed, removed, breaking]
 date: 2026-11-27
 ---
 
-This release includes 5 additions, 1 change, 1 removal. 1 breaking change — action required.
+This release includes 6 additions, 1 change, 1 removal. 1 breaking change — action required.
 
 :::danger Breaking changes — action required
 This release removes endpoints or tightens request requirements. Review the **Breaking changes** section below before upgrading your integration.
@@ -35,6 +35,9 @@ This release removes endpoints or tightens request requirements. Review the **Br
 ### Sales Orders
 - `GET /api/sales-orders/{salesOrder}/shipping-address-type` — Get Sales Order Address Type
 - `POST /api/sales-orders/{salesOrder}/shipping-address-type/recheck` — Re-check Sales Order Address Type
+
+### TikTok Posting
+- `POST /api/tiktok-posting/posts/{tikTokPost}/deleted-in-tiktok` — Mark TikTok Post Deleted in TikTok
 
 ## Changed
 
