@@ -19166,7 +19166,12 @@ paths:
 
         Fields:
 
-        - ids (required): Array of financial alert IDs to archive'
+        - ids (required): Array of financial alert IDs to archive
+
+
+        To target every alert matching the list filters instead of `ids`, send `apply_to_all:
+        true` with `filters` (the List Financial Alerts filters as bare keys, e.g.
+        {"search": "O-110", "archived": "0"}).'
       requestBody:
         content:
           application/json:
@@ -19227,7 +19232,12 @@ paths:
 
         Fields:
 
-        - ids (required): Array of financial alert IDs to unarchive'
+        - ids (required): Array of financial alert IDs to unarchive
+
+
+        To target every alert matching the list filters instead of `ids`, send `apply_to_all:
+        true` with `filters` (the List Financial Alerts filters as bare keys, e.g.
+        {"search": "O-110", "archived": "0"}).'
       requestBody:
         content:
           application/json:
@@ -19272,8 +19282,9 @@ paths:
       tags:
       - Configuration
       summary: Bulk Update Alerts
-      description: 'Bulk updates the classification and/or note for multiple financial
-        alerts.
+      description: 'Applies a classification and/or a note to many financial alerts
+        at once: either the alerts listed in `ids`, or every alert matching the list
+        filters (`apply_to_all: true` with `filters`).
 
 
         :::info[Required scope: `accounting:write`]
@@ -19289,14 +19300,24 @@ paths:
 
         Fields:
 
-        - ids (required): Array of financial alert IDs to update
+        - ids (required unless apply_to_all/filters is sent): array of financial alert
+        IDs
 
-        - classification (optional): Classification ID to assign
+        - apply_to_all (optional, boolean): target every alert matching `filters`
+        instead of `ids`
 
-        - note (optional): Note to set on all specified alerts
+        - filters (optional, object): the same filters the List Financial Alerts endpoint
+        accepts, as bare keys, e.g. {"search": "O-110", "archived": "0", "classification":
+        "3"}. `archived` defaults to 0 (active alerts only).
+
+        - classification (optional, integer or null): classification ID to assign;
+        send null to clear the classification
+
+        - note (optional, string or null, max 255): note to set
 
 
-        `note` is limited to 255 characters.'
+        At least one of `classification` or `note` must be sent. The response''s `data.updated`
+        is the number of alerts changed.'
       requestBody:
         content:
           application/json:
@@ -19309,15 +19330,12 @@ paths:
                     type: integer
                 classification:
                   type: integer
-                note:
-                  type: string
               example:
                 ids:
                 - 15
                 - 16
                 - 17
                 classification: 2
-                note: Reviewed and classified
       parameters: []
       responses:
         '200':
@@ -19331,15 +19349,60 @@ paths:
             application/json:
               schema:
                 type: object
+              examples:
+                example-0:
+                  summary: 200 Success
+                  value:
+                    message: financial alerts bulk updated successfully
+                    data:
+                      updated: 3
+                example-1:
+                  summary: 200 Success (all matching filters)
+                  value:
+                    message: financial alerts bulk updated successfully
+                    data:
+                      updated: 12
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
                 properties:
                   message:
                     type: string
+                  errors:
+                    type: object
+                    properties:
+                      classification:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties: {}
                 example:
-                  message: financial alerts bulk updated successfully
+                  message: That classification no longer exists. Reload the page and
+                    pick another.
+                  errors:
+                    classification:
+                    - message: That classification no longer exists. Reload the page
+                        and pick another.
+                      code: Invalid
+                      data: {}
         '429': *id001
         '401': *id002
         '403': *id005
-        '422': *id004
       x-required-scope: accounting:write
       operationId: patch-api-financial-alerts-update
   /api/financial-alerts/import/preview:
@@ -19678,9 +19741,11 @@ paths:
       tags:
       - Configuration
       summary: List Classifications
-      description: 'Returns all financial alert classification categories. Classifications
-        are used to tag alerts with a reason or resolution type (e.g., Pricing Error,
-        Supplier Issue).
+      description: 'Returns every financial alert classification, sorted A-Z by name.
+        Each carries `alerts_count` (all alerts tagged with it), split into `active_alerts_count`
+        (not archived; what List Financial Alerts returns by default) and `archived_alerts_count`
+        (archived; `filter[archived]=1`). Classifications tag alerts with a reason
+        or resolution (e.g. Pricing Error, Refunded).
 
 
         :::info[Required scope: `accounting:read`]
@@ -19715,16 +19780,24 @@ paths:
                           type: integer
                         name:
                           type: string
+                        alerts_count:
+                          type: integer
+                        active_alerts_count:
+                          type: integer
+                        archived_alerts_count:
+                          type: integer
                 example:
                   data:
+                  - id: 5
+                    name: Blemished
+                    alerts_count: 255
+                    active_alerts_count: 2
+                    archived_alerts_count: 253
                   - id: 1
                     name: Pricing Error
-                  - id: 2
-                    name: Supplier Issue
-                  - id: 3
-                    name: One-off Promotion
-                  - id: 4
-                    name: Expected Loss
+                    alerts_count: 12
+                    active_alerts_count: 12
+                    archived_alerts_count: 0
         '429': *id001
         '401': *id002
         '403': *id005
@@ -19828,12 +19901,132 @@ paths:
         '403': *id005
       x-required-scope: accounting:write
       operationId: post-api-financial-alerts-classifications
+    delete:
+      tags:
+      - Configuration
+      summary: Bulk Delete Classifications
+      description: 'Deletes several financial alert classifications at once. When
+        alerts use any of them you must say what happens to those alerts, so no alert
+        silently loses its classification:
+
+        - replacement_id (integer): move all of their alerts to this one other classification.
+        It cannot be one of the classifications being deleted.
+
+        - unassign (boolean): true leaves those alerts unclassified
+
+
+        :::info[Required scope: `accounting:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Without either, a delete that includes a classification in use returns 422,
+        naming each classification in use with its active and archived alert counts.
+        Classifications no alert uses can be deleted with just `ids`. If any id no
+        longer exists the whole request is refused (422) and nothing is deleted.
+
+
+        Fields:
+
+        - ids (required, array of integers, 1-500, distinct): the classifications
+        to delete
+
+        - replacement_id (optional, integer)
+
+        - unassign (optional, boolean)
+
+
+        Send one of `replacement_id` or `unassign`, not both (422).
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response''s `data.deleted` is the number of classifications deleted and
+        `data.alerts_updated` the number of alerts moved or unclassified.'
+      parameters: []
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      deleted:
+                        type: integer
+                      alerts_updated:
+                        type: integer
+                example:
+                  message: 3 classifications deleted
+                  data:
+                    deleted: 3
+                    alerts_updated: 45
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      replacement_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties: {}
+                example:
+                  message: 45 alerts use "Refund" (3 active, 11 archived), "Refunded"
+                    (2 active, 29 archived). Choose a classification to move them
+                    to, or confirm leaving them unclassified.
+                  errors:
+                    replacement_id:
+                    - message: 45 alerts use "Refund" (3 active, 11 archived), "Refunded"
+                        (2 active, 29 archived). Choose a classification to move them
+                        to, or confirm leaving them unclassified.
+                      code: Invalid
+                      data: {}
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: accounting:write
+      operationId: delete-api-financial-alerts-classifications
   /api/financial-alerts/classifications/{classification}:
     get:
       tags:
       - Configuration
       summary: Get Classification
-      description: 'Returns a single financial alert classification by ID.
+      description: 'Returns one financial alert classification with `alerts_count`,
+        `active_alerts_count` and `archived_alerts_count`.
 
 
         :::info[Required scope: `accounting:read`]
@@ -19873,10 +20066,19 @@ paths:
                         type: integer
                       name:
                         type: string
+                      alerts_count:
+                        type: integer
+                      active_alerts_count:
+                        type: integer
+                      archived_alerts_count:
+                        type: integer
                 example:
                   data:
-                    id: 1
-                    name: Pricing Error
+                    id: 5
+                    name: Blemished
+                    alerts_count: 255
+                    active_alerts_count: 2
+                    archived_alerts_count: 253
         '429': *id001
         '401': *id002
         '403': *id005
@@ -19887,7 +20089,9 @@ paths:
       tags:
       - Configuration
       summary: Update Classification
-      description: 'Updates a financial alert classification name.
+      description: 'Renames a financial alert classification. Alerts reference the
+        classification, so every alert tagged with it (active and archived) shows
+        the new name.
 
 
         :::info[Required scope: `accounting:write`]
@@ -19898,7 +20102,17 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        Fields:
+
+        - name (required, string, max 255): trimmed; must not match another classification''s
+        name (case-insensitive). To combine two classifications, delete one and move
+        its alerts to the other.
+
+
+        Returns the classification with `alerts_count`.'
       requestBody:
         content:
           application/json:
@@ -19930,6 +20144,8 @@ paths:
               schema:
                 type: object
                 properties:
+                  message:
+                    type: string
                   data:
                     type: object
                     properties:
@@ -19937,22 +20153,76 @@ paths:
                         type: integer
                       name:
                         type: string
+                      alerts_count:
+                        type: integer
+                      active_alerts_count:
+                        type: integer
+                      archived_alerts_count:
+                        type: integer
                 example:
+                  message: Classification renamed
                   data:
                     id: 1
                     name: Pricing / Margin Error
+                    alerts_count: 12
+                    active_alerts_count: 12
+                    archived_alerts_count: 0
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      name:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties: {}
+                example:
+                  message: A classification with this name already exists. To combine
+                    the two, delete this one and move its alerts to the other.
+                  errors:
+                    name:
+                    - message: A classification with this name already exists. To
+                        combine the two, delete this one and move its alerts to the
+                        other.
+                      code: Invalid
+                      data: {}
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
-        '422': *id004
       x-required-scope: accounting:write
       operationId: put-api-financial-alerts-classifications-classification
     delete:
       tags:
       - Configuration
       summary: Delete Classification
-      description: 'Deletes a financial alert classification.
+      description: 'Deletes a financial alert classification. When alerts are tagged
+        with it you must say what happens to them, so no alert silently loses its
+        classification:
+
+        - replacement_id (integer): move those alerts to this other classification
+
+        - unassign (boolean): true leaves those alerts unclassified
 
 
         :::info[Required scope: `accounting:write`]
@@ -19963,7 +20233,18 @@ paths:
         :::
 
 
-        Authentication: Requires Bearer token.'
+        Without either, deleting a classification in use returns 422 naming its active
+        and archived alert counts. A classification no alert uses can be deleted with
+        no body.
+
+
+        Send one of `replacement_id` or `unassign`, not both (422).
+
+
+        Authentication: Requires Bearer token.
+
+
+        The response''s `data.alerts_updated` is the number of alerts moved or unclassified.'
       parameters:
       - name: classification
         in: path
@@ -19987,8 +20268,54 @@ paths:
                 properties:
                   message:
                     type: string
+                  data:
+                    type: object
+                    properties:
+                      alerts_updated:
+                        type: integer
                 example:
-                  message: financial alert classification deleted successfully
+                  message: Classification deleted
+                  data:
+                    alerts_updated: 31
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      replacement_id:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                            code:
+                              type: string
+                            data:
+                              type: object
+                              properties: {}
+                example:
+                  message: 255 alerts use "Blemished" (2 active, 253 archived). Choose
+                    a classification to move them to, or confirm leaving them unclassified.
+                  errors:
+                    replacement_id:
+                    - message: 255 alerts use "Blemished" (2 active, 253 archived).
+                        Choose a classification to move them to, or confirm leaving
+                        them unclassified.
+                      code: Invalid
+                      data: {}
         '429': *id001
         '401': *id002
         '403': *id005
@@ -94788,26 +95115,36 @@ paths:
       tags:
       - Misc
       summary: Account Setup
-      description: 'Completes initial account setup after registration.
+      description: 'Completes an invited user''s account by setting their password
+        with the activation token from the invitation email. This is a public, unauthenticated
+        endpoint. On success the account is activated and the setup token can no longer
+        be used.
 
 
-        Authentication: Requires Bearer token.'
+        Body fields:
+
+        - `token` (string, required): the activation token from the invitation email.
+
+        - `password` (string, required): at least 12 characters, with an upper-case
+        letter, a lower-case letter, a number and a symbol.
+
+        - `password_confirmation` (string, required): must match `password`.'
       requestBody:
         content:
           application/json:
             schema:
               type: object
               properties:
-                company_name:
+                token:
                   type: string
-                timezone:
+                password:
                   type: string
-                currency:
+                password_confirmation:
                   type: string
               example:
-                company_name: My Company
-                timezone: America/New_York
-                currency: USD
+                token: Vq3kX9mZb2Lr7TnW4yHc8JdF1sPg6AeU5oQi0NxKvRtYwBzMlCjDaEfGhIkSuOp
+                password: Correct-Horse-9x
+                password_confirmation: Correct-Horse-9x
       parameters: []
       responses:
         '200':
@@ -94820,9 +95157,40 @@ paths:
                   message:
                     type: string
                 example:
-                  message: Account setup completed successfully.
+                  message: 'Successfully updated user: Jane Smith'
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  errors:
+                    type: object
+                    properties:
+                      password:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            message:
+                              type: string
+                example:
+                  message: The password must be at least 12 characters and include
+                    an upper-case letter, a lower-case letter, a number and a symbol.
+                  errors:
+                    password:
+                    - message: The password must be at least 12 characters and include
+                        an upper-case letter, a lower-case letter, a number and a
+                        symbol.
         '429': *id001
-        '422': *id004
       security: []
       operationId: post-api-account-setup
   /api/company-profile:
@@ -98512,9 +98880,10 @@ paths:
       summary: Reset Password
       description: 'Completes a password reset using the token from the reset email.
         Provide the token, the account email, and the new password with its confirmation.
-        This is a public, unauthenticated endpoint. On success the password is updated
-        (and an invited-but-unactivated account is activated); on failure a validation
-        error is returned.
+        The new password must be at least 12 characters and include an upper-case
+        letter, a lower-case letter, a number and a symbol. This is a public, unauthenticated
+        endpoint. On success the password is updated (and an invited-but-unactivated
+        account is activated); on failure a validation error is returned.
 
 
         A successful reset signs the user out of every existing session. Personal
@@ -98536,8 +98905,8 @@ paths:
               example:
                 token: 9f8c1b2a3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6071829304a5b6c7d8
                 email: user@example.com
-                password: new-secret-password
-                password_confirmation: new-secret-password
+                password: Correct-Horse-9x
+                password_confirmation: Correct-Horse-9x
       parameters: []
       responses:
         '200':
@@ -98567,11 +98936,21 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  email:
-                    type: string
-                example:
-                  email: This password reset token is invalid.
+              examples:
+                example-0:
+                  summary: 422 Invalid Token
+                  value:
+                    email: This password reset token is invalid.
+                example-1:
+                  summary: 422 Password Does Not Meet Policy
+                  value:
+                    message: The password must be at least 12 characters and include
+                      an upper-case letter, a lower-case letter, a number and a symbol.
+                    errors:
+                      password:
+                      - message: The password must be at least 12 characters and include
+                          an upper-case letter, a lower-case letter, a number and
+                          a symbol.
         '429': *id001
       security: []
       operationId: post-api-password-reset
@@ -407441,7 +407820,21 @@ paths:
         not be and has not been acknowledged).
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        **Landed Cost fee types.** A fee in a Landed Cost mapping group (`mappingGroup.is_landed_cost`)
+        that is matched to an inbound shipment always posts to your purchase clearing
+        account (Accrued Purchases) on its landed cost bill and is capitalised into
+        stock, whatever account it is mapped to. Its mapped account is only the expense
+        account used when no bill can be found (for example an AWD replenishment fee
+        or a fee with no shipment reference).
+
+
+        **landed_cost_warning** (string|null): set when a Landed Cost fee type is
+        mapped to your purchase clearing account or to an account stock is held in;
+        fees with no bill would be stranded there. The mapping still saves; choose
+        an expense account to clear the warning.'
       parameters:
       - name: integrationInstance
         in: path
@@ -407510,12 +407903,17 @@ paths:
                               type: string
                             document_type:
                               type: string
+                            is_landed_cost:
+                              type: boolean
                         is_override:
                           type: boolean
                         created_at:
                           type: string
                         updated_at:
                           type: string
+                        landed_cost_warning:
+                          type: string
+                          nullable: true
                   first_page_url:
                     type: string
                   from:
@@ -407562,9 +407960,11 @@ paths:
                       id: 1
                       name: Amazon Sales
                       document_type: invoice
+                      is_landed_cost: false
                     is_override: false
                     created_at: '2026-06-02T14:35:37.000000Z'
                     updated_at: '2026-10-01T14:05:13.000000Z'
+                    landed_cost_warning: null
                   - id: 812
                     transaction_type: Order
                     amount_type: ItemFees
@@ -407584,9 +407984,11 @@ paths:
                       id: 2
                       name: Amazon Fees
                       document_type: bill
+                      is_landed_cost: false
                     is_override: true
                     created_at: '2026-07-11T10:02:00.000000Z'
                     updated_at: '2026-07-11T10:02:00.000000Z'
+                    landed_cost_warning: null
                   first_page_url: https://sku2.test/api/amazon/1/finances/settlement-data/type-mappings?page=1
                   from: 1
                   last_page: 1
@@ -407715,7 +408117,14 @@ paths:
         Grant this scope to your token under [Settings → Developer → Personal Access
         Tokens](https://app.sku.io/settings/api).
 
-        :::'
+        :::
+
+
+        **landed_cost** (object): how a Landed Cost fee type''s account is labelled
+        and explained. `account_label` ("Expense account if no bill is found"), `help`
+        (names the purchase clearing account billed fees always go to and says the
+        mapped account is only used when no bill can be found) and `clearing_account`
+        ({id, code, name}, or null when Accrued Purchases is not mapped).'
       parameters:
       - name: integrationInstance
         in: path
@@ -407757,6 +408166,22 @@ paths:
                           type: integer
                         name:
                           type: string
+                  landed_cost:
+                    type: object
+                    properties:
+                      account_label:
+                        type: string
+                      help:
+                        type: string
+                      clearing_account:
+                        type: object
+                        properties:
+                          id:
+                            type: integer
+                          code:
+                            type: string
+                          name:
+                            type: string
                 example:
                   nominal_codes:
                   - id: 10
@@ -407765,6 +408190,16 @@ paths:
                   mapping_groups:
                   - id: 1
                     name: Standard Group
+                  landed_cost:
+                    account_label: Expense account if no bill is found
+                    help: Fees matched to an inbound shipment always go to 101 Prepaid
+                      Purchases as landed cost and are capitalised into stock. This
+                      account is only used when no bill can be found for a fee, such
+                      as an AWD replenishment fee or a fee with no shipment reference.
+                    clearing_account:
+                      id: 4
+                      code: '101'
+                      name: Prepaid Purchases
         '429': *id001
         '401': *id002
         '403': *id005
@@ -428209,7 +428644,21 @@ paths:
 
 
         Authentication: Requires Bearer token (signed-in user session; not available
-        to Personal Access Tokens).'
+        to Personal Access Tokens).
+
+
+        **Landed Cost fee types.** A fee in a Landed Cost mapping group (`mappingGroup.is_landed_cost`)
+        that is matched to an inbound shipment always posts to your purchase clearing
+        account (Accrued Purchases) on its landed cost bill and is capitalised into
+        stock, whatever account it is mapped to. Its mapped account is only the expense
+        account used when no bill can be found (for example an AWD replenishment fee
+        or a fee with no shipment reference).
+
+
+        **landed_cost_warning** (string|null): set when a Landed Cost fee type is
+        mapped to your purchase clearing account or to an account stock is held in;
+        fees with no bill would be stranded there. The mapping still saves; choose
+        an expense account to clear the warning.'
       parameters: []
       responses:
         '200':
@@ -428269,8 +428718,13 @@ paths:
                               type: string
                             document_type:
                               type: string
+                            is_landed_cost:
+                              type: boolean
                         override_count:
                           type: integer
+                        landed_cost_warning:
+                          type: string
+                          nullable: true
                   first_page_url:
                     type: string
                   from:
@@ -428316,7 +428770,9 @@ paths:
                       id: 2
                       name: Amazon Fees
                       document_type: bill
+                      is_landed_cost: false
                     override_count: 1
+                    landed_cost_warning: null
                   - id: 87
                     financial_code: 'Order: ItemFees - Commission'
                     transaction_type: Order
@@ -428335,7 +428791,9 @@ paths:
                       id: 2
                       name: Amazon Fees
                       document_type: bill
+                      is_landed_cost: false
                     override_count: 0
+                    landed_cost_warning: null
                   first_page_url: https://sku2.test/api/amazon/unified/settlement-type-mappings?page=1
                   from: 1
                   last_page: 1
@@ -428357,6 +428815,22 @@ paths:
       tags:
       - Amazon
       summary: Get Type Mapping Lookups
+      description: 'Get Type Mapping Lookups
+
+
+        :::info[Required scope: `accounting:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        **landed_cost** (object): how a Landed Cost fee type''s account is labelled
+        and explained. `account_label` ("Expense account if no bill is found"), `help`
+        (names the purchase clearing account billed fees always go to and says the
+        mapped account is only used when no bill can be found) and `clearing_account`
+        ({id, code, name}, or null when Accrued Purchases is not mapped).'
       parameters: []
       responses:
         '200':
@@ -428367,15 +428841,6 @@ paths:
         '401': *id002
         '403': *id005
       x-required-scope: accounting:read
-      description: 'Get Type Mapping Lookups
-
-
-        :::info[Required scope: `accounting:read`]
-
-        Grant this scope to your token under [Settings → Developer → Personal Access
-        Tokens](https://app.sku.io/settings/api).
-
-        :::'
       operationId: get-api-amazon-unified-settlement-type-mappings-lookups
   /api/amazon/unified/settlement-type-mappings/bulk-assign:
     put:
@@ -428425,7 +428890,16 @@ paths:
 
         An account that posts to a Xero system account (for example Xero''s built-in
         Sales Tax / GST account) is rejected with a 422 while Xero is your connected
-        accounting provider, because Xero refuses lines coded to system accounts.'
+        accounting provider, because Xero refuses lines coded to system accounts.
+
+
+        **landed_cost_warnings** (object): for each assigned fee type that is in a
+        Landed Cost mapping group and now maps to your purchase clearing account or
+        a stock account, its financial code and a warning. For a Landed Cost fee type
+        the account you assign is only the expense account used when no bill can be
+        found; fees matched to an inbound shipment always go to purchase clearing.
+        Empty when there is nothing to warn about. The assignment is saved either
+        way.'
       requestBody:
         content:
           application/json:
@@ -428468,11 +428942,22 @@ paths:
                     properties:
                       updated:
                         type: integer
+                      landed_cost_warnings:
+                        type: object
+                        properties:
+                          'other-transaction: other-transaction - Inbound Transportation Fee':
+                            type: string
                   message:
                     type: string
                 example:
                   data:
                     updated: 2
+                    landed_cost_warnings:
+                      'other-transaction: other-transaction - Inbound Transportation Fee': 101
+                        Prepaid Purchases is your purchase clearing account. Fees
+                        matched to an inbound shipment already go there; a fee with
+                        no bill would sit there with nothing to clear it. Choose an
+                        expense account.
                   message: 2 type mapping(s) updated successfully.
         '429': *id001
         '401': *id002
@@ -428582,7 +429067,21 @@ paths:
         - `financial_code` (required, string).
 
         - `integration_instance_ids[]` (optional, array of integers) - limit to specific
-        instances.'
+        instances.
+
+
+        **Landed Cost fee types.** A fee in a Landed Cost mapping group (`mappingGroup.is_landed_cost`)
+        that is matched to an inbound shipment always posts to your purchase clearing
+        account (Accrued Purchases) on its landed cost bill and is capitalised into
+        stock, whatever account it is mapped to. Its mapped account is only the expense
+        account used when no bill can be found (for example an AWD replenishment fee
+        or a fee with no shipment reference).
+
+
+        **landed_cost_warning** (string|null): set when a Landed Cost fee type is
+        mapped to your purchase clearing account or to an account stock is held in;
+        fees with no bill would be stranded there. The mapping still saves; choose
+        an expense account to clear the warning.'
       parameters:
       - name: financial_code
         in: query
@@ -428635,9 +429134,14 @@ paths:
                               type: string
                             document_type:
                               type: string
+                            is_landed_cost:
+                              type: boolean
                         is_override:
                           type: boolean
                         override_id:
+                          type: string
+                          nullable: true
+                        landed_cost_warning:
                           type: string
                           nullable: true
                 example:
@@ -428653,8 +429157,10 @@ paths:
                       id: 3
                       name: Sales Revenue
                       document_type: invoice
+                      is_landed_cost: false
                     is_override: false
                     override_id: null
+                    landed_cost_warning: null
                   - integration_instance:
                       id: 3
                       name: Amazon CA
@@ -428666,8 +429172,10 @@ paths:
                       id: 4
                       name: Amazon Fees
                       document_type: bill
+                      is_landed_cost: false
                     is_override: true
                     override_id: 812
+                    landed_cost_warning: null
         '422':
           description: Unprocessable Entity
           headers:
@@ -455912,9 +456420,10 @@ paths:
         without a SKU. The entry is omitted when there are none.
 
 
-        **Import actions:** `actionLabel` names the products to import and, when the
-        list it opens shows more rows, the variants (e.g. "Import 80 products (107
-        variants)"). `actionRoute` opens exactly the products the entry counts.'
+        **Import actions:** `actionLabel` counts the variants to import, since each
+        variant becomes one SKU.io product and the list it opens shows one row per
+        variant (e.g. "Import 107 variants"); `blocker` adds the product count when
+        it differs. `actionRoute` opens exactly the variants the entry counts.'
       parameters:
       - name: integrationInstance
         in: path
@@ -456047,7 +456556,7 @@ paths:
                         blocker: 18,312 products are downloaded but not imported into
                           your SKU catalog yet, so they do not appear in products,
                           inventory or reports.
-                        actionLabel: Import 18,312 products (21,904 variants)
+                        actionLabel: Import 21,904 variants
                         actionRoute: /integrations/shopify/products?filter[integration_instance_ids]=12&filter[mapped]=false&filter[importable]=true&filter[status]=active
                         note: null
                         inChannelIsLowerBound: false
@@ -456121,7 +456630,7 @@ paths:
                         blocker: 18,312 products are downloaded but not imported into
                           your SKU catalog yet, so they do not appear in products,
                           inventory or reports.
-                        actionLabel: Import 18,312 products (21,904 variants)
+                        actionLabel: Import 21,904 variants
                         actionRoute: /integrations/shopify/products?filter[integration_instance_ids]=12&filter[mapped]=false&filter[importable]=true&filter[status]=active
                         note: null
                         inChannelIsLowerBound: false
@@ -456138,9 +456647,10 @@ paths:
                         gap: 80
                         coveragePercentage: 18.4
                         status: not_imported
-                        blocker: 80 products on your orders are not in your SKU catalog
-                          yet, so their order lines do not link to a product.
-                        actionLabel: Import 80 products (107 variants)
+                        blocker: 107 variants (80 products) on your orders are not
+                          in your SKU catalog yet, so their order lines do not link
+                          to a product.
+                        actionLabel: Import 107 variants
                         actionRoute: /integrations/shopify/products?filter[integration_instance_ids]=12&filter[mapped]=false&filter[importable]=true&filter[in_orders]=true&filter[status]=archived,draft,unlisted
                         note: Products your orders include that are not active in
                           Shopify. They belong in your catalog so every order line
@@ -967417,7 +967927,16 @@ paths:
         Authentication: Requires Bearer token.
 
 
-        A draft transfer cannot be marked as shipped (422); open it first.'
+        A draft transfer cannot be marked as shipped (422); open it first.
+
+
+        Marking as shipped only records what Amazon reports. While Amazon''s inbound
+        shipment is not yet shipped (Working, Ready to ship) the request changes nothing
+        and returns 422 with a message naming Amazon''s status, for example "Amazon
+        still shows this shipment as Working, so nothing was marked shipped. Mark
+        it as shipped in Seller Central first, then try again here." A Cancelled,
+        Deleted or Abandoned shipment can''t be marked shipped (422). An AWD to FBA
+        send returns 422 until AWD reports the stock as departed.'
       requestBody:
         content:
           application/json:
@@ -967574,34 +968093,32 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
+              examples:
+                example-0:
+                  summary: 422 Draft Transfer
+                  value:
+                    status: failure
+                    message: Open the warehouse transfer before marking it as shipped.
+                    errors:
                       ? ''
-                      : type: array
-                        items:
-                          type: object
-                          properties:
-                            message:
-                              type: string
-                            code:
-                              type: integer
-                            data:
-                              type: array
-                example:
-                  status: failure
-                  message: Open the warehouse transfer before marking it as shipped.
-                  errors:
-                    ? ''
-                    : - message: Open the warehouse transfer before marking it as
-                          shipped.
-                        code: 422
-                        data: []
+                      : - message: Open the warehouse transfer before marking it as
+                            shipped.
+                          code: 422
+                          data: []
+                example-1:
+                  summary: 422 Amazon Still Working
+                  value:
+                    status: failure
+                    message: Amazon still shows this shipment as Working, so nothing
+                      was marked shipped. Mark it as shipped in Seller Central first,
+                      then try again here.
+                    errors:
+                      ? ''
+                      : - message: Amazon still shows this shipment as Working, so
+                            nothing was marked shipped. Mark it as shipped in Seller
+                            Central first, then try again here.
+                          code: 422
+                          data: []
         '429': *id001
         '401': *id002
         '403': *id005
@@ -1104637,6 +1105154,10 @@ paths:
                             type: integer
                           total_quantity_pending_receipt:
                             type: integer
+                          total_quantity_received:
+                            type: integer
+                          over_received_lines:
+                            type: array
                       financial_lines:
                         type: array
                       bills:
@@ -1104720,6 +1105241,8 @@ paths:
                       total_product_lines: 2
                       total_units: 3
                       total_quantity_pending_receipt: 3
+                      total_quantity_received: 0
+                      over_received_lines: []
                     financial_lines: []
                     bills: []
                     invoices: []
@@ -1109915,7 +1110438,11 @@ paths:
         while the order was created (`issues_count` and `issues[]`: `type`, `product_id`,
         `sku`, `message`, and for short stock or price changes `ordered`/`available`
         or `old_price`/`new_price`). The same object is returned by the legacy `GET
-        /api/sales-orders/{salesOrder}` endpoint.'
+        /api/sales-orders/{salesOrder}` endpoint.
+
+
+        `shipping_address_type` and `shipping_address_type_status` describe whether
+        the ship-to is a home or a business (see Get Sales Order Address Type).'
       parameters:
       - name: salesOrder
         in: path
@@ -1110528,6 +1111055,21 @@ paths:
                             note:
                               type: string
                               nullable: true
+                      shipping_address_type:
+                        type: string
+                      shipping_address_type_status:
+                        type: object
+                        properties:
+                          status:
+                            type: string
+                          address_type:
+                            type: string
+                          checked_at:
+                            type: string
+                          source:
+                            type: string
+                          can_recheck:
+                            type: boolean
                   use_sales_order_line_nominal_codes:
                     type: boolean
                 example:
@@ -1110847,6 +1111389,13 @@ paths:
                       click_id_type: gclid
                       source_line: null
                       note: null
+                    shipping_address_type: residential
+                    shipping_address_type_status:
+                      status: residential
+                      address_type: residential
+                      checked_at: '2026-11-25T17:14:02+00:00'
+                      source: easypost
+                      can_recheck: true
                   use_sales_order_line_nominal_codes: false
         '429': *id001
         '401': *id002
@@ -1115851,7 +1116400,11 @@ paths:
         Each row includes `merge_partners`: the other open orders going to the same
         address for the same customer (`[{"id": 179, "sales_order_number": "CV-10437"}]`,
         oldest first, at most 10), empty when the order has none, and `merge_partner_count`:
-        how many such orders there are in all. Filter to them with `filter[mergeable]=tru'
+        how many such orders there are in all. Filter to them with `filter[mergeable]=tru
+
+
+        Each row carries `shipping_address_type` (residential, commercial, unknown,
+        not_checked, error, or null while not classified).'
       parameters: []
       responses:
         '200':
@@ -1116124,6 +1116677,8 @@ paths:
                                 type: string
                               message:
                                 type: string
+                        shipping_address_type:
+                          type: string
                   current_page:
                     type: integer
                   last_page:
@@ -1116261,6 +1116816,7 @@ paths:
                     holds:
                     - type: billing
                       message: 'Held: awaiting payment in full'
+                    shipping_address_type: residential
                   current_page: 1
                   last_page: 5
                   per_page: 10
@@ -1122868,6 +1123424,205 @@ paths:
         '404': *id003
       x-required-scope: orders:write
       operationId: delete-api-sales-orders-salesorder-support-tickets-supportticketlink
+  /api/sales-orders/{salesOrder}/shipping-address-type:
+    get:
+      tags:
+      - Sales Orders
+      summary: Get Sales Order Address Type
+      description: 'Returns the Residential / Commercial classification of the order''s
+        ship-to address. Poll it while `status` is `checking`.
+
+
+        :::info[Required scope: `orders:read`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        `status` is one of: `residential`, `commercial`, `unknown` (the address could
+        not be verified), `not_checked` (ship-to outside the US — never checked),
+        `error` (the check failed after its retries), `checking` (a US address whose
+        check is still running), `off` (the account has not turned the Residential/Commercial
+        address check on) or `unavailable` (the check is on but the account''s EasyPost
+        is not connected; connect it in Integrations → EasyPost). `address_type` is
+        the stored result (null while checking), `checked_at` is UTC, `source` is
+        the provider that answered (`easypost`), `can_recheck` says whether Re-check
+        Sales Order Address Type is allowed now.
+
+
+        Authentication: Requires Bearer token. Scope: orders (read).'
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '21451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      address_type:
+                        type: string
+                      checked_at:
+                        type: string
+                      source:
+                        type: string
+                      can_recheck:
+                        type: boolean
+                example:
+                  data:
+                    status: residential
+                    address_type: residential
+                    checked_at: '2026-11-25T17:14:02+00:00'
+                    source: easypost
+                    can_recheck: true
+        '404':
+          description: Not Found
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Sales order not found
+        '429': *id001
+        '401': *id002
+        '403': *id005
+      x-required-scope: orders:read
+      operationId: get-api-sales-orders-salesorder-shipping-address-type
+  /api/sales-orders/{salesOrder}/shipping-address-type/recheck:
+    post:
+      tags:
+      - Sales Orders
+      summary: Re-check Sales Order Address Type
+      description: 'Checks the order''s ship-to again with EasyPost, ignoring any
+        earlier answer for the same address. The check runs in the background: the
+        response usually says `checking`; poll Get Sales Order Address Type for the
+        result. A ship-to outside the US is marked `not_checked` with no call. EasyPost
+        charges each check to the account''s own EasyPost account.
+
+
+        :::info[Required scope: `orders:write`]
+
+        Grant this scope to your token under [Settings → Developer → Personal Access
+        Tokens](https://app.sku.io/settings/api).
+
+        :::
+
+
+        Returns 422 when the account has the address check off or address checks are
+        unavailable.
+
+
+        `status` is one of: `residential`, `commercial`, `unknown` (the address could
+        not be verified), `not_checked` (ship-to outside the US — never checked),
+        `error` (the check failed after its retries), `checking` (a US address whose
+        check is still running), `off` (the account has not turned the Residential/Commercial
+        address check on) or `unavailable` (the check is on but the account''s EasyPost
+        is not connected; connect it in Integrations → EasyPost). `address_type` is
+        the stored result (null while checking), `checked_at` is UTC, `source` is
+        the provider that answered (`easypost`), `can_recheck` says whether Re-check
+        Sales Order Address Type is allowed now.
+
+
+        Authentication: Requires Bearer token. Scope: orders (write).'
+      requestBody:
+        content: {}
+      parameters:
+      - name: salesOrder
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Sales order ID
+        example: '21451'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      address_type:
+                        type: string
+                        nullable: true
+                      checked_at:
+                        type: string
+                        nullable: true
+                      source:
+                        type: string
+                        nullable: true
+                      can_recheck:
+                        type: boolean
+                  message:
+                    type: string
+                example:
+                  data:
+                    status: checking
+                    address_type: null
+                    checked_at: null
+                    source: null
+                    can_recheck: false
+                  message: Checking the address.
+        '422':
+          description: Unprocessable Entity
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                example:
+                  message: Turn on the Residential/Commercial address check in Settings
+                    → Shipping Method Rules first.
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: orders:write
+      operationId: post-api-sales-orders-salesorder-shipping-address-type-recheck
   /api/sales-order-lines/{salesOrderLineId}:
     get:
       tags:
@@ -1239947,7 +1240702,13 @@ paths:
         `receipt_match` is set when deliveries received without a PO were matched
         to or from this order: `matched_to` / `matched_from` list the other purchase
         orders with the units moved, and for a delivery received without a PO `state`
-        is `unmatched`, `partly_matched` or `fully_matched`.'
+        is `unmatched`, `partly_matched` or `fully_matched`.
+
+
+        `summary_info.total_quantity_received` is every unit received on the order''s
+        product lines, including any received beyond what was ordered. `summary_info.over_received_lines`
+        lists the lines that received more than ordered, with `sku`, `ordered`, `received`
+        and `over`.'
       parameters:
       - name: purchase_order
         in: path
@@ -1240207,6 +1240968,10 @@ paths:
                             type: integer
                           total_quantity_pending_receipt:
                             type: integer
+                          total_quantity_received:
+                            type: integer
+                          over_received_lines:
+                            type: array
                       financial_lines:
                         type: array
                       bills:
@@ -1240449,6 +1241214,8 @@ paths:
                       total_product_lines: 1
                       total_units: 100
                       total_quantity_pending_receipt: 100
+                      total_quantity_received: 0
+                      over_received_lines: []
                     financial_lines: []
                     bills: []
                     invoices: []
@@ -1242956,9 +1243723,10 @@ paths:
         is true when it differs from the line''s saved factor (send `refresh_purchase_uom_factor`
         to Update PO Line to adopt it). `purchase_unit_options[]` lists the units
         the line can be ordered in (`uom_id`, `code`, `name`, `factor`, `is_stock_uom`,
-        `is_purchase_uom`): the stock unit first with factor 1; a unit with factor
-        0 has no conversion yet and cannot be chosen. On a purchase-unit line `line_total`
-        is worked out from the exact purchase cost.'
+        `is_purchase_uom`, `display_precision`: the decimals a quantity in that unit
+        is shown with, default 2): the stock unit first with factor 1; a unit with
+        factor 0 has no conversion yet and cannot be chosen. On a purchase-unit line
+        `line_total` is worked out from the exact purchase cost.'
       parameters:
       - name: page
         in: query
@@ -1243103,6 +1243871,8 @@ paths:
                                 type: boolean
                               is_purchase_uom:
                                 type: boolean
+                              display_precision:
+                                type: integer
                   links:
                     type: object
                     properties:
@@ -1243178,6 +1243948,7 @@ paths:
                       factor: 1.0
                       is_stock_uom: true
                       is_purchase_uom: false
+                      display_precision: 2
                   - id: 202
                     quantity: 150
                     sku:
@@ -1243207,12 +1243978,14 @@ paths:
                       factor: 1.0
                       is_stock_uom: true
                       is_purchase_uom: false
+                      display_precision: 2
                     - uom_id: 14
                       code: BAG
                       name: Bag (55 lb)
                       factor: 55.0
                       is_stock_uom: false
                       is_purchase_uom: true
+                      display_precision: 2
                     line_total: 135.0
                   links:
                     first: https://example.sku.io/api/purchase-orders/101/lines?page=1
@@ -1244251,7 +1245024,13 @@ paths:
         lines and silent truncation hid line items from users (Freshdesk #1892).
 
 
-        Authentication: Requires Bearer token.'
+        Authentication: Requires Bearer token.
+
+
+        `open_to_ship_by_warehouse` (object or null): on a purchase order whose lines
+        are split across warehouses, what this line still has to ship to each destination,
+        keyed by warehouse id. Use it to pre-fill a new shipment to one warehouse.
+        Null when the order isn''t split.'
       parameters:
       - name: purchase_order
         in: path
@@ -1244302,6 +1245081,15 @@ paths:
                           type: integer
                         already_on_shipment:
                           type: boolean
+                        open_to_ship_by_warehouse:
+                          type: object
+                          properties:
+                            '4':
+                              type: integer
+                            '7':
+                              type: integer
+                            '9':
+                              type: integer
                 example:
                   data:
                   - purchase_order_line_id: 201
@@ -1244316,6 +1245104,10 @@ paths:
                     available_quantity: 60
                     planned_quantity: 25
                     already_on_shipment: true
+                    open_to_ship_by_warehouse:
+                      '4': 0
+                      '7': 20
+                      '9': 300
                   - purchase_order_line_id: 202
                     product_id: 11
                     sku: WIDGET-B
@@ -1244328,6 +1245120,7 @@ paths:
                     available_quantity: 50
                     planned_quantity: 0
                     already_on_shipment: false
+                    open_to_ship_by_warehouse: null
         '429': *id001
         '401': *id002
         '403': *id005
@@ -1245098,9 +1245891,10 @@ paths:
         is true when it differs from the line''s saved factor (send `refresh_purchase_uom_factor`
         to Update PO Line to adopt it). `purchase_unit_options[]` lists the units
         the line can be ordered in (`uom_id`, `code`, `name`, `factor`, `is_stock_uom`,
-        `is_purchase_uom`): the stock unit first with factor 1; a unit with factor
-        0 has no conversion yet and cannot be chosen. On a purchase-unit line `line_total`
-        is worked out from the exact purchase cost.
+        `is_purchase_uom`, `display_precision`: the decimals a quantity in that unit
+        is shown with, default 2): the stock unit first with factor 1; a unit with
+        factor 0 has no conversion yet and cannot be chosen. On a purchase-unit line
+        `line_total` is worked out from the exact purchase cost.
 
 
         Example: `{"purchase_uom_code": "BAG", "purchase_quantity": 3, "purchase_unit_cost":
@@ -1245207,6 +1246001,7 @@ paths:
                         factor: 1
                         is_stock_uom: true
                         is_purchase_uom: false
+                        display_precision: 2
                       is_free_of_charge: false
                       free_of_charge_reason: null
                       free_of_charge_reason_label: null
@@ -1245274,12 +1246069,14 @@ paths:
                         factor: 1
                         is_stock_uom: true
                         is_purchase_uom: false
+                        display_precision: 2
                       - uom_id: 14
                         code: BAG
                         name: Bag (50 lb)
                         factor: 50
                         is_stock_uom: false
                         is_purchase_uom: true
+                        display_precision: 2
                       received: 0
                       box_count: null
                       units_per_box: null
@@ -1246928,18 +1247725,322 @@ paths:
         '404': *id003
       x-required-scope: purchase-orders:write
       operationId: post-api-purchase-orders-purchase-order-move-to-new-shipment
-  /api/purchase-orders/{purchase_order}/split-by-destination:
-    post:
+  /api/purchase-orders/{purchase_order}/line-allocations:
+    get:
       tags:
       - Purchase Orders
-      summary: Split Purchase Order by Destination
-      description: 'Plan one purchase order across several warehouses: creates one
-        Draft inbound shipment per destination warehouse, each with the quantities
-        given for it, in one all-or-nothing request. Use it when a supplier ships
-        one order to several warehouses or 3PLs. The purchase order PDF and the supplier
-        portal then show a Ship-to allocation: each warehouse''s address and quantities,
-        plus any units not yet on a shipment as Unassigned against the purchase order''s
-        own warehouse.
+      summary: Get Purchase Order Line Allocations
+      description: "Where and when a purchase order's units go: each product line\
+        \ split across destination warehouses and expected dates, matched against\
+        \ the shipments the supplier has actually sent. A short shipment leaves its\
+        \ row partly open; an early one fills the next-dated row at the same warehouse.\
+        \ Lines that aren't split go entirely to the purchase order's own warehouse.\n\
+        \n:::info[Required scope: `purchase-orders:read`]\nGrant this scope to your\
+        \ token under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::\n\nAuthentication: Requires Bearer token.\n\nResponse fields:\n- `has_allocations`:\
+        \ whether any line is split\n- `is_multi_destination`: true when the units\
+        \ go to two or more warehouses (split warehouses, plus the order's own warehouse\
+        \ while some units are unallocated)\n- `destination_count`, `default_warehouse_id`,\
+        \ `default_warehouse_name`, `default_expected_date` (the order's ETA, which\
+        \ undated rows use)\n- `include_ship_to_sheets`: whether the purchase order\
+        \ PDF ends with one ship-to sheet per warehouse\n- `can_edit` / `cannot_edit_reason`:\
+        \ dropship, supplier-pickup, blanket, opening-balance and closed orders can't\
+        \ be split\n- `lines[]`: each product line with `quantity`, `received_quantity`,\
+        \ `allocated_quantity`, `over_allocated`, and:\n  - `rows[]`: one per destination\
+        \ and date: `warehouse_id`, `quantity`, `expected_date` (null = the order's\
+        \ ETA), `shipped_quantity` (what the supplier's shipments to that warehouse\
+        \ cover, received units included, filled in date order), `received_quantity`,\
+        \ `open_quantity` (still to ship), `incoming_quantity` (what the row adds\
+        \ to that warehouse's incoming stock), `late`, `early`, and `shipments[]`\
+        \ (shipment id, number, status, ETA and the units of it counted against the\
+        \ row)\n  - `remainder`: units no row claims; they go to the order's own warehouse\n\
+        \  - `unplanned[]`: units shipped to a warehouse beyond what it was allocated\n\
+        \  - `incoming_by_warehouse`: warehouse id => units the line adds to that\
+        \ warehouse's incoming stock\n- `destinations[]`: per-warehouse totals (quantity,\
+        \ shipped, received, open, first and last date)\n- `dates[]`: units due per\
+        \ date\n\n**Requires permission:** `purchase_orders.show`"
+      parameters:
+      - name: purchase_order
+        in: path
+        schema:
+          type: integer
+        required: true
+        description: Purchase order ID
+        example: '3143'
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      purchase_order_id:
+                        type: integer
+                      has_allocations:
+                        type: boolean
+                      is_multi_destination:
+                        type: boolean
+                      destination_count:
+                        type: integer
+                      default_warehouse_id:
+                        type: integer
+                      default_warehouse_name:
+                        type: string
+                      default_expected_date:
+                        type: string
+                      include_ship_to_sheets:
+                        type: boolean
+                      can_edit:
+                        type: boolean
+                      cannot_edit_reason:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            purchase_order_line_id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            sku:
+                              type: string
+                            description:
+                              type: string
+                            quantity:
+                              type: integer
+                            received_quantity:
+                              type: integer
+                            allocated_quantity:
+                              type: integer
+                            over_allocated:
+                              type: boolean
+                            rows:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  warehouse_id:
+                                    type: integer
+                                  warehouse_name:
+                                    type: string
+                                  quantity:
+                                    type: integer
+                                  expected_date:
+                                    type: string
+                                  effective_expected_date:
+                                    type: string
+                                  shipped_quantity:
+                                    type: integer
+                                  received_quantity:
+                                    type: integer
+                                  open_quantity:
+                                    type: integer
+                                  incoming_quantity:
+                                    type: integer
+                                  late:
+                                    type: boolean
+                                  early:
+                                    type: boolean
+                                  shipments:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        inbound_shipment_id:
+                                          type: integer
+                                        shipment_number:
+                                          type: string
+                                        status:
+                                          type: string
+                                        expected_arrival_date:
+                                          type: string
+                                        quantity:
+                                          type: integer
+                            remainder:
+                              type: string
+                              nullable: true
+                            unplanned:
+                              type: array
+                            incoming_by_warehouse:
+                              type: object
+                              properties:
+                                '7':
+                                  type: integer
+                                '9':
+                                  type: integer
+                      destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            warehouse_id:
+                              type: integer
+                            name:
+                              type: string
+                            address_line:
+                              type: string
+                            is_default:
+                              type: boolean
+                            quantity:
+                              type: integer
+                            shipped_quantity:
+                              type: integer
+                            received_quantity:
+                              type: integer
+                            open_quantity:
+                              type: integer
+                            first_expected_date:
+                              type: string
+                            last_expected_date:
+                              type: string
+                      dates:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            quantity:
+                              type: integer
+                example:
+                  data:
+                    purchase_order_id: 3143
+                    has_allocations: true
+                    is_multi_destination: true
+                    destination_count: 3
+                    default_warehouse_id: 4
+                    default_warehouse_name: Chicago 3PL
+                    default_expected_date: '2027-01-12'
+                    include_ship_to_sheets: true
+                    can_edit: true
+                    cannot_edit_reason: null
+                    lines:
+                    - purchase_order_line_id: 101
+                      product_id: 55
+                      sku: EN-TRK40-BLK
+                      description: Trekker 40L Backpack - Black
+                      quantity: 1200
+                      received_quantity: 500
+                      allocated_quantity: 1200
+                      over_allocated: false
+                      rows:
+                      - id: 901
+                        warehouse_id: 4
+                        warehouse_name: Chicago 3PL
+                        quantity: 500
+                        expected_date: '2027-01-12'
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 500
+                        received_quantity: 500
+                        open_quantity: 0
+                        incoming_quantity: 0
+                        late: false
+                        early: false
+                        shipments:
+                        - inbound_shipment_id: 2291
+                          shipment_number: IS-2291
+                          status: received
+                          expected_arrival_date: '2027-01-12'
+                          quantity: 500
+                      - id: 902
+                        warehouse_id: 7
+                        warehouse_name: Reno 3PL
+                        quantity: 400
+                        expected_date: '2027-01-12'
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 380
+                        received_quantity: 0
+                        open_quantity: 20
+                        incoming_quantity: 20
+                        late: false
+                        early: false
+                        shipments:
+                        - inbound_shipment_id: 2297
+                          shipment_number: IS-2297
+                          status: in_transit
+                          expected_arrival_date: '2027-01-12'
+                          quantity: 380
+                      - id: 903
+                        warehouse_id: 9
+                        warehouse_name: Allentown 3PL
+                        quantity: 300
+                        expected_date: null
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 0
+                        received_quantity: 0
+                        open_quantity: 300
+                        incoming_quantity: 300
+                        late: false
+                        early: false
+                        shipments: []
+                      remainder: null
+                      unplanned: []
+                      incoming_by_warehouse:
+                        '7': 400
+                        '9': 300
+                    destinations:
+                    - warehouse_id: 4
+                      name: Chicago 3PL
+                      address_line: 880 Industrial Dr, Bolingbrook, IL
+                      is_default: true
+                      quantity: 500
+                      shipped_quantity: 500
+                      received_quantity: 500
+                      open_quantity: 0
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    - warehouse_id: 7
+                      name: Reno 3PL
+                      address_line: 1200 Greg St, Sparks, NV
+                      is_default: false
+                      quantity: 400
+                      shipped_quantity: 380
+                      received_quantity: 0
+                      open_quantity: 20
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    - warehouse_id: 9
+                      name: Allentown 3PL
+                      address_line: 7451 Industrial Blvd, Allentown, PA
+                      is_default: false
+                      quantity: 300
+                      shipped_quantity: 0
+                      received_quantity: 0
+                      open_quantity: 300
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    dates:
+                    - date: '2027-01-12'
+                      quantity: 1200
+        '429': *id001
+        '401': *id002
+        '403': *id005
+        '404': *id003
+      x-required-scope: purchase-orders:read
+      operationId: get-api-purchase-orders-purchase-order-line-allocations
+    put:
+      tags:
+      - Purchase Orders
+      summary: Update Purchase Order Line Allocations
+      description: 'Split purchase order lines across destination warehouses and expected
+        dates, and/or switch the per-warehouse ship-to sheets on the purchase order
+        PDF. Each listed line''s rows replace the ones it has; lines not listed keep
+        theirs; an empty `allocations` list puts a line back on the order''s own warehouse.
+        Nothing is shipped or created: the supplier''s real shipments are matched
+        to these rows as they arrive. All or nothing.
 
 
         :::info[Required scope: `purchase-orders:write`]
@@ -1246955,30 +1248056,40 @@ paths:
 
         Request body fields:
 
-        - `destinations` (required, array, 1–50 items): one per warehouse
+        - `lines` (required unless `include_ship_to_sheets` is sent, array, up to
+        1000): one per line to change
 
-        - `destinations.*.destination_warehouse_id` (required, integer): an existing
-        warehouse; each warehouse at most once
+        - `lines.*.purchase_order_line_id` (required, integer, each at most once):
+        a product line on this purchase order
 
-        - `destinations.*.lines` (required, array, 1–500 items)
+        - `lines.*.allocations` (required, array, may be empty, up to 100)
 
-        - `destinations.*.lines.*.purchase_order_line_id` (required, integer): a line
-        on this purchase order
+        - `lines.*.allocations.*.warehouse_id` (required, integer): one of your warehouses
+        (not a supplier warehouse; an archived warehouse only if the line already
+        uses it)
 
-        - `destinations.*.lines.*.quantity` (required, numeric, ≥ 0): units for that
-        warehouse; zero quantities are skipped, and a warehouse with no units gets
-        no shipment
+        - `lines.*.allocations.*.quantity` (required, numeric, >= 0): rows of 0 are
+        dropped
+
+        - `lines.*.allocations.*.expected_date` (optional, date `Y-m-d`, nullable):
+        when the units are due there; null = the order''s ETA. A warehouse can appear
+        twice on a line only with different dates.
+
+        - `include_ship_to_sheets` (optional, boolean)
 
 
-        A line''s quantities across all warehouses cannot exceed what it has open:
-        ordered, less received, less units already on its shipments (in transit, draft
-        or planned). Cancelled shipments don''t count.
+        Rules: a line''s rows add up to at most its quantity (the rest goes to the
+        order''s own warehouse); a warehouse''s rows on a line can''t go below what
+        has already shipped there.
 
 
-        Errors (422): the purchase order is a draft, a blanket order (create a release
-        per warehouse instead) or a dropship order; a line is not an open line of
-        this purchase order; a line is over-allocated (`errors.destinations` names
-        the SKU and what is left); nothing was entered.
+        Errors (422): the order is dropship, supplier pickup, blanket, opening balance
+        or closed (`message`); a line is over-allocated, a warehouse repeats on the
+        same date, or a warehouse''s rows drop below what has shipped (`errors`, keyed
+        `lines.N...`).
+
+
+        Returns the same body as Get Purchase Order Line Allocations.
 
 
         **Requires permission:** `purchase_orders.update`'
@@ -1246988,34 +1248099,48 @@ paths:
             schema:
               type: object
               properties:
-                destinations:
+                lines:
                   type: array
                   items:
                     type: object
                     properties:
-                      destination_warehouse_id:
+                      purchase_order_line_id:
                         type: integer
-                      lines:
+                      allocations:
                         type: array
                         items:
                           type: object
                           properties:
-                            purchase_order_line_id:
+                            warehouse_id:
                               type: integer
                             quantity:
                               type: integer
+                            expected_date:
+                              type: string
+                include_ship_to_sheets:
+                  type: boolean
               example:
-                destinations:
-                - destination_warehouse_id: 4
-                  lines:
-                  - purchase_order_line_id: 101
+                lines:
+                - purchase_order_line_id: 101
+                  allocations:
+                  - warehouse_id: 4
+                    quantity: 500
+                    expected_date: '2027-01-12'
+                  - warehouse_id: 7
+                    quantity: 400
+                    expected_date: '2027-01-12'
+                  - warehouse_id: 9
                     quantity: 300
-                  - purchase_order_line_id: 102
-                    quantity: 120
-                - destination_warehouse_id: 7
-                  lines:
-                  - purchase_order_line_id: 101
-                    quantity: 240
+                    expected_date: null
+                - purchase_order_line_id: 102
+                  allocations:
+                  - warehouse_id: 4
+                    quantity: 300
+                    expected_date: '2027-01-12'
+                  - warehouse_id: 7
+                    quantity: 300
+                    expected_date: '2027-02-09'
+                include_ship_to_sheets: true
       parameters:
       - name: purchase_order
         in: path
@@ -1247025,8 +1248150,8 @@ paths:
         description: Purchase order ID
         example: '3143'
       responses:
-        '201':
-          description: Created
+        '200':
+          description: OK
           headers:
             Content-Type:
               schema:
@@ -1247040,29 +1248165,251 @@ paths:
                   message:
                     type: string
                   data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        id:
-                          type: integer
-                        shipment_number:
-                          type: string
-                        status:
-                          type: string
-                        destination_warehouse_id:
-                          type: integer
+                    type: object
+                    properties:
+                      purchase_order_id:
+                        type: integer
+                      has_allocations:
+                        type: boolean
+                      is_multi_destination:
+                        type: boolean
+                      destination_count:
+                        type: integer
+                      default_warehouse_id:
+                        type: integer
+                      default_warehouse_name:
+                        type: string
+                      default_expected_date:
+                        type: string
+                      include_ship_to_sheets:
+                        type: boolean
+                      can_edit:
+                        type: boolean
+                      cannot_edit_reason:
+                        type: string
+                        nullable: true
+                      lines:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            purchase_order_line_id:
+                              type: integer
+                            product_id:
+                              type: integer
+                            sku:
+                              type: string
+                            description:
+                              type: string
+                            quantity:
+                              type: integer
+                            received_quantity:
+                              type: integer
+                            allocated_quantity:
+                              type: integer
+                            over_allocated:
+                              type: boolean
+                            rows:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  id:
+                                    type: integer
+                                  warehouse_id:
+                                    type: integer
+                                  warehouse_name:
+                                    type: string
+                                  quantity:
+                                    type: integer
+                                  expected_date:
+                                    type: string
+                                  effective_expected_date:
+                                    type: string
+                                  shipped_quantity:
+                                    type: integer
+                                  received_quantity:
+                                    type: integer
+                                  open_quantity:
+                                    type: integer
+                                  incoming_quantity:
+                                    type: integer
+                                  late:
+                                    type: boolean
+                                  early:
+                                    type: boolean
+                                  shipments:
+                                    type: array
+                                    items:
+                                      type: object
+                                      properties:
+                                        inbound_shipment_id:
+                                          type: integer
+                                        shipment_number:
+                                          type: string
+                                        status:
+                                          type: string
+                                        expected_arrival_date:
+                                          type: string
+                                        quantity:
+                                          type: integer
+                            remainder:
+                              type: string
+                              nullable: true
+                            unplanned:
+                              type: array
+                            incoming_by_warehouse:
+                              type: object
+                              properties:
+                                '7':
+                                  type: integer
+                                '9':
+                                  type: integer
+                      destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            warehouse_id:
+                              type: integer
+                            name:
+                              type: string
+                            address_line:
+                              type: string
+                            is_default:
+                              type: boolean
+                            quantity:
+                              type: integer
+                            shipped_quantity:
+                              type: integer
+                            received_quantity:
+                              type: integer
+                            open_quantity:
+                              type: integer
+                            first_expected_date:
+                              type: string
+                            last_expected_date:
+                              type: string
+                      dates:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                            quantity:
+                              type: integer
                 example:
-                  message: 2 draft shipments created.
+                  message: Destinations saved.
                   data:
-                  - id: 851
-                    shipment_number: IS-83710
-                    status: draft
-                    destination_warehouse_id: 4
-                  - id: 852
-                    shipment_number: IS-83711
-                    status: draft
-                    destination_warehouse_id: 7
+                    purchase_order_id: 3143
+                    has_allocations: true
+                    is_multi_destination: true
+                    destination_count: 3
+                    default_warehouse_id: 4
+                    default_warehouse_name: Chicago 3PL
+                    default_expected_date: '2027-01-12'
+                    include_ship_to_sheets: true
+                    can_edit: true
+                    cannot_edit_reason: null
+                    lines:
+                    - purchase_order_line_id: 101
+                      product_id: 55
+                      sku: EN-TRK40-BLK
+                      description: Trekker 40L Backpack - Black
+                      quantity: 1200
+                      received_quantity: 500
+                      allocated_quantity: 1200
+                      over_allocated: false
+                      rows:
+                      - id: 901
+                        warehouse_id: 4
+                        warehouse_name: Chicago 3PL
+                        quantity: 500
+                        expected_date: '2027-01-12'
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 500
+                        received_quantity: 500
+                        open_quantity: 0
+                        incoming_quantity: 0
+                        late: false
+                        early: false
+                        shipments:
+                        - inbound_shipment_id: 2291
+                          shipment_number: IS-2291
+                          status: received
+                          expected_arrival_date: '2027-01-12'
+                          quantity: 500
+                      - id: 902
+                        warehouse_id: 7
+                        warehouse_name: Reno 3PL
+                        quantity: 400
+                        expected_date: '2027-01-12'
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 380
+                        received_quantity: 0
+                        open_quantity: 20
+                        incoming_quantity: 20
+                        late: false
+                        early: false
+                        shipments:
+                        - inbound_shipment_id: 2297
+                          shipment_number: IS-2297
+                          status: in_transit
+                          expected_arrival_date: '2027-01-12'
+                          quantity: 380
+                      - id: 903
+                        warehouse_id: 9
+                        warehouse_name: Allentown 3PL
+                        quantity: 300
+                        expected_date: null
+                        effective_expected_date: '2027-01-12'
+                        shipped_quantity: 0
+                        received_quantity: 0
+                        open_quantity: 300
+                        incoming_quantity: 300
+                        late: false
+                        early: false
+                        shipments: []
+                      remainder: null
+                      unplanned: []
+                      incoming_by_warehouse:
+                        '7': 400
+                        '9': 300
+                    destinations:
+                    - warehouse_id: 4
+                      name: Chicago 3PL
+                      address_line: 880 Industrial Dr, Bolingbrook, IL
+                      is_default: true
+                      quantity: 500
+                      shipped_quantity: 500
+                      received_quantity: 500
+                      open_quantity: 0
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    - warehouse_id: 7
+                      name: Reno 3PL
+                      address_line: 1200 Greg St, Sparks, NV
+                      is_default: false
+                      quantity: 400
+                      shipped_quantity: 380
+                      received_quantity: 0
+                      open_quantity: 20
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    - warehouse_id: 9
+                      name: Allentown 3PL
+                      address_line: 7451 Industrial Blvd, Allentown, PA
+                      is_default: false
+                      quantity: 300
+                      shipped_quantity: 0
+                      received_quantity: 0
+                      open_quantity: 300
+                      first_expected_date: '2027-01-12'
+                      last_expected_date: '2027-01-12'
+                    dates:
+                    - date: '2027-01-12'
+                      quantity: 1200
         '422':
           description: Unprocessable Entity
           headers:
@@ -1247074,27 +1248421,26 @@ paths:
             application/json:
               schema:
                 type: object
-                properties:
-                  message:
-                    type: string
-                  errors:
-                    type: object
-                    properties:
-                      destinations:
-                        type: array
-                        items:
-                          type: string
-                example:
-                  message: 'BOOT-BLK-10: 600 allocated, but only 540 are left to plan.'
-                  errors:
-                    destinations:
-                    - 'BOOT-BLK-10: 600 allocated, but only 540 are left to plan.'
+              examples:
+                example-0:
+                  summary: 422 Over-Allocated Line
+                  value:
+                    message: The given data was invalid.
+                    errors:
+                      lines.0.allocations:
+                      - 'EN-TRK40-BLK: 1,300 allocated, but the line orders 1,200.
+                        Lower a warehouse or raise the line quantity.'
+                example-1:
+                  summary: 422 Order Can't Be Split
+                  value:
+                    message: A blanket order ships in releases. Create a release for
+                      each warehouse instead.
         '429': *id001
         '401': *id002
         '403': *id005
         '404': *id003
       x-required-scope: purchase-orders:write
-      operationId: post-api-purchase-orders-purchase-order-split-by-destination
+      operationId: put-api-purchase-orders-purchase-order-line-allocations
   /api/purchase-orders/{purchase_order}/lost-units/receiving-discrepancy:
     post:
       tags:
@@ -1247302,8 +1248648,9 @@ paths:
 
 
         Errors (422): a line is not on this purchase order or is already short-closed,
-        more units than the line still expects, or a quantity that is not a whole
-        number (vendor credits take whole units).
+        more units than the line still expects, or a fractional quantity on a serial-tracked
+        product (those take whole units). Other products may lose part of a unit (e.g.
+        2.5 KG), credited exactly.
 
 
         **Requires permission:** `purchase_orders.update`'
@@ -1248459,6 +1249806,8 @@ paths:
                               type: string
                             color:
                               type: string
+                            description:
+                              type: string
                 example:
                   data:
                     shipments:
@@ -1248495,18 +1249844,35 @@ paths:
                     - value: packing_list
                       label: Packing List
                       color: primary
+                      description: What is in each carton or pallet of this shipment.
                     - value: commercial_invoice
                       label: Commercial Invoice
                       color: indigo
+                      description: The invoice customs uses to value the goods.
                     - value: bill_of_lading
                       label: Bill of Lading
                       color: teal
+                      description: 'The carrier''s receipt for the goods: a bill of
+                        lading or air waybill.'
                     - value: certificate
                       label: Certificate
                       color: info
+                      description: A certificate that travels with the goods, such
+                        as a certificate of origin.
+                    - value: inspection_report
+                      label: Inspection Report
+                      color: deep-purple
+                      description: A pre-shipment inspection report or approval letter
+                        from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                    - value: lab_report
+                      label: Lab Report
+                      color: indigo
+                      description: A lab test report for the goods in this shipment,
+                        such as a new-product test.
                     - value: other
                       label: Other
                       color: grey
+                      description: Anything else that travels with this shipment.
         '404':
           description: Not Found
           headers:
@@ -1270439,12 +1271805,16 @@ paths:
         it does not carry the product yet. `is_awarded` marks the quotes you chose.
 
 
-        **Summary:** response counts, the cheapest supplier covering every line (`cheapest_overall`),
-        the cheapest supplier covering only some lines (`lowest_partial`), the supplier
-        with the shortest longest lead time (`fastest`), and the total of buying each
-        line from its cheapest supplier (`best_per_line`, with the extra cost versus
-        `cheapest_overall`). `award_summary` totals the awarded lines plus the freight
-        of every awarded supplier.
+        **Summary:** response counts, the cheapest supplier who can supply every line
+        at its full requested quantity (`cheapest_overall`), the cheapest supplier
+        who quoted fewer lines or less than the full quantity of a line (`lowest_partial`;
+        `lines_covered` counts the lines quoted and `lines_short` those offered below
+        the requested quantity), the supplier with the shortest longest lead time
+        (`fastest`), and the total of buying each line from its cheapest supplier
+        (`best_per_line`, with `short_lines` counting lines won by a short quote,
+        and `extra_vs_cheapest_overall`, the extra cost versus `cheapest_overall`,
+        which is null unless both buy the full quantity of every line). `award_summary`
+        totals the awarded lines plus the freight of every awarded supplier.
 
 
         **Activity:** newest first: sent, viewed, quoted, declined, awarded, closed
@@ -1311563,6 +1312933,8 @@ paths:
                               type: string
                             color:
                               type: string
+                            description:
+                              type: string
                 example:
                   data:
                     documents:
@@ -1311591,18 +1312963,35 @@ paths:
                     - value: packing_list
                       label: Packing List
                       color: primary
+                      description: What is in each carton or pallet of this shipment.
                     - value: commercial_invoice
                       label: Commercial Invoice
                       color: indigo
+                      description: The invoice customs uses to value the goods.
                     - value: bill_of_lading
                       label: Bill of Lading
                       color: teal
+                      description: 'The carrier''s receipt for the goods: a bill of
+                        lading or air waybill.'
                     - value: certificate
                       label: Certificate
                       color: info
+                      description: A certificate that travels with the goods, such
+                        as a certificate of origin.
+                    - value: inspection_report
+                      label: Inspection Report
+                      color: deep-purple
+                      description: A pre-shipment inspection report or approval letter
+                        from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                    - value: lab_report
+                      label: Lab Report
+                      color: indigo
+                      description: A lab test report for the goods in this shipment,
+                        such as a new-product test.
                     - value: other
                       label: Other
                       color: grey
+                      description: Anything else that travels with this shipment.
         '404':
           description: Not Found
           headers:
@@ -1311741,6 +1313130,8 @@ paths:
                               type: string
                             color:
                               type: string
+                            description:
+                              type: string
                 example:
                   data:
                     documents:
@@ -1311769,18 +1313160,35 @@ paths:
                     - value: packing_list
                       label: Packing List
                       color: primary
+                      description: What is in each carton or pallet of this shipment.
                     - value: commercial_invoice
                       label: Commercial Invoice
                       color: indigo
+                      description: The invoice customs uses to value the goods.
                     - value: bill_of_lading
                       label: Bill of Lading
                       color: teal
+                      description: 'The carrier''s receipt for the goods: a bill of
+                        lading or air waybill.'
                     - value: certificate
                       label: Certificate
                       color: info
+                      description: A certificate that travels with the goods, such
+                        as a certificate of origin.
+                    - value: inspection_report
+                      label: Inspection Report
+                      color: deep-purple
+                      description: A pre-shipment inspection report or approval letter
+                        from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                    - value: lab_report
+                      label: Lab Report
+                      color: indigo
+                      description: A lab test report for the goods in this shipment,
+                        such as a new-product test.
                     - value: other
                       label: Other
                       color: grey
+                      description: Anything else that travels with this shipment.
         '404':
           description: Not Found
           headers:
@@ -1311948,6 +1313356,8 @@ paths:
                               type: string
                             color:
                               type: string
+                            description:
+                              type: string
                 example:
                   data:
                     documents:
@@ -1311976,18 +1313386,35 @@ paths:
                     - value: packing_list
                       label: Packing List
                       color: primary
+                      description: What is in each carton or pallet of this shipment.
                     - value: commercial_invoice
                       label: Commercial Invoice
                       color: indigo
+                      description: The invoice customs uses to value the goods.
                     - value: bill_of_lading
                       label: Bill of Lading
                       color: teal
+                      description: 'The carrier''s receipt for the goods: a bill of
+                        lading or air waybill.'
                     - value: certificate
                       label: Certificate
                       color: info
+                      description: A certificate that travels with the goods, such
+                        as a certificate of origin.
+                    - value: inspection_report
+                      label: Inspection Report
+                      color: deep-purple
+                      description: A pre-shipment inspection report or approval letter
+                        from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                    - value: lab_report
+                      label: Lab Report
+                      color: indigo
+                      description: A lab test report for the goods in this shipment,
+                        such as a new-product test.
                     - value: other
                       label: Other
                       color: grey
+                      description: Anything else that travels with this shipment.
         '404':
           description: Not Found
           headers:
@@ -1318438,7 +1319865,16 @@ paths:
         has Auto Dispatch switched off, and every other automatic-dispatch check passes
         — the order is waiting only for someone to submit it (or for Auto Dispatch
         to be switched on). It is `false` otherwise, and is evaluated only by this
-        list endpoint.'
+        list endpoint.
+
+
+        **Entered by hand:** each fulfillment order also carries a boolean `waiting_entered_by_hand`.
+        It is `true` when the sales order was entered by hand (it did not come from
+        a connected sales channel, so it is never dispatched automatically), the fulfillment
+        order is open and unsubmitted (whatever its warehouse''s Auto Dispatch is
+        set to), and nothing else holds the order back — it is waiting only for someone
+        to submit it. For such an order `waiting_on_auto_dispatch` is `false`. It
+        is evaluated only by this list endpoint.'
       parameters:
       - name: salesOrder
         in: path
@@ -1380328,7 +1381764,12 @@ paths:
 
 
         Authentication: Requires Bearer token (scope purchase-orders:read, permission
-        purchase_orders.show).'
+        purchase_orders.show).
+
+
+        Each line''s `quantity` is the larger of its estimate quantity and what was
+        received. `goods_quantity` is the quantity its `goods_value` is valued at,
+        and `ordered_quantity` is the purchase order line''s ordered quantity.'
       parameters:
       - name: inbound_shipment
         in: path
@@ -1380414,6 +1381855,10 @@ paths:
                             name:
                               type: string
                             quantity:
+                              type: integer
+                            goods_quantity:
+                              type: integer
+                            ordered_quantity:
                               type: integer
                             received_quantity:
                               type: integer
@@ -1380625,6 +1382070,8 @@ paths:
                       sku: ABC
                       name: Mug
                       quantity: 4000
+                      goods_quantity: 4000
+                      ordered_quantity: 4000
                       received_quantity: 0
                       goods_value: '60447.00'
                       weight_kg: 5200
@@ -1381846,7 +1383293,12 @@ paths:
 
 
         Authentication: Requires Bearer token (scope purchase-orders:read, permission
-        purchase_orders.show).'
+        purchase_orders.show).
+
+
+        Each line''s `quantity` is the larger of its estimate quantity and what was
+        received. `goods_quantity` is the quantity its `goods_value` is valued at,
+        and `ordered_quantity` is the purchase order line''s ordered quantity.'
       parameters:
       - name: purchase_order
         in: path
@@ -1381930,6 +1383382,10 @@ paths:
                             name:
                               type: string
                             quantity:
+                              type: integer
+                            goods_quantity:
+                              type: integer
+                            ordered_quantity:
                               type: integer
                             received_quantity:
                               type: integer
@@ -1382170,6 +1383626,8 @@ paths:
                       sku: ABC
                       name: Mug
                       quantity: 4000
+                      goods_quantity: 4000
+                      ordered_quantity: 4000
                       received_quantity: 0
                       goods_value: '60447.00'
                       weight_kg: 5200
@@ -1433503,7 +1434961,19 @@ paths:
         with `sku`, `supplier_sku`, `description`, `quantity`), then units not yet
         assigned to a warehouse as an entry with `is_unassigned: true`, which go to
         the order''s ship-to unless the merchant tells you otherwise. It is null when
-        everything goes to the ship-to.'
+        everything goes to the ship-to.
+
+
+        `ship_to_allocation[].lines[].expected_date` (Y-m-d or null): when that warehouse
+        expects those units; null means the order''s own delivery date.
+
+
+        `shipping_destinations` (array or null): on an order that ships to several
+        warehouses, the warehouses a shipment can go to, each with `warehouse_id`,
+        `name`, `address_line`, `open_by_line` (purchase order line id => units still
+        to ship there), `shipped_quantity` and `open_quantity`. Pass the chosen `warehouse_id`
+        as `destination_warehouse_id` when creating a shipment. Null when the order
+        ships to one warehouse.'
       parameters:
       - name: purchaseOrder
         in: path
@@ -1433653,6 +1435123,8 @@ paths:
                                     type: string
                                   quantity:
                                     type: integer
+                                  expected_date:
+                                    type: string
                       latest_snapshot:
                         type: object
                         properties:
@@ -1433832,6 +1435304,28 @@ paths:
                                   type: boolean
                                 accepted:
                                   type: boolean
+                      shipping_destinations:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            warehouse_id:
+                              type: integer
+                            name:
+                              type: string
+                            address_line:
+                              type: string
+                            open_by_line:
+                              type: object
+                              properties:
+                                '101':
+                                  type: integer
+                                '102':
+                                  type: integer
+                            shipped_quantity:
+                              type: integer
+                            open_quantity:
+                              type: integer
                 example:
                   data:
                     id: 10421
@@ -1433889,6 +1435383,7 @@ paths:
                         supplier_sku: F-BOOT-10
                         description: Trail boot, black, size 10
                         quantity: 300
+                        expected_date: '2027-01-12'
                     - warehouse_id: 1
                       name: Main Warehouse
                       title: Unassigned
@@ -1433908,6 +1435403,7 @@ paths:
                         supplier_sku: F-BOOT-10
                         description: Trail boot, black, size 10
                         quantity: 240
+                        expected_date: '2027-01-12'
                     latest_snapshot:
                       id: 88
                       revision_number: 2
@@ -1433992,6 +1435488,23 @@ paths:
                         requested_date: '2026-11-20'
                         removed: false
                         accepted: false
+                    shipping_destinations:
+                    - warehouse_id: 4
+                      name: Chicago 3PL
+                      address_line: 880 Industrial Dr, Bolingbrook, IL
+                      open_by_line:
+                        '101': 0
+                        '102': 300
+                      shipped_quantity: 800
+                      open_quantity: 200
+                    - warehouse_id: 7
+                      name: Reno 3PL
+                      address_line: 1200 Greg St, Sparks, NV
+                      open_by_line:
+                        '101': 20
+                        '102': 300
+                      shipped_quantity: 480
+                      open_quantity: 420
         '404':
           description: Not Found
           headers:
@@ -1434006,8 +1435519,47 @@ paths:
                 properties:
                   message:
                     type: string
+                  shipping_destinations:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        warehouse_id:
+                          type: integer
+                        name:
+                          type: string
+                        address_line:
+                          type: string
+                        open_by_line:
+                          type: object
+                          properties:
+                            '101':
+                              type: integer
+                            '102':
+                              type: integer
+                        shipped_quantity:
+                          type: integer
+                        open_quantity:
+                          type: integer
                 example:
                   message: Not found.
+                  shipping_destinations:
+                  - warehouse_id: 4
+                    name: Chicago 3PL
+                    address_line: 880 Industrial Dr, Bolingbrook, IL
+                    open_by_line:
+                      '101': 0
+                      '102': 300
+                    shipped_quantity: 800
+                    open_quantity: 200
+                  - warehouse_id: 7
+                    name: Reno 3PL
+                    address_line: 1200 Greg St, Sparks, NV
+                    open_by_line:
+                      '101': 20
+                      '102': 300
+                    shipped_quantity: 480
+                    open_quantity: 420
         '429': *id001
         '401': *id002
         '403': *id005
@@ -1436657,7 +1438209,18 @@ paths:
         the line''s factor, before it is checked against what is left to ship. In
         the response, each shipment line carries `purchase_unit`: `{code, stock_code,
         factor}` (e.g. BAG of 50 LB) when the buyer ordered the line in a purchase
-        unit, else null. Its `quantity` and `received_quantity` are in the stock unit.'
+        unit, else null. Its `quantity` and `received_quantity` are in the stock unit.
+
+
+        `destination_warehouse_id` (optional, integer): the warehouse this shipment
+        goes to. Required on an order that ships to several warehouses (one of its
+        `shipping_destinations`), unless only one of them still has units to ship;
+        must be left out or match the order''s warehouse otherwise. With no `lines`,
+        the shipment carries everything still due at that warehouse.
+
+
+        Error (422): `errors.destination_warehouse_id` when the warehouse is missing
+        on a multi-warehouse order or isn''t one of its destinations.'
       requestBody:
         content:
           application/json:
@@ -1436688,6 +1438251,8 @@ paths:
                 dropship_label_uuid:
                   type: string
                   nullable: true
+                destination_warehouse_id:
+                  type: integer
               example:
                 carrier: UPS
                 tracking_numbers:
@@ -1436699,6 +1438264,7 @@ paths:
                 - purchase_order_line_id: 5501
                   quantity: 30
                 dropship_label_uuid: null
+                destination_warehouse_id: 7
       parameters:
       - name: purchaseOrder
         in: path
@@ -1437031,6 +1438597,8 @@ paths:
                           type: string
                         color:
                           type: string
+                        description:
+                          type: string
                   can_add_documents:
                     type: boolean
                 example:
@@ -1437051,18 +1438619,35 @@ paths:
                   - value: packing_list
                     label: Packing List
                     color: primary
+                    description: What is in each carton or pallet of this shipment.
                   - value: commercial_invoice
                     label: Commercial Invoice
                     color: indigo
+                    description: The invoice customs uses to value the goods.
                   - value: bill_of_lading
                     label: Bill of Lading
                     color: teal
+                    description: 'The carrier''s receipt for the goods: a bill of
+                      lading or air waybill.'
                   - value: certificate
                     label: Certificate
                     color: info
+                    description: A certificate that travels with the goods, such as
+                      a certificate of origin.
+                  - value: inspection_report
+                    label: Inspection Report
+                    color: deep-purple
+                    description: A pre-shipment inspection report or approval letter
+                      from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                  - value: lab_report
+                    label: Lab Report
+                    color: indigo
+                    description: A lab test report for the goods in this shipment,
+                      such as a new-product test.
                   - value: other
                     label: Other
                     color: grey
+                    description: Anything else that travels with this shipment.
                   can_add_documents: true
         '404':
           description: Not Found
@@ -1437091,10 +1438676,10 @@ paths:
       summary: Upload Shipment Documents
       description: 'Adds up to 5 documents to the shipment. multipart/form-data: `documents[i][file]`
         (PDF, PNG, JPG, Word, Excel or CSV, 10 MB each) and `documents[i][document_type]`
-        (packing_list, commercial_invoice, bill_of_lading, certificate, other), optional
-        `documents[i][description]` (255 characters). A shipment holds up to 50 documents
-        per supplier; a canceled shipment takes none. The buyer is alerted. Throttled
-        30/min.
+        (packing_list, commercial_invoice, bill_of_lading, certificate, inspection_report,
+        lab_report, other), optional `documents[i][description]` (255 characters).
+        A shipment holds up to 50 documents per supplier; a canceled shipment takes
+        none. The buyer is alerted. Throttled 30/min.
 
 
         :::info[Buyer portal token]
@@ -1437185,6 +1438770,8 @@ paths:
                           type: string
                         color:
                           type: string
+                        description:
+                          type: string
                   can_add_documents:
                     type: boolean
                 example:
@@ -1437205,18 +1438792,35 @@ paths:
                   - value: packing_list
                     label: Packing List
                     color: primary
+                    description: What is in each carton or pallet of this shipment.
                   - value: commercial_invoice
                     label: Commercial Invoice
                     color: indigo
+                    description: The invoice customs uses to value the goods.
                   - value: bill_of_lading
                     label: Bill of Lading
                     color: teal
+                    description: 'The carrier''s receipt for the goods: a bill of
+                      lading or air waybill.'
                   - value: certificate
                     label: Certificate
                     color: info
+                    description: A certificate that travels with the goods, such as
+                      a certificate of origin.
+                  - value: inspection_report
+                    label: Inspection Report
+                    color: deep-purple
+                    description: A pre-shipment inspection report or approval letter
+                      from an inspection firm such as SGS, Bureau Veritas or QIMA.
+                  - value: lab_report
+                    label: Lab Report
+                    color: indigo
+                    description: A lab test report for the goods in this shipment,
+                      such as a new-product test.
                   - value: other
                     label: Other
                     color: grey
+                    description: Anything else that travels with this shipment.
                   can_add_documents: true
         '404':
           description: Not Found
@@ -1504104,9 +1505708,11 @@ paths:
 
         Each line is either:
 
-        1. A PO-line-linked line: `purchase_order_line_id` + `quantity` + optional
-        `unit_cost`/`amount`/`restock_inventory`. Lines may come from different purchase
-        orders, as long as every order belongs to the credit''s supplier.
+        1. A PO-line-linked line: `purchase_order_line_id` + `quantity` (> 0; decimals
+        allowed, e.g. 0.5 KG, stored to 6 dp; whole numbers on a serial-tracked product,
+        else 422) + optional `unit_cost`/`amount`/`restock_inventory`. Lines may come
+        from different purchase orders, as long as every order belongs to the credit''s
+        supplier.
 
         2. A description-only line (service/rebate): `description` + `quantity` +
         `amount` (+ optional `nominal_code_id`).
@@ -1511254,19 +1512860,20 @@ paths:
         \ (optional, date).\n- `vendor_rma_number` (optional, string, max 191).\n\
         - `notes` (optional, string).\n- `lines` (required, array, min 1) — each line:\n\
         \    - `vendor_credit_line_id` (required, integer — exists in vendor_credit_lines).\n\
-        \    - `quantity` (required, integer, min 1).\n    - `warehouse_location_id`\
-        \ (optional, integer — exists in warehouse_locations).\n    - `notes` (optional,\
-        \ string).\n    - `lot_allocation` (optional, array) — FEFO override for lot-tracked\
-        \ products. When supplied, the named FIFO layers are consumed instead of automatic\
-        \ FEFO. Each entry: `{ fifo_layer_id (required, exists in fifo_layers), quantity\
-        \ (required, > 0) }`. The allocation must sum to the line quantity, every\
-        \ layer must be an active layer of the line's product + the shipment warehouse\
-        \ with enough available quantity, and the tenant's lot override policy is\
-        \ enforced (under `enforce`, consuming expired stock or skipping the earliest-expiry\
-        \ FEFO lot is rejected with 422). Omit to consume by automatic FEFO/FIFO.\n\
-        \n:::info[Required scope: `accounting:write`]\nGrant this scope to your token\
-        \ under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
-        :::"
+        \    - `quantity` (required, numeric, > 0): may be a fraction of the stock\
+        \ unit (e.g. 0.5), except on a serial-tracked product, which ships whole units.\n\
+        \    - `warehouse_location_id` (optional, integer — exists in warehouse_locations).\n\
+        \    - `notes` (optional, string).\n    - `lot_allocation` (optional, array)\
+        \ — FEFO override for lot-tracked products. When supplied, the named FIFO\
+        \ layers are consumed instead of automatic FEFO. Each entry: `{ fifo_layer_id\
+        \ (required, exists in fifo_layers), quantity (required, > 0) }`. The allocation\
+        \ must sum to the line quantity, every layer must be an active layer of the\
+        \ line's product + the shipment warehouse with enough available quantity,\
+        \ and the tenant's lot override policy is enforced (under `enforce`, consuming\
+        \ expired stock or skipping the earliest-expiry FEFO lot is rejected with\
+        \ 422). Omit to consume by automatic FEFO/FIFO.\n\n:::info[Required scope:\
+        \ `accounting:write`]\nGrant this scope to your token under [Settings → Developer\
+        \ → Personal Access Tokens](https://app.sku.io/settings/api).\n:::"
       requestBody:
         content:
           application/json:
@@ -1511578,19 +1513185,21 @@ paths:
         \ string, max 191).\n- `expected_arrival_date` (optional, date).\n- `vendor_rma_number`\
         \ (optional, string, max 191).\n- `notes` (optional, string).\n- `lines` (required,\
         \ array, min 1) — each line:\n    - `vendor_credit_line_id` (required, integer\
-        \ — exists in vendor_credit_lines).\n    - `quantity` (required, integer,\
-        \ min 1).\n    - `warehouse_location_id` (optional, integer — exists in warehouse_locations).\n\
-        \    - `notes` (optional, string).\n    - `lot_allocation` (optional, array)\
-        \ — FEFO override for lot-tracked products. When supplied, the named FIFO\
-        \ layers are consumed instead of automatic FEFO. Each entry: `{ fifo_layer_id\
-        \ (required, exists in fifo_layers), quantity (required, > 0) }`. The allocation\
-        \ must sum to the line quantity, every layer must be an active layer of the\
-        \ line's product + the shipment warehouse with enough available quantity,\
-        \ and the tenant's lot override policy is enforced (under `enforce`, consuming\
-        \ expired stock or skipping the earliest-expiry FEFO lot is rejected with\
-        \ 422). Omit to consume by automatic FEFO/FIFO.\n\n:::info[Required scope:\
-        \ `accounting:write`]\nGrant this scope to your token under [Settings → Developer\
-        \ → Personal Access Tokens](https://app.sku.io/settings/api).\n:::"
+        \ — exists in vendor_credit_lines).\n    - `quantity` (required, numeric,\
+        \ > 0): may be a fraction of the stock unit (e.g. 0.5), except on a serial-tracked\
+        \ product, which ships whole units.\n    - `warehouse_location_id` (optional,\
+        \ integer — exists in warehouse_locations).\n    - `notes` (optional, string).\n\
+        \    - `lot_allocation` (optional, array) — FEFO override for lot-tracked\
+        \ products. When supplied, the named FIFO layers are consumed instead of automatic\
+        \ FEFO. Each entry: `{ fifo_layer_id (required, exists in fifo_layers), quantity\
+        \ (required, > 0) }`. The allocation must sum to the line quantity, every\
+        \ layer must be an active layer of the line's product + the shipment warehouse\
+        \ with enough available quantity, and the tenant's lot override policy is\
+        \ enforced (under `enforce`, consuming expired stock or skipping the earliest-expiry\
+        \ FEFO lot is rejected with 422). Omit to consume by automatic FEFO/FIFO.\n\
+        \n:::info[Required scope: `accounting:write`]\nGrant this scope to your token\
+        \ under [Settings → Developer → Personal Access Tokens](https://app.sku.io/settings/api).\n\
+        :::"
       requestBody:
         content:
           application/json:
@@ -1514619,7 +1516228,8 @@ paths:
 
         Line fields (per element of `lines`):
 
-        - quantity: required, numeric, min 1
+        - quantity: required, numeric, > 0 — decimals allowed (e.g. 0.5 or 12.3456
+        KG, stored to 6 dp); a serial-tracked product takes whole numbers (422 otherwise)
 
         - amount: required, numeric, must be less than 100000
 
@@ -1514939,7 +1516549,8 @@ paths:
 
         Line fields (per element of `lines`):
 
-        - quantity: required, numeric, min 1
+        - quantity: required, numeric, > 0 — decimals allowed (e.g. 0.5 or 12.3456
+        KG, stored to 6 dp); a serial-tracked product takes whole numbers (422 otherwise)
 
         - amount: required, numeric, must be less than 100000
 
